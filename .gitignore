@@ -1,0 +1,30 @@
+# Zephyr build artifacts
+build/
+build-*/
+
+# West configuration (这些在工作区根目录，不在仓库中)
+.west/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.pyc
+
+# Compiler output
+*.o
+*.d
+*.elf
+*.hex
+*.bin
+*.lst
+*.map
+
+# Temporary files
+.cache/
+*.log

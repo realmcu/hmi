@@ -50,7 +50,7 @@ manifest:
         repo-path: HoneyRepo/lvgl
         path: zephyrproject/modules/lvgl
     self:
-        path: manifest
+        path: hmi
         west-commands: west_commands_extention/west-commands.yml
-        userdata: 
+        userdata:
             owner: howie_wang
