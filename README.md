@@ -25,18 +25,15 @@ hmi/
 
 ```bash
 # 初始化 West 工作区
-west init -m ssh://howie_wang@cn4soc.rtkbf.com:29418/HoneyRepo/hmi \
-          --mf manifest/rtl8773g-zephyr-hmi.yml \
-          ~/workspace/hmi-project
+# <your_username> 替换为你的 Gerrit 用户名，如 howie_wang
+# ~/workspace/hmi-project 可替换为你想要的目录
+west init -m ssh://<your_username>@cn4soc.rtkbf.com:29418/HoneyRepo/hmi --mf manifest/rtl8773g-zephyr-hmi.yml ~/workspace/hmi-project
 
 # 进入工作目录
 cd ~/workspace/hmi-project
 
 # 更新所有依赖项目
 west update
-
-# 导出 Zephyr CMake 包
-west zephyr-export
 ```
 
 ### West Init 命令参数说明
@@ -48,7 +45,7 @@ west init -m <manifest-url> --mf <manifest-file> <directory>
 **参数详解：**
 
 - **`-m <manifest-url>`**: 指定 manifest 仓库的 URL
-  - 示例: `ssh://howie_wang@cn4soc.rtkbf.com:29418/HoneyRepo/hmi`
+  - 示例: `ssh://<your_username>@cn4soc.rtkbf.com:29418/HoneyRepo/hmi`
   - 这是包含 West manifest 配置文件的 Git 仓库地址
   - West 会克隆这个仓库来获取项目的依赖配置
 
