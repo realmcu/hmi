@@ -1,0 +1,27 @@
+# hmi_app build outputs
+
+# Keil MDK build directories
+**/mdk/Objects/
+**/mdk/Listings/
+**/mdk/RTE/
+**/mdk/RTE/**/
+**/mdk/app/
+**/mdk/bin/
+
+# Keil project files (keep template.*)
+**/mdk/project.uvoptx
+**/mdk/project.uvprojx
+
+# Keil backup files
+**/*.bak
+**/*.uvguix.*
+**/project_uvoptx.bak
+**/project_uvprojx.bak
+**/project.uvguix_*
+**/project.uvguix.*.bak
+
+# SCons cache
+**/.sconsign.dblite
+
+# Python cache
+**/*.pyc

@@ -73,7 +73,7 @@
         <LExpSel>0</LExpSel>
       </OPTXL>
       <OPTFL>
-        <tvExp>0</tvExp>
+        <tvExp>1</tvExp>
         <tvExpOptDlg>0</tvExpOptDlg>
         <IsCurrentTarget>1</IsCurrentTarget>
       </OPTFL>
@@ -236,6 +236,18 @@
     <File>
       <GroupNumber>1</GroupNumber>
       <FileNumber>5</FileNumber>
+      <FileType>5</FileType>
+      <tvExp>0</tvExp>
+      <tvExpOptDlg>0</tvExpOptDlg>
+      <bDave2>0</bDave2>
+      <PathWithFileName>..\src\application\app_flags.h</PathWithFileName>
+      <FilenameWithoutPath>app_flags.h</FilenameWithoutPath>
+      <RteFlg>0</RteFlg>
+      <bShared>0</bShared>
+    </File>
+    <File>
+      <GroupNumber>1</GroupNumber>
+      <FileNumber>6</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -247,7 +259,7 @@
     </File>
     <File>
       <GroupNumber>1</GroupNumber>
-      <FileNumber>6</FileNumber>
+      <FileNumber>7</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -259,7 +271,7 @@
     </File>
     <File>
       <GroupNumber>1</GroupNumber>
-      <FileNumber>7</FileNumber>
+      <FileNumber>8</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -271,7 +283,7 @@
     </File>
     <File>
       <GroupNumber>1</GroupNumber>
-      <FileNumber>8</FileNumber>
+      <FileNumber>9</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -291,7 +303,7 @@
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>2</GroupNumber>
-      <FileNumber>9</FileNumber>
+      <FileNumber>10</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -303,7 +315,7 @@
     </File>
     <File>
       <GroupNumber>2</GroupNumber>
-      <FileNumber>10</FileNumber>
+      <FileNumber>11</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -315,25 +327,13 @@
     </File>
     <File>
       <GroupNumber>2</GroupNumber>
-      <FileNumber>11</FileNumber>
-      <FileType>4</FileType>
-      <tvExp>0</tvExp>
-      <tvExpOptDlg>0</tvExpOptDlg>
-      <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\bin\rtl87x3ep\ROM.lib</PathWithFileName>
-      <FilenameWithoutPath>ROM.lib</FilenameWithoutPath>
-      <RteFlg>0</RteFlg>
-      <bShared>0</bShared>
-    </File>
-    <File>
-      <GroupNumber>2</GroupNumber>
       <FileNumber>12</FileNumber>
       <FileType>4</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\bin\rtl87x3ep\upperstack_4M.lib</PathWithFileName>
-      <FilenameWithoutPath>upperstack_4M.lib</FilenameWithoutPath>
+      <PathWithFileName>..\..\..\..\..\bin\rtl87x3ep\ROM.lib</PathWithFileName>
+      <FilenameWithoutPath>ROM.lib</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -344,20 +344,20 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\bin\rtl87x3ep\hal_utils.lib</PathWithFileName>
-      <FilenameWithoutPath>hal_utils.lib</FilenameWithoutPath>
+      <PathWithFileName>..\..\..\..\..\bin\rtl87x3ep\upperstack_4M.lib</PathWithFileName>
+      <FilenameWithoutPath>upperstack_4M.lib</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
     <File>
       <GroupNumber>2</GroupNumber>
       <FileNumber>14</FileNumber>
-      <FileType>1</FileType>
+      <FileType>4</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e\rtl_ppe.c</PathWithFileName>
-      <FilenameWithoutPath>rtl_ppe.c</FilenameWithoutPath>
+      <PathWithFileName>..\..\..\..\..\bin\rtl87x3ep\hal_utils.lib</PathWithFileName>
+      <FilenameWithoutPath>hal_utils.lib</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -368,8 +368,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e\rtl_idu_int.c</PathWithFileName>
-      <FilenameWithoutPath>rtl_idu_int.c</FilenameWithoutPath>
+      <PathWithFileName>..\..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e\rtl_ppe.c</PathWithFileName>
+      <FilenameWithoutPath>rtl_ppe.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -380,8 +380,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl_common\rtl_idu.c</PathWithFileName>
-      <FilenameWithoutPath>rtl_idu.c</FilenameWithoutPath>
+      <PathWithFileName>..\..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e\rtl_idu_int.c</PathWithFileName>
+      <FilenameWithoutPath>rtl_idu_int.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -392,8 +392,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc.c</PathWithFileName>
-      <FilenameWithoutPath>rtl_lcdc.c</FilenameWithoutPath>
+      <PathWithFileName>..\..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl_common\rtl_idu.c</PathWithFileName>
+      <FilenameWithoutPath>rtl_idu.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -404,8 +404,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_dbic.c</PathWithFileName>
-      <FilenameWithoutPath>rtl_lcdc_dbic.c</FilenameWithoutPath>
+      <PathWithFileName>..\..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc.c</PathWithFileName>
+      <FilenameWithoutPath>rtl_lcdc.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -416,8 +416,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_dbib.c</PathWithFileName>
-      <FilenameWithoutPath>rtl_lcdc_dbib.c</FilenameWithoutPath>
+      <PathWithFileName>..\..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_dbic.c</PathWithFileName>
+      <FilenameWithoutPath>rtl_lcdc_dbic.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -428,8 +428,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_edpi.c</PathWithFileName>
-      <FilenameWithoutPath>rtl_lcdc_edpi.c</FilenameWithoutPath>
+      <PathWithFileName>..\..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_dbib.c</PathWithFileName>
+      <FilenameWithoutPath>rtl_lcdc_dbib.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -440,7 +440,19 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\src\mcu\display\bindings\honeygui\hardware_engine\PPE\rtl8773e\acc_ppe.c</PathWithFileName>
+      <PathWithFileName>..\..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_edpi.c</PathWithFileName>
+      <FilenameWithoutPath>rtl_lcdc_edpi.c</FilenameWithoutPath>
+      <RteFlg>0</RteFlg>
+      <bShared>0</bShared>
+    </File>
+    <File>
+      <GroupNumber>2</GroupNumber>
+      <FileNumber>22</FileNumber>
+      <FileType>1</FileType>
+      <tvExp>0</tvExp>
+      <tvExpOptDlg>0</tvExpOptDlg>
+      <bDave2>0</bDave2>
+      <PathWithFileName>..\..\..\..\..\src\mcu\display\bindings\honeygui\hardware_engine\PPE\rtl8773e\acc_ppe.c</PathWithFileName>
       <FilenameWithoutPath>acc_ppe.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
@@ -455,7 +467,7 @@
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>3</GroupNumber>
-      <FileNumber>22</FileNumber>
+      <FileNumber>23</FileNumber>
       <FileType>4</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -475,7 +487,7 @@
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>4</GroupNumber>
-      <FileNumber>23</FileNumber>
+      <FileNumber>24</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -487,7 +499,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-      <FileNumber>24</FileNumber>
+      <FileNumber>25</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -499,7 +511,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-      <FileNumber>25</FileNumber>
+      <FileNumber>26</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -511,7 +523,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-      <FileNumber>26</FileNumber>
+      <FileNumber>27</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -523,7 +535,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-      <FileNumber>27</FileNumber>
+      <FileNumber>28</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -535,7 +547,7 @@
     </File>
     <File>
       <GroupNumber>4</GroupNumber>
-      <FileNumber>28</FileNumber>
+      <FileNumber>29</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
@@ -555,12 +567,12 @@
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>5</GroupNumber>
-      <FileNumber>29</FileNumber>
+      <FileNumber>30</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\src\app\Wearable\device\key_button\8773E\key_button_8773e.c</PathWithFileName>
+      <PathWithFileName>..\..\..\..\..\src\app\Wearable\device\key_button\8773E\key_button_8773e.c</PathWithFileName>
       <FilenameWithoutPath>key_button_8773e.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
@@ -575,12 +587,12 @@
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>6</GroupNumber>
-      <FileNumber>30</FileNumber>
+      <FileNumber>31</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\src\app\Wearable\device\lcd\8773E\lcd_sh8601z_410_502_qspi.c</PathWithFileName>
+      <PathWithFileName>..\..\..\..\..\src\app\Wearable\device\lcd\8773E\lcd_sh8601z_410_502_qspi.c</PathWithFileName>
       <FilenameWithoutPath>lcd_sh8601z_410_502_qspi.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
@@ -595,12 +607,12 @@
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>7</GroupNumber>
-      <FileNumber>31</FileNumber>
+      <FileNumber>32</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\src\app\Wearable\device\touch\8773E\touch_CHSC6417.c</PathWithFileName>
+      <PathWithFileName>..\..\..\..\..\src\app\Wearable\device\touch\8773E\touch_CHSC6417.c</PathWithFileName>
       <FilenameWithoutPath>touch_CHSC6417.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
@@ -615,12 +627,12 @@
     <RteFlg>0</RteFlg>
     <File>
       <GroupNumber>8</GroupNumber>
-      <FileNumber>32</FileNumber>
+      <FileNumber>33</FileNumber>
       <FileType>1</FileType>
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\src\app\Wearable\system\dfs\romfs\romfs.c</PathWithFileName>
+      <PathWithFileName>..\..\..\..\..\src\app\Wearable\system\dfs\romfs\romfs.c</PathWithFileName>
       <FilenameWithoutPath>romfs.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>

@@ -11,11 +11,11 @@ import menu_config
 if os.getenv('TOOL_ROOT'):
     TOOL_ROOT = os.getenv('TOOL_ROOT')
 else:
-    TOOL_ROOT = os.path.normpath(os.getcwd() + '/../..')
+    TOOL_ROOT = os.path.normpath(os.getcwd() + '/../../..')
 
 # set TOOL_ROOT
 if not os.getenv("TOOL_ROOT"):
-    TOOL_ROOT="../../../src/app/Wearable/build/scons-tool"
+    TOOL_ROOT="../../../../src/app/Wearable/build/scons-tool"
 
 sys.path = sys.path + [os.path.join(TOOL_ROOT, 'tools')]
 try:
@@ -40,11 +40,11 @@ if menu_config.PLATFORM == 'iar':
     env.Replace(ARFLAGS = [''])
     env.Replace(LINKCOM = env["LINKCOM"] + ' --map rtthread.map')
 
-SDK_ROOT = os.path.abspath('./../../../')
+SDK_ROOT = os.path.abspath('./../../../../')
 
 RTK_IC_TYPE = 'rtl8773e'
-WEARABLE_ROOT = os.path.abspath('./../../../src/app/Wearable')
-HONEYGUI_ROOT = os.path.abspath('./../../../src/sample/gui')
+WEARABLE_ROOT = os.path.abspath('./../../../../src/app/Wearable')
+HONEYGUI_ROOT = os.path.abspath('./../../../../src/sample/gui')
 PLATFORM = menu_config.PLATFORM
 
 Export('PLATFORM')

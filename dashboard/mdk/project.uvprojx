@@ -338,9 +338,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>  --include pre_define.h  --include stdbool.h --include app_flags.h</MiscControls>
-              <Define>SUPPORT_ACCESS_SHM = 1, ENABLE_HONEYGUI, RTK_HAL_DRIVER, TARGET_RTL8773E, CONFIG_SOC_SERIES_RTL8773E=1, DEFINE_RTK_BT_TODO</Define>
+              <Define>ENABLE_HONEYGUI, CONFIG_SOC_SERIES_RTL8773E=1, DEFINE_RTK_BT_TODO, RTK_HAL_DRIVER, TARGET_RTL8773E, SUPPORT_ACCESS_SHM = 1</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..;..\src\application;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\src\mcu\display\hardware;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\src\ports\realgui_port;..\..\..\..\src\app\Wearable\audio\music_player;..\..\..\..\src\app\Wearable\communicate\rtk_bt;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\clock;..\..\..\..\src\app\Wearable\system\dfs\romfs</IncludePath>
+              <IncludePath>..;..;..\src\application;..\..\..\..\..\inc\app;..\..\..\..\..\inc\os;..\..\..\..\..\inc\platform;..\..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\..\src\mcu\display\hardware;..\..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\..\inc\hal\platform;..\..\..\..\..\inc\hal\io;..\..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\..\inc\os\FreeRTOS;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\src\ports\realgui_port;..\..\..\..\..\src\app\Wearable\audio\music_player;..\..\..\..\..\src\app\Wearable\communicate\rtk_bt;..\..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\..\src\app\Wearable\system\clock;..\..\..\..\..\src\app\Wearable\system\dfs\romfs</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -405,6 +405,11 @@
               <FilePath>..\config.h</FilePath>
             </File>
             <File>
+              <FileName>app_flags.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\src\application\app_flags.h</FilePath>
+            </File>
+            <File>
               <FileName>app_lower_init.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\src\application\app_lower_init.c</FilePath>
@@ -442,57 +447,57 @@
             <File>
               <FileName>ROM.lib</FileName>
               <FileType>4</FileType>
-              <FilePath>..\..\..\..\bin\rtl87x3ep\ROM.lib</FilePath>
+              <FilePath>..\..\..\..\..\bin\rtl87x3ep\ROM.lib</FilePath>
             </File>
             <File>
               <FileName>upperstack_4M.lib</FileName>
               <FileType>4</FileType>
-              <FilePath>..\..\..\..\bin\rtl87x3ep\upperstack_4M.lib</FilePath>
+              <FilePath>..\..\..\..\..\bin\rtl87x3ep\upperstack_4M.lib</FilePath>
             </File>
             <File>
               <FileName>hal_utils.lib</FileName>
               <FileType>4</FileType>
-              <FilePath>..\..\..\..\bin\rtl87x3ep\hal_utils.lib</FilePath>
+              <FilePath>..\..\..\..\..\bin\rtl87x3ep\hal_utils.lib</FilePath>
             </File>
             <File>
               <FileName>rtl_ppe.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e\rtl_ppe.c</FilePath>
+              <FilePath>..\..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e\rtl_ppe.c</FilePath>
             </File>
             <File>
               <FileName>rtl_idu_int.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e\rtl_idu_int.c</FilePath>
+              <FilePath>..\..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e\rtl_idu_int.c</FilePath>
             </File>
             <File>
               <FileName>rtl_idu.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl_common\rtl_idu.c</FilePath>
+              <FilePath>..\..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl_common\rtl_idu.c</FilePath>
             </File>
             <File>
               <FileName>rtl_lcdc.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc.c</FilePath>
+              <FilePath>..\..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc.c</FilePath>
             </File>
             <File>
               <FileName>rtl_lcdc_dbic.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_dbic.c</FilePath>
+              <FilePath>..\..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_dbic.c</FilePath>
             </File>
             <File>
               <FileName>rtl_lcdc_dbib.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_dbib.c</FilePath>
+              <FilePath>..\..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_dbib.c</FilePath>
             </File>
             <File>
               <FileName>rtl_lcdc_edpi.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_edpi.c</FilePath>
+              <FilePath>..\..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_edpi.c</FilePath>
             </File>
             <File>
               <FileName>acc_ppe.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\bindings\honeygui\hardware_engine\PPE\rtl8773e\acc_ppe.c</FilePath>
+              <FilePath>..\..\..\..\..\src\mcu\display\bindings\honeygui\hardware_engine\PPE\rtl8773e\acc_ppe.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -547,7 +552,7 @@
             <File>
               <FileName>key_button_8773e.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\app\Wearable\device\key_button\8773E\key_button_8773e.c</FilePath>
+              <FilePath>..\..\..\..\..\src\app\Wearable\device\key_button\8773E\key_button_8773e.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -557,7 +562,7 @@
             <File>
               <FileName>lcd_sh8601z_410_502_qspi.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\app\Wearable\device\lcd\8773E\lcd_sh8601z_410_502_qspi.c</FilePath>
+              <FilePath>..\..\..\..\..\src\app\Wearable\device\lcd\8773E\lcd_sh8601z_410_502_qspi.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -567,7 +572,7 @@
             <File>
               <FileName>touch_CHSC6417.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\app\Wearable\device\touch\8773E\touch_CHSC6417.c</FilePath>
+              <FilePath>..\..\..\..\..\src\app\Wearable\device\touch\8773E\touch_CHSC6417.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -577,7 +582,7 @@
             <File>
               <FileName>romfs.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\app\Wearable\system\dfs\romfs\romfs.c</FilePath>
+              <FilePath>..\..\..\..\..\src\app\Wearable\system\dfs\romfs\romfs.c</FilePath>
             </File>
           </Files>
         </Group>
