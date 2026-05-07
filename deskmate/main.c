@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include "trace.h"
+#include "bt_task.h"
 #include "rtl876x_pinmux.h"
 
 int main(void)
@@ -16,6 +17,8 @@ int main(void)
     Pad_Config(P3_1, PAD_PINMUX_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_DISABLE, PAD_OUT_LOW);
     DBG_DIRECT("!!!!! remap log pin!!!");
     printf("Hello World! %s\n", CONFIG_BOARD_TARGET);
+
+    bt_task_init();
 
     return 0;
 }
