@@ -10,20 +10,20 @@ set IC_TYPE=%6
 set TARGET_MAP_PATH=Listings
 set TARGET_OBJ_PATH=Objects
 
-set FLASH_MAP_INI=..\..\..\..\bin\%IC_TYPE%\flash_map_config\flash_map.ini
-set FLASH_MAP_H=..\..\..\..\bin\%IC_TYPE%\flash_map_config\flash_map.h
+set FLASH_MAP_INI=..\..\..\..\..\bin\%IC_TYPE%\flash_map_config\flash_map.ini
+set FLASH_MAP_H=..\..\..\..\..\bin\%IC_TYPE%\flash_map_config\flash_map.h
 set HEX_IMAGE=app_image.hex
 set MP_INI=mp.ini
-set AES_KEY=..\..\..\..\tool\Gadgets\aes_key.bin
-set RTK_RSA=..\..\..\..\tool\Gadgets\default_rsa_key.pem
-set ECDSA_KEY=..\..\..\..\tool\Gadgets\ecdsa_key.pem
+set AES_KEY=..\..\..\..\..\tool\Gadgets\aes_key.bin
+set RTK_RSA=..\..\..\..\..\tool\Gadgets\default_rsa_key.pem
+set ECDSA_KEY=..\..\..\..\..\tool\Gadgets\ecdsa_key.pem
 
-set PREPEND_HEADER=..\..\..\..\tool\Gadgets\prepend_header.exe
-set BUILD_DEBUG_TABLE=..\..\..\..\tool\Gadgets\build_debug_table_tool\build_debug_table.exe
-set MD5=..\..\..\..\tool\Gadgets\md5_generate.sh
-REM set MD5=..\..\..\..\tool\Gadgets\md5.exe
-set BIN2HEX=..\..\..\..\tool\Gadgets\bin2hex.bat
-set SREC_CAT=..\..\..\..\tool\Gadgets\srec_cat.exe
+set PREPEND_HEADER=..\..\..\..\..\tool\Gadgets\prepend_header.exe
+set BUILD_DEBUG_TABLE=..\..\..\..\..\tool\Gadgets\build_debug_table_tool\build_debug_table.exe
+set MD5=..\..\..\..\..\tool\Gadgets\md5_generate.sh
+REM set MD5=..\..\..\..\..\tool\Gadgets\md5.exe
+set BIN2HEX=..\..\..\..\..\tool\Gadgets\bin2hex.bat
+set SREC_CAT=..\..\..\..\..\tool\Gadgets\srec_cat.exe
 
 rd /s /q "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%"
 mkdir "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%"

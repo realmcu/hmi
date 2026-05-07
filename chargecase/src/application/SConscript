@@ -5,17 +5,22 @@
 #
 
 Import('SDK_ROOT')
-#import config
+Import('HONEYGUI_ROOT')
 from building import *
 
-# add the general drivers.
-src     = Glob('*.c')
-
 cwd = GetCurrentDir()
-
 CPPPATH = [cwd]
-# SrcRemove(src,'example_gui_img.c')
+group = []
 
-group = DefineGroup('app', src, depend = [''], CPPPATH = CPPPATH)
+if GetDepend(['CONFIG_REALTEK_HONEYGUI_DEV_LIB']):
+    # Use local application code, exclude example_gui_img.c
+    src = Glob('*.c')
+    group = DefineGroup('app', src, depend=[''], CPPPATH=CPPPATH)
+elif GetDepend(['CONFIG_REALTEK_HONEYGUI_DEV_SRC']):
+    # Use source code from submodule (example), exclude local example_gui_img.c
+    src = Glob('*.c')
+    SrcRemove(src, 'example_gui_img.c')
+    group = DefineGroup('app', src, depend=[''], CPPPATH=CPPPATH)
+    group += SConscript(HONEYGUI_ROOT + '/example/SConscript')
 
 Return('group')

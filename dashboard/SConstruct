@@ -51,6 +51,7 @@ Export('PLATFORM')
 Export('TOOL_ROOT')
 Export('SDK_ROOT')
 Export('menu_config')
+Export('HONEYGUI_ROOT')
 
 print('RTT ROOT = ' + TOOL_ROOT)
 print('RTK WEARABLE ROOT = ' + WEARABLE_ROOT)

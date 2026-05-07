@@ -21,13 +21,13 @@ src += ['menu_config.h']
 src += ['mem_config.h']
 src += ['board.h']
 src += ['config.h']
-src += Glob(SDK_ROOT + '/board/evb/honeygui/src/application/app_flags.h')
+src += [cwd + '/src/application/app_flags.h']
 
 # CPPDEFINES = ['CONFIG_REALTEK_APP_DASHBOARD_DEMO_SUPPORT']
 CPPDEFINES = ['CONFIG_SOC_SERIES_RTL8773E=1']
 
 
-path = [cwd]
+path = [cwd, cwd + '/src/application']
 
 group = DefineGroup('app', src, depend = [''], CPPPATH = path,CPPDEFINES = CPPDEFINES)
 

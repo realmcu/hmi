@@ -27,7 +27,7 @@ src += Glob(SDK_ROOT + '/board/evb/hmi_app/dashboard/src/application/app_flags.h
 CPPDEFINES = ['CONFIG_SOC_SERIES_RTL8773E=1']
 
 
-path = [cwd]
+path = [cwd, cwd + '/src/application']
 
 group = DefineGroup('app', src, depend = [''], CPPPATH = path,CPPDEFINES = CPPDEFINES)
 
