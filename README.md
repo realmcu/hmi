@@ -27,7 +27,7 @@ hmi/
 # 初始化 West 工作区
 # <your_username> 替换为你的 Gerrit 用户名，如 howie_wang
 # ~/workspace/hmi-project 可替换为你想要的目录
-west init -m ssh://<your_username>@cn4soc.rtkbf.com:29418/HoneyRepo/hmi --mf manifest/rtl8773g-zephyr-hmi.yml ~/workspace/hmi-project
+west init -m ssh://<your_username>@cn4soc.rtkbf.com:29418/HoneyRepo/hmi --mr rtl8773g-zephyr --mf manifest/rtl8773g-zephyr-hmi.yml ~/workspace/hmi-project
 
 # 进入工作目录
 cd ~/workspace/hmi-project
@@ -39,7 +39,7 @@ west update
 ### West Init 命令参数说明
 
 ```bash
-west init -m <manifest-url> --mf <manifest-file> <directory>
+west init -m <manifest-url> --mr <branch> --mf <manifest-file> <directory>
 ```
 
 **参数详解：**
@@ -48,6 +48,11 @@ west init -m <manifest-url> --mf <manifest-file> <directory>
   - 示例: `ssh://<your_username>@cn4soc.rtkbf.com:29418/HoneyRepo/hmi`
   - 这是包含 West manifest 配置文件的 Git 仓库地址
   - West 会克隆这个仓库来获取项目的依赖配置
+
+- **`--mr <branch>`**: 指定 manifest 仓库检出的分支（manifest revision）
+  - 示例: `rtl8773g-zephyr`
+  - West 克隆 manifest 仓库后会切换到此分支
+  - 省略时默认使用仓库的默认分支（通常是 `master`）
 
 - **`--mf <manifest-file>`**: 指定 manifest 仓库中的 manifest 文件路径
   - 示例: `manifest/rtl8773g-zephyr-hmi.yml`

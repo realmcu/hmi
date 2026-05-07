@@ -45,10 +45,6 @@ manifest:
         repo-path: HoneyGUI
         path: zephyrproject/modules/honeygui
 
-      - name: lvgl
-        revision: lvgl_v9
-        repo-path: HoneyRepo/lvgl
-        path: zephyrproject/modules/lvgl
     self:
         path: zephyrproject/realtek-app/applications/hmi
         west-commands: west_commands_extention/west-commands.yml
