@@ -1,0 +1,40 @@
+#
+# Copyright (c) 2026, Realtek Semiconductor Corporation
+#
+# SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+#
+
+# for module compiling
+import os
+Import('TOOL_ROOT')
+Import('SDK_ROOT')
+from building import *
+
+cwd = GetCurrentDir()
+objs = []
+list = os.listdir(cwd)
+
+
+src = Split("""
+""")
+src += ['menu_config.h']
+src += ['mem_config.h']
+src += ['board.h']
+src += ['config.h']
+src += Glob(SDK_ROOT + '/board/evb/honeygui/src/application/app_flags.h')
+
+# CPPDEFINES = ['CONFIG_REALTEK_APP_DASHBOARD_DEMO_SUPPORT']
+CPPDEFINES = ['CONFIG_SOC_SERIES_RTL8773E=1']
+
+
+path = [cwd]
+
+group = DefineGroup('app', src, depend = [''], CPPPATH = path,CPPDEFINES = CPPDEFINES)
+
+for d in list:
+    path = os.path.join(cwd, d)
+    if os.path.isfile(os.path.join(path, 'SConscript')):
+        objs = objs + SConscript(os.path.join(d, 'SConscript'))
+
+Return('objs')
+

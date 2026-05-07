@@ -1,0 +1,26 @@
+#
+# Copyright (c) 2026, Realtek Semiconductor Corporation
+#
+# SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+#
+
+# building script for HoneyGUI demo
+Import('SDK_ROOT')
+from building import *
+
+cwd = GetCurrentDir()
+src = Split("""
+""")
+
+src = Glob('*.c')
+CPPPATH = [cwd]
+
+if GetDepend(['CONFIG_REALTEK_HONEYGUI_DEV_LIB']):
+    group = DefineGroup('realgui/port', src, depend = [], CPPPATH = CPPPATH)
+    Return('group')
+
+if GetDepend(['CONFIG_REALTEK_HONEYGUI_DEV_SRC']):
+    group = DefineGroup('realgui/port', src, depend = [], CPPPATH = CPPPATH)
+    Return('group')
+
+Return('group')

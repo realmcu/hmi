@@ -1,0 +1,37 @@
+#
+# Copyright (c) 2026, Realtek Semiconductor Corporation
+#
+# SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+#
+
+Import('SDK_ROOT')
+import menu_config
+import os
+from building import *
+
+cwd = GetCurrentDir()
+
+
+src = []
+group = []
+src += [cwd + '/armclang/gui.lib']
+
+subdirs = []
+for root, dirs, _ in os.walk(cwd):
+    subdirs.extend([os.path.join(root, d) for d in dirs])
+
+inc = [cwd] + subdirs
+
+
+if GetDepend(['CONFIG_REALTEK_HONEYGUI_DEV_LIB']):
+    CPPDEFINES = ['ENABLE_HONEYGUI']
+    group = DefineGroup('lib', src, depend=[''], CPPPATH=inc, CPPDEFINES = CPPDEFINES)
+    Return('group')
+
+if GetDepend(['CONFIG_REALTEK_HONEYGUI_DEV_SRC']):
+    group = SConscript(SDK_ROOT + '/src/sample/gui/realgui/SConscript')
+    Return('group')
+Return('group')
+    
+
+

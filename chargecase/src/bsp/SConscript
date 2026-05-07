@@ -1,0 +1,67 @@
+#
+# Copyright (c) 2026, Realtek Semiconductor Corporation
+#
+# SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+#
+
+Import('SDK_ROOT')
+from building import *
+
+# get current directory
+cwd = GetCurrentDir()
+
+src = Glob('*.c')
+
+CPPDEFINES = ['TARGET_RTL8773E']
+CPPDEFINES += ['SUPPORT_ACCESS_SHM = 1']
+# CPPDEFINES += ['PRE_UPPERSTACK=1']
+# CPPDEFINES += ['ENABLE_HONEYGUI']
+
+path = [SDK_ROOT + '/inc/app',
+        SDK_ROOT + '/inc/os',
+        SDK_ROOT + '/inc/platform',
+        SDK_ROOT + '/inc/rtl87x3ep/platform',
+        SDK_ROOT + '/inc/rtl87x3ep/hal',
+        SDK_ROOT + '/bin/rtl87x3ep/upperstack_stamp',
+        SDK_ROOT + '/bin/rtl87x3ep/flash_map_config/16M/flash_16M',
+        SDK_ROOT + '/src/mcu/display/hardware',
+        SDK_ROOT + '/src/mcu/display/hardware/idu/inc',
+        SDK_ROOT + '/src/mcu/display/hardware/idu/src/device/rtl8773e',
+        SDK_ROOT + '/src/mcu/display/hardware/lcdc/inc',
+        SDK_ROOT + '/src/mcu/display/hardware/lcdc/src/device/rtl8773e',
+        SDK_ROOT + '/src/mcu/display/hardware/ppe/src/device/rtl8773e',
+        SDK_ROOT + '/src/mcu/display/hardware/ppe/inc/rtl8773e',
+        SDK_ROOT + '/inc/hal/platform',
+        SDK_ROOT + '/inc/hal/io',
+        SDK_ROOT + '/inc/rtl87x3ep/io',
+        SDK_ROOT + '/inc/os/FreeRTOS']
+
+
+# src += [SDK_ROOT + '/bin/rtl87x3ep/gap_lib/gap_utils_4M.lib']
+# src += [SDK_ROOT + '/bin/rtl87x3ep/framework/console.lib']
+# src += [SDK_ROOT + '/bin/rtl87x3ep/framework/remote.lib']
+# src += [SDK_ROOT + '/bin/rtl87x3ep/framework/sysm.lib']
+# src += [SDK_ROOT + '/bin/rtl87x3ep/filesystem.lib']
+src += [SDK_ROOT + '/bin/rtl87x3ep/ROM.lib']
+src += [SDK_ROOT + '/bin/rtl87x3ep/upperstack_4M.lib']
+src += [SDK_ROOT + '/bin/rtl87x3ep/hal_utils.lib']
+
+
+# src += Glob(SDK_ROOT + '/src/mcu/display/driver/lcdc/device/src/rtl_common/*.c')
+src += Glob(SDK_ROOT + '/src/mcu/display/hardware/ppe/src/device/rtl8773e/rtl_ppe.c')
+src += Glob(SDK_ROOT + '/src/mcu/display/hardware/idu/src/device/rtl8773e/rtl_idu_int.c')
+src += Glob(SDK_ROOT + '/src/mcu/display/hardware/idu/src/device/rtl_common/rtl_idu.c')
+
+src += Glob(SDK_ROOT + '/src/mcu/display/hardware/lcdc/src/device/rtl_common/rtl_lcdc.c')
+src += Glob(SDK_ROOT + '/src/mcu/display/hardware/lcdc/src/device/rtl_common/rtl_lcdc_dbic.c')
+src += Glob(SDK_ROOT + '/src/mcu/display/hardware/lcdc/src/device/rtl_common/rtl_lcdc_dbib.c')
+src += Glob(SDK_ROOT + '/src/mcu/display/hardware/lcdc/src/device/rtl_common/rtl_lcdc_edpi.c')
+
+src += Glob(SDK_ROOT + '/src/mcu/display/bindings/honeygui/hardware_engine/PPE/rtl8773e/*.c')
+#SrcRemove(src,SDK_ROOT + '/src/mcu/driver/imdc/src/rtl_common/rtl_lcdc_dphy.c')
+
+LINKFLAGS = '--diag_suppress=L6314 --datacompressor off'
+group = DefineGroup('RTK_BSP', src, depend = [''], CPPPATH = path, CPPDEFINES = CPPDEFINES, LINKFLAGS = LINKFLAGS)
+
+
+Return('group')
