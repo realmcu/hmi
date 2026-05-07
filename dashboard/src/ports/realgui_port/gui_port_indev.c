@@ -23,13 +23,14 @@
 #elif (TARGET_LCD_DEVICE == LCD_DEVICE_ST7265_RGB)
 #include "lcd_st7265_800480_rgb.h"
 #include "drv_lcd.h"
-#include "module_button.h"
+//#include "module_button.h"
 #endif
 
 static gui_touch_port_data_t raw_data = {0};
 
 static gui_wheel_port_data_t wheel_port_data = {0};
 
+#if TARGET_TOUCH_DEVICE != TOUCH_DEVICE_INVALID
 /***touch device***/
 gui_touch_port_data_t *port_touchpad_get_data()
 {
@@ -88,7 +89,7 @@ gui_touch_port_data_t *port_touchpad_get_data()
 
 //    return &raw_data;
 }
-
+#endif
 /***kb device***/
 void port_button_set_indicate(void (*callback)(void))
 {
@@ -105,7 +106,7 @@ gui_wheel_port_data_t *port_wheel_get_data(void)
 
 static struct gui_indev indev =
 {
-    .tp_get_data = port_touchpad_get_data,
+//    .tp_get_data = port_touchpad_get_data,
     .wheel_get_port_data = port_wheel_get_data,
 
     .touch_timeout_ms = 30,
@@ -121,10 +122,10 @@ static struct gui_indev indev =
 extern void gui_indev_info_register(struct gui_indev *info);
 void gui_port_indev_init(void)
 {
-    extern void touch_driver_init(void);
-    touch_driver_init();
-    gpio_button_init();
-    touch_set_timeout_ms(indev.touch_timeout_ms);
+//    extern void touch_driver_init(void);
+//    touch_driver_init();
+//    gpio_button_init();
+//    touch_set_timeout_ms(indev.touch_timeout_ms);
     DBG_DIRECT("func: %s line = %d!", __FUNCTION__, __LINE__);
     gui_indev_info_register(&indev);
 }

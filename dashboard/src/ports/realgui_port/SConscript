@@ -15,11 +15,11 @@ src = Split("""
 src = Glob('*.c')
 CPPPATH = [cwd]
 
-if GetDepend(['CONFIG_REALTEK_HONEYGUI_DEV_LIB']):
+if GetDepend(['CONFIG_REALTEK_HONEYGUI_LIB']):
     group = DefineGroup('realgui/port', src, depend = [], CPPPATH = CPPPATH)
     Return('group')
 
-if GetDepend(['CONFIG_REALTEK_HONEYGUI_DEV_SRC']):
+if GetDepend(['CONFIG_REALTEK_HONEYGUI_SRC']):
     group = DefineGroup('realgui/port', src, depend = [], CPPPATH = CPPPATH)
     Return('group')
 

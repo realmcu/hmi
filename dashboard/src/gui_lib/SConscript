@@ -23,15 +23,15 @@ for root, dirs, _ in os.walk(cwd):
 inc = [cwd] + subdirs
 
 
-if GetDepend(['CONFIG_REALTEK_HONEYGUI_DEV_LIB']):
+if GetDepend(['CONFIG_REALTEK_HONEYGUI_LIB']):
     CPPDEFINES = ['ENABLE_HONEYGUI']
     group = DefineGroup('lib', src, depend=[''], CPPPATH=inc, CPPDEFINES = CPPDEFINES)
     Return('group')
 
-if GetDepend(['CONFIG_REALTEK_HONEYGUI_DEV_SRC']):
+if GetDepend(['CONFIG_REALTEK_HONEYGUI_SRC']):
     group = SConscript(SDK_ROOT + '/src/sample/gui/realgui/SConscript')
     Return('group')
 Return('group')
-    
+
 
 
