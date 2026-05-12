@@ -16,6 +16,12 @@ manifest:
         path: ameba-rtos
         submodules: true
 
+      - name: hmi
+        repo-path: HoneyRepo/hmi
+        revision: rtl8721f
+        remote: rtk
+        path: ameba-rtos/component/ui/HoneyGUI
+
       - name: honeygui
         revision: master
         repo-path: realmcu/HoneyGUI
@@ -26,9 +32,4 @@ manifest:
         repo-path: realmcu/honeygui-template-dashboard
         path: ameba-rtos/component/ui/HoneyGUI/app/dashboard
 
-      - name: hmi
-        repo-path: HoneyRepo/hmi
-        revision: rtl8721f
-        remote: rtk
-        path: ameba-rtos/component/ui/HoneyGUI/
-        west-commands: west/west_commands_extention/west-commands.yml
+
