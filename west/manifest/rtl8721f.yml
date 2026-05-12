@@ -28,4 +28,3 @@ manifest:
 
     self:
         path: ameba-rtos/component/ui/HoneyGUI/hmi-component
-        west-commands: west/west_commands_extention/west-commands.yml
