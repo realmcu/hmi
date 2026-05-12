@@ -90,6 +90,31 @@ gui_touch_port_data_t *port_touchpad_get_data()
 //    return &raw_data;
 }
 #endif
+
+
+
+gui_touch_port_data_t *port_touchpad_get_data()
+{
+    bool pressing = 0;
+    /*get touch data*/
+
+    raw_data.x_coordinate_start = 0;
+    raw_data.y_coordinate_start = 0;
+    raw_data.timestamp_ms_start = 0;
+
+    raw_data.x_coordinate = 0;
+    raw_data.y_coordinate = 0;
+    raw_data.timestamp_ms = 0;
+
+    raw_data.width = 0;
+
+    raw_data.event = GUI_TOUCH_EVENT_UP;
+    return &raw_data;
+}
+
+
+
+
 /***kb device***/
 void port_button_set_indicate(void (*callback)(void))
 {
@@ -106,7 +131,7 @@ gui_wheel_port_data_t *port_wheel_get_data(void)
 
 static struct gui_indev indev =
 {
-//    .tp_get_data = port_touchpad_get_data,
+    .tp_get_data = port_touchpad_get_data,
     .wheel_get_port_data = port_wheel_get_data,
 
     .touch_timeout_ms = 30,
