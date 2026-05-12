@@ -12,10 +12,6 @@ west-commands:
         class: CleanAll
         help: 清理所有构建产物和缓存
 
-      - name: flash-jlink
-        class: FlashJLink
-        help: 使用 J-Link 烧录固件到 RTL8773G
-
       - name: gui-demo
         class: GuiDemo
         help: 构建并运行 GUI 演示应用
