@@ -14,11 +14,11 @@ manifest:
         repo-path: ameba-aiot/ameba-rtos
         revision: master
         path: ameba-rtos
-        submodules:                           # 从 true 改为列表
-          - component/audio
-          - component/ui
-          - component/aivoice
-          - component/tflite_micro
+        submodules:
+          - name: component/audio
+          - name: component/ui
+          - name: component/aivoice
+          - name: component/tflite_micro
 
       - name: hmi
         repo-path: HoneyRepo/hmi
