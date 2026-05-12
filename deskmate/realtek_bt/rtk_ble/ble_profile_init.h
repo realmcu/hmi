@@ -16,9 +16,13 @@
 #ifndef _BLE_PROFILE_INIT_APP__
 #define _BLE_PROFILE_INIT_APP__
 
+#include <profile_server_ext.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+extern T_SERVER_ID hmi_srv_id;
 
 void app_le_profile_init(void);
 

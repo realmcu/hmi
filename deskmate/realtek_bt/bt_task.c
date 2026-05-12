@@ -151,12 +151,11 @@ void bt_task_entry(void *p_param)
 #ifdef RTK_BT_BREDR
     app_init_timer(evt_queue_handle, MAX_NUMBER_OF_APP_TIMER);
 #endif
-#ifdef RTK_BT_BLE
+
     le_gap_init(1);
     gap_lib_init();
     app_le_gap_init();
     app_le_profile_init();
-#endif
 
 #ifdef RTK_BT_BREDR
     app_cfg_init();
@@ -184,13 +183,6 @@ void bt_task_entry(void *p_param)
 #endif
 #ifdef RTK_BR_PROFILE_SDP
     app_sdp_init();
-#endif
-#ifdef RTK_BR_PROFILE_A2DP
-    app_a2dp_init();
-    app_audio_init();
-
-    /*20230607*/
-    br_db.a2dp_info.audio_play_mode = MODE_APP_A2DP_SNK;
 #endif
 
 
