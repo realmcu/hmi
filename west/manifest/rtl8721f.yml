@@ -15,10 +15,10 @@ manifest:
         revision: master
         path: ameba-rtos
         submodules:
-          - name: component/audio
-          - name: component/ui
-          - name: component/aivoice
-          - name: component/tflite_micro
+          - path: component/audio
+          - path: component/ui
+          - path: component/aivoice
+          - path: component/tflite_micro
 
       - name: hmi
         repo-path: HoneyRepo/hmi
