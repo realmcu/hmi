@@ -1,0 +1,13 @@
+choice
+    prompt "Select HoneyGUI APP"
+    default HONEYGUI_APP_DASHBOARD
+    optional
+    help
+      Select HoneyGUI application to build
+
+config HONEYGUI_APP_DASHBOARD
+    bool "Dashboard APP"
+    help
+      Enable HoneyGUI Dashboard application
+
+endchoice
