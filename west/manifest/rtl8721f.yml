@@ -31,9 +31,4 @@ manifest:
         repo-path: realmcu/HoneyGUI
         path: ameba-rtos/component/ui/HoneyGUI/honeygui
 
-      - name: honeygui-template-dashboard
-        revision: master
-        repo-path: realmcu/honeygui-template-dashboard
-        path: ameba-rtos/component/ui/HoneyGUI/app/dashboard
-
 

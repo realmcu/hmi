@@ -1,0 +1,15 @@
+menu "HoneyGUI Configuration"
+    config HONEYGUI_ENABLE
+        bool "Enable HoneyGUI Graphics Library"
+        default n
+        help
+            Enable HoneyGUI for graphical user interface.
+            HoneyGUI is an alternative graphics library to LVGL with different features.
+
+            Note: HoneyGUI and LVGL cannot be enabled at the same time.
+
+    if HONEYGUI_ENABLE
+        # Include detailed configuration from honeygui internal Kconfig
+        rsource "honeygui/Kconfig.gui"
+    endif
+endmenu
