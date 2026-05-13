@@ -7,6 +7,7 @@
 #include "gap_conn_le.h"
 #include "trace.h"
 #include "app_ble/app_ble_hmi.h"
+#include "app_ble/app_ble_nus.h"
 
 static T_APP_RESULT app_profile_callback(T_SERVER_ID service_id, void *p_data)
 {
@@ -62,6 +63,7 @@ void app_le_profile_init(void)
 {
     server_cfg_use_ext_api(true);
     server_ext_register_app_cb(app_profile_callback);
-    gatt_svc_init(GATT_SVC_USE_EXT_SERVER, 1);
+    gatt_svc_init(GATT_SVC_USE_EXT_SERVER, 2);
     app_ble_hmi_init();
+    app_ble_nus_init();
 }

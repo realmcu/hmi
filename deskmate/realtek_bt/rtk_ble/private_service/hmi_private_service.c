@@ -9,10 +9,25 @@
  *                              Macros
  *============================================================================*/
 
-#define HMI_SVC_CHAR_CMD_WRITE_INDEX        0x02
-#define HMI_SVC_CHAR_EVENT_NOTIFY_INDEX     0x04
-#define HMI_SVC_CHAR_EVENT_CCCD_INDEX       (HMI_SVC_CHAR_EVENT_NOTIFY_INDEX + 1)
-#define HMI_SVC_CHAR_STATUS_READ_INDEX      0x07
+typedef enum
+{
+    HMI_SVC_IDX_PRIMARY_SVC,           /* 0 */
+    HMI_SVC_IDX_CMD_CHAR,              /* 1 */
+    HMI_SVC_IDX_CMD_VAL,               /* 2 - HMI_SVC_CHAR_CMD_WRITE_INDEX */
+    HMI_SVC_IDX_CMD_USER_DESC,         /* 3 */
+    HMI_SVC_IDX_EVENT_CHAR,            /* 4 */
+    HMI_SVC_IDX_EVENT_VAL,             /* 5 - HMI_SVC_CHAR_EVENT_NOTIFY_INDEX */
+    HMI_SVC_IDX_EVENT_CCCD,            /* 6 - HMI_SVC_CHAR_EVENT_CCCD_INDEX */
+    HMI_SVC_IDX_EVENT_USER_DESC,       /* 7 */
+    HMI_SVC_IDX_STATUS_CHAR,           /* 8 */
+    HMI_SVC_IDX_STATUS_VAL,            /* 9 - HMI_SVC_CHAR_STATUS_READ_INDEX */
+    HMI_SVC_IDX_STATUS_USER_DESC,      /* 10 */
+} T_HMI_SVC_IDX;
+
+#define HMI_SVC_CHAR_CMD_WRITE_INDEX        HMI_SVC_IDX_CMD_VAL
+#define HMI_SVC_CHAR_EVENT_NOTIFY_INDEX     HMI_SVC_IDX_EVENT_VAL
+#define HMI_SVC_CHAR_EVENT_CCCD_INDEX       HMI_SVC_IDX_EVENT_CCCD
+#define HMI_SVC_CHAR_STATUS_READ_INDEX      HMI_SVC_IDX_STATUS_VAL
 
 /*============================================================================*
  *                              Local Variables
@@ -24,6 +39,10 @@ static uint8_t  hmi_status_value[HMI_STATUS_MAX_LEN];
 static uint16_t hmi_status_len = 1;
 
 static P_FUN_EXT_SERVER_GENERAL_CB pfn_hmi_service_cb = NULL;
+
+static const uint8_t hmi_cmd_user_desc[]    = "HMI CMD";
+static const uint8_t hmi_event_user_desc[]  = "HMI Event";
+static const uint8_t hmi_status_user_desc[] = "HMI Status";
 
 /* 128-bit Service UUID: 484D4953-0000-1000-8000-00805F9B34FB */
 const uint8_t GATT_UUID128_HMI_SERVICE[16] =
@@ -76,7 +95,19 @@ const T_ATTRIB_APPL hmi_service_tbl[] =
         GATT_PERM_WRITE
     },
 
-    /* <<Characteristic>>, index 3 — Event (Notify) */
+    /* CMD User Description, index 3 */
+    {
+        ATTRIB_FLAG_VOID | ATTRIB_FLAG_ASCII_Z,
+        {
+            LO_WORD(GATT_UUID_CHAR_USER_DESCR),
+            HI_WORD(GATT_UUID_CHAR_USER_DESCR),
+        },
+        sizeof(hmi_cmd_user_desc) - 1,
+        (void *)hmi_cmd_user_desc,
+        GATT_PERM_READ
+    },
+
+    /* <<Characteristic>>, index 4 — Event (Notify) */
     {
         ATTRIB_FLAG_VALUE_INCL,
         {
@@ -89,7 +120,7 @@ const T_ATTRIB_APPL hmi_service_tbl[] =
         GATT_PERM_READ
     },
 
-    /* Event characteristic value, index 4 (HMI_SVC_CHAR_EVENT_NOTIFY_INDEX) */
+    /* Event characteristic value, index 5 (HMI_SVC_CHAR_EVENT_NOTIFY_INDEX) */
     {
         ATTRIB_FLAG_VALUE_APPL,
         {
@@ -101,7 +132,7 @@ const T_ATTRIB_APPL hmi_service_tbl[] =
         GATT_PERM_NONE
     },
 
-    /* Client Characteristic Configuration, index 5 (HMI_SVC_CHAR_EVENT_CCCD_INDEX) */
+    /* Client Characteristic Configuration, index 6 (HMI_SVC_CHAR_EVENT_CCCD_INDEX) */
     {
         ATTRIB_FLAG_VALUE_INCL | ATTRIB_FLAG_CCCD_APPL,
         {
@@ -115,7 +146,19 @@ const T_ATTRIB_APPL hmi_service_tbl[] =
         (GATT_PERM_READ | GATT_PERM_WRITE)
     },
 
-    /* <<Characteristic>>, index 6 — Status (Read) */
+    /* Event User Description, index 7 */
+    {
+        ATTRIB_FLAG_VOID | ATTRIB_FLAG_ASCII_Z,
+        {
+            LO_WORD(GATT_UUID_CHAR_USER_DESCR),
+            HI_WORD(GATT_UUID_CHAR_USER_DESCR),
+        },
+        sizeof(hmi_event_user_desc) - 1,
+        (void *)hmi_event_user_desc,
+        GATT_PERM_READ
+    },
+
+    /* <<Characteristic>>, index 8 — Status (Read) */
     {
         ATTRIB_FLAG_VALUE_INCL,
         {
@@ -128,7 +171,7 @@ const T_ATTRIB_APPL hmi_service_tbl[] =
         GATT_PERM_READ
     },
 
-    /* Status characteristic value, index 7 (HMI_SVC_CHAR_STATUS_READ_INDEX) */
+    /* Status characteristic value, index 9 (HMI_SVC_CHAR_STATUS_READ_INDEX) */
     {
         ATTRIB_FLAG_VALUE_APPL,
         {
@@ -137,6 +180,18 @@ const T_ATTRIB_APPL hmi_service_tbl[] =
         },
         0,
         NULL,
+        GATT_PERM_READ
+    },
+
+    /* Status User Description, index 10 */
+    {
+        ATTRIB_FLAG_VOID | ATTRIB_FLAG_ASCII_Z,
+        {
+            LO_WORD(GATT_UUID_CHAR_USER_DESCR),
+            HI_WORD(GATT_UUID_CHAR_USER_DESCR),
+        },
+        sizeof(hmi_status_user_desc) - 1,
+        (void *)hmi_status_user_desc,
         GATT_PERM_READ
     },
 };

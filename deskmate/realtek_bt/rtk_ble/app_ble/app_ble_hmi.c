@@ -7,8 +7,6 @@
 #include "gap_conn_le.h"
 #include "hmi_private_service.h"
 
-T_SERVER_ID hmi_srv_id;
-
 static T_APP_RESULT app_hmi_callback(T_SERVER_ID service_id, void *p_data)
 {
     T_APP_RESULT app_result = APP_RESULT_SUCCESS;
@@ -55,7 +53,7 @@ static T_APP_RESULT app_hmi_callback(T_SERVER_ID service_id, void *p_data)
             break;
         }
     }
-    else if (service_id == hmi_srv_id)
+    else if (service_id == hmi_service_id)
     {
         T_HMI_CALLBACK_DATA *p_hmi_cb = (T_HMI_CALLBACK_DATA *)p_data;
         switch (p_hmi_cb->msg_type)
@@ -129,6 +127,6 @@ static void gap_hmi_msg(T_IO_MSG *p_gap_msg)
 
 void app_ble_hmi_init(void)
 {
-    hmi_srv_id = hmi_service_add_service(app_hmi_callback);
+    hmi_service_add_service(app_hmi_callback);
     le_msg_handler_cback_register(gap_hmi_msg);
 }
