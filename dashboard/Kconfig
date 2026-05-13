@@ -5,16 +5,43 @@
 #
 mainmenu "realtek honeygui mainmenu"
 
-menu "honeygui"
-rsource "../../../src/Kconfig"
-endmenu
-
-config REALTEK_APP_HONEYGUI_DEMO_SUPPORT
-   bool
+config REALTEK_APP_HMI_DASHBOARD_SUPPORT
+   bool "Enable HMI Dashboard Application"
    default y
+   help
+     Enable HMI Dashboard application support for GCC build.
+
+choice REALTEK_HONEYGUI_BUILD_MODE
+    prompt "HoneyGUI Build Mode"
+    default REALTEK_HONEYGUI_BUILD_SRC
+    help
+      Select HoneyGUI build mode: use precompiled library or build from source.
+
+config REALTEK_HONEYGUI_BUILD_LIB
+    bool "Use Precompiled Library"
+    help
+      Link with precompiled libgui.a library.
+
+config REALTEK_HONEYGUI_BUILD_SRC
+    bool "Build from Source Code"
+    select REALTEK_HONEYGUI
+    help
+      Build HoneyGUI from source code, allows selecting different demos.
+endchoice
+
+menu "HoneyGUI Configuration"
+rsource "../../../../src/Kconfig"
+endmenu
 
 config REALTEK_BUILD_CJSON
    bool
-   default y  
+   default y
 
-rsource "../../../Kconfig"
+# Display Driver Configuration
+rsource "../../../../src/mcu/display/Kconfig"
+
+config REALTEK_LCD_ST7265_800_480_RGB
+    bool "ST7265 800x480 RGB LCD"
+    default y
+
+rsource "../../../../Kconfig"
