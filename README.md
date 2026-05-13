@@ -41,7 +41,7 @@ hmi/
 
 ```bash
 # 初始化 West 工作区
-west init -m ssh://cn4soc.rtkbf.com:29418/HoneyRepo/hmi --mf west/manifest/rtl8721f.yml --mr rtl8721f ~/workspace/hmi-project
+west init -m ssh://cn4soc.rtkbf.com:29418/HoneyRepo/hmi --mf manifest/rtl8721f.yml --mr rtl8721f-manifest ~/workspace/hmi-project
 
 # 进入工作目录
 cd ~/workspace/hmi-project
@@ -55,8 +55,8 @@ west update
 | 参数 | 值 | 作用 |
 |------|-----|------|
 | `-m` | `ssh://cn4soc.rtkbf.com:29418/HoneyRepo/hmi` | manifest 仓库地址 |
-| `--mf` | `west/manifest/rtl8721f.yml` | manifest 文件路径 |
-| `--mr` | `rtl8721f` | manifest 仓库分支 |
+| `--mf` | `manifest/rtl8721f.yml` | manifest 文件路径 |
+| `--mr` | `rtl8721f-manifest` | manifest 仓库分支 |
 | 最后一个参数 | `~/workspace/hmi-project` | 工作区目录（省略则使用当前目录） |
 
 ### 工作区目录结构
