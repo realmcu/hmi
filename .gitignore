@@ -8,6 +8,9 @@
 **/mdk/app/
 **/mdk/bin/
 
+# GCC build output
+**/dashboard/gcc/bin/
+
 # Keil project files (keep template.*)
 **/mdk/project.uvoptx
 **/mdk/project.uvprojx

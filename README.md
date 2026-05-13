@@ -1,21 +1,20 @@
 # RTL8773E HMI Application
 
-RTL8773E HMI 应用程序，使用 West 进行多仓库管理。
+RTL8773E HMI Application using West for multi-repository management.
 
-## 项目结构
+## Project Structure
 
-West 工作区由两个仓库组成，hmi_app 作为 manifest repo 嵌套在 honeycomb SDK 内部：
+The West workspace consists of two repositories, with hmi as the manifest repo nested inside the honeycomb SDK:
 
 ```
-workspace/                                          # West 工作区根（.west/ 在这里）
-├── .west/                                          # West 配置
-└── honeycomb/                                      # [project] Release SDK 大仓库
+workspace/                                          # West workspace root (.west/ is here)
+├── .west/                                          # West configuration
+└── honeycomb/                                      # [project] Release SDK repository
     └── sdk/
         ├── bin/
         ├── board/
         │   └── evb/
-        │       ├── hmi/                            # SDK 已有的 hmi 项目
-        │       └── hmi_app/                        # [self] 本仓库 (manifest repo)
+        │       └── hmi/                            # [self] This repository (manifest repo)
         │           ├── manifest/
         │           │   └── rtl8773e-hmi.yml
         │           ├── west_commands_extention/
@@ -28,55 +27,127 @@ workspace/                                          # West 工作区根（.west/
         └── ...
 ```
 
-## 获取代码
+## Getting the Code
 
 ```bash
-# 初始化 West 工作区
-# <your_username> 替换为你的 Gerrit 用户名，如 howie_wang
-# ~/workspace/hmi-project 可替换为你想要的目录
-west init -m ssh://<your_username>@cn4soc.rtkbf.com:29418/HoneyRepo/hmi --mf manifest/rtl8773e-hmi.yml ~/workspace/hmi-project
+# Initialize West workspace
+# Replace <your_username> with your Gerrit username, e.g., howie_wang
+# ~/workspace/hmi-project can be replaced with your desired directory
+# --mr rtl8773e specifies using the rtl8773e branch
+west init -m ssh://<your_username>@cn4soc.rtkbf.com:29418/HoneyRepo/hmi --mf manifest/rtl8773e-hmi.yml --mr rtl8773e ~/workspace/hmi-project
 
 cd ~/workspace/hmi-project
 
 west update
 ```
 
-### 利用已有仓库构建 West 工作区
+### Using Existing Repository to Build West Workspace
 
-如果你本地已有 honeycomb SDK 仓库（例如之前克隆过 release-crb-3.14.0），可以直接复用，无需重新下载：
+If you already have a honeycomb SDK repository locally (e.g., previously cloned release-crb-3.14.0), you can reuse it directly without re-downloading:
 
 ```bash
-# 1. 创建工作区目录
+# 1. Create workspace directory
 mkdir ~/workspace/hmi-project
 cd ~/workspace/hmi-project
 
-# 2. 将已有的 honeycomb 仓库拷贝（或移动）到工作区下
-# 确保 .git 目录位于 honeycomb/.git
+# 2. Copy (or move) the existing honeycomb repository to the workspace
+# Make sure the .git directory is at honeycomb/.git
 cp -r /path/to/your/existing/honeycomb ~/workspace/hmi-project/honeycomb
 
-# 3. Clone hmi_app（manifest repo）到 honeycomb 内的指定位置
-git clone ssh://<your_username>@cn4soc.rtkbf.com:29418/HoneyRepo/hmi honeycomb/sdk/board/evb/hmi_app
+# 3. Clone hmi (manifest repo) to the specified location inside honeycomb
+git clone ssh://<your_username>@cn4soc.rtkbf.com:29418/HoneyRepo/hmi honeycomb/sdk/board/evb/hmi
 
-# 4. 初始化 West（二选一）
-# 方式 A：使用 west init
-west init -l honeycomb/sdk/board/evb/hmi_app --mf manifest/rtl8773e-hmi.yml
-
-# 方式 B：手动创建 .west/config
+# 4. Initialize West
+# Note: Must use the manual configuration file method, cannot use west init -l (will cause duplicate clone)
 mkdir .west
 cat > .west/config << EOF
 [manifest]
-path = honeycomb/sdk/board/evb/hmi_app
+path = honeycomb/sdk/board/evb/hmi
 file = manifest/rtl8773e-hmi.yml
 EOF
 
-# 5. 更新工作区
+# 5. Update workspace
 west update
 ```
 
-> **说明：** 步骤 2 复用已有的 honeycomb SDK，避免重新 clone 大仓库。West 检测到 `honeycomb/` 下已有 `.git` 目录时会直接复用，只做 fetch 和 checkout。如果完全无法访问远程仓库，可以使用 `west update --fetch=never` 跳过 fetch 步骤。
+> **Note:** Step 2 reuses the existing honeycomb SDK to avoid re-cloning the large repository. When West detects an existing `.git` directory under `honeycomb/`, it will reuse it and only perform fetch and checkout. After step 3 cloning hmi, you need to manually switch to the rtl8773e branch. If you cannot access the remote repository at all, you can use `west update --fetch=never` to skip the fetch step.
 
-## 依赖仓库
+## Dependencies
 
-| 仓库 | 说明 |
-|------|------|
+| Repository | Description |
+|------------|-------------|
 | release-crb-3.14.0 | RTL8773E Release SDK |
+
+## Build Methods
+
+### MDK Build
+
+```bash
+cd board/evb/hmi_app/dashboard
+
+# Modify menu_config.h to select configuration
+# - GUI build mode: source code or precompiled library
+# - Demo selection
+# - Feature configuration
+
+# Use scons to generate MDK project
+scons
+
+# Generated project files are in mdk/ directory
+# Open mdk/project.uvprojx with Keil MDK to build
+```
+
+### GCC Build
+
+HMI Dashboard supports GCC compilation with two modes:
+
+#### 1. Source Code Build Mode
+
+Build from GUI sub-repository source code, supporting different demo selection:
+
+```bash
+cd honeycomb/sdk
+
+# Create build directory
+mkdir -p build/dashboard_src
+cd build/dashboard_src
+
+# Configure (using source code defconfig)
+cmake ../.. -Dkconfig_path=board/evb/hmi_app/dashboard/gcc/defconfig.RTL8773E.16M_bank0_src
+
+# Build
+cmake --build . --target honeygui
+```
+
+#### 2. Precompiled Library Mode
+
+Link with precompiled `libgui.a`:
+
+```bash
+cd honeycomb/sdk
+
+mkdir -p build/dashboard_lib
+cd build/dashboard_lib
+
+cmake ../.. -Dkconfig_path=board/evb/hmi_app/dashboard/gcc/defconfig.RTL8773E.16M_bank0_lib
+
+cmake --build . --target honeygui
+```
+
+For detailed instructions, see [gcc/README.md](dashboard/gcc/README.md).
+
+## Configuration Mapping
+
+| MDK (menu_config.h) | GCC (defconfig) |
+|---------------------|-----------------|
+| `CONFIG_REALTEK_HONEYGUI_BUILD_MODE = 1` | `CONFIG_REALTEK_HONEYGUI_BUILD_SRC=y` |
+| `CONFIG_REALTEK_HONEYGUI_BUILD_MODE = 0` | `CONFIG_REALTEK_HONEYGUI_BUILD_LIB=y` |
+| `CONFIG_REALTEK_HONEYGUI_DEMO_SELECT` | Kconfig choice menu selection |
+
+## Output Files
+
+Build outputs are located at `board/evb/hmi_app/dashboard/bin/<config_name>/`:
+
+- `honeygui_bank0.elf` - ELF executable file
+- `honeygui_bank0.hex` - HEX firmware
+- `honeygui_bank0_MP.bin` - Signed BIN firmware
