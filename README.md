@@ -1,159 +1,146 @@
-# RTL8773G HMI Application
+# Ameba HoneyGUI Application
 
-基于 Zephyr RTOS 的 RTL8773G 人机交互应用程序。
+基于 Ameba RTL8721F 的 HoneyGUI 人机交互应用程序。
 
 ## 项目结构
 
-本仓库包含 West manifest 配置、West 扩展命令和 HMI 应用代码：
-
 ```
 hmi/
-├── manifest/                           # West manifest 文件
-│   └── rtl8773g-zephyr-hmi.yml        # 项目 manifest
-├── west_commands_extention/           # West 扩展命令
-│   ├── west-commands.yml              # 命令配置
-│   ├── commands.py                    # 命令实现
-│   └── README.md                      # 命令说明文档
+├── acc/                                # 硬件加速
+│   ├── CMakeLists.txt
+│   ├── acc_ppe.c
+│   ├── rtl_ppe.c
+│   └── rtl_ppe.h
+├── port/                               # GUI 移植层
+│   ├── gui_port.h
+│   ├── gui_port_acc.c                  # 硬件加速移植
+│   ├── gui_port_dc.c                   # 显示控制器移植
+│   ├── gui_port_indev.c                # 输入设备移植
+│   ├── gui_port_init.c                 # 初始化移植
+│   ├── gui_port_os.c                   # 操作系统移植
+│   └── CMakeLists.txt
+├── app/                                # 应用程序
+│   ├── dashboard/                      # Dashboard 模板应用
+│   ├── CMakeLists.txt
+│   └── Kconfig
+├── demos/                              # HoneyGUI 入口程序
+│   ├── honeygui_demos.c
+│   ├── honeygui_demos.h
+│   └── CMakeLists.txt
+├── west/                               # West 配置
+│   └── manifest/
+│       └── rtl8721f.yml               # 项目 manifest 文件
+├── CMakeLists.txt                      # 顶层构建文件
+├── Kconfig                             # HoneyGUI Kconfig 配置
 └── README.md                           # 本文件
 ```
 
-应用代码（src/、CMakeLists.txt、prj.conf 等）可以直接添加到本仓库根目录。
-
 ## 获取代码
 
-使用 West 工具下载完整的项目：
+使用 West 工具拉取完整项目：
 
 ```bash
 # 初始化 West 工作区
-west init -m ssh://howie_wang@cn4soc.rtkbf.com:29418/HoneyRepo/hmi \
-          --mf manifest/rtl8773g-zephyr-hmi.yml \
-          ~/workspace/hmi-project
+west init -m ssh://cn4soc.rtkbf.com:29418/HoneyRepo/hmi --mf west/manifest/rtl8721f.yml --mr rtl8721f ~/workspace/hmi-project
 
 # 进入工作目录
 cd ~/workspace/hmi-project
 
 # 更新所有依赖项目
 west update
-
-# 导出 Zephyr CMake 包
-west zephyr-export
 ```
 
-### West Init 命令参数说明
+### 参数说明
 
-```bash
-west init -m <manifest-url> --mf <manifest-file> <directory>
-```
+| 参数 | 值 | 作用 |
+|------|-----|------|
+| `-m` | `ssh://cn4soc.rtkbf.com:29418/HoneyRepo/hmi` | manifest 仓库地址 |
+| `--mf` | `west/manifest/rtl8721f.yml` | manifest 文件路径 |
+| `--mr` | `rtl8721f` | manifest 仓库分支 |
+| 最后一个参数 | `~/workspace/hmi-project` | 工作区目录（省略则使用当前目录） |
 
-**参数详解：**
-
-- **`-m <manifest-url>`**: 指定 manifest 仓库的 URL
-  - 示例: `ssh://howie_wang@cn4soc.rtkbf.com:29418/HoneyRepo/hmi`
-  - 这是包含 West manifest 配置文件的 Git 仓库地址
-  - West 会克隆这个仓库来获取项目的依赖配置
-
-- **`--mf <manifest-file>`**: 指定 manifest 仓库中的 manifest 文件路径
-  - 示例: `manifest/rtl8773g-zephyr-hmi.yml`
-  - 相对于 manifest 仓库根目录的路径
-  - 如果 manifest 文件在根目录且命名为 `west.yml`，可以省略此参数
-  - 使用此参数可以在一个仓库中管理多个不同的 manifest 配置
-
-- **`<directory>`**: West 工作区的目标目录
-  - 示例: `~/workspace/hmi-project`
-  - West 将在此目录下创建 `.west/` 配置目录
-  - 所有项目代码（Zephyr、模块、应用）都会被下载到这个工作区中
-  - 如果省略，使用当前目录
-
-**完整命令含义：**
-
-在 `~/workspace/hmi-project` 目录下初始化一个 West 工作区，使用 `HoneyRepo/hmi` 仓库作为 manifest 源，并读取其中的 `manifest/rtl8773g-zephyr-hmi.yml` 文件来确定需要下载哪些依赖项目。
-
-## 构建
-
-```bash
-# 构建应用（注意应用路径在 zephyrproject/realtek-app/applications/hmi）
-cd ~/workspace/hmi-project
-west build -b rtl8773g zephyrproject/realtek-app/applications/hmi
-
-# 清理构建
-west build -t clean
-
-# 烧录到设备
-west flash
-```
-
-## West 扩展命令
-
-本项目提供了一些自定义的 West 扩展命令来简化开发流程：
-
-### 查看项目信息
-```bash
-west info
-```
-
-### 清理所有构建产物
-```bash
-# 交互式清理
-west clean-all
-
-# 强制清理（不提示）
-west clean-all -f
-```
-
-### 使用 J-Link 烧录
-```bash
-west flash-jlink
-west flash-jlink --hex path/to/firmware.hex
-```
-
-### 构建 GUI 演示
-```bash
-west gui-demo
-west gui-demo -b rtl8773g --pristine
-```
-
-更多详细说明请查看 [west_commands_extention/README.md](west_commands_extention/README.md)。
-
-## 目录说明
-
-下载完成后，工作区目录结构如下：
+### 工作区目录结构
 
 ```
 ~/workspace/hmi-project/
 ├── .west/                              # West 配置
-├── zephyr/                             # Zephyr RTOS
-└── zephyrproject/                      # 项目模块
-    ├── modules/
-    │   ├── hal/realtek/               # Realtek HAL
-    │   ├── display/                   # 显示驱动
-    │   ├── wearable/                  # 可穿戴模块
-    │   ├── honeygui/                  # HoneyGUI
-    │   └── lvgl/                      # LVGL
-    └── realtek-app/                   # Realtek 应用
-        └── applications/              # 应用程序目录
-            └── hmi/                   # 本仓库（HMI 应用 + manifest）
-                ├── manifest/
-                │   └── rtl8773g-zephyr-hmi.yml
-                ├── west_commands_extention/  # West 扩展命令
-                │   ├── west-commands.yml
-                │   ├── commands.py
-                │   └── README.md
-                ├── src/               # 应用源代码（待添加）
-                ├── CMakeLists.txt     # 构建文件（待添加）
-                ├── prj.conf           # 配置文件（待添加）
-                └── README.md          # 本文件
+└── ameba-rtos/                         # Ameba RTOS SDK
+    ├── component/
+    │   ├── audio/                      # 音频模块 (git submodule)
+    │   ├── ui/                         # UI 模块 (git submodule)
+    │   │   └── HoneyGUI/
+    │   │       ├── Kconfig             # HoneyGUI Kconfig (由 ameba-ui 提供)
+    │   │       ├── app/                # 本仓库 (manifest 仓库)
+    │   │       │   ├── Kconfig
+    │   │       │   ├── CMakeLists.txt
+    │   │       │   ├── port/
+    │   │       │   ├── app/
+    │   │       │   ├── demos/
+    │   │       │   └── acc/
+    │   │       └── honeygui/           # HoneyGUI 图形库
+    │   ├── aivoice/                    # AI 语音模块 (git submodule)
+    │   └── tflite_micro/              # TensorFlow Lite Micro (git submodule)
+    └── ...
 ```
 
 ## 依赖项目
 
-- **Zephyr RTOS**: realtek-main-v3.7
-- **hal_realtek**: Realtek 硬件抽象层
-- **display**: 显示驱动模块
-- **wearable**: 可穿戴设备模块
-- **honeygui**: HoneyGUI 图形库
-- **lvgl**: LVGL v9 图形库
-- **realtek-app**: Realtek 应用程序示例
+| 项目 | 仓库 | 说明 |
+|------|------|------|
+| ameba-rtos | gitee.com/ameba-aiot/ameba-rtos | Ameba RTOS SDK (master) |
+| honeygui | gitee.com/realmcu/HoneyGUI | HoneyGUI 图形库 |
+| component/audio | GitHub (git submodule) | 音频模块 |
+| component/ui | gitee.com/realmcu/ameba-ui (git submodule) | UI 基础模块 |
+| component/aivoice | GitHub (git submodule) | AI 语音模块 |
+| component/tflite_micro | GitHub (git submodule) | TensorFlow Lite Micro |
 
-## 维护者
+## 构建
 
-- Owner: howie_wang
+### 方式一：使用 VS Code 扩展插件（推荐）
+
+安装 Ameba VS Code 扩展插件，可一键完成 SDK 环境配置、项目编译和固件烧录：
+
+1. 参考 [VS Code 使用指南](https://aiot.realmcu.com/cn/latest/rst_tools/vscode/index.html) 安装插件
+2. 用 VS Code 打开工作区目录 `~/workspace/ameba-honeygui`
+3. 使用插件提供的图形化界面完成配置和编译
+
+### 方式二：手动配置编译环境
+
+参考 [FreeRTOS SDK 使用指南](https://aiot.realmcu.com/cn/latest/rst_rtos/rst_sdk/index.html)，逐步进行以下操作：
+
+```bash
+cd ~/workspace/ameba-honeygui/ameba-rtos
+
+# 1. SDK 环境配置
+#    Linux:   source env.sh
+#    Windows: env.bat
+
+# 2. 选择目标芯片
+#    HoneyGUI 目前支持 AmebaGreen2 系列 (RTL8721F)
+python ameba.py soc rtl8721f
+
+# 3. 工程配置
+#    启用：Graphics Libraries → Use HoneyGUI
+#    进入 HoneyGUI Configuration 进行详细配置
+python ameba.py menuconfig
+
+# 4. 工程编译
+python ameba.py build
+
+# 5. 固件烧录（替换 <PORT>、<BAUDRATE> 为实际值）
+python ameba.py flash -p <PORT> -b <BAUDRATE> -i <BIN_FILE> <START_ADDR> <END_ADDR>
+
+# 6. 串口监控（可选）
+python ameba.py monitor -p <PORT> -b 1500000
+```
+
+## 配置说明
+
+HoneyGUI 相关 Kconfig 配置项：
+
+- `GRAPHIC_UI` — 启用图形 UI 模块（位于 `ameba-rtos/component/ui/Kconfig`）
+- `USE_HONEYGUI` — 选择 HoneyGUI 作为图形库
+- `HONEYGUI_ENABLE` — 启用 HoneyGUI（由 `USE_HONEYGUI` 自动选中）
+- `REALTEK_BUILD_HONEYGUI_APP` — 构建 HoneyGUI 应用程序
+- `HONEYGUI_APP_DASHBOARD` — 构建 Dashboard 子应用
+
