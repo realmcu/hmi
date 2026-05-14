@@ -15,11 +15,11 @@
 #define DRV_LCD_BITS   16
 #define USE_PFB         1
 #if USE_PFB
-#define LCD_SECTION_HEIGHT  40
+#define LCD_SECTION_HEIGHT  30
 static uint8_t *g_buffer_lcd = NULL;
 #endif
 gdma_t dma_obj;
-bool dma_memcpy_done = false;
+volatile bool dma_memcpy_done = false;
 static int g_width = 0;
 static int g_height = 0;
 static uint8_t *g_buffer_0 = NULL;
@@ -51,14 +51,21 @@ static void gdma_start_transfer(uint8_t *buf, uint32_t len)
     // memcpy(g_buffer_lcd + psram_offset * DRV_LCD_BITS / 8, buf, len * DRV_LCD_BITS / 8);
     // memcpy_gdma(g_buffer_lcd + psram_offset * DRV_LCD_BITS / 8, buf, len * DRV_LCD_BITS / 8);
     //memcpy_gdma_no_wait(g_buffer_lcd + psram_offset * DRV_LCD_BITS / 8, buf, len * DRV_LCD_BITS / 8);
+    uint32_t data_size = len * DRV_LCD_BITS / 8;
+    if(data_size <= 16384)
+    {
+        DCache_CleanInvalidate((uint32_t)(uintptr_t)buf, data_size);
+    }
+    else {
+        DCache_CleanInvalidate(0xFFFFFFFF, 0xFFFFFFFF);
+    }
     dma_memcpy_done = false;
-    dma_memcpy(&dma_obj, g_buffer_lcd + psram_offset * DRV_LCD_BITS / 8, buf, len * DRV_LCD_BITS / 8);
+    dma_memcpy(&dma_obj, g_buffer_lcd + psram_offset * DRV_LCD_BITS / 8, buf, data_size);
 }
 
 static void gdma_wait_transfer_done(void)
 {
     while(!dma_memcpy_done);
-    //memcpy_gdma_wait_done();
 }
 
 

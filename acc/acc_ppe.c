@@ -30,30 +30,72 @@
 static void decode_RLE_16bit(imdc_file_t* file, gui_rect_t* range, uint8_t* output)
 {
     uint32_t stride = (range->x2 - range->x1 + 1) * 2;
-    for(int i = range->y1; i <= range->y2; i++)
+    uint32_t line_width = file->header.raw_pic_width * 2;
+    if(stride == line_width)
     {
-        uncompressed_rle_rgb565(file, i, output);
-        output += stride;
+        for(int i = range->y1; i <= range->y2; i++)
+        {
+            uncompressed_rle_rgb565(file, i, output);
+            output += stride;
+        }
+    }
+    else {
+        uint8_t *line = gui_malloc(line_width);
+        for(int i = range->y1; i <= range->y2; i++)
+        {
+            uncompressed_rle_rgb565(file, i, line);
+            memcpy(output, line + range->x1 * 2, stride);
+            output += stride;
+        }
+        gui_free(line);
     }
 }
 
 static void decode_RLE_24bit(imdc_file_t* file, gui_rect_t* range, uint8_t* output)
 {
     uint32_t stride = (range->x2 - range->x1 + 1) * 3;
-    for(int i = range->y1; i <= range->y2; i++)
+    uint32_t line_width = file->header.raw_pic_width * 3;
+    if(stride == line_width)
     {
-        uncompressed_rle_rgb888(file, i, output);
-        output += stride;
+        for(int i = range->y1; i <= range->y2; i++)
+        {
+            uncompressed_rle_rgb888(file, i, output);
+            output += stride;
+        }
+    }
+    else {
+        uint8_t *line = gui_malloc(line_width);
+        for(int i = range->y1; i <= range->y2; i++)
+        {
+            uncompressed_rle_rgb888(file, i, line);
+            memcpy(output, line + range->x1 * 3, stride);
+            output += stride;
+        }
+        gui_free(line);
     }
 }
 
 static void decode_RLE_32bit(imdc_file_t* file, gui_rect_t* range, uint8_t* output)
 {
     uint32_t stride = (range->x2 - range->x1 + 1) * 4;
-    for(int i = range->y1; i <= range->y2; i++)
+    uint32_t line_width = file->header.raw_pic_width * 4;
+    if(stride == file->header.raw_pic_width * 4)
     {
-        uncompressed_rle_argb8888(file, i, output);
-        output += stride;
+        for(int i = range->y1; i <= range->y2; i++)
+        {
+            uncompressed_rle_argb8888(file, i, output);
+            output += stride;
+        }
+    }
+    else {
+        uint8_t *line = gui_malloc(line_width);
+        for(int i = range->y1; i <= range->y2; i++)
+        {
+            uncompressed_rle_argb8888(file, i, line);
+            memcpy(output, line + range->x1 * 4, stride);
+            output += stride;
+        }
+        gui_free(line);
     }
 }
 #if 1
@@ -414,19 +456,16 @@ void hw_acc_blit_decode(draw_img_t *image, struct gui_dispdev *dc, struct gui_re
                                 .y1 = 0, .y2 = image->img_h - 1};
     if(!rect_intersect(&decode_area, &decode_area, &image_area))
     {
-        gui_log("return %d\n", __LINE__);
         return;
     }
     if(rect != NULL)
     {
-        if(!rect_intersect(&decode_area, &decode_area, &image_area))
+        gui_rect_t clip_rect = *rect;
+        if(!rect_intersect(&decode_area, &clip_rect, &decode_area))
         {
-            gui_log("return %d\n", __LINE__);
             return;
         }
     }
-    decode_area.x1 = 0;
-    decode_area.x2 = image->img_w - 1;
     PPE_DISP_BLEND_MODE mode = PPE_DISP_SRC_OVER_MODE;
 
     switch (dc->bit_depth)
@@ -518,11 +557,11 @@ void hw_acc_blit_decode(draw_img_t *image, struct gui_dispdev *dc, struct gui_re
     ppe_get_identity(&pre_trans);
     if(rect != NULL)
     {
-        source.address = (uint32_t)source.address + sizeof(struct gui_rgb_data_head) + rect->x1 * PPE_DISP_Get_Pixel_Size(source.format);
-        source.width = rect->x2 - rect->x1 + 1;
+        source.width = decode_area.x2 - decode_area.x1 + 1;
         source.height = decode_area.y2 - decode_area.y1 + 1;
-        pre_trans.m[0][2] = rect->x1 * -1.0f;
+        source.stride = source.width;
     }
+    pre_trans.m[0][2] = decode_area.x1 * -1.0f;
     pre_trans.m[1][2] = decode_area.y1 * -1.0f;
     ppe_mat_multiply(&pre_trans, &inverse);
     ppe_translate(0, dc->section.y1, &pre_trans);

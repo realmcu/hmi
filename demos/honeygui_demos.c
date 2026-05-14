@@ -42,7 +42,7 @@ void honeygui_task(void *param) {
     honeygui_print_version();
 
     gui_server_init();
-
+    gui_set_keep_active_time(1000000);
     // TODO: Initialize HoneyGUI and run demos here
 
     RTK_LOGI(LOG_TAG, "honeygui_task end\n");

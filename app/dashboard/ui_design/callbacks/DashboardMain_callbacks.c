@@ -402,7 +402,7 @@ void icon_dir_timer_0_cb(void *obj)
                 "/resource/arrow_direct.bin"
             };
             uint16_t index = (13 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -451,7 +451,7 @@ void map_timer_0_cb(void *obj)
                 "/resource/map/map_12.bin"
             };
             uint16_t index = (13 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -581,7 +581,7 @@ void root_menu_timer_0_cb(void *obj)
                 "/resource/menu/menu_060.bin"
             };
             uint16_t index = (60 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -710,7 +710,7 @@ void root_menu_timer_3_cb(void *obj)
                 "/resource/menu/menu_015.bin"
             };
             uint16_t index = (15 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -762,7 +762,7 @@ void root_menu_timer_4_cb(void *obj)
                 "/resource/menu/menu_030.bin"
             };
             uint16_t index = (15 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -814,7 +814,7 @@ void root_menu_timer_5_cb(void *obj)
                 "/resource/menu/menu_045.bin"
             };
             uint16_t index = (15 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -866,7 +866,7 @@ void root_menu_timer_6_cb(void *obj)
                 "/resource/menu/menu_060.bin"
             };
             uint16_t index = (15 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -917,7 +917,7 @@ void root_menu_timer_7_cb(void *obj)
                 "/resource/menu/menu_047.bin"
             };
             uint16_t index = (14 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -968,7 +968,7 @@ void root_menu_timer_8_cb(void *obj)
                 "/resource/menu/menu_032.bin"
             };
             uint16_t index = (14 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -1019,7 +1019,7 @@ void root_menu_timer_9_cb(void *obj)
                 "/resource/menu/menu_017.bin"
             };
             uint16_t index = (14 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -1070,7 +1070,7 @@ void root_menu_timer_10_cb(void *obj)
                 "/resource/menu/menu_002.bin"
             };
             uint16_t index = (14 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -1394,7 +1394,7 @@ void speed_arc_timer_0_cb(void *obj)
                 "/resource/speed_arc/speed_arc_00.bin"
             };
             uint16_t index = (16 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -1458,7 +1458,7 @@ void speed_arc_timer_1_cb(void *obj)
                 "/resource/speed_arc/speed_arc_16.bin"
             };
             uint16_t index = (16 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -1487,7 +1487,7 @@ void speed_arc_timer_1_cb(void *obj)
                 "/resource/speed_arc/speed_arc_00.bin"
             };
             uint16_t index = (16 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -1663,7 +1663,7 @@ void power_arc_timer_0_cb(void *obj)
                 "/resource/power_arc/power_arc_00.bin"
             };
             uint16_t index = (16 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -1727,7 +1727,7 @@ void power_arc_timer_1_cb(void *obj)
                 "/resource/power_arc/power_arc_16.bin"
             };
             uint16_t index = (16 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
@@ -1756,7 +1756,7 @@ void power_arc_timer_1_cb(void *obj)
                 "/resource/power_arc/power_arc_00.bin"
             };
             uint16_t index = (16 - 1) * seg_cnt / seg_cnt_max;
-            gui_img_set_src((gui_img_t *)target, img_data_array[index], IMG_SRC_FILESYS);
+            gui_img_set_src((gui_img_t *)target, (const uint8_t *)img_data_array[index], IMG_SRC_FILESYS);
             gui_img_refresh_size((gui_img_t *)target);
             
     }
