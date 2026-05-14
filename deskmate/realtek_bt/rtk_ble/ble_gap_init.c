@@ -2,7 +2,7 @@
 *****************************************************************************************
 *     Copyright(c) 2017, Realtek Semiconductor Corporation. All rights reserved.
 *****************************************************************************************
-   * @file      app_task.c
+   * @file      ble_gap_init.c
    * @brief     Routines to create App task and handle events & messages
    * @author    jane
    * @date      2017-06-02
@@ -78,7 +78,7 @@ uint8_t adv_data[] =
     0x09,           /* length     */
     0xFF,           /* type: manufacture specific data*/
     0xC5, 0xFE,     /* company id */
-    0x20, 0x15, 0x09, 0x14, 0x14, 0x21, /* mac address*/
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* mac address, filled at runtime */
 };
 
 
@@ -143,7 +143,17 @@ void app_le_gap_init(void)
     le_adv_set_param(GAP_PARAM_ADV_FILTER_POLICY, sizeof(adv_filter_policy), &adv_filter_policy);
     le_adv_set_param(GAP_PARAM_ADV_INTERVAL_MIN, sizeof(adv_int_min), &adv_int_min);
     le_adv_set_param(GAP_PARAM_ADV_INTERVAL_MAX, sizeof(adv_int_max), &adv_int_max);
-    le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(adv_data), adv_data);//todo load from config
+    /* fill MAC address into manufacturer specific data at runtime */
+    uint8_t bt_bd_addr[6];
+    gap_get_param(GAP_PARAM_BD_ADDR, bt_bd_addr);
+    adv_data[21] = bt_bd_addr[5];
+    adv_data[22] = bt_bd_addr[4];
+    adv_data[23] = bt_bd_addr[3];
+    adv_data[24] = bt_bd_addr[2];
+    adv_data[25] = bt_bd_addr[1];
+    adv_data[26] = bt_bd_addr[0];
+
+    le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(adv_data), adv_data);
     le_adv_set_param(GAP_PARAM_SCAN_RSP_DATA, sizeof(scan_rsp_data), (void *)scan_rsp_data);
 
     /* Setup the GAP Bond Manager */

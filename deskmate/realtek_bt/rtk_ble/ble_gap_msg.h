@@ -88,8 +88,6 @@ void handle_bt_io_msg(T_IO_MSG io_msg);
 
 void le_msg_handler_cback_register(P_LE_MSG_HANDLER_CBACK cback);
 void le_msg_handler_cback_unregister(P_LE_MSG_HANDLER_CBACK cback);
-void app_msg_handler_cback_register(P_LE_MSG_HANDLER_CBACK cback);
-void app_msg_handler_cback_unregister(P_LE_MSG_HANDLER_CBACK cback);
 
 
 #ifdef __cplusplus

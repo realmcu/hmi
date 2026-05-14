@@ -2,7 +2,7 @@
 *****************************************************************************************
 *     Copyright(c) 2017, Realtek Semiconductor Corporation. All rights reserved.
 *****************************************************************************************
-   * @file      peripheral_app.c
+   * @file      ble_gap_cb.c
    * @brief     This file handles BLE peripheral application routines.
    * @author    jane
    * @date      2017-06-06

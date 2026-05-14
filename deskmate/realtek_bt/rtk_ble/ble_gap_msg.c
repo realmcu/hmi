@@ -17,7 +17,6 @@ static T_GAP_DEV_STATE gap_dev_state = {0, 0, 0, 0};                 /**< GAP de
 static T_GAP_CONN_STATE gap_conn_state = GAP_CONN_STATE_DISCONNECTED; /**< GAP connection state */
 
 static T_LE_MSG_CBACK_ITEM gap_msg_list = {NULL, NULL};
-static T_LE_MSG_CBACK_ITEM app_list = {NULL, NULL};
 
 
 void le_msg_handler_cback_register(P_LE_MSG_HANDLER_CBACK
@@ -44,36 +43,6 @@ void le_msg_handler_cback_unregister(P_LE_MSG_HANDLER_CBACK cback)
         if (p_item->cback == cback)
         {
             ble_slist_remove(&(gap_msg_list.slist), &(p_item->slist));
-            free(p_item);
-            break;
-        }
-    }
-}
-
-void app_msg_handler_cback_register(P_LE_MSG_HANDLER_CBACK
-                                    cback)//todo for return bool, cpp check fail
-{
-    T_LE_MSG_CBACK_ITEM *p_item = malloc(sizeof(T_LE_MSG_CBACK_ITEM));
-    if (p_item == NULL)
-    {
-        return;
-    }
-
-    p_item->cback = cback;
-
-    ble_slist_append(&(app_list.slist), &(p_item->slist));
-
-}
-
-void app_msg_handler_cback_unregister(P_LE_MSG_HANDLER_CBACK cback)
-{
-    ble_slist_t *node;
-    for (node = ble_slist_first(&(app_list.slist)); node; node = ble_slist_next(node))
-    {
-        T_LE_MSG_CBACK_ITEM *p_item = ble_container_of(node, T_LE_MSG_CBACK_ITEM, slist);
-        if (p_item->cback == cback)
-        {
-            ble_slist_remove(&(app_list.slist), &(p_item->slist));
             free(p_item);
             break;
         }
@@ -380,16 +349,6 @@ void handle_bt_io_msg(T_IO_MSG io_msg)
             app_handle_gap_msg(&io_msg);
             ble_slist_t *node;
             for (node = ble_slist_first(&(gap_msg_list.slist)); node; node = ble_slist_next(node))
-            {
-                T_LE_MSG_CBACK_ITEM *p_item = ble_container_of(node, T_LE_MSG_CBACK_ITEM, slist);
-                p_item->cback(&io_msg);
-            }
-        }
-        break;
-    case IO_MSG_TYPE_WRISTBNAD:
-        {
-            ble_slist_t *node;
-            for (node = ble_slist_first(&(app_list.slist)); node; node = ble_slist_next(node))
             {
                 T_LE_MSG_CBACK_ITEM *p_item = ble_container_of(node, T_LE_MSG_CBACK_ITEM, slist);
                 p_item->cback(&io_msg);

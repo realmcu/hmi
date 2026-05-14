@@ -293,12 +293,12 @@ const T_FUN_GATT_EXT_SERVICE_CBS nus_service_cbs =
     nus_service_cccd_update_cb
 };
 
-T_SERVER_ID nus_service_add_service(void *p_func)
+T_SERVER_ID nus_service_add_service(void *p_func, P_FUN_GATT_EXT_SEND_DATA_CB send_cb)
 {
     if (false == gatt_svc_add(&nus_service_id,
                               (uint8_t *)nus_service_tbl,
                               sizeof(nus_service_tbl),
-                              &nus_service_cbs, NULL))
+                              &nus_service_cbs, send_cb))
     {
         APP_PRINT_ERROR0("nus_service_add_service: fail");
         nus_service_id = 0xFF;

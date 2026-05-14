@@ -72,7 +72,7 @@ typedef struct
 
 extern T_SERVER_ID hmi_service_id;
 
-T_SERVER_ID hmi_service_add_service(void *p_func);
+T_SERVER_ID hmi_service_add_service(void *p_func, P_FUN_GATT_EXT_SEND_DATA_CB send_cb);
 bool        hmi_service_set_parameter(T_HMI_PARAM_TYPE param_type, uint16_t len, void *p_value);
 bool        hmi_service_send_event(uint16_t conn_handle, uint16_t cid, T_SERVER_ID service_id,
                                    void *p_value, uint16_t length);

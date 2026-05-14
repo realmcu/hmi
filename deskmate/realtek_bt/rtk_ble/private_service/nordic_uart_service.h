@@ -61,7 +61,7 @@ typedef struct
 
 extern T_SERVER_ID nus_service_id;
 
-T_SERVER_ID nus_service_add_service(void *p_func);
+T_SERVER_ID nus_service_add_service(void *p_func, P_FUN_GATT_EXT_SEND_DATA_CB send_cb);
 
 bool nus_service_send_data(uint16_t conn_handle, uint16_t cid, T_SERVER_ID service_id,
                            void *p_value, uint16_t length);

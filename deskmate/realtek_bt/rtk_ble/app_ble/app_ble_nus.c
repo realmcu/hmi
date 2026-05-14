@@ -7,6 +7,20 @@
 #include "gap_conn_le.h"
 #include "nordic_uart_service.h"
 
+static void app_nus_send_data_cb(T_EXT_SEND_DATA_RESULT result)
+{
+    if (result.cause == GAP_SUCCESS)
+    {
+        APP_PRINT_INFO2("app_nus_send_data_cb: notify sent ok, conn_handle 0x%x, credits %d",
+                        result.conn_handle, result.credits);
+    }
+    else
+    {
+        APP_PRINT_ERROR2("app_nus_send_data_cb: notify sent fail, conn_handle 0x%x, cause 0x%x",
+                         result.conn_handle, result.cause);
+    }
+}
+
 static T_APP_RESULT app_nus_callback(T_SERVER_ID service_id, void *p_data)
 {
     T_APP_RESULT app_result = APP_RESULT_SUCCESS;
@@ -82,6 +96,6 @@ static void gap_nus_msg(T_IO_MSG *p_gap_msg)
 
 void app_ble_nus_init(void)
 {
-    nus_service_add_service(app_nus_callback);
+    nus_service_add_service(app_nus_callback, app_nus_send_data_cb);
     le_msg_handler_cback_register(gap_nus_msg);
 }

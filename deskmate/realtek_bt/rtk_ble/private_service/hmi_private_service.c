@@ -365,12 +365,12 @@ const T_FUN_GATT_EXT_SERVICE_CBS hmi_service_cbs =
     hmi_service_cccd_update_cb
 };
 
-T_SERVER_ID hmi_service_add_service(void *p_func)
+T_SERVER_ID hmi_service_add_service(void *p_func, P_FUN_GATT_EXT_SEND_DATA_CB send_cb)
 {
     if (false == gatt_svc_add(&hmi_service_id,
                               (uint8_t *)hmi_service_tbl,
                               sizeof(hmi_service_tbl),
-                              &hmi_service_cbs, NULL))
+                              &hmi_service_cbs, send_cb))
     {
         APP_PRINT_ERROR0("hmi_service_add_service: fail");
         hmi_service_id = 0xFF;
