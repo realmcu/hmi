@@ -8,15 +8,19 @@
 #include <zephyr/kernel.h>
 #include "trace.h"
 #include "hmi_bt_task.h"
+#ifndef CONFIG_UART_CONSOLE
 #include "rtl876x_pinmux.h"
+#endif
 
 int main(void)
 {
+#ifndef CONFIG_UART_CONSOLE
     DBG_DIRECT("!!!!! remap log pin!!!");
     Pinmux_Config(P2_0, IDLE_MODE);
     Pinmux_Config(P3_1, UART1_TX);
     Pad_Config(P3_1, PAD_PINMUX_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_DISABLE, PAD_OUT_LOW);
     DBG_DIRECT("!!!!! remap log pin!!!");
+#endif
     printf("Hello World! %s\n", CONFIG_BOARD_TARGET);
     printf("[main] thread id: %p, name: %s, priority: %d\n",
            k_current_get(),
