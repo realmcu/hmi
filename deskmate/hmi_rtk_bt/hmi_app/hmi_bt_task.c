@@ -35,6 +35,18 @@
 #include "remote.h"
 #include "hmi_br_edr_gap_init.h"
 #include "hmi_bt_spp.h"
+#ifdef CONFIG_RTK_BR_PROFILE_A2DP
+#include "hmi_bt_a2dp.h"
+#endif
+#ifdef CONFIG_RTK_BR_PROFILE_AVRCP
+#include "hmi_bt_avrcp.h"
+#endif
+#ifdef CONFIG_RTK_BR_PROFILE_HFP
+#include "hmi_bt_hfp.h"
+#endif
+#ifdef CONFIG_RTK_BR_PROFILE_PAN
+#include "hmi_bt_pan.h"
+#endif
 #endif
 
 /** @defgroup  PERIPH_BT_TASK Peripheral BT Task
@@ -152,6 +164,22 @@ void bt_task_entry(void *p_param)
     framework_init();
     hmi_br_edr_gap_init();
     hmi_bt_spp_init();
+#ifdef CONFIG_RTK_BR_PROFILE_A2DP
+    hmi_bt_a2dp_init();
+#endif
+#ifdef CONFIG_RTK_BR_PROFILE_AVRCP
+    hmi_bt_avrcp_init();
+#endif
+#ifdef CONFIG_RTK_BR_PROFILE_HFP
+    hmi_bt_hfp_init();
+#endif
+#ifdef CONFIG_RTK_BR_PROFILE_PAN
+    {
+        uint8_t bd_addr[6];
+        gap_get_param(GAP_PARAM_BD_ADDR, bd_addr);
+        hmi_bt_pan_init(bd_addr);
+    }
+#endif
 #endif
     gap_start_bt_stack(evt_queue_handle, io_queue_handle, MAX_NUMBER_OF_GAP_MESSAGE);
 
