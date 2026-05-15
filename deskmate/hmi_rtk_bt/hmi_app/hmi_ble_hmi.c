@@ -1,7 +1,7 @@
 #include <string.h>
-#include "app_ble_hmi.h"
+#include "hmi_ble_hmi.h"
 #include "trace.h"
-#include "ble_gap_msg.h"
+#include "hmi_ble_gap_msg.h"
 #include "gap_msg.h"
 #include "bt_gatt_svc.h"
 #include "gap_conn_le.h"
@@ -97,8 +97,8 @@ static void gap_hmi_msg(T_IO_MSG *p_gap_msg)
     }
 }
 
-void app_ble_hmi_init(void)
+void hmi_ble_hmi_init(void)
 {
     hmi_service_add_service(app_hmi_callback, app_hmi_send_data_cb);
-    le_msg_handler_cback_register(gap_hmi_msg);
+    hmi_le_msg_cback_register(gap_hmi_msg);
 }

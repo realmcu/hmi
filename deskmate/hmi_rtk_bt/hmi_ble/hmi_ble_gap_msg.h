@@ -84,10 +84,10 @@ typedef struct _T_LE_MSG_CBACK_ITEM
     P_LE_MSG_HANDLER_CBACK              cback;
 } T_LE_MSG_CBACK_ITEM;
 
-void handle_bt_io_msg(T_IO_MSG io_msg);
+void hmi_handle_bt_io_msg(T_IO_MSG io_msg);
 
-void le_msg_handler_cback_register(P_LE_MSG_HANDLER_CBACK cback);
-void le_msg_handler_cback_unregister(P_LE_MSG_HANDLER_CBACK cback);
+void hmi_le_msg_cback_register(P_LE_MSG_HANDLER_CBACK cback);
+void hmi_le_msg_cback_unregister(P_LE_MSG_HANDLER_CBACK cback);
 
 
 #ifdef __cplusplus

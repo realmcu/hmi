@@ -21,7 +21,7 @@
 #include <gap_bond_le.h>
 #include <gap_adv.h>
 #include <app_msg.h>
-#include <ble_gap_cb.h>
+#include "hmi_ble_gap_cb.h"
 #include "trace.h"
 #include "gatt.h"
 
@@ -90,7 +90,7 @@ uint8_t adv_data[] =
   * @brief  Initialize peripheral and gap bond manager related parameters
   * @return void
   */
-void app_le_gap_init(void)
+void hmi_ble_gap_init(void)
 {
     /* Device name and device appearance */
     uint8_t  device_name[GAP_DEVICE_NAME_LEN] = "DeskMate";
@@ -169,7 +169,7 @@ void app_le_gap_init(void)
                       &auth_sec_req_flags);
 
     /* register gap message callback */
-    le_register_app_cb(le_gap_callback);
+    le_register_app_cb(hmi_ble_gap_callback);
 
 }
 

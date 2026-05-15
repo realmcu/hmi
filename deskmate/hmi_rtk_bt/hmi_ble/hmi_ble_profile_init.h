@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-void app_le_profile_init(void);
+void hmi_ble_profile_init(void);
 
 #ifdef __cplusplus
 }

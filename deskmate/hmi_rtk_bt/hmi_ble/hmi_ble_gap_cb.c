@@ -21,7 +21,7 @@
 #include <gap_bond_le.h>
 #include <gap_adv.h>
 #include <app_msg.h>
-#include <ble_gap_cb.h>
+#include "hmi_ble_gap_cb.h"
 #include "trace.h"
 
 /**
@@ -30,7 +30,7 @@
   * @param[in] p_cb_data point to callback data @ref T_LE_CB_DATA.
   * @retval result @ref T_APP_RESULT
   */
-T_APP_RESULT le_gap_callback(uint8_t cb_type, void *p_cb_data)
+T_APP_RESULT hmi_ble_gap_callback(uint8_t cb_type, void *p_cb_data)
 {
     T_APP_RESULT result = APP_RESULT_SUCCESS;
     T_LE_CB_DATA *p_data = (T_LE_CB_DATA *)p_cb_data;

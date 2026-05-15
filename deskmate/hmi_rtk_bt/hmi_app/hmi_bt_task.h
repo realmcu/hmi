@@ -12,8 +12,8 @@
    * <h2><center>&copy; COPYRIGHT 2017 Realtek Semiconductor Corporation</center></h2>
    **************************************************************************************
   */
-#ifndef _BT_TASK_H_
-#define _BT_TASK_H_
+#ifndef _HMI_BT_TASK_H_
+#define _HMI_BT_TASK_H_
 #include "app_msg.h"
 #include "stdbool.h"
 
@@ -26,9 +26,9 @@
  * @brief  Initialize BT task
  * @return void
  */
-void bt_task_init(void);
+void hmi_bt_task_init(void);
 
-bool send_msg_to_bt_task(T_IO_MSG *p_msg);
+bool hmi_send_msg_to_bt_task(T_IO_MSG *p_msg);
 /** End of PERIPH_BT_TASK
 * @}
 */

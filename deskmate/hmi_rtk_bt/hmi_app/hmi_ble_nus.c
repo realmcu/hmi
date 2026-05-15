@@ -1,7 +1,7 @@
 #include <string.h>
-#include "app_ble_nus.h"
+#include "hmi_ble_nus.h"
 #include "trace.h"
-#include "ble_gap_msg.h"
+#include "hmi_ble_gap_msg.h"
 #include "gap_msg.h"
 #include "bt_gatt_svc.h"
 #include "gap_conn_le.h"
@@ -94,8 +94,8 @@ static void gap_nus_msg(T_IO_MSG *p_gap_msg)
     }
 }
 
-void app_ble_nus_init(void)
+void hmi_ble_nus_init(void)
 {
     nus_service_add_service(app_nus_callback, app_nus_send_data_cb);
-    le_msg_handler_cback_register(gap_nus_msg);
+    hmi_le_msg_cback_register(gap_nus_msg);
 }

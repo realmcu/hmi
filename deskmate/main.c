@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <zephyr/kernel.h>
 #include "trace.h"
-#include "bt_task.h"
+#include "hmi_bt_task.h"
 #include "rtl876x_pinmux.h"
 
 int main(void)
@@ -23,7 +23,7 @@ int main(void)
            k_thread_name_get(k_current_get()),
            k_thread_priority_get(k_current_get()));
 
-    bt_task_init();
+    hmi_bt_task_init();
 
     return 0;
 }

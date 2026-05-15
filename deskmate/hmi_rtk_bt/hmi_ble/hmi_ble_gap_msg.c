@@ -9,9 +9,9 @@
 #include <gap_adv.h>
 #include <gap_bond_le.h>
 #include <gap_conn_le.h>
-#include "bt_task.h"
-#include "ble_gap_init.h"
-#include "ble_gap_msg.h"
+#include "hmi_bt_task.h"
+#include "hmi_ble_gap_init.h"
+#include "hmi_ble_gap_msg.h"
 
 static T_GAP_DEV_STATE gap_dev_state = {0, 0, 0, 0};                 /**< GAP device state */
 static T_GAP_CONN_STATE gap_conn_state = GAP_CONN_STATE_DISCONNECTED; /**< GAP connection state */
@@ -19,8 +19,8 @@ static T_GAP_CONN_STATE gap_conn_state = GAP_CONN_STATE_DISCONNECTED; /**< GAP c
 static T_LE_MSG_CBACK_ITEM gap_msg_list = {NULL, NULL};
 
 
-void le_msg_handler_cback_register(P_LE_MSG_HANDLER_CBACK
-                                   cback)//todo for return bool, cpp check fail
+void hmi_le_msg_cback_register(P_LE_MSG_HANDLER_CBACK
+                               cback)//todo for return bool, cpp check fail
 {
     T_LE_MSG_CBACK_ITEM *p_item = malloc(sizeof(T_LE_MSG_CBACK_ITEM));
     if (p_item == NULL)
@@ -34,7 +34,7 @@ void le_msg_handler_cback_register(P_LE_MSG_HANDLER_CBACK
 
 }
 
-void le_msg_handler_cback_unregister(P_LE_MSG_HANDLER_CBACK cback)
+void hmi_le_msg_cback_unregister(P_LE_MSG_HANDLER_CBACK cback)
 {
     ble_slist_t *node;
     for (node = ble_slist_first(&(gap_msg_list.slist)); node; node = ble_slist_next(node))
@@ -338,7 +338,7 @@ void app_handle_gap_msg(T_IO_MSG *p_gap_msg)
 }
 
 
-void handle_bt_io_msg(T_IO_MSG io_msg)
+void hmi_handle_bt_io_msg(T_IO_MSG io_msg)
 {
     uint16_t msg_type = io_msg.type;
     APP_PRINT_TRACE1("app_handle_io_msg %d", msg_type);

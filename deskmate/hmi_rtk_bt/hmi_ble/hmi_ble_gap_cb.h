@@ -13,14 +13,16 @@
    **************************************************************************************
   */
 
-#ifndef _BLE_GAP_INIT_APP__
-#define _BLE_GAP_INIT_APP__
+#ifndef _BLE_GAP_CB_APP__
+#define _BLE_GAP_CB_APP__
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+#include <gap.h>
 
-void app_le_gap_init(void);
+T_APP_RESULT hmi_ble_gap_callback(uint8_t cb_type, void *p_cb_data);
+
 
 /** End of PERIPH_APP
 * @}

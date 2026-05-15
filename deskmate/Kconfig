@@ -1,0 +1,20 @@
+# Copyright (c) 2024, Realtek Semiconductor Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+menu "DeskMate Application"
+
+config RTK_BT_BREDR
+	bool "Enable Classic Bluetooth (BR/EDR) support"
+	default n
+	select REALTEK_SUBSYS_BTM
+	select REALTEK_SUBSYS_SYSM
+	select REALTEK_SUBSYS_REMOTE
+	help
+	  Enable Realtek Classic Bluetooth BR/EDR stack.
+	  Activates BTM, SYSM, and Remote subsystems.
+
+endmenu
+
+menu "Zephyr Kernel"
+source "Kconfig.zephyr"
+endmenu

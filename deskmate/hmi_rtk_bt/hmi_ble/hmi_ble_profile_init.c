@@ -1,11 +1,11 @@
 /*============================================================================*
  *                              Header Files
  *============================================================================*/
-#include <bt_task.h>
+#include "hmi_bt_task.h"
 #include "bt_gatt_svc.h"
 #include "trace.h"
-#include "app_ble/app_ble_hmi.h"
-#include "app_ble/app_ble_nus.h"
+#include "hmi_ble_hmi.h"
+#include "hmi_ble_nus.h"
 
 static void app_gatt_svc_general_cb(uint8_t type, void *p_data)
 {
@@ -23,10 +23,10 @@ static void app_gatt_svc_general_cb(uint8_t type, void *p_data)
     }
 }
 
-void app_le_profile_init(void)
+void hmi_ble_profile_init(void)
 {
     gatt_svc_init(GATT_SVC_USE_EXT_SERVER, 2);
     gatt_svc_register_general_cb(app_gatt_svc_general_cb);
-    app_ble_hmi_init();
-    app_ble_nus_init();
+    hmi_ble_hmi_init();
+    hmi_ble_nus_init();
 }
