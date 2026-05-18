@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <profile_server_ext.h>
+#include <bt_gatt_svc.h>
 
 /*============================================================================*
  *                              Macros
@@ -70,12 +71,12 @@ typedef struct
  *                              Functions
  *============================================================================*/
 
-extern T_SERVER_ID hmi_service_id;
+extern T_SERVER_ID hmi_ctrl_service_id;
 
-T_SERVER_ID hmi_service_add_service(void *p_func, P_FUN_GATT_EXT_SEND_DATA_CB send_cb);
-bool        hmi_service_set_parameter(T_HMI_PARAM_TYPE param_type, uint16_t len, void *p_value);
-bool        hmi_service_send_event(uint16_t conn_handle, uint16_t cid, T_SERVER_ID service_id,
-                                   void *p_value, uint16_t length);
+T_SERVER_ID hmi_ctrl_service_add_service(void *p_func, P_FUN_GATT_EXT_SEND_DATA_CB send_cb);
+bool        hmi_ctrl_service_set_parameter(T_HMI_PARAM_TYPE param_type, uint16_t len,
+                                           void *p_value);
+bool        hmi_ctrl_service_send_data(uint16_t conn_handle, void *p_value, uint16_t length);
 
 #ifdef __cplusplus
 }

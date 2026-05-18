@@ -3,7 +3,8 @@
 #include <gap.h>
 #include "gap_conn_le.h"
 #include "bt_gatt_svc.h"
-#include "hmi_private_service.h"
+#include "bt_types.h"
+#include "hmi_ctrl_service.h"
 
 /*============================================================================*
  *                              Macros
@@ -33,12 +34,12 @@ typedef enum
  *                              Local Variables
  *============================================================================*/
 
-T_SERVER_ID hmi_service_id;
+T_SERVER_ID hmi_ctrl_service_id;
 
 static uint8_t  hmi_status_value[HMI_STATUS_MAX_LEN];
 static uint16_t hmi_status_len = 1;
 
-static P_FUN_EXT_SERVER_GENERAL_CB pfn_hmi_service_cb = NULL;
+static P_FUN_EXT_SERVER_GENERAL_CB pfn_hmi_ctrl_service_cb = NULL;
 
 static const uint8_t hmi_cmd_user_desc[]    = "HMI CMD";
 static const uint8_t hmi_event_user_desc[]  = "HMI Event";
@@ -56,7 +57,7 @@ const uint8_t GATT_UUID128_HMI_SERVICE[16] =
  *                              GATT Service Table
  *============================================================================*/
 
-const T_ATTRIB_APPL hmi_service_tbl[] =
+const T_ATTRIB_APPL hmi_ctrl_service_tbl[] =
 {
     /* <<Primary Service>>, index 0 */
     {
@@ -200,7 +201,7 @@ const T_ATTRIB_APPL hmi_service_tbl[] =
  *                              Functions
  *============================================================================*/
 
-bool hmi_service_set_parameter(T_HMI_PARAM_TYPE param_type, uint16_t len, void *p_value)
+bool hmi_ctrl_service_set_parameter(T_HMI_PARAM_TYPE param_type, uint16_t len, void *p_value)
 {
     bool ret = true;
 
@@ -224,14 +225,14 @@ bool hmi_service_set_parameter(T_HMI_PARAM_TYPE param_type, uint16_t len, void *
 
     if (!ret)
     {
-        APP_PRINT_ERROR0("hmi_service_set_parameter failed");
+        APP_PRINT_ERROR0("hmi_ctrl_service_set_parameter failed");
     }
     return ret;
 }
 
-T_APP_RESULT hmi_service_attr_read_cb(uint16_t conn_handle, uint16_t cid,
-                                      T_SERVER_ID service_id, uint16_t attrib_index,
-                                      uint16_t offset, uint16_t *p_length, uint8_t **pp_value)
+T_APP_RESULT hmi_ctrl_service_attr_read_cb(uint16_t conn_handle, uint16_t cid,
+                                           T_SERVER_ID service_id, uint16_t attrib_index,
+                                           uint16_t offset, uint16_t *p_length, uint8_t **pp_value)
 {
     T_APP_RESULT cause = APP_RESULT_SUCCESS;
 
@@ -247,16 +248,16 @@ T_APP_RESULT hmi_service_attr_read_cb(uint16_t conn_handle, uint16_t cid,
             callback_data.conn_id              = conn_id;
             callback_data.conn_handle          = conn_handle;
             callback_data.cid                  = cid;
-            if (pfn_hmi_service_cb)
+            if (pfn_hmi_ctrl_service_cb)
             {
-                pfn_hmi_service_cb(service_id, (void *)&callback_data);
+                pfn_hmi_ctrl_service_cb(service_id, (void *)&callback_data);
             }
             *pp_value = hmi_status_value;
             *p_length = hmi_status_len;
         }
         break;
     default:
-        APP_PRINT_ERROR1("hmi_service_attr_read_cb: attr not found, index %d", attrib_index);
+        APP_PRINT_ERROR1("hmi_ctrl_service_attr_read_cb: attr not found, index %d", attrib_index);
         cause = APP_RESULT_ATTR_NOT_FOUND;
         break;
     }
@@ -271,16 +272,16 @@ void hmi_write_post_callback(uint16_t conn_handle, uint16_t cid, T_SERVER_ID ser
                     conn_handle, cid, service_id, attrib_index, length);
 }
 
-T_APP_RESULT hmi_service_attr_write_cb(uint16_t conn_handle, uint16_t cid,
-                                       T_SERVER_ID service_id, uint16_t attrib_index,
-                                       T_WRITE_TYPE write_type, uint16_t length, uint8_t *p_value,
-                                       P_FUN_EXT_WRITE_IND_POST_PROC *p_write_ind_post_proc)
+T_APP_RESULT hmi_ctrl_service_attr_write_cb(uint16_t conn_handle, uint16_t cid,
+                                            T_SERVER_ID service_id, uint16_t attrib_index,
+                                            T_WRITE_TYPE write_type, uint16_t length, uint8_t *p_value,
+                                            P_FUN_EXT_WRITE_IND_POST_PROC *p_write_ind_post_proc)
 {
     uint8_t conn_id = 0xFF;
     le_get_conn_id_by_handle(conn_handle, &conn_id);
 
     T_APP_RESULT cause = APP_RESULT_SUCCESS;
-    APP_PRINT_INFO3("hmi_service_attr_write_cb: write_type = 0x%x, conn_handle 0x%x, cid %d",
+    APP_PRINT_INFO3("hmi_ctrl_service_attr_write_cb: write_type = 0x%x, conn_handle 0x%x, cid %d",
                     write_type, conn_handle, cid);
     *p_write_ind_post_proc = hmi_write_post_callback;
 
@@ -301,15 +302,15 @@ T_APP_RESULT hmi_service_attr_write_cb(uint16_t conn_handle, uint16_t cid,
             callback_data.msg_data.write.write_type = write_type;
             callback_data.msg_data.write.len        = length;
             callback_data.msg_data.write.p_value    = p_value;
-            if (pfn_hmi_service_cb)
+            if (pfn_hmi_ctrl_service_cb)
             {
-                pfn_hmi_service_cb(service_id, (void *)&callback_data);
+                pfn_hmi_ctrl_service_cb(service_id, (void *)&callback_data);
             }
         }
     }
     else
     {
-        APP_PRINT_ERROR2("hmi_service_attr_write_cb: attr not found, index 0x%x, length %d",
+        APP_PRINT_ERROR2("hmi_ctrl_service_attr_write_cb: attr not found, index 0x%x, length %d",
                          attrib_index, length);
         cause = APP_RESULT_ATTR_NOT_FOUND;
     }
@@ -317,17 +318,32 @@ T_APP_RESULT hmi_service_attr_write_cb(uint16_t conn_handle, uint16_t cid,
     return cause;
 }
 
-bool hmi_service_send_event(uint16_t conn_handle, uint16_t cid, T_SERVER_ID service_id,
-                            void *p_value, uint16_t length)
+bool hmi_ctrl_service_send_data(uint16_t conn_handle, void *p_value, uint16_t length)
 {
-    APP_PRINT_INFO0("hmi_service_send_event");
-    return gatt_svc_send_data(conn_handle, cid, service_id,
+    if ((p_value == NULL) || (length == 0))
+    {
+        APP_PRINT_ERROR0("hmi_ctrl_service_send_data: invalid param");
+        return false;
+    }
+
+    uint8_t  conn_id   = 0xFF;
+    uint16_t mtu_size  = 23;
+    le_get_conn_id_by_handle(conn_handle, &conn_id);
+    le_get_conn_param(GAP_PARAM_CONN_MTU_SIZE, &mtu_size, conn_id);
+    if (length > mtu_size - 3)
+    {
+        APP_PRINT_ERROR2("hmi_ctrl_service_send_data: len %d > MTU-3 %d", length, mtu_size - 3);
+        return false;
+    }
+
+    APP_PRINT_INFO1("hmi_ctrl_service_send_data: len %d", length);
+    return gatt_svc_send_data(conn_handle, L2C_FIXED_CID_ATT, hmi_ctrl_service_id,
                               HMI_SVC_CHAR_EVENT_NOTIFY_INDEX,
                               p_value, length, GATT_PDU_TYPE_ANY);
 }
 
-void hmi_service_cccd_update_cb(uint16_t conn_handle, uint16_t cid, T_SERVER_ID service_id,
-                                uint16_t index, uint16_t cccbits)
+void hmi_ctrl_service_cccd_update_cb(uint16_t conn_handle, uint16_t cid, T_SERVER_ID service_id,
+                                     uint16_t index, uint16_t cccbits)
 {
     uint8_t conn_id = 0xFF;
     le_get_conn_id_by_handle(conn_handle, &conn_id);
@@ -338,7 +354,7 @@ void hmi_service_cccd_update_cb(uint16_t conn_handle, uint16_t cid, T_SERVER_ID 
     callback_data.conn_handle = conn_handle;
     callback_data.cid         = cid;
     callback_data.msg_type    = SERVICE_CALLBACK_TYPE_INDIFICATION_NOTIFICATION;
-    APP_PRINT_INFO2("hmi_service_cccd_update_cb: index = %d, cccbits 0x%x", index, cccbits);
+    APP_PRINT_INFO2("hmi_ctrl_service_cccd_update_cb: index = %d, cccbits 0x%x", index, cccbits);
 
     switch (index)
     {
@@ -352,31 +368,31 @@ void hmi_service_cccd_update_cb(uint16_t conn_handle, uint16_t cid, T_SERVER_ID 
         break;
     }
 
-    if (pfn_hmi_service_cb && is_handled)
+    if (pfn_hmi_ctrl_service_cb && is_handled)
     {
-        pfn_hmi_service_cb(service_id, (void *)&callback_data);
+        pfn_hmi_ctrl_service_cb(service_id, (void *)&callback_data);
     }
 }
 
-const T_FUN_GATT_EXT_SERVICE_CBS hmi_service_cbs =
+const T_FUN_GATT_EXT_SERVICE_CBS hmi_ctrl_service_cbs =
 {
-    hmi_service_attr_read_cb,
-    hmi_service_attr_write_cb,
-    hmi_service_cccd_update_cb
+    hmi_ctrl_service_attr_read_cb,
+    hmi_ctrl_service_attr_write_cb,
+    hmi_ctrl_service_cccd_update_cb
 };
 
-T_SERVER_ID hmi_service_add_service(void *p_func, P_FUN_GATT_EXT_SEND_DATA_CB send_cb)
+T_SERVER_ID hmi_ctrl_service_add_service(void *p_func, P_FUN_GATT_EXT_SEND_DATA_CB send_cb)
 {
-    if (false == gatt_svc_add(&hmi_service_id,
-                              (uint8_t *)hmi_service_tbl,
-                              sizeof(hmi_service_tbl),
-                              &hmi_service_cbs, send_cb))
+    if (false == gatt_svc_add(&hmi_ctrl_service_id,
+                              (uint8_t *)hmi_ctrl_service_tbl,
+                              sizeof(hmi_ctrl_service_tbl),
+                              &hmi_ctrl_service_cbs, send_cb))
     {
-        APP_PRINT_ERROR0("hmi_service_add_service: fail");
-        hmi_service_id = 0xFF;
-        return hmi_service_id;
+        APP_PRINT_ERROR0("hmi_ctrl_service_add_service: fail");
+        hmi_ctrl_service_id = 0xFF;
+        return hmi_ctrl_service_id;
     }
 
-    pfn_hmi_service_cb = (P_FUN_EXT_SERVER_GENERAL_CB)p_func;
-    return hmi_service_id;
+    pfn_hmi_ctrl_service_cb = (P_FUN_EXT_SERVER_GENERAL_CB)p_func;
+    return hmi_ctrl_service_id;
 }

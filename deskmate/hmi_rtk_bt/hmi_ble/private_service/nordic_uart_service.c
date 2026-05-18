@@ -3,6 +3,7 @@
 #include <gap.h>
 #include "gap_conn_le.h"
 #include "bt_gatt_svc.h"
+#include "bt_types.h"
 #include "nordic_uart_service.h"
 
 /*============================================================================*
@@ -309,18 +310,26 @@ T_SERVER_ID nus_service_add_service(void *p_func, P_FUN_GATT_EXT_SEND_DATA_CB se
     return nus_service_id;
 }
 
-bool nus_service_send_data(uint16_t conn_handle, uint16_t cid, T_SERVER_ID service_id,
-                           void *p_value, uint16_t length)
+bool nus_service_send_data(uint16_t conn_handle, void *p_value, uint16_t length)
 {
-    APP_PRINT_INFO1("nus_service_send_data: len %d", length);
-
-    if ((p_value == NULL) || (length == 0) || (length > NUS_TX_MAX_LEN))
+    if ((p_value == NULL) || (length == 0))
     {
-        APP_PRINT_ERROR1("nus_service_send_data: invalid len %d", length);
+        APP_PRINT_ERROR0("nus_service_send_data: invalid param");
         return false;
     }
 
-    return gatt_svc_send_data(conn_handle, cid, service_id,
+    uint8_t  conn_id  = 0xFF;
+    uint16_t mtu_size = 23;
+    le_get_conn_id_by_handle(conn_handle, &conn_id);
+    le_get_conn_param(GAP_PARAM_CONN_MTU_SIZE, &mtu_size, conn_id);
+    if (length > mtu_size - 3)
+    {
+        APP_PRINT_ERROR2("nus_service_send_data: len %d > MTU-3 %d", length, mtu_size - 3);
+        return false;
+    }
+
+    APP_PRINT_INFO1("nus_service_send_data: len %d", length);
+    return gatt_svc_send_data(conn_handle, L2C_FIXED_CID_ATT, nus_service_id,
                               NUS_SVC_CHAR_TX_NOTIFY_INDEX,
                               p_value, length, GATT_PDU_TYPE_ANY);
 }

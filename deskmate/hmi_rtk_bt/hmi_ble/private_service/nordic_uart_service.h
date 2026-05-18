@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <profile_server_ext.h>
+#include <bt_gatt_svc.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -62,9 +63,7 @@ typedef struct
 extern T_SERVER_ID nus_service_id;
 
 T_SERVER_ID nus_service_add_service(void *p_func, P_FUN_GATT_EXT_SEND_DATA_CB send_cb);
-
-bool nus_service_send_data(uint16_t conn_handle, uint16_t cid, T_SERVER_ID service_id,
-                           void *p_value, uint16_t length);
+bool        nus_service_send_data(uint16_t conn_handle, void *p_value, uint16_t length);
 
 #ifdef __cplusplus
 }

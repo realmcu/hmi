@@ -10,7 +10,7 @@ extern "C" {
 #include <profile_server_ext.h>
 #include <profile_client.h>
 
-void hmi_ble_hmi_init(void);
+void hmi_ble_ctrl_init(void);
 
 #ifdef __cplusplus
 }

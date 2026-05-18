@@ -3,9 +3,10 @@
 #include "trace.h"
 #include "hmi_ble_gap_msg.h"
 #include "gap_msg.h"
-#include "bt_gatt_svc.h"
 #include "gap_conn_le.h"
 #include "nordic_uart_service.h"
+
+static bool nus_tx_cccd_enabled = false;
 
 static void app_nus_send_data_cb(T_EXT_SEND_DATA_RESULT result)
 {
@@ -33,10 +34,12 @@ static T_APP_RESULT app_nus_callback(T_SERVER_ID service_id, void *p_data)
         case SERVICE_CALLBACK_TYPE_INDIFICATION_NOTIFICATION:
             if (p_nus_cb->msg_data.notify_index == NUS_NOTIFY_TX_ENABLE)
             {
+                nus_tx_cccd_enabled = true;
                 APP_PRINT_INFO0("app_nus_callback: NUS_NOTIFY_TX_ENABLE");
             }
             else
             {
+                nus_tx_cccd_enabled = false;
                 APP_PRINT_INFO0("app_nus_callback: NUS_NOTIFY_TX_DISABLE");
             }
             break;
@@ -72,6 +75,7 @@ static void gap_nus_msg(T_IO_MSG *p_gap_msg)
             switch ((T_GAP_CONN_STATE)gap_msg.msg_data.gap_conn_state_change.new_state)
             {
             case GAP_CONN_STATE_DISCONNECTED:
+                nus_tx_cccd_enabled = false;
                 APP_PRINT_INFO0("gap_nus_msg: disconnected");
                 break;
 
