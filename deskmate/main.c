@@ -8,6 +8,7 @@
 #include <zephyr/kernel.h>
 #include "trace.h"
 #include "hmi_bt_task.h"
+#include "hmi_protocal_task.h"
 #ifndef CONFIG_UART_CONSOLE
 #include "rtl876x_pinmux.h"
 #endif
@@ -28,6 +29,7 @@ int main(void)
            k_thread_priority_get(k_current_get()));
 
     hmi_bt_task_init();
+    hmi_proto_task_init();
 
     return 0;
 }

@@ -11,6 +11,8 @@ extern "C" {
 #include <profile_client.h>
 
 void hmi_ble_ctrl_init(void);
+int  hmi_ble_ctrl_send(const uint8_t *data, uint16_t len);
+int  hmi_ble_ctrl_receive(uint8_t *data, uint16_t max_len);
 
 #ifdef __cplusplus
 }

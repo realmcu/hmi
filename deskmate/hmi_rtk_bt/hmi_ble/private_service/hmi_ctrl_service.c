@@ -318,11 +318,11 @@ T_APP_RESULT hmi_ctrl_service_attr_write_cb(uint16_t conn_handle, uint16_t cid,
     return cause;
 }
 
-bool hmi_ctrl_service_send_data(uint16_t conn_handle, void *p_value, uint16_t length)
+bool hmi_ctrl_service_notify(uint16_t conn_handle, void *p_value, uint16_t length)
 {
     if ((p_value == NULL) || (length == 0))
     {
-        APP_PRINT_ERROR0("hmi_ctrl_service_send_data: invalid param");
+        APP_PRINT_ERROR0("hmi_ctrl_service_notify: invalid param");
         return false;
     }
 
@@ -332,11 +332,11 @@ bool hmi_ctrl_service_send_data(uint16_t conn_handle, void *p_value, uint16_t le
     le_get_conn_param(GAP_PARAM_CONN_MTU_SIZE, &mtu_size, conn_id);
     if (length > mtu_size - 3)
     {
-        APP_PRINT_ERROR2("hmi_ctrl_service_send_data: len %d > MTU-3 %d", length, mtu_size - 3);
+        APP_PRINT_ERROR2("hmi_ctrl_service_notify: len %d > MTU-3 %d", length, mtu_size - 3);
         return false;
     }
 
-    APP_PRINT_INFO1("hmi_ctrl_service_send_data: len %d", length);
+    APP_PRINT_INFO1("hmi_ctrl_service_notify: len %d", length);
     return gatt_svc_send_data(conn_handle, L2C_FIXED_CID_ATT, hmi_ctrl_service_id,
                               HMI_SVC_CHAR_EVENT_NOTIFY_INDEX,
                               p_value, length, GATT_PDU_TYPE_ANY);
