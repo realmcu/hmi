@@ -28,3 +28,6 @@
 
 # Python cache
 **/*.pyc
+
+# mpcli runtime logs
+**/download/mpcli/log/
