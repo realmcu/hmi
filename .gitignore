@@ -61,6 +61,7 @@ venv
 Inew.info
 hmi/
 deskmate/hmi_rtk_bt/
+deskmate/protocol/
 
 # Cargo drops lock files in projects to capture resolved dependencies.
 # We don't want to record these.
