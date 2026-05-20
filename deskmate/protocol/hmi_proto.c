@@ -3,36 +3,36 @@
 #include "hmi_proto.h"
 
 /*============================================================================*
- *                              Frame Layout
+ *                              Frame Layout  (Big-Endian)
  *
  *  Offset  Size  Field
  *  0       1     Magic  (0xAB)
- *  1       1     Version/Flags  [7:4]=ver  [1]=ack_flag  [0]=err_flag
- *  2       2     Payload length (LE)
- *  4       2     CRC16 over [0..3] + payload (LE)
- *  6       2     Sequence ID (LE)
+ *  1       1     Version/Flags  [7:6]=reserve  [5]=err_flag  [4]=ack_flag  [3:0]=ver
+ *  2       2     Payload length (BE, MSB first)
+ *  4       2     CRC16 over [0..3] + payload (BE, MSB first)
+ *  6       2     Sequence ID (BE, MSB first)
  *  8       N     Payload
  *============================================================================*/
 
 #define PROTO_MAGIC             0xAB
-#define PROTO_VERSION           0x10
+#define PROTO_VERSION           0x00    /* version=0 per spec, occupies bit[3:0] */
 #define PROTO_HDR_LEN           8
 #define PROTO_MAX_FRAME_LEN     (PROTO_HDR_LEN + PROTO_MAX_PAYLOAD_LEN)
 
-#define PROTO_FLAG_ACK          (1u << 1)
-#define PROTO_FLAG_ERR          (1u << 0)
+#define PROTO_FLAG_ACK          (1u << 4)   /* bit[4] per spec */
+#define PROTO_FLAG_ERR          (1u << 5)   /* bit[5] per spec */
 
 #define PROTO_MAX_RETRY         3
 #define PROTO_ACK_TIMEOUT_MS    3000
 
 #define HDR_OFF_MAGIC           0
 #define HDR_OFF_VER             1
-#define HDR_OFF_LEN_LO          2
-#define HDR_OFF_LEN_HI          3
-#define HDR_OFF_CRC_LO          4
-#define HDR_OFF_CRC_HI          5
-#define HDR_OFF_SEQ_LO          6
-#define HDR_OFF_SEQ_HI          7
+#define HDR_OFF_LEN_HI          2   /* MSB first (Big-Endian) */
+#define HDR_OFF_LEN_LO          3
+#define HDR_OFF_CRC_HI          4
+#define HDR_OFF_CRC_LO          5
+#define HDR_OFF_SEQ_HI          6
+#define HDR_OFF_SEQ_LO          7
 
 /*============================================================================*
  *                              Static State
@@ -85,7 +85,7 @@ static uint16_t build_frame(uint8_t *buf, uint8_t flags,
                             uint16_t seq, const uint8_t *payload, uint16_t len)
 {
     buf[HDR_OFF_MAGIC]  = PROTO_MAGIC;
-    buf[HDR_OFF_VER]    = PROTO_VERSION | (flags & 0x03);
+    buf[HDR_OFF_VER]    = (PROTO_VERSION & 0x0F) | (flags & 0x30);
     buf[HDR_OFF_LEN_LO] = (uint8_t)(len & 0xFF);
     buf[HDR_OFF_LEN_HI] = (uint8_t)(len >> 8);
     buf[HDR_OFF_SEQ_LO] = (uint8_t)(seq & 0xFF);
@@ -183,7 +183,7 @@ void proto_handle(const uint8_t *data, uint16_t len)
                                    | ((uint16_t)s_rx_buf[HDR_OFF_CRC_HI] << 8);
             uint16_t seq         = (uint16_t)s_rx_buf[HDR_OFF_SEQ_LO]
                                    | ((uint16_t)s_rx_buf[HDR_OFF_SEQ_HI] << 8);
-            uint8_t  flags       = s_rx_buf[HDR_OFF_VER] & 0x03;
+            uint8_t  flags       = s_rx_buf[HDR_OFF_VER] & 0x30;
 
             bool crc_ok = (frame_crc(s_rx_buf, payload_len) == rx_crc);
 

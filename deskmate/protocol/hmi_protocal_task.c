@@ -2,6 +2,7 @@
 #include <os_task.h>
 #include "hmi_ble_ctrl.h"
 #include "hmi_proto.h"
+#include "hmi_l2.h"
 #include "trace.h"
 #include <os_sched.h>
 
@@ -30,6 +31,7 @@ void hmi_proto_recv_cb(const uint8_t *data, uint16_t len)
 {
     APP_PRINT_INFO2("hmi_proto_recv_cb: len %d, payload %b",
                     len, TRACE_BINARY(len, data));
+    hmi_l2_handle(data, len);
 }
 
 void hmi_proto_task_init(void)
