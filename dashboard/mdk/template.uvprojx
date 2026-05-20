@@ -10,7 +10,7 @@
       <TargetName>gui</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
-      <pArmCC>6220000::V6.22::.\ARMCompiler6.22</pArmCC>
+      <pArmCC>6220000::V6.22::.\ArmCompilerforEmbedded6.22</pArmCC>
       <pCCUsed>5060750::V5.06 update 6 (build 750)::.\ARMCC_506build750</pCCUsed>
       <uAC6>1</uAC6>
       <TargetOption>
@@ -338,7 +338,7 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>  --include pre_define.h  --include stdbool.h --include app_flags.h</MiscControls>
-              <Define>CONFIG_SOC_SERIES_RTL87X2G, DLPS_EN = 0 TEMP_BUILD_OS_IN_NS_ROM</Define>
+              <Define>DLPS_EN = 0 TEMP_BUILD_OS_IN_NS_ROM</Define>
               <Undefine></Undefine>
               <IncludePath>..\..\..\..\inc\os\freertos;..\..\..\..\inc\os\osif;..\..\..\..\src\os\freertos\portable\GCC\ARM_CM33\non_secure;..\..\..\..\inc\mcu\rtl8762x;..\..\..\..\inc\platform;..\..\..\..\inc\platform\cmsis\Core\Include;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\peripheral;..\..\..\..\src\app\template;..\;..\..\..\..\..\os\osif\inc</IncludePath>
             </VariousControls>

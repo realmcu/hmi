@@ -7,8 +7,8 @@
 #define VERSION_MAJOR            3
 #define VERSION_MINOR            14
 #define VERSION_REVISION         8
-#define VERSION_BUILDNUM         46
-#define VERSION_GCID             0x5a40d5eb
+#define VERSION_BUILDNUM         48
+#define VERSION_GCID             0x3b463876
 #define CUSTOMER_NAME            sdk-v1
 #define CN_1                     's'
 #define CN_2                     'd'
@@ -18,14 +18,14 @@
 #define CN_6                     '1'
 #define CN_7                     '#'
 #define CN_8                     '#'
-#define BUILDING_TIME            Wed May 13 14:30:18 2026
+#define BUILDING_TIME            Wed May 20 17:53:40 2026
 #define NAME2STR(a)              #a
 #define CUSTOMER_NAME_S          #NAME2STR(CUSTOMER_NAME)
 #define NUM4STR(a,b,c,d)         #a "." #b "." #c "." #d
 #define VERSIONBUILDSTR(a,b,c,d) NUM4STR(a,b,c,d)
 #define VERSION_BUILD_STR        VERSIONBUILDSTR(VERSION_MAJOR,VERSION_MINOR,VERSION_REVISION,VERSION_BUILD)
-#define COMMIT                   5a40d5ebade0
-#define BUILDING_TIME_STR        Wed_2026_05_13_14_30_18
+#define COMMIT                   3b463876c7ba
+#define BUILDING_TIME_STR        Wed_2026_05_20_17_53_40
 #define BUILDER                  luke_sun
 #define BUILDER_STR              luke_sun
 #define TO_STR(R) NAME2STR(R)

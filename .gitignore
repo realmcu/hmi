@@ -31,3 +31,7 @@
 
 # mpcli runtime logs
 **/download/mpcli/log/
+
+# JLink runtime files
+**/mdk/JLinkLog.txt
+**/mdk/JLinkLog*.txt

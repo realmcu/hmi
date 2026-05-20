@@ -44,6 +44,13 @@ SECTIONS
       . = ALIGN(4);
       *(.rodata*)
       . = ALIGN(4);
+
+      /* HoneyGUI initialization function table */
+      . = ALIGN(4);
+      __honeygui_init_start = .;
+      KEEP(*(SORT(.honeygui$init*)))
+      __honeygui_init_end = .;
+
     __flash_start_load_addr__ = LOADADDR(FLASH_TEXT);
     __flash_start_exe_addr__ = ADDR(FLASH_TEXT);
     }AT > APP_FLASH

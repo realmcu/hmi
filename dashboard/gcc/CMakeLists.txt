@@ -3,7 +3,39 @@
 #
 # SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
 #
-message([STATUS] "[APP]hmi_dashboard cmake start build")
+message(STATUS "[APP]hmi_dashboard cmake start build")
+
+#==============================================================================
+# Global Include Paths (for submodules that need app config headers)
+#==============================================================================
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${REALTEK_SDK_BASE_PATH}/inc/os
+)
+
+# Preinclude file (equivalent to MDK pre_define.h)
+# This defines RAM_TYPE_DATA_ON and other macros needed by display drivers
+set(PRE_DEFINE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../mdk/pre_define.h)
+
+# Add preinclude globally so display library also gets it
+add_compile_options(-include ${PRE_DEFINE_FILE})
+
+
+#==============================================================================
+# Display Driver Library Build
+#==============================================================================
+if(CONFIG_REALTEK_DISPLAY)
+    # Build display driver library from source
+    # This creates the realtek_display_driver_library target
+    add_subdirectory(${REALTEK_SDK_BASE_PATH}/src/mcu/display ${CMAKE_CURRENT_BINARY_DIR}/display)
+
+    # Propagate chip macros to the display library so platform-specific
+    # code (e.g. LCDC_Clock_Cfg #elif branches) compiles correctly.
+    target_compile_definitions(realtek_display_driver_library PRIVATE
+        TARGET_RTL8773E=1
+        CONFIG_SOC_SERIES_RTL8773E=1
+    )
+endif()
 
 #==============================================================================
 # GUI Library Build (source or precompiled)
@@ -18,7 +50,7 @@ set(CMAKE_EXECUTABLE_SUFFIX ".elf")
 enable_language(ASM)
 enable_language(CXX)
 
-add_executable(honeygui " ")
+add_executable(honeygui)
 set(build_target_list ${build_target_list} "honeygui" CACHE INTERNAL "build target list")
 
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/bin/${bin_output_path})
@@ -30,7 +62,7 @@ endif()
 
 set_target_properties(honeygui PROPERTIES
                       ARCHIVE_OUTPUT_DIRECTORY ${lib_output_path}
-                      LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+                      LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin/${bin_output_path}
                       RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/bin/${bin_output_path}
                       OUTPUT_NAME honeygui_${build_bank})
 
@@ -42,7 +74,7 @@ if(CONFIG_REALTEK_HONEYGUI)
     message(STATUS "[HoneyGUI] Building from source code")
 
     target_link_libraries(honeygui
-        PUBLIC guiLib
+        PUBLIC -Wl,--whole-archive guiLib -Wl,--no-whole-archive
         PUBLIC ${lib_gap}
         PUBLIC ${lib_rom}
         PUBLIC ${lib_upperstack}
@@ -53,6 +85,11 @@ if(CONFIG_REALTEK_HONEYGUI)
         PUBLIC upperstackLib
         )
 
+    # Link display driver library if enabled
+    if(CONFIG_REALTEK_DISPLAY)
+        target_link_libraries(honeygui PUBLIC realtek_display_driver_library)
+    endif()
+
     # HoneyGUI compile definitions
     target_compile_definitions(honeygui PRIVATE
         CONFIG_REALTEK_HONEYGUI=1
@@ -60,104 +97,9 @@ if(CONFIG_REALTEK_HONEYGUI)
         ENABLE_HONEYGUI
     )
 
-    # Demo selection definitions (from Kconfig)
-    if(CONFIG_REALTEK_BUILD_EXAMPLE_IMAGE_WIDGET)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_EXAMPLE_IMAGE_WIDGET=1)
-    elseif(CONFIG_REALTEK_BUILD_EXAMPLE_SVG_WIDGET)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_EXAMPLE_SVG_WIDGET=1)
-    elseif(CONFIG_REALTEK_BUILD_EXAMPLE_GIF_WIDGET)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_EXAMPLE_GIF_WIDGET=1)
-    elseif(CONFIG_REALTEK_BUILD_EXAMPLE_TEXT_WIDGET)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_EXAMPLE_TEXT_WIDGET=1)
-    elseif(CONFIG_REALTEK_BUILD_EXAMPLE_GRAY_WIDGET)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_EXAMPLE_GRAY_WIDGET=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_DOG_3D)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_DOG_3D=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_EARTH_3D)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_EARTH_3D=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_DONUT_3D)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_DONUT_3D=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_PIKACHU_GLTF_3D)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_PIKACHU_GLTF_3D=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_FLAG_GLTF_3D)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_FLAG_GLTF_3D=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_ROBOT_GLTF_3D)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_ROBOT_GLTF_3D=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_VIEW)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_VIEW=1)
-    elseif(CONFIG_REALTEK_BUILD_EXAMPLE_LIST_WIDGET)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_EXAMPLE_LIST_WIDGET=1)
-    elseif(CONFIG_REALTEK_BUILD_EXAMPLE_MENU_CELLULAR_WIDGET)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_EXAMPLE_MENU_CELLULAR_WIDGET=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_CANVAS)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_CANVAS=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_LITE_ARC)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_LITE_ARC=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_LITE_RECT)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_LITE_RECT=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_LITE_CIRCLE)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_LITE_CIRCLE=1)
-    elseif(CONFIG_REALTEK_BUILD_EXAMPLE_QBCODE_WIDGET)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_EXAMPLE_QBCODE_WIDGET=1)
-    elseif(CONFIG_REALTEK_BUILD_EXAMPLE_GLASS_EFFECT_WIDGET)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_EXAMPLE_GLASS_EFFECT_WIDGET=1)
-    elseif(CONFIG_REALTEK_BUILD_EXAMPLE_VIDEO_WIDGET)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_EXAMPLE_VIDEO_WIDGET=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_PAINTENGINE)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_PAINTENGINE=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_NANOVG)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_NANOVG=1)
-    elseif(CONFIG_REALTEK_BUILD_REAL_BOX2D)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_REAL_BOX2D=1)
-    elseif(CONFIG_REALTEK_BUILD_GUI_410_502_DEMO)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_GUI_410_502_DEMO=1)
-    elseif(CONFIG_REALTEK_BUILD_GUI_466_466_DEMO)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_GUI_466_466_DEMO=1)
-    elseif(CONFIG_REALTEK_BUILD_GUI_240_240_DEMO)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_GUI_240_240_DEMO=1)
-    elseif(CONFIG_REALTEK_BUILD_GUI_800_480_DEMO)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_GUI_800_480_DEMO=1)
-    elseif(CONFIG_REALTEK_BUILD_GUI_280_456_DEMO)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_GUI_280_456_DEMO=1)
-    elseif(CONFIG_REALTEK_BUILD_GUI_320_384_DEMO)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_GUI_320_384_DEMO=1)
-    elseif(CONFIG_REALTEK_BUILD_GUI_320_385_DEMO)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_GUI_320_385_DEMO=1)
-    elseif(CONFIG_REALTEK_BUILD_HML_DESIGNER)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_HML_DESIGNER=1)
-    elseif(CONFIG_REALTEK_BUILD_PARTICLE_DEMO)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_PARTICLE_DEMO=1)
-    elseif(CONFIG_REALTEK_BUILD_TEST)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_TEST=1)
-    elseif(CONFIG_REALTEK_BUILD_HONEYGUI_AUTO_TEST)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_HONEYGUI_AUTO_TEST=1)
-    endif()
-
-    # Feature configurations
-    if(CONFIG_REALTEK_BUILD_LITE3D)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_LITE3D=1)
-    endif()
-    if(CONFIG_REALTEK_BUILD_GUI_BOX2D)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_GUI_BOX2D=1)
-    endif()
-    if(CONFIG_REALTEK_BUILD_PARTICLE_SYSTEM)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_PARTICLE_SYSTEM=1)
-    endif()
-    if(CONFIG_REALTEK_BUILD_XML_LOADER)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_XML_LOADER=1)
-    endif()
-    if(CONFIG_REALTEK_BUILD_LETTER_SHELL)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_LETTER_SHELL=1)
-    endif()
-    if(CONFIG_REALTEK_BUILD_MONKEY_TEST)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_MONKEY_TEST=1)
-    endif()
-    if(CONFIG_REALTEK_MINIMP3)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_MINIMP3=1)
-    endif()
-    if(CONFIG_REALTEK_BUILD_AUDIO)
-        target_compile_definitions(honeygui PRIVATE CONFIG_REALTEK_BUILD_AUDIO=1)
-    endif()
+    # Note: Demo selection and feature definitions are now handled internally
+    # by honeygui submodule (sdk/src/sample/gui/CMakeLists.txt).
+    # guiLib target will have the appropriate definitions applied automatically.
 
 else()
     # Use precompiled library
@@ -182,6 +124,9 @@ endif()
 #==============================================================================
 # Application layer sources
 file(GLOB APP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../src/application/*.c)
+if(CONFIG_REALTEK_HONEYGUI)
+    list(FILTER APP_SOURCES EXCLUDE REGEX "example_gui_img\\.c$")
+endif()
 target_sources(honeygui PRIVATE ${APP_SOURCES})
 target_include_directories(honeygui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/application)
 
@@ -190,49 +135,13 @@ file(GLOB PORT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../src/ports/realgui_port/*.c
 target_sources(honeygui PRIVATE ${PORT_SOURCES})
 target_include_directories(honeygui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/ports/realgui_port)
 
-# LCDC driver include
-target_include_directories(honeygui PRIVATE ${REALTEK_SDK_BASE_PATH}/src/mcu/display/hardware/lcdc/inc)
+# Note: Display hardware drivers (LCDC, IDU, PPE) and LCD device drivers are now
+# provided by realtek_display_driver_library target via CONFIG_REALTEK_DISPLAY
 
-# LCD device includes
-target_include_directories(honeygui PRIVATE ${REALTEK_SDK_BASE_PATH}/src/app/Wearable/device/lcd/8773E)
-
-# LCDC chip-specific device includes
-target_include_directories(honeygui PRIVATE ${REALTEK_SDK_BASE_PATH}/src/mcu/display/hardware/lcdc/src/device/rtl8773e)
-
-# Display hardware source files (LCDC driver + IDU + PPE acceleration)
-set(DISPLAY_HW_DIR ${REALTEK_SDK_BASE_PATH}/src/mcu/display/hardware)
-target_sources(honeygui PRIVATE ${DISPLAY_HW_DIR}/lcdc/src/device/rtl_common/rtl_lcdc.c)
-target_sources(honeygui PRIVATE ${DISPLAY_HW_DIR}/lcdc/src/device/rtl_common/rtl_lcdc_edpi.c)
-target_sources(honeygui PRIVATE ${DISPLAY_HW_DIR}/lcdc/src/device/rtl_common/rtl_lcdc_dbic.c)
-target_sources(honeygui PRIVATE ${DISPLAY_HW_DIR}/lcdc/src/device/rtl_common/rtl_lcdc_dbib.c)
-target_sources(honeygui PRIVATE ${DISPLAY_HW_DIR}/ppe/src/device/rtl8773e/rtl_ppe.c)
-target_include_directories(honeygui PRIVATE ${DISPLAY_HW_DIR}/ppe/src/device/rtl8773e)
-target_include_directories(honeygui PRIVATE ${DISPLAY_HW_DIR}/ppe/inc/rtl8773e)
-target_include_directories(honeygui PRIVATE ${DISPLAY_HW_DIR}/ppe/inc)
-
-# IDU hardware driver
-target_sources(honeygui PRIVATE ${DISPLAY_HW_DIR}/idu/src/device/rtl_common/rtl_idu.c)
-target_sources(honeygui PRIVATE ${DISPLAY_HW_DIR}/idu/src/device/rtl8773e/rtl_idu_int.c)
-target_include_directories(honeygui PRIVATE ${DISPLAY_HW_DIR}/idu/src/device/rtl8773e)
-target_include_directories(honeygui PRIVATE ${DISPLAY_HW_DIR}/idu/inc)
-
-# PPE acceleration binding (HoneyGUI hardware engine)
-set(HONEYGUI_BINDING_DIR ${REALTEK_SDK_BASE_PATH}/src/mcu/display/bindings/honeygui/hardware_engine)
-target_sources(honeygui PRIVATE ${HONEYGUI_BINDING_DIR}/PPE/rtl8773e/acc_ppe.c)
-
-# Device driver sources (from Wearable)
+# Device driver sources (from Wearable) - these are application-specific drivers
 set(DEVICE_SRC_DIR ${REALTEK_SDK_BASE_PATH}/src/app/Wearable)
-if(CONFIG_REALTEK_KEY_BUTTON_8773E)
-    target_sources(honeygui PRIVATE ${DEVICE_SRC_DIR}/device/key_button/8773E/key_button_8773e.c)
-    target_include_directories(honeygui PRIVATE ${DEVICE_SRC_DIR}/device/key_button/8773E)
-endif()
 
-if(CONFIG_REALTEK_LCD_ST7265_800_480_RGB)
-    target_sources(honeygui PRIVATE ${DEVICE_SRC_DIR}/device/lcd/8773E/lcd_st7265_800480_rgb.c)
-    target_include_directories(honeygui PRIVATE ${DEVICE_SRC_DIR}/device/lcd/8773E)
-endif()
-
-# LCD driver
+# LCD driver (Wearable-specific LCD abstraction layer)
 target_sources(honeygui PRIVATE ${DEVICE_SRC_DIR}/driver/io/drv_lcd.c)
 target_include_directories(honeygui PRIVATE ${DEVICE_SRC_DIR}/driver/io)
 
@@ -314,7 +223,8 @@ target_compile_options(honeygui PRIVATE
                     -Wno-unused-variable
                     -fdata-sections
                     -ffunction-sections
-                    -std=gnu99)
+                    -std=gnu99
+                    -include ${PRE_DEFINE_FILE})
 
 #==============================================================================
 # Link Options

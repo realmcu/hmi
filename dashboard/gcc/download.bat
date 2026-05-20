@@ -13,7 +13,7 @@ if "%COM%"=="" set COM=COM3
 
 rem --- find app MP bin ---
 set APP_BIN=
-for /f "delims=" %%i in ('dir /b "%BIN_DIR%\honeygui_src_MP-*.bin" 2^>nul') do (
+for /f "delims=" %%i in ('dir /b /od "%BIN_DIR%\honeygui_src_MP-*.bin" 2^>nul') do (
     set APP_BIN=!BIN_DIR!\%%i
 )
 if not defined APP_BIN (
