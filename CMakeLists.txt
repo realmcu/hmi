@@ -3,12 +3,12 @@
 cmake_minimum_required(VERSION 3.20.0)
 
 #===========version generation===========
-include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/version_generate.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/version_generate.cmake)
 generate_version()
 #===========version generation===========
 #===========post build===========
 # post build should be called before find_package
-include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/post_build.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/post_build.cmake)
 rtk_post_build()
 #===========post build===========
 
