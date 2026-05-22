@@ -4,12 +4,18 @@
 
 #include <zephyr/dt-bindings/pinctrl/rtl87x3g-pinctrl.h>
 #include <zephyr/dt-bindings/gpio/realtek-rtl87x3g-gpio.h>
+#include <rtl87x3g-display-lcd.dtsi>
 
 / {
 	chosen {
 		zephyr,console = &uart2;
 		zephyr,shell-uart = &uart2;
+		zephyr,display = &display_lcd;
 	};
+};
+
+&display_lcd {
+	status = "okay";
 };
 
 &uart2 {
