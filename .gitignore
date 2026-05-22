@@ -11,10 +11,6 @@
 # GCC build output
 **/dashboard/gcc/bin/
 
-# Keil project files (keep template.*)
-**/mdk/project.uvoptx
-**/mdk/project.uvprojx
-
 # Keil backup files
 **/*.bak
 **/*.uvguix.*
