@@ -1,4 +1,4 @@
-# hmi_app build outputs
+# hmi_dashboard build outputs
 
 # Keil MDK build directories
 **/mdk/Objects/
@@ -9,7 +9,7 @@
 **/mdk/bin/
 
 # GCC build output
-**/dashboard/gcc/bin/
+gcc/bin/
 
 # Keil backup files
 **/*.bak

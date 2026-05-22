@@ -23,7 +23,7 @@ HMI Dashboard supports GCC compilation with two build modes:
 
 ```powershell
 # In SDK root directory
-cmake -G Ninja -D kconfig_path=board/evb/hmi_app/dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src -B build
+cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src -B build
 cmake --build build
 ```
 
@@ -31,7 +31,7 @@ cmake --build build
 
 ```powershell
 # In SDK root directory
-cmake -G Ninja -D kconfig_path=board/evb/hmi_app/dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_lib -B build
+cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_lib -B build
 cmake --build build
 ```
 
@@ -55,7 +55,7 @@ CONFIG_REALTEK_BUILD_EXAMPLE_IMAGE_WIDGET=y
 After successful build, output files are located in:
 
 ```
-board/evb/hmi_app/dashboard/bin/<config_name>/
+board/evb/hmi_dashboard/bin/<config_name>/
 ├── honeygui_bank0.elf      # ELF file
 ├── honeygui_bank0.hex      # HEX file
 ├── honeygui_bank0.bin      # Binary file
@@ -125,7 +125,7 @@ If building in library mode fails:
 
 ```bash
 # Ensure libgui.a exists
-ls board/evb/hmi_app/dashboard/src/gui_lib/gcc/libgui.a
+ls board/evb/hmi_dashboard/src/gui_lib/gcc/libgui.a
 ```
 
 ### Build errors

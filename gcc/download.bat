@@ -5,7 +5,7 @@ rem  Dashboard gcc download wrapper
 rem  Usage: download.bat [COM] [USERDATA_FILE USERDATA_ADDR]
 
 set SCRIPT_DIR=%~dp0
-set DOWNLOAD_BAT=%SCRIPT_DIR%..\..\download\download.bat
+set DOWNLOAD_BAT=%SCRIPT_DIR%..\download\download.bat
 set BIN_DIR=%SCRIPT_DIR%bin\RTL8773E.hmi_dashboard_src
 
 set COM=%1

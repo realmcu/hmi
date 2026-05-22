@@ -17,11 +17,11 @@ HMI Dashboard 是 HoneyGUI 在 RTL8773E 平台上的演示应用，支持 GCC �
 
 ```powershell
 # === 源码模式 ===
-cmake -G Ninja -D kconfig_path=board/evb/hmi_app/dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src -B build
+cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src -B build
 cmake --build build
 
 # === 库模式 ===
-cmake -G Ninja -D kconfig_path=board/evb/hmi_app/dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_lib -B build
+cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_lib -B build
 cmake --build build
 ```
 
@@ -54,7 +54,7 @@ CONFIG_REALTEK_BUILD_EXAMPLE_IMAGE_WIDGET=y
 
 ## 输出文件
 
-编译后在 `board/evb/hmi_app/dashboard/bin/<config_name>/`：
+编译后在 `board/evb/hmi_dashboard/bin/<config_name>/`：
 
 ```
 honeygui_bank0.elf       ELF 文件
