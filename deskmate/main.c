@@ -9,9 +9,9 @@
 #include "trace.h"
 #include "hmi_bt_task.h"
 #include "hmi_protocal_task.h"
-#ifndef CONFIG_UART_CONSOLE
+#include "gui_server.h"
 #include "rtl876x_pinmux.h"
-#endif
+#include "app_lower_init.h"
 
 int main(void)
 {
@@ -22,6 +22,7 @@ int main(void)
     Pad_Config(P3_1, PAD_PINMUX_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_DISABLE, PAD_OUT_LOW);
     DBG_DIRECT("!!!!! remap log pin!!!");
 #endif
+    app_system_lower_init();
     printf("Hello World! %s\n", CONFIG_BOARD_TARGET);
     printf("[main] thread id: %p, name: %s, priority: %d\n",
            k_current_get(),
@@ -30,6 +31,8 @@ int main(void)
 
     hmi_bt_task_init();
     hmi_proto_task_init();
+
+    gui_server_init();
 
     return 0;
 }
