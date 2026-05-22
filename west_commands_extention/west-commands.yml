@@ -1,0 +1,8 @@
+# West extension commands configuration
+
+west-commands:
+  - file: commands.py
+    commands:
+      - name: info
+        class: ProjectInfo
+        help: Show project version and build information
