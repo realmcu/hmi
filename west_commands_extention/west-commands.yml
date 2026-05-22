@@ -1,8 +1,20 @@
 # West extension commands configuration
 
 west-commands:
-  - file: commands.py
+  - file: west_commands_extention/commands.py
     commands:
       - name: info
         class: ProjectInfo
-        help: Show project version and build information
+        help: Show project workspace and build status
+      - name: build
+        class: BuildCommand
+        help: Configure and build the firmware (CMake + Ninja)
+      - name: clean
+        class: CleanCommand
+        help: Remove build artifacts
+      - name: flash
+        class: FlashCommand
+        help: Download firmware to device via serial port (mpcli)
+      - name: size
+        class: SizeCommand
+        help: Show firmware memory usage via arm-none-eabi-size
