@@ -7,7 +7,7 @@
 
   <Targets>
     <Target>
-      <TargetName>gui</TargetName>
+      <TargetName>dashboard</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
       <pArmCC>6220000::V6.22::.\ArmCompilerforEmbedded6.22</pArmCC>
@@ -338,9 +338,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>  --include pre_define.h  --include stdbool.h --include app_flags.h</MiscControls>
-              <Define>DRV_LCD_HEIGHT=480, RTK_HAL_DRIVER, DRV_LCD_WIDTH=480, RTK_HAL_LCD, DRV_PIXEL_BITS=16, TARGET_RTL8773E, CONFIG_SOC_SERIES_RTL8773E=1, ENABLE_HONEYGUI, SUPPORT_ACCESS_SHM = 1</Define>
+              <Define>TARGET_RTL8773E, DRV_LCD_WIDTH=480, RTK_HAL_LCD, RTK_HAL_DRIVER, CONFIG_SOC_SERIES_RTL8773E=1, DRV_PIXEL_BITS=16, ENABLE_HONEYGUI, DRV_LCD_HEIGHT=480, SUPPORT_ACCESS_SHM = 1</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\src\sample\gui\example\application\hml_designer;..\..\..\..\src\sample\gui\example\widget\glass_effect;..\..\..\..\src\sample\gui\example\widget\glass_effect\root_image;..\..\..\..\src\sample\gui\example\widget\image;..\..\..\..\src\sample\gui\example\widget\particle;..\..\..\..\src\sample\gui\example\widget\particle\root_image;..\..\..\..\src\sample\gui\realgui\widget\gui_particle\effects;..\..\..\..\src\sample\gui\example\widget\video;..\..\..\..\src\sample\gui\example\widget\video\root_image;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\src\mcu\display\hardware;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\src\sample\gui\realgui;..\..\..\..\src\sample\gui\realgui\3rd;..\..\..\..\src\sample\gui\realgui\3rd\cgltf;..\..\..\..\src\sample\gui\realgui\3rd\gifdec;..\..\..\..\src\sample\gui\realgui\3rd\Lite3D;..\..\..\..\src\sample\gui\realgui\3rd\Lite3D\widget;..\..\..\..\src\sample\gui\realgui\3rd\nanosvg;..\..\..\..\src\sample\gui\realgui\3rd\nanosvg\src;..\..\..\..\src\sample\gui\realgui\3rd\nanovg;..\..\..\..\src\sample\gui\realgui\3rd\nanovg\agge;..\..\..\..\src\sample\gui\realgui\3rd\nanovg\base;..\..\..\..\src\sample\gui\realgui\3rd\stb;..\..\..\..\src\sample\gui\realgui\3rd\tinyobj;..\..\..\..\src\sample\gui\realgui\3rd\tjpgd;..\..\..\..\src\sample\gui\realgui\core;..\..\..\..\src\sample\gui\realgui\dc;..\..\..\..\src\sample\gui\realgui\engine;..\..\..\..\src\sample\gui\realgui\engine\accel_hal;..\..\..\..\src\sample\gui\realgui\engine\blit;..\..\..\..\src\sample\gui\realgui\engine\blit\color;..\..\..\..\src\sample\gui\realgui\engine\codec;..\..\..\..\src\sample\gui\realgui\engine\codec\idu;..\..\..\..\src\sample\gui\realgui\engine\codec\jpeg;..\..\..\..\src\sample\gui\realgui\engine\codec\rle;..\..\..\..\src\sample\gui\realgui\engine\draw;..\..\..\..\src\sample\gui\realgui\engine\font;..\..\..\..\src\sample\gui\realgui\engine\post_process;..\..\..\..\src\sample\gui\realgui\input;..\..\..\..\src\sample\gui\realgui\misc;..\..\..\..\src\sample\gui\realgui\misc\tlsf;..\..\..\..\src\sample\gui\realgui\misc\vfs;..\..\..\..\src\sample\gui\realgui\misc\vfs\romfs;..\..\..\..\src\sample\gui\realgui\server;..\..\..\..\src\sample\gui\realgui\widget;..\..\..\..\src\sample\gui\realgui\widget\gui_canvas;..\..\..\..\src\sample\gui\realgui\widget\gui_card_list;..\..\..\..\src\sample\gui\realgui\widget\gui_geometry;..\..\..\..\src\sample\gui\realgui\widget\gui_gif;..\..\..\..\src\sample\gui\realgui\widget\gui_glass;..\..\..\..\src\sample\gui\realgui\widget\gui_gray;..\..\..\..\src\sample\gui\realgui\widget\gui_img;..\..\..\..\src\sample\gui\realgui\widget\gui_list;..\..\..\..\src\sample\gui\realgui\widget\gui_lite3d;..\..\..\..\src\sample\gui\realgui\widget\gui_lottie;..\..\..\..\src\sample\gui\realgui\widget\gui_menu_cellular;..\..\..\..\src\sample\gui\realgui\widget\gui_obj;..\..\..\..\src\sample\gui\realgui\widget\gui_qbcode;..\..\..\..\src\sample\gui\realgui\widget\gui_soccer;..\..\..\..\src\sample\gui\realgui\widget\gui_svg;..\..\..\..\src\sample\gui\realgui\widget\gui_text;..\..\..\..\src\sample\gui\realgui\widget\gui_video;..\..\..\..\src\sample\gui\realgui\widget\gui_view;..\..\..\..\src\sample\gui\realgui\widget\gui_win;..\src\ports\lvgl_port;..\src\ports\realgui_port;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs</IncludePath>
+              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\src\sample\gui\example\application\hml_designer;..\..\..\..\src\sample\gui\example\widget\glass_effect;..\..\..\..\src\sample\gui\example\widget\glass_effect\root_image;..\..\..\..\src\sample\gui\example\widget\image;..\..\..\..\src\sample\gui\example\widget\particle;..\..\..\..\src\sample\gui\example\widget\particle\root_image;..\..\..\..\src\sample\gui\realgui\widget\gui_particle\effects;..\..\..\..\src\sample\gui\example\widget\video;..\..\..\..\src\sample\gui\example\widget\video\root_image;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\src\sample\gui\realgui;..\..\..\..\src\sample\gui\realgui\3rd;..\..\..\..\src\sample\gui\realgui\3rd\cgltf;..\..\..\..\src\sample\gui\realgui\3rd\gifdec;..\..\..\..\src\sample\gui\realgui\3rd\Lite3D;..\..\..\..\src\sample\gui\realgui\3rd\Lite3D\widget;..\..\..\..\src\sample\gui\realgui\3rd\nanosvg;..\..\..\..\src\sample\gui\realgui\3rd\nanosvg\src;..\..\..\..\src\sample\gui\realgui\3rd\nanovg;..\..\..\..\src\sample\gui\realgui\3rd\nanovg\agge;..\..\..\..\src\sample\gui\realgui\3rd\nanovg\base;..\..\..\..\src\sample\gui\realgui\3rd\stb;..\..\..\..\src\sample\gui\realgui\3rd\tinyobj;..\..\..\..\src\sample\gui\realgui\3rd\tjpgd;..\..\..\..\src\sample\gui\realgui\core;..\..\..\..\src\sample\gui\realgui\dc;..\..\..\..\src\sample\gui\realgui\engine;..\..\..\..\src\sample\gui\realgui\engine\accel_hal;..\..\..\..\src\sample\gui\realgui\engine\blit;..\..\..\..\src\sample\gui\realgui\engine\blit\color;..\..\..\..\src\sample\gui\realgui\engine\codec;..\..\..\..\src\sample\gui\realgui\engine\codec\idu;..\..\..\..\src\sample\gui\realgui\engine\codec\jpeg;..\..\..\..\src\sample\gui\realgui\engine\codec\rle;..\..\..\..\src\sample\gui\realgui\engine\draw;..\..\..\..\src\sample\gui\realgui\engine\font;..\..\..\..\src\sample\gui\realgui\engine\post_process;..\..\..\..\src\sample\gui\realgui\input;..\..\..\..\src\sample\gui\realgui\misc;..\..\..\..\src\sample\gui\realgui\misc\tlsf;..\..\..\..\src\sample\gui\realgui\misc\vfs;..\..\..\..\src\sample\gui\realgui\misc\vfs\romfs;..\..\..\..\src\sample\gui\realgui\server;..\..\..\..\src\sample\gui\realgui\widget;..\..\..\..\src\sample\gui\realgui\widget\gui_canvas;..\..\..\..\src\sample\gui\realgui\widget\gui_card_list;..\..\..\..\src\sample\gui\realgui\widget\gui_geometry;..\..\..\..\src\sample\gui\realgui\widget\gui_gif;..\..\..\..\src\sample\gui\realgui\widget\gui_glass;..\..\..\..\src\sample\gui\realgui\widget\gui_gray;..\..\..\..\src\sample\gui\realgui\widget\gui_img;..\..\..\..\src\sample\gui\realgui\widget\gui_list;..\..\..\..\src\sample\gui\realgui\widget\gui_lite3d;..\..\..\..\src\sample\gui\realgui\widget\gui_lottie;..\..\..\..\src\sample\gui\realgui\widget\gui_menu_cellular;..\..\..\..\src\sample\gui\realgui\widget\gui_obj;..\..\..\..\src\sample\gui\realgui\widget\gui_qbcode;..\..\..\..\src\sample\gui\realgui\widget\gui_soccer;..\..\..\..\src\sample\gui\realgui\widget\gui_svg;..\..\..\..\src\sample\gui\realgui\widget\gui_text;..\..\..\..\src\sample\gui\realgui\widget\gui_video;..\..\..\..\src\sample\gui\realgui\widget\gui_view;..\..\..\..\src\sample\gui\realgui\widget\gui_win;..\src\ports\lvgl_port;..\src\ports\realgui_port;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\..\..\..\src\mcu\display;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\mipi\inc;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\segcom\inc;..\..\..\..\src\mcu\display\hardware\jpu\inc;..\..\..\..\src\mcu\display\hardware\jpu\src\device\rtl8773e</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -374,7 +374,7 @@
             <ScatterFile>.\ac6.sct</ScatterFile>
             <IncludeLibs></IncludeLibs>
             <IncludeLibsPath></IncludeLibsPath>
-            <Misc>--diag_suppress=L6314 --datacompressor off</Misc>
+            <Misc>--diag_suppress=L6314 --datacompressor off --diag_suppress=L6314 --datacompressor off</Misc>
             <LinkerInputFile></LinkerInputFile>
             <DisabledWarnings>6314,6329,6439</DisabledWarnings>
           </LDads>
@@ -437,7 +437,7 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>RTK_BSP</GroupName>
+          <GroupName>bsp</GroupName>
           <Files>
             <File>
               <FileName>startup_rtl.c</FileName>
@@ -449,6 +449,11 @@
               <FileType>1</FileType>
               <FilePath>..\src\bsp\system_rtl87x3.c</FilePath>
             </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>lib</GroupName>
+          <Files>
             <File>
               <FileName>ROM.lib</FileName>
               <FileType>4</FileType>
@@ -463,46 +468,6 @@
               <FileName>hal_utils.lib</FileName>
               <FileType>4</FileType>
               <FilePath>..\..\..\..\bin\rtl87x3ep\hal_utils.lib</FilePath>
-            </File>
-            <File>
-              <FileName>rtl_ppe.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e\rtl_ppe.c</FilePath>
-            </File>
-            <File>
-              <FileName>rtl_idu_int.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e\rtl_idu_int.c</FilePath>
-            </File>
-            <File>
-              <FileName>rtl_idu.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl_common\rtl_idu.c</FilePath>
-            </File>
-            <File>
-              <FileName>rtl_lcdc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc.c</FilePath>
-            </File>
-            <File>
-              <FileName>rtl_lcdc_dbic.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_dbic.c</FilePath>
-            </File>
-            <File>
-              <FileName>rtl_lcdc_dbib.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_dbib.c</FilePath>
-            </File>
-            <File>
-              <FileName>rtl_lcdc_edpi.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_edpi.c</FilePath>
-            </File>
-            <File>
-              <FileName>acc_ppe.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\mcu\display\bindings\honeygui\hardware_engine\PPE\rtl8773e\acc_ppe.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1217,6 +1182,56 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>peripheral</GroupName>
+          <Files>
+            <File>
+              <FileName>rtl_lcdc_dbib.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_dbib.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtl_lcdc_dbic.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_dbic.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtl_lcdc_edpi.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc_edpi.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtl_lcdc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_lcdc.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtl_ppe.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e\rtl_ppe.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtl_ramless_qspi.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl_common\rtl_ramless_qspi.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtl_idu.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl_common\rtl_idu.c</FilePath>
+            </File>
+            <File>
+              <FileName>rtl_idu_int.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e\rtl_idu_int.c</FilePath>
+            </File>
+            <File>
+              <FileName>acc_ppe.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\display\bindings\honeygui\hardware_engine\PPE\rtl8773e\acc_ppe.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>::CMSIS</GroupName>
         </Group>
       </Groups>
@@ -1230,7 +1245,7 @@
       </filter>
       <package name="CMSIS" schemaVersion="1.3" url="http://www.keil.com/pack/" vendor="ARM" version="5.8.0">
         <targetInfos>
-          <targetInfo name="gui" versionMatchMode="fixed"/>
+          <targetInfo name="dashboard" versionMatchMode="fixed"/>
           <targetInfo name="non_secure_app" versionMatchMode="fixed"/>
         </targetInfos>
       </package>
@@ -1240,7 +1255,7 @@
       <component Cclass="CMSIS" Cgroup="CORE" Cvendor="ARM" Cversion="5.5.0" condition="ARMv6_7_8-M Device">
         <package name="CMSIS" schemaVersion="1.3" url="http://www.keil.com/pack/" vendor="ARM" version="5.8.0"/>
         <targetInfos>
-          <targetInfo name="gui"/>
+          <targetInfo name="dashboard"/>
         </targetInfos>
       </component>
     </components>

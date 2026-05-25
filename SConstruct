@@ -25,7 +25,7 @@ except:
     print(TOOL_ROOT)
     exit(-1)
 
-TARGET = 'wristband.' + menu_config.TARGET_EXT
+TARGET = 'dashboard.' + menu_config.TARGET_EXT
 
 env = Environment(tools = ['mingw'],
     AS = menu_config.AS, ASFLAGS = menu_config.AFLAGS,
@@ -41,20 +41,25 @@ if menu_config.PLATFORM == 'iar':
     env.Replace(LINKCOM = env["LINKCOM"] + ' --map rtthread.map')
 
 SDK_ROOT = os.path.abspath('./../../../')
+RTK_SDK_ROOT = os.path.abspath('./../../../')
 
 RTK_IC_TYPE = 'rtl8773e'
 WEARABLE_ROOT = os.path.abspath('./../../../src/app/Wearable')
+DISPLAY_ROOT = os.path.abspath('./../../../src/mcu/display')
 HONEYGUI_ROOT = os.path.abspath('./../../../src/sample/gui')
 PLATFORM = menu_config.PLATFORM
 
 Export('PLATFORM')
 Export('TOOL_ROOT')
 Export('SDK_ROOT')
+Export('RTK_SDK_ROOT')
+Export('RTK_IC_TYPE')
 Export('menu_config')
 Export('HONEYGUI_ROOT')
 
 print('RTT ROOT = ' + TOOL_ROOT)
 print('RTK WEARABLE ROOT = ' + WEARABLE_ROOT)
+print('RTK DISPLAY ROOT = ' + DISPLAY_ROOT)
 print('HONEYGUI ROOT = ' + HONEYGUI_ROOT)
 
 # prepare building environment
@@ -63,6 +68,7 @@ objs = PrepareBuilding(env, TOOL_ROOT, has_libcpu=False)
 
 # include app
 objs.extend(SConscript(os.path.join(WEARABLE_ROOT, 'SConscript')))
+objs.extend(SConscript(os.path.join(DISPLAY_ROOT, 'SConscript')))
 
 # bsp_vdir = 'build'
 
