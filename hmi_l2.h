@@ -94,6 +94,54 @@ extern "C" {
 #define HMI_L2_LOG_SEND         0x03u
 
 /*============================================================================*
+ *                              Keys — file transfer (0x0b)
+ *============================================================================*/
+
+#define HMI_L2_CMD_FILE_XFER        0x0bu   /* file transfer */
+
+#define HMI_L2_XFER_BEGIN_REQ       0x01u   /* session open request  (phone → device) */
+#define HMI_L2_XFER_BEGIN_RSP       0x02u   /* session open response (device → phone) */
+#define HMI_L2_XFER_DATA            0x03u   /* data chunk            (phone → device) */
+#define HMI_L2_XFER_DATA_ACK        0x04u   /* chunk acknowledgement (device → phone) */
+#define HMI_L2_XFER_END_REQ         0x05u   /* transfer end request  (phone → device) */
+#define HMI_L2_XFER_END_RSP         0x06u   /* transfer end response (device → phone) */
+#define HMI_L2_XFER_ABORT           0x07u   /* abort (either direction) */
+
+/* file_type values (XFER_BEGIN_REQ) */
+#define HMI_L2_XFER_TYPE_IMAGE      0x01u
+#define HMI_L2_XFER_TYPE_VIDEO      0x02u
+#define HMI_L2_XFER_TYPE_RAW        0x03u
+
+/* XFER_BEGIN_RSP status */
+#define HMI_L2_XFER_BEGIN_OK        0x00u
+#define HMI_L2_XFER_BEGIN_BUSY      0x01u
+#define HMI_L2_XFER_BEGIN_NO_SPACE  0x02u
+#define HMI_L2_XFER_BEGIN_BAD_TYPE  0x03u
+
+/* XFER_DATA_ACK status */
+#define HMI_L2_XFER_ACK_OK          0x00u
+#define HMI_L2_XFER_ACK_SEQ_ERR     0x01u
+#define HMI_L2_XFER_ACK_WRITE_ERR   0x02u
+
+/* XFER_END_RSP status */
+#define HMI_L2_XFER_END_OK          0x00u
+#define HMI_L2_XFER_END_CRC_FAIL    0x01u
+#define HMI_L2_XFER_END_INCOMPLETE  0x02u
+
+/* XFER_END_RSP error_code */
+#define HMI_L2_XFER_ERR_NONE        0x00u
+#define HMI_L2_XFER_ERR_WRITE_FAIL  0x01u
+#define HMI_L2_XFER_ERR_DECODE_FAIL 0x02u
+
+/* XFER_ABORT reason */
+#define HMI_L2_XFER_ABORT_USER      0x00u
+#define HMI_L2_XFER_ABORT_ERROR     0x01u
+#define HMI_L2_XFER_ABORT_TIMEOUT   0x02u
+
+/* Maximum chunk size (bytes); constrained by L2 payload limit */
+#define HMI_L2_XFER_CHUNK_MAX       496u
+
+/*============================================================================*
  *                              API
  *============================================================================*/
 
