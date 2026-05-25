@@ -112,12 +112,14 @@ class BuildCommand(WestCommand):
             log.inf(f'Cleaning: {build_dir}')
             shutil.rmtree(build_dir)
 
-        cfg_cmd = ['cmake', '-G', 'Ninja', f'-Dkconfig_path={defconfig}', '-B', build_dir]
-        log.inf('Configuring...')
-        log.dbg(' '.join(cfg_cmd))
-        r = subprocess.run(cfg_cmd, cwd=sdk_root)
-        if r.returncode != 0:
-            log.die('CMake configure failed')
+        already_configured = os.path.exists(os.path.join(build_dir, 'CMakeCache.txt'))
+        if not already_configured or args.configure_only:
+            cfg_cmd = ['cmake', '-G', 'Ninja', f'-Dkconfig_path={defconfig}', '-B', build_dir]
+            log.inf('Configuring...')
+            log.dbg(' '.join(cfg_cmd))
+            r = subprocess.run(cfg_cmd, cwd=sdk_root)
+            if r.returncode != 0:
+                log.die('CMake configure failed')
 
         if args.configure_only:
             log.inf('Configure done (--configure-only, skipping build).')

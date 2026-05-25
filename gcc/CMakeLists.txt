@@ -25,7 +25,7 @@ add_compile_options(-include ${PRE_DEFINE_FILE})
 if(CONFIG_REALTEK_DISPLAY)
     add_subdirectory(${REALTEK_SDK_BASE_PATH}/src/mcu/display ${CMAKE_CURRENT_BINARY_DIR}/display)
 
-    # PUBLIC: propagates to honeygui via link, so no need to re-define there.
+    # PUBLIC: propagates to dashboard via link, so no need to re-define there.
     target_compile_definitions(realtek_display_driver_library PUBLIC
         TARGET_RTL8773E=1
         CONFIG_SOC_SERIES_RTL8773E=1
@@ -50,8 +50,8 @@ set(CMAKE_EXECUTABLE_SUFFIX ".elf")
 enable_language(ASM)
 enable_language(CXX)
 
-add_executable(honeygui)
-set(build_target_list ${build_target_list} "honeygui" CACHE INTERNAL "build target list")
+add_executable(dashboard)
+set(build_target_list ${build_target_list} "dashboard" CACHE INTERNAL "build target list")
 set(BIN_OUTPUT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/bin/${bin_output_path})
 
 if(EXISTS ${BIN_OUTPUT_DIR})
@@ -61,11 +61,11 @@ if(EXISTS ${BIN_OUTPUT_DIR})
     endif()
 endif()
 
-set_target_properties(honeygui PROPERTIES
+set_target_properties(dashboard PROPERTIES
                       ARCHIVE_OUTPUT_DIRECTORY ${lib_output_path}
                       LIBRARY_OUTPUT_DIRECTORY ${BIN_OUTPUT_DIR}
                       RUNTIME_OUTPUT_DIRECTORY ${BIN_OUTPUT_DIR}
-                      OUTPUT_NAME honeygui_${build_bank})
+                      OUTPUT_NAME dashboard_${build_bank})
 
 #==============================================================================
 # GUI Library Configuration
@@ -73,7 +73,7 @@ set_target_properties(honeygui PROPERTIES
 if(CONFIG_REALTEK_HONEYGUI)
     message(STATUS "[HoneyGUI] Building from source code")
 
-    target_link_libraries(honeygui PUBLIC
+    target_link_libraries(dashboard PUBLIC
         -Wl,--whole-archive guiLib -Wl,--no-whole-archive
         ${lib_gap}
         ${lib_rom}
@@ -87,10 +87,10 @@ if(CONFIG_REALTEK_HONEYGUI)
 
     # Link display driver library if enabled
     if(CONFIG_REALTEK_DISPLAY)
-        target_link_libraries(honeygui PUBLIC realtek_display_driver_library)
+        target_link_libraries(dashboard PUBLIC realtek_display_driver_library)
     endif()
 
-    target_compile_definitions(honeygui PRIVATE
+    target_compile_definitions(dashboard PRIVATE
         CONFIG_REALTEK_HONEYGUI=1
         CONFIG_REALTEK_BUILD_HONEYGUI_SRC=1
         ENABLE_HONEYGUI
@@ -100,8 +100,8 @@ else()
     # Use precompiled library
     message(STATUS "[HoneyGUI] Using precompiled library")
 
-    target_include_directories(honeygui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/gui_lib/include)
-    target_link_libraries(honeygui PUBLIC
+    target_include_directories(dashboard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/gui_lib/include)
+    target_link_libraries(dashboard PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/gui_lib/gcc/libgui.a
         ${lib_gap}
         ${lib_rom}
@@ -121,29 +121,29 @@ file(GLOB APP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../src/application/*.c)
 if(CONFIG_REALTEK_HONEYGUI)
     list(FILTER APP_SOURCES EXCLUDE REGEX "example_gui_img\\.c$")
 endif()
-target_sources(honeygui PRIVATE ${APP_SOURCES})
-target_include_directories(honeygui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/application)
+target_sources(dashboard PRIVATE ${APP_SOURCES})
+target_include_directories(dashboard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/application)
 
 file(GLOB PORT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../src/ports/realgui_port/*.c)
-target_sources(honeygui PRIVATE ${PORT_SOURCES})
-target_include_directories(honeygui PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/ports/realgui_port)
+target_sources(dashboard PRIVATE ${PORT_SOURCES})
+target_include_directories(dashboard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/ports/realgui_port)
 
 set(DEVICE_SRC_DIR ${REALTEK_SDK_BASE_PATH}/src/app/Wearable)
 
-target_sources(honeygui PRIVATE ${DEVICE_SRC_DIR}/driver/io/drv_lcd.c)
-target_include_directories(honeygui PRIVATE ${DEVICE_SRC_DIR}/driver/io)
+target_sources(dashboard PRIVATE ${DEVICE_SRC_DIR}/driver/io/drv_lcd.c)
+target_include_directories(dashboard PRIVATE ${DEVICE_SRC_DIR}/driver/io)
 
 # ROMFS
 if(CONFIG_REALTEK_ROMFS)
-    target_sources(honeygui PRIVATE ${DEVICE_SRC_DIR}/system/dfs/romfs/romfs.c)
-    target_include_directories(honeygui PRIVATE ${DEVICE_SRC_DIR}/system/dfs/romfs)
+    target_sources(dashboard PRIVATE ${DEVICE_SRC_DIR}/system/dfs/romfs/romfs.c)
+    target_include_directories(dashboard PRIVATE ${DEVICE_SRC_DIR}/system/dfs/romfs)
 endif()
 
 #==============================================================================
 # Library Link (when compile_lib is set)
 #==============================================================================
 if(compile_lib)
-    target_link_libraries(honeygui PUBLIC
+    target_link_libraries(dashboard PUBLIC
         ${halLib_link}
         ${filesystemLib_link}
         ${sysmLib_link}
@@ -153,7 +153,7 @@ endif()
 #==============================================================================
 # Compile Definitions
 #==============================================================================
-target_compile_definitions(honeygui PRIVATE
+target_compile_definitions(dashboard PRIVATE
     SUPPORT_ACCESS_SHM=1
     RAM_TYPE_DATA_ON=0
 )
@@ -161,8 +161,8 @@ target_compile_definitions(honeygui PRIVATE
 #==============================================================================
 # Include Directories
 #==============================================================================
-target_precompile_headers(honeygui PRIVATE ${kconfig_header_dir_path}/config.h)
-target_include_directories(honeygui PRIVATE
+target_precompile_headers(dashboard PRIVATE ${kconfig_header_dir_path}/config.h)
+target_include_directories(dashboard PRIVATE
     ${kconfig_header_dir_path}
     ${CMAKE_CURRENT_SOURCE_DIR}/..
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -174,7 +174,7 @@ target_include_directories(honeygui PRIVATE
 #==============================================================================
 # Boot Files
 #==============================================================================
-target_sources(honeygui PRIVATE
+target_sources(dashboard PRIVATE
     ${realtek_start_up_boot_file}
     ${arm_start_up_boot_file})
 set_property(SOURCE ${arm_start_up_boot_file} PROPERTY LANGUAGE C)
@@ -183,17 +183,17 @@ set_property(SOURCE ${arm_start_up_boot_file} PROPERTY LANGUAGE C)
 # Version Generation
 #==============================================================================
 set(version_path ${CMAKE_CURRENT_SOURCE_DIR}/../version.h)
-generate_version("honeygui_app" ${version_path})
+generate_version("dashboard_app" ${version_path})
 
 #==============================================================================
 # Link Script
 #==============================================================================
-generate_ldscript("${CMAKE_CURRENT_SOURCE_DIR}/app.ld" honeygui)
+generate_ldscript("${CMAKE_CURRENT_SOURCE_DIR}/app.ld" dashboard)
 
 #==============================================================================
 # Compile Options
 #==============================================================================
-target_compile_options(honeygui PRIVATE
+target_compile_options(dashboard PRIVATE
                     ${mcpu_arch}
                     ${mfpu_arch}
                     ${mfloat_arch}
@@ -210,7 +210,7 @@ target_compile_options(honeygui PRIVATE
 #==============================================================================
 # Link Options
 #==============================================================================
-target_link_options(honeygui
+target_link_options(dashboard
                     PRIVATE
                     ${mcpu_arch}
                     ${mfpu_arch}
@@ -218,7 +218,7 @@ target_link_options(honeygui
                     ${march_arch}
                     -mthumb
                     -Wall
-                    -Wl,-Map=${BIN_OUTPUT_DIR}/honeygui_${build_bank}.map
+                    -Wl,-Map=${BIN_OUTPUT_DIR}/dashboard_${build_bank}.map
                     -fdata-sections
                     -ffunction-sections
                     -Wl,--gc-sections
@@ -248,20 +248,20 @@ else()
     set(BUILD_DEBUG_TABLE_TOOL ${gcc_tool_linux_path}/build_debug_table)
 endif()
 
-add_custom_command(TARGET honeygui POST_BUILD
+add_custom_command(TARGET dashboard POST_BUILD
             WORKING_DIRECTORY ${BIN_OUTPUT_DIR}
-            COMMAND ${CMAKE_OBJCOPY} -O ihex ${BIN_OUTPUT_DIR}/honeygui_${build_bank}.elf ${BIN_OUTPUT_DIR}/honeygui_${build_bank}.hex
-            COMMAND ${HEX2BIN_TOOL} ${BIN_OUTPUT_DIR}/honeygui_${build_bank}.hex ${BIN_OUTPUT_DIR}/honeygui_${build_bank}.bin
-            COMMAND ${PREPEND_HEADER_TOOL} /app_code ${BIN_OUTPUT_DIR}/honeygui_${build_bank}.bin /${encryption_type} ${gcc_tool_path}/../${encryption_key}
-            COMMAND ${PREPEND_HEADER_TOOL} /app_code ${BIN_OUTPUT_DIR}/honeygui_${build_bank}.bin /mp_ini ${CMAKE_CURRENT_SOURCE_DIR}/../mdk/mp.ini
-            COMMAND bash ${gcc_tool_path}/md5_generate.sh ${BIN_OUTPUT_DIR}/honeygui_${build_bank}_MP.bin ${version_path}
+            COMMAND ${CMAKE_OBJCOPY} -O ihex ${BIN_OUTPUT_DIR}/dashboard_${build_bank}.elf ${BIN_OUTPUT_DIR}/dashboard_${build_bank}.hex
+            COMMAND ${HEX2BIN_TOOL} ${BIN_OUTPUT_DIR}/dashboard_${build_bank}.hex ${BIN_OUTPUT_DIR}/dashboard_${build_bank}.bin
+            COMMAND ${PREPEND_HEADER_TOOL} /app_code ${BIN_OUTPUT_DIR}/dashboard_${build_bank}.bin /${encryption_type} ${gcc_tool_path}/../${encryption_key}
+            COMMAND ${PREPEND_HEADER_TOOL} /app_code ${BIN_OUTPUT_DIR}/dashboard_${build_bank}.bin /mp_ini ${CMAKE_CURRENT_SOURCE_DIR}/../mdk/mp.ini
+            COMMAND bash ${gcc_tool_path}/md5_generate.sh ${BIN_OUTPUT_DIR}/dashboard_${build_bank}_MP.bin ${version_path}
             )
 
 if(NOT ((DEFINED IS_CI_CHECK_FLOW) AND IS_CI_CHECK_FLOW))
-    add_custom_command(TARGET honeygui POST_BUILD
+    add_custom_command(TARGET dashboard POST_BUILD
             WORKING_DIRECTORY ${BIN_OUTPUT_DIR}
             COMMAND ${BUILD_DEBUG_TABLE_TOOL} --debug_dir ${BIN_OUTPUT_DIR} --su_dir ${CMAKE_CURRENT_SOURCE_DIR}/../../../../build --out_dir ${BIN_OUTPUT_DIR}
-            COMMAND ${CMAKE_OBJDUMP} -D -S ${BIN_OUTPUT_DIR}/honeygui_${build_bank}.elf > ${BIN_OUTPUT_DIR}/honeygui_${build_bank}.disasm
+            COMMAND ${CMAKE_OBJDUMP} -D -S ${BIN_OUTPUT_DIR}/dashboard_${build_bank}.elf > ${BIN_OUTPUT_DIR}/dashboard_${build_bank}.disasm
             )
     message(STATUS "Debug files are being generated.")
 endif()
