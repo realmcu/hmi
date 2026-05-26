@@ -1,0 +1,35 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "g++.exe build active file",
+            // "command": "west build -b rtl87x3g_evb . -p",
+            "command": "west build -b rtl87x3g_evb .",
+            // "command": "west flash",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            
+        },
+        {
+            "label": "Run West Flash",
+            "type": "shell",
+            "command": "west",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "args": [
+              "flash"
+            ],
+            "problemMatcher": []
+          }
+    ]
+}

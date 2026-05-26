@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "gui_components_init.h": "c",
+        "app_audio_if.h": "c",
+        "app_playback_update_file.h": "c"
+    }
+}
