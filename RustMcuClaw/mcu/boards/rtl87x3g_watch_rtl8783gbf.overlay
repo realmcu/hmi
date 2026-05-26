@@ -1,0 +1,119 @@
+/*
+ * RustMcuClaw MCU overlay for RTL8783GBF EVB.
+ * Uses UART2 as the serial CLI port so UART3 remains available for watch-style
+ * Wi-Fi/Z2Plus transport, and reserves 1 MiB of PSRAM1 for FATFS.
+ */
+
+#include <zephyr/dt-bindings/gpio/realtek-rtl87x3g-gpio.h>
+#include <dt-bindings/pinctrl/rtl87x3g-pinctrl.h>
+#include <dt-bindings/gpio/gpio.h>
+
+&gpioa {
+	status = "okay";
+};
+
+&sdhc1 {
+	status = "okay";
+
+	sdcard_disk0: sdcard_disk0 {
+		compatible = "zephyr,sdmmc-disk";
+		status = "okay";
+	};
+};
+
+
+&uart2 {
+	status = "okay";
+	current-speed = <115200>;
+	parity = "none";
+	stop-bits = "1";
+	data-bits = <8>;
+};
+
+&uart3 {
+	pinctrl-0 = <&uart3_default>;
+	pinctrl-1 = <&uart3_sleep>;
+	pinctrl-names = "default", "sleep";
+	status = "okay";
+	current-speed = <115200>;
+	parity = "none";
+	stop-bits = "1";
+	data-bits = <8>;
+	dmas = <&dma0 2 49 0xa>, <&dma0 3 48 0x10021>;
+	dma-names = "rx", "tx";
+};
+
+&pinctrl {
+	uart3_default: uart3_default {
+		group1 {
+			psels = <RTL87X3G_PSEL(UART3_TX, UART3_TX_PIN, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(UART3_RX, UART3_RX_PIN, DIR_IN, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(SW_MODE, UART3_MP_TX_PIN, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(SW_MODE, UART3_MP_RX_PIN, DIR_IN, DRV_HIGH, PULL_UP)>;
+		};
+	};
+
+	uart3_sleep: uart3_sleep {
+		group1 {
+			psels = <RTL87X3G_PSEL(SW_MODE, UART3_TX_PIN, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(SW_MODE, UART3_MP_TX_PIN, DIR_OUT, DRV_HIGH, PULL_UP)>;
+		};
+		group2 {
+			psels = <RTL87X3G_PSEL(SW_MODE, UART3_RX_PIN, DIR_IN, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(SW_MODE, UART3_MP_RX_PIN, DIR_IN, DRV_HIGH, PULL_UP)>;
+			wakeup-low;
+		};
+	};
+};
+
+/ {
+	ramdisk0 {
+		compatible = "zephyr,ram-disk";
+		status = "okay";
+		disk-name = "RAM";
+		sector-size = <512>;
+		sector-count = <2048>; /* 1 MiB */
+		ram-region = <&psram1_for_fs>;
+	};
+
+	aliases {
+		uart2 = &uart2;
+		uart3 = &uart3;
+		sdhc0 = &sdhc0;
+	};
+};
+
+&psram1 {
+	psram1_for_fs: memory@24000000 {
+		device_type = "psram 1 fs region";
+		reg = <0x24000000 0x100000>;
+	};
+};
+
+/* Touch screen: CHSC6417 on I2C1 bus.
+ * P0_2 (gpioa 2) = INT,  P0_3 (gpioa 3) = RST */
+&i2c1 {
+	touch_device: touch_chsc6417@2e {
+		compatible = "chipsemi,chsc6417";
+		reg = <0x2E>;
+		irq-gpios = <&gpioa 2 GPIO_ACTIVE_HIGH>;
+		rst-gpios = <&gpioa 3 GPIO_ACTIVE_HIGH>;
+		gesture-release-timeout-ms = <30>;
+		status = "okay";
+	};
+};
+
+/* DHT11 温湿度传感器
+ * DATA → P1_0 (gpioa 7)
+ * VCC  → 3.3 V
+ * GND  → GND
+ * 模块板上已内置 10 kΩ 上拉电阻 */
+/ {
+	dht11_sensor: dht11 {
+		compatible = "aosong,dht";
+		/* dio-gpios: P1_0 = gpioa 7；GPIO_PULL_UP 启用内部上拉兜底 */
+		dio-gpios = <&gpioa 7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		/* 不写 dht22 属性 → 驱动认定为 DHT11 */
+		status = "okay";
+	};
+};

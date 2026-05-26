@@ -1,0 +1,16 @@
+[package]
+name = "rustmcuclaw-mcu"
+version = "0.1.0"
+edition = "2021"
+description = "no_std MCU static library for RustMcuClaw on RTL8783G/Zephyr."
+license = "MIT"
+
+[lib]
+name = "rustmcuclaw_mcu"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+rustmcuclaw-common = { path = "../rustmcuclaw-common" }
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+font8x8 = { version = "0.3", default-features = false, features = ["unicode"] }

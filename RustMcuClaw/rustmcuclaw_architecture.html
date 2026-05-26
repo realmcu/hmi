@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>RustMcuClaw 工程架构 · 原理 · 流程</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#0b1320; --panel:#111c30; --panel2:#172642; --line:#243652;
+    --text:#e7eef9; --muted:#9fb0cc; --accent:#57b8ff; --accent2:#7b61ff;
+    --accent3:#2de2b6; --warn:#ffb454; --danger:#ff7f7f; --code:#0c1626;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(87,184,255,.18), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(123,97,255,.18), transparent 60%),
+    linear-gradient(180deg,#06101f 0%,#0a1426 100%);
+    color:var(--text);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    line-height:1.65;}
+  header{padding:48px 6vw 24px;text-align:center;border-bottom:1px solid var(--line)}
+  header h1{font-size:34px;margin:0 0 8px;letter-spacing:.04em}
+  header .sub{color:var(--muted);font-size:15px}
+  header .badges{margin-top:18px;display:flex;justify-content:center;flex-wrap:wrap;gap:8px}
+  .badge{padding:5px 12px;border:1px solid var(--line);border-radius:999px;
+    background:rgba(255,255,255,.03);font-size:12.5px;color:var(--muted)}
+  nav.toc{position:sticky;top:0;z-index:10;background:rgba(11,19,32,.92);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
+    padding:10px 6vw;display:flex;flex-wrap:wrap;gap:6px;font-size:13px}
+  nav.toc a{color:var(--muted);text-decoration:none;padding:6px 10px;border-radius:8px}
+  nav.toc a:hover{background:var(--panel);color:var(--text)}
+  main{max-width:1180px;margin:0 auto;padding:32px 6vw 80px}
+  section{margin:36px 0 56px;padding:28px 30px;background:var(--panel);
+    border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+  section h2{font-size:24px;margin:0 0 6px;color:#fff;
+    display:flex;align-items:center;gap:10px}
+  section h2::before{content:"";width:6px;height:24px;border-radius:3px;
+    background:linear-gradient(180deg,var(--accent),var(--accent2))}
+  section h3{margin:22px 0 8px;font-size:17px;color:var(--accent)}
+  section p,section li{color:#dfe7f4}
+  section .lead{color:var(--muted);margin:2px 0 14px}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card h4{margin:0 0 6px;color:var(--accent3);font-size:15px}
+  .card p,.card li{font-size:14px;color:#cfdbed;margin:0}
+  .card ul{margin:6px 0 0;padding-left:18px}
+  code,kbd{background:var(--code);border:1px solid var(--line);
+    border-radius:6px;padding:1px 6px;font-size:13px;color:#cfe6ff}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;overflow:auto;font-size:13px;line-height:1.55}
+  pre code{background:transparent;border:none;padding:0;color:#cfe6ff}
+  table{width:100%;border-collapse:collapse;margin:8px 0;font-size:14px}
+  th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  th{color:var(--accent);font-weight:600;background:rgba(255,255,255,.02)}
+  .mermaid{background:#0c1828;border:1px solid var(--line);
+    border-radius:12px;padding:18px;margin:14px 0;overflow:auto}
+  .svg-diagram{background:radial-gradient(800px 400px at 50% 0%,rgba(87,184,255,.08),transparent 70%),#0c1828;
+    border:1px solid var(--line);border-radius:14px;padding:18px;margin:14px 0;
+    box-shadow:inset 0 0 80px rgba(0,0,0,.4)}
+  .svg-diagram svg{width:100%;height:auto;display:block}
+  .svg-diagram text{font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:13px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:22px;height:3px;border-radius:2px;display:inline-block}
+
+  /* ── 嵌套技术栈（纯 CSS 方块） ─────────────────────────────────── */
+  .stack{
+    background:radial-gradient(900px 400px at 50% 0%,rgba(123,97,255,.08),transparent 70%),#0c1828;
+    border:1px solid var(--line);border-radius:14px;padding:18px;margin:14px 0;
+  }
+  .layer{
+    border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;margin:10px 0;
+    background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.01));
+    position:relative;
+  }
+  .layer > .lh{
+    position:absolute;top:-11px;left:18px;padding:1px 10px;font-size:12px;
+    letter-spacing:.12em;text-transform:uppercase;background:#0c1828;border:1px solid var(--line);
+    border-radius:999px;color:var(--muted);
+  }
+  .layer > .lh b{color:#fff;letter-spacing:0;text-transform:none;margin-right:6px}
+  .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:6px}
+  .blk{
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;
+    background:#142339;font-size:13px;color:#cfe6ff;text-align:center;
+    transition:transform .15s ease, border-color .15s ease;
+  }
+  .blk:hover{transform:translateY(-2px);border-color:var(--accent)}
+  .blk small{display:block;color:#9fb0cc;font-size:11px;margin-top:2px}
+  .blk.acc1{background:#13325e;border-color:#57b8ff}
+  .blk.acc2{background:#3a2e63;border-color:#7b61ff}
+  .blk.acc3{background:#1d3f36;border-color:#2de2b6}
+  .blk.acc4{background:#4a3621;border-color:#ffb454}
+  .blk.acc5{background:#3f1f29;border-color:#ff7f7f}
+  .layer.l-app   { border-color:#2de2b6; box-shadow:inset 0 0 30px rgba(45,226,182,.08) }
+  .layer.l-rust  { border-color:#ffb454; box-shadow:inset 0 0 30px rgba(255,180,84,.08) }
+  .layer.l-ffi   { border-color:#7b61ff; box-shadow:inset 0 0 30px rgba(123,97,255,.08) }
+  .layer.l-rtos  { border-color:#57b8ff; box-shadow:inset 0 0 30px rgba(87,184,255,.08) }
+  .layer.l-hal   { border-color:#9fb0cc; box-shadow:inset 0 0 30px rgba(159,176,204,.06) }
+  .layer.l-hw    { border-color:#ff7f7f; box-shadow:inset 0 0 30px rgba(255,127,127,.08) }
+  .col-split{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-top:6px}
+  @media (max-width:900px){ .col-split{grid-template-columns:1fr} }
+  .side-stack .layer{margin:8px 0;padding:10px 12px}
+  .side-stack .lh{font-size:11px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:6px;font-size:12px;
+    background:rgba(87,184,255,.12);color:var(--accent);border:1px solid rgba(87,184,255,.25)}
+  .pill.w{background:rgba(255,180,84,.12);color:var(--warn);border-color:rgba(255,180,84,.25)}
+  .pill.g{background:rgba(45,226,182,.12);color:var(--accent3);border-color:rgba(45,226,182,.25)}
+  footer{text-align:center;color:var(--muted);padding:32px 0;font-size:13px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>RustMcuClaw · 工程架构与原理</h1>
+  <div class="sub">RTL8783G (Zephyr) + AmebaZ2+ · Rust no_std AI 智能体手表</div>
+  <div class="badges">
+    <span class="badge">MCU: RTL87x3G Cortex-M55</span>
+    <span class="badge">Net Co-Processor: AmebaZ2+</span>
+    <span class="badge">Rust no_std + alloc</span>
+    <span class="badge">LLM: OpenAI / Kimi / GH Models</span>
+    <span class="badge">Feishu wss 长连接</span>
+    <span class="badge">FatFS on SD</span>
+    <span class="badge">LCD SH8601Z 410×502</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#overview">1 总览</a>
+  <a href="#hw-svg">★ 硬件拓扑</a>
+  <a href="#agent-svg">★ 智能体闭环</a>
+  <a href="#stack">★ 技术栈分层</a>
+  <a href="#arch">2 整体架构</a>
+  <a href="#mcu">3 MCU 侧</a>
+  <a href="#z2plus">4 Z2Plus 侧</a>
+  <a href="#uart">5 UART 桥</a>
+  <a href="#https">6 HTTPS / LLM</a>
+  <a href="#feishu">7 Feishu / WebSocket</a>
+  <a href="#memory">8 内存 / PSRAM</a>
+  <a href="#ui">9 UI / 显示</a>
+  <a href="#flow">10 端到端流程</a>
+  <a href="#boot">11 启动序列</a>
+</nav>
+
+<main>
+
+<!-- ───────────────────────────── 1 总览 ───────────────────────────── -->
+<section id="overview">
+  <h2>1. 项目总览</h2>
+  <p class="lead">RustMcuClaw 是一个以 Rust 编写业务核、运行在 RTL8783G + AmebaZ2+ 双芯架构上的 AI 智能体手表。MCU 负责 UI、控制流、文件系统与定时任务，Z2Plus 作为无线协处理器承担 Wi-Fi/HTTPS/WebSocket 等所有网络业务。</p>
+  <div class="grid2">
+    <div class="card"><h4>设计目标</h4>
+      <ul>
+        <li>内存安全：业务逻辑用 Rust，仅在 FFI/分配器/C 字符串处用 <code>unsafe</code></li>
+        <li>双芯解耦：MCU 不接触任何 TCP/TLS 栈，Z2Plus 通过 AT 命令受控</li>
+        <li>云端 LLM 可插拔：OpenAI / Kimi / GitHub Models / OpenAI-Compatible</li>
+        <li>持久化：人设、总结记忆、任务全部落 SD 卡 FatFS</li>
+        <li>主动交互：Feishu wss 长连接推送 → 直接进入 LLM 通道</li>
+      </ul></div>
+    <div class="card"><h4>关键组件</h4>
+      <ul>
+        <li><span class="pill">MCU</span> Zephyr 多线程 + Rust 静态库</li>
+        <li><span class="pill">Z2Plus</span> AT 固件（ATPN/ATWT/ATKM/ATEP/ATFS/ATSD）</li>
+        <li><span class="pill">LLM</span> <code>rustmcuclaw-mcu</code> crate 生成 OpenAI 兼容 JSON</li>
+        <li><span class="pill">UART</span> uart2 CLI · uart3 ↔ Z2Plus AT 通道</li>
+        <li><span class="pill">UI</span> SH8601Z QSPI LCD + CHSC6417 触摸 + GNU Unifont</li>
+        <li><span class="pill">Memory</span> PSRAM bump allocator + FatFS on SD</li>
+      </ul></div>
+  </div>
+</section>
+
+<!-- ───────────── ★ 硬件 / 通信 拓扑（纯 SVG，无图表库） ───────────── -->
+<section id="hw-svg">
+  <h2>★ 硬件与通信拓扑（纯 Web SVG）</h2>
+  <p class="lead">六大实体 + 五条物理/无线链路。每条连线标注的是该链路上跑的协议或总线，颜色区分链路类型：<span style="color:#57b8ff">UART/串口</span> · <span style="color:#2de2b6">QSPI</span> · <span style="color:#ffb454">Wi-Fi 2.4G</span>。</p>
+
+  <div class="svg-diagram">
+  <svg viewBox="0 0 1200 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hardware topology">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#a9bad8"/>
+      </marker>
+      <marker id="ahU" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#57b8ff"/>
+      </marker>
+      <marker id="ahQ" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#2de2b6"/>
+      </marker>
+      <marker id="ahW" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#ffb454"/>
+      </marker>
+      <linearGradient id="boxMcu" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#1e3b6b"/><stop offset="1" stop-color="#13284b"/>
+      </linearGradient>
+      <linearGradient id="boxZ2" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#5b3a82"/><stop offset="1" stop-color="#352053"/>
+      </linearGradient>
+      <linearGradient id="boxCloud" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2a4d3f"/><stop offset="1" stop-color="#173025"/>
+      </linearGradient>
+      <linearGradient id="boxIO" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2c3e63"/><stop offset="1" stop-color="#18253f"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Title bands -->
+    <text x="60"   y="40" fill="#9fb0cc" font-size="13" letter-spacing="2">EDGE · USER SIDE</text>
+    <text x="540"  y="40" fill="#9fb0cc" font-size="13" letter-spacing="2">DEVICE · DUAL-MCU</text>
+    <text x="960"  y="40" fill="#9fb0cc" font-size="13" letter-spacing="2">CLOUD</text>
+    <line x1="60"  y1="48" x2="380"  y2="48" stroke="#243652"/>
+    <line x1="540" y1="48" x2="900"  y2="48" stroke="#243652"/>
+    <line x1="960" y1="48" x2="1160" y2="48" stroke="#243652"/>
+
+    <!-- PC Terminal -->
+    <g>
+      <rect x="60" y="270" width="200" height="110" rx="14" fill="url(#boxIO)" stroke="#3b5380"/>
+      <text x="160" y="305" text-anchor="middle" fill="#e7eef9" font-size="17" font-weight="600">PC 串口终端</text>
+      <text x="160" y="328" text-anchor="middle" fill="#a9bad8" font-size="12">putty / minicom</text>
+      <text x="160" y="350" text-anchor="middle" fill="#a9bad8" font-size="12">行式聊天 CLI</text>
+      <text x="160" y="370" text-anchor="middle" fill="#9fb0cc" font-size="11">/help · /task · /exit</text>
+    </g>
+
+    <!-- LCD Screen -->
+    <g>
+      <rect x="60" y="80" width="200" height="140" rx="22" fill="url(#boxIO)" stroke="#3b5380"/>
+      <rect x="78" y="98" width="164" height="104" rx="14" fill="#0a1426" stroke="#57b8ff" stroke-opacity=".4"/>
+      <text x="160" y="128" text-anchor="middle" fill="#07FFFF" font-size="13" opacity=".9">RustMcuClaw</text>
+      <line x1="86" y1="138" x2="234" y2="138" stroke="#4208" stroke-opacity=".6"/>
+      <text x="160" y="158" text-anchor="middle" fill="#07FFFF" font-size="11">› 你好</text>
+      <text x="160" y="174" text-anchor="middle" fill="#FFFFFF" font-size="11">你好，我是 Claw</text>
+      <text x="160" y="190" text-anchor="middle" fill="#9EFB" font-size="11">⠿ thinking…</text>
+      <text x="160" y="240" text-anchor="middle" fill="#e7eef9" font-size="14" font-weight="600">SH8601Z LCD</text>
+      <text x="160" y="258" text-anchor="middle" fill="#a9bad8" font-size="11">410×502 · QSPI · RGB565</text>
+    </g>
+
+    <!-- MCU central -->
+    <g>
+      <rect x="430" y="180" width="260" height="280" rx="18" fill="url(#boxMcu)" stroke="#57b8ff" stroke-opacity=".5"/>
+      <text x="560" y="210" text-anchor="middle" fill="#e7eef9" font-size="18" font-weight="700">MCU · RTL87x3G</text>
+      <text x="560" y="230" text-anchor="middle" fill="#9fb0cc" font-size="12">Cortex-M55 · Zephyr RTOS</text>
+      <line x1="450" y1="244" x2="670" y2="244" stroke="#3b5380"/>
+      <text x="450" y="265" fill="#2de2b6" font-size="12">• Rust 静态库 (no_std+alloc)</text>
+      <text x="450" y="284" fill="#2de2b6" font-size="12">• PSRAM 4 MB 堆</text>
+      <text x="450" y="303" fill="#2de2b6" font-size="12">• FatFS / SD 卡</text>
+      <text x="450" y="322" fill="#2de2b6" font-size="12">• 4 线程: cli/poll/urc/touch</text>
+      <text x="450" y="341" fill="#2de2b6" font-size="12">• GNU Unifont 渲染</text>
+      <line x1="450" y1="354" x2="670" y2="354" stroke="#3b5380"/>
+      <!-- Ports -->
+      <rect x="438" y="370" width="80" height="22" rx="4" fill="#0e1a30" stroke="#57b8ff"/>
+      <text x="478" y="386" text-anchor="middle" fill="#57b8ff" font-size="11">uart2</text>
+      <rect x="438" y="400" width="80" height="22" rx="4" fill="#0e1a30" stroke="#2de2b6"/>
+      <text x="478" y="416" text-anchor="middle" fill="#2de2b6" font-size="11">QSPI</text>
+      <rect x="602" y="370" width="80" height="22" rx="4" fill="#0e1a30" stroke="#57b8ff"/>
+      <text x="642" y="386" text-anchor="middle" fill="#57b8ff" font-size="11">uart3</text>
+      <rect x="602" y="400" width="80" height="22" rx="4" fill="#0e1a30" stroke="#3b5380"/>
+      <text x="642" y="416" text-anchor="middle" fill="#a9bad8" font-size="11">I²C 触摸</text>
+    </g>
+
+    <!-- Z2Plus -->
+    <g>
+      <rect x="780" y="240" width="180" height="160" rx="14" fill="url(#boxZ2)" stroke="#7b61ff" stroke-opacity=".55"/>
+      <text x="870" y="270" text-anchor="middle" fill="#e7eef9" font-size="16" font-weight="700">AmebaZ2+</text>
+      <text x="870" y="288" text-anchor="middle" fill="#cfdbed" font-size="11">网络协处理器</text>
+      <line x1="796" y1="298" x2="944" y2="298" stroke="#7b61ff" stroke-opacity=".4"/>
+      <text x="870" y="318" text-anchor="middle" fill="#ffb454" font-size="11">AT 解析器</text>
+      <text x="870" y="336" text-anchor="middle" fill="#ffb454" font-size="11">mbedTLS HTTPS</text>
+      <text x="870" y="354" text-anchor="middle" fill="#ffb454" font-size="11">WebSocket wss</text>
+      <text x="870" y="372" text-anchor="middle" fill="#ffb454" font-size="11">Wi-Fi STA · SNTP</text>
+      <rect x="784" y="380" width="60" height="18" rx="3" fill="#0e1a30" stroke="#57b8ff"/>
+      <text x="814" y="393" text-anchor="middle" fill="#57b8ff" font-size="10">UART</text>
+      <rect x="896" y="380" width="60" height="18" rx="3" fill="#0e1a30" stroke="#ffb454"/>
+      <text x="926" y="393" text-anchor="middle" fill="#ffb454" font-size="10">Wi-Fi</text>
+    </g>
+
+    <!-- LLM Cloud -->
+    <g>
+      <rect x="1010" y="100" width="160" height="120" rx="14" fill="url(#boxCloud)" stroke="#2de2b6" stroke-opacity=".55"/>
+      <text x="1090" y="130" text-anchor="middle" fill="#e7eef9" font-size="15" font-weight="700">LLM Server</text>
+      <text x="1090" y="151" text-anchor="middle" fill="#a9bad8" font-size="11">OpenAI / Kimi</text>
+      <text x="1090" y="167" text-anchor="middle" fill="#a9bad8" font-size="11">GitHub Models</text>
+      <text x="1090" y="183" text-anchor="middle" fill="#a9bad8" font-size="11">OpenAI-Compatible</text>
+      <text x="1090" y="205" text-anchor="middle" fill="#2de2b6" font-size="11">/v1/chat/completions</text>
+    </g>
+
+    <!-- Feishu Cloud -->
+    <g>
+      <rect x="1010" y="420" width="160" height="120" rx="14" fill="url(#boxCloud)" stroke="#ffb454" stroke-opacity=".55"/>
+      <text x="1090" y="450" text-anchor="middle" fill="#e7eef9" font-size="15" font-weight="700">Feishu Server</text>
+      <text x="1090" y="471" text-anchor="middle" fill="#a9bad8" font-size="11">OpenAPI · 长连接</text>
+      <text x="1090" y="487" text-anchor="middle" fill="#a9bad8" font-size="11">message events</text>
+      <text x="1090" y="503" text-anchor="middle" fill="#a9bad8" font-size="11">reply / card</text>
+      <text x="1090" y="525" text-anchor="middle" fill="#ffb454" font-size="11">wss endpoint</text>
+    </g>
+
+    <!-- Links -->
+    <!-- PC ↔ MCU uart2 (UART, blue) -->
+    <path d="M260,320 C 320,320 360,310 430,310" stroke="#57b8ff" stroke-width="2.5" fill="none" marker-end="url(#ahU)" marker-start="url(#ahU)"/>
+    <rect x="290" y="290" width="120" height="22" rx="10" fill="#0a1426" stroke="#57b8ff"/>
+    <text x="350" y="306" text-anchor="middle" fill="#57b8ff" font-size="11">UART · 串口 CLI</text>
+
+    <!-- MCU ↔ LCD (QSPI, teal) -->
+    <path d="M210,220 C 260,220 320,200 430,220" stroke="#2de2b6" stroke-width="2.5" fill="none" marker-end="url(#ahQ)"/>
+    <rect x="240" y="178" width="120" height="22" rx="10" fill="#0a1426" stroke="#2de2b6"/>
+    <text x="300" y="194" text-anchor="middle" fill="#2de2b6" font-size="11">QSPI · framebuffer</text>
+
+    <!-- MCU ↔ Z2 (UART3 AT, blue) -->
+    <path d="M690,320 C 730,320 750,320 780,320" stroke="#57b8ff" stroke-width="2.5" fill="none" marker-end="url(#ahU)" marker-start="url(#ahU)"/>
+    <rect x="690" y="252" width="100" height="22" rx="10" fill="#0a1426" stroke="#57b8ff"/>
+    <text x="740" y="268" text-anchor="middle" fill="#57b8ff" font-size="11">UART · AT/URC</text>
+
+    <!-- Z2 ↔ LLM (Wi-Fi + HTTPS) -->
+    <path d="M940,260 C 980,200 990,180 1010,160" stroke="#ffb454" stroke-width="2.5" fill="none" stroke-dasharray="6 4" marker-end="url(#ahW)" marker-start="url(#ahW)"/>
+    <rect x="930" y="170" width="120" height="22" rx="10" fill="#0a1426" stroke="#ffb454"/>
+    <text x="990" y="186" text-anchor="middle" fill="#ffb454" font-size="11">Wi-Fi · HTTPS POST</text>
+
+    <!-- Z2 ↔ Feishu (Wi-Fi + WSS) -->
+    <path d="M940,380 C 980,440 990,460 1010,480" stroke="#ffb454" stroke-width="2.5" fill="none" stroke-dasharray="6 4" marker-end="url(#ahW)" marker-start="url(#ahW)"/>
+    <rect x="930" y="450" width="120" height="22" rx="10" fill="#0a1426" stroke="#ffb454"/>
+    <text x="990" y="466" text-anchor="middle" fill="#ffb454" font-size="11">Wi-Fi · Feishu wss</text>
+
+    <!-- Bottom protocol band -->
+    <rect x="60" y="560" width="1110" height="58" rx="12" fill="#0e1a30" stroke="#243652"/>
+    <text x="80" y="582" fill="#9fb0cc" font-size="12" font-weight="600">协议栈视图</text>
+    <text x="80" y="602" fill="#cfe6ff" font-size="11">应用层:</text>
+    <text x="160" y="602" fill="#57b8ff" font-size="11">行式聊天</text>
+    <text x="260" y="602" fill="#57b8ff" font-size="11">AT cmd / URC</text>
+    <text x="380" y="602" fill="#2de2b6" font-size="11">HTTPS · JSON (OpenAI)</text>
+    <text x="580" y="602" fill="#ffb454" font-size="11">Feishu wss · JSON 事件</text>
+    <text x="760" y="602" fill="#9fb0cc" font-size="11">传输:</text>
+    <text x="800" y="602" fill="#cfe6ff" font-size="11">TCP+TLS1.2</text>
+    <text x="890" y="602" fill="#9fb0cc" font-size="11">物理:</text>
+    <text x="930" y="602" fill="#cfe6ff" font-size="11">UART 921600 · QSPI · IEEE 802.11 b/g/n</text>
+  </svg>
+  </div>
+
+  <div class="legend">
+    <span><i style="background:#57b8ff"></i> UART / 串口 (uart2 CLI · uart3 AT)</span>
+    <span><i style="background:#2de2b6"></i> QSPI (LCD framebuffer)</span>
+    <span><i style="background:#ffb454"></i> Wi-Fi 2.4 GHz (HTTPS · WSS)</span>
+  </div>
+</section>
+
+<!-- ───────────── ★ 智能体闭环（纯 SVG，无图表库） ───────────── -->
+<section id="agent-svg">
+  <h2>★ 智能体闭环（用户输入 · 提示词 · ToolCall · Loop · 文件）</h2>
+  <p class="lead">RustMcuClaw 的“大脑”是一段标准的 Agent 主循环：把用户输入与人设/记忆/任务一起拼成提示词，调用 LLM；若响应里带工具调用就在本地执行后回填，最多迭代 <code>max_tool_loops</code> 次；产出最终回复后异步生成不超过 50 字的总结并落盘。</p>
+
+  <div class="svg-diagram">
+  <svg viewBox="0 0 1200 740" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agent loop">
+    <defs>
+      <marker id="aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#cfe6ff"/>
+      </marker>
+      <marker id="aaG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#2de2b6"/>
+      </marker>
+      <marker id="aaP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#7b61ff"/>
+      </marker>
+      <marker id="aaW" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#ffb454"/>
+      </marker>
+      <linearGradient id="gAgent" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#1d3766"/><stop offset="1" stop-color="#0f1f3d"/>
+      </linearGradient>
+      <linearGradient id="gFile" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#27406a"/><stop offset="1" stop-color="#13243f"/>
+      </linearGradient>
+      <linearGradient id="gTool" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#5b3a82"/><stop offset="1" stop-color="#321e4f"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Inputs (left column) -->
+    <text x="40" y="34" fill="#9fb0cc" font-size="13" letter-spacing="2">INPUT</text>
+    <line x1="40" y1="42" x2="240" y2="42" stroke="#243652"/>
+
+    <g>
+      <rect x="40" y="70" width="220" height="74" rx="12" fill="url(#gAgent)" stroke="#57b8ff"/>
+      <text x="150" y="98" text-anchor="middle" fill="#e7eef9" font-size="15" font-weight="700">① 用户输入</text>
+      <text x="150" y="120" text-anchor="middle" fill="#cfe6ff" font-size="11">CLI 串口行 · 飞书消息</text>
+      <text x="150" y="136" text-anchor="middle" fill="#cfe6ff" font-size="11">定时任务到期触发</text>
+    </g>
+
+    <g>
+      <rect x="40" y="170" width="220" height="74" rx="12" fill="url(#gAgent)" stroke="#57b8ff"/>
+      <text x="150" y="198" text-anchor="middle" fill="#e7eef9" font-size="15" font-weight="700">② 提示词构建</text>
+      <text x="150" y="220" text-anchor="middle" fill="#cfe6ff" font-size="11">soul + role + user</text>
+      <text x="150" y="236" text-anchor="middle" fill="#cfe6ff" font-size="11">+ 最近 N 条 summary</text>
+    </g>
+
+    <!-- Core loop (center) -->
+    <text x="430" y="34" fill="#9fb0cc" font-size="13" letter-spacing="2">REASONING LOOP</text>
+    <line x1="430" y1="42" x2="830" y2="42" stroke="#243652"/>
+
+    <g>
+      <rect x="380" y="120" width="260" height="84" rx="14" fill="url(#gAgent)" stroke="#2de2b6"/>
+      <text x="510" y="150" text-anchor="middle" fill="#e7eef9" font-size="16" font-weight="700">③ LLM 调用</text>
+      <text x="510" y="172" text-anchor="middle" fill="#cfe6ff" font-size="11">Provider.build_request()</text>
+      <text x="510" y="188" text-anchor="middle" fill="#cfe6ff" font-size="11">→ HTTPS POST (via Z2Plus)</text>
+    </g>
+
+    <g>
+      <rect x="380" y="240" width="260" height="74" rx="14" fill="url(#gAgent)" stroke="#2de2b6"/>
+      <text x="510" y="268" text-anchor="middle" fill="#e7eef9" font-size="15" font-weight="700">④ 响应解析</text>
+      <text x="510" y="290" text-anchor="middle" fill="#cfe6ff" font-size="11">serde_json_core</text>
+      <text x="510" y="306" text-anchor="middle" fill="#cfe6ff" font-size="11">choices[0].message</text>
+    </g>
+
+    <!-- Decision diamond -->
+    <g>
+      <polygon points="510,340 640,400 510,460 380,400" fill="#1a2845" stroke="#ffb454"/>
+      <text x="510" y="395" text-anchor="middle" fill="#e7eef9" font-size="15" font-weight="700">⑤ 含 ToolCall?</text>
+      <text x="510" y="418" text-anchor="middle" fill="#ffb454" font-size="11">tool_use / function_call</text>
+    </g>
+    <text x="660" y="395" fill="#ffb454" font-size="12">是 →</text>
+    <text x="354" y="475" fill="#2de2b6" font-size="12">否 ↓</text>
+
+    <!-- Tool dispatch (right) -->
+    <g>
+      <rect x="720" y="120" width="200" height="84" rx="12" fill="url(#gTool)" stroke="#ffb454"/>
+      <text x="820" y="148" text-anchor="middle" fill="#e7eef9" font-size="15" font-weight="700">⑥ Tool 执行</text>
+      <text x="820" y="170" text-anchor="middle" fill="#ffb454" font-size="11">tasks · time · fs · feishu</text>
+      <text x="820" y="188" text-anchor="middle" fill="#ffb454" font-size="11">结果回填 messages[]</text>
+    </g>
+
+    <!-- Loop arrow (toolcall→back) -->
+    <path d="M640,400 C 720,400 760,400 820,210" stroke="#ffb454" stroke-width="2.2" fill="none" stroke-dasharray="5 5" marker-end="url(#aaW)"/>
+    <path d="M820,120 C 720,100 660,110 640,160" stroke="#ffb454" stroke-width="2.2" fill="none" marker-end="url(#aaW)"/>
+    <text x="780" y="240" fill="#ffb454" font-size="11" font-style="italic">loop ≤ max_tool_loops (4)</text>
+
+    <!-- Final reply -->
+    <g>
+      <rect x="380" y="490" width="260" height="74" rx="14" fill="url(#gAgent)" stroke="#57b8ff"/>
+      <text x="510" y="518" text-anchor="middle" fill="#e7eef9" font-size="15" font-weight="700">⑦ 最终回复</text>
+      <text x="510" y="540" text-anchor="middle" fill="#cfe6ff" font-size="11">推 LCD · 写 uart2</text>
+      <text x="510" y="556" text-anchor="middle" fill="#cfe6ff" font-size="11">回飞书 (若来自 wss)</text>
+    </g>
+
+    <!-- Summary memory writeback -->
+    <g>
+      <rect x="40" y="490" width="220" height="74" rx="12" fill="url(#gAgent)" stroke="#7b61ff"/>
+      <text x="150" y="518" text-anchor="middle" fill="#e7eef9" font-size="15" font-weight="700">⑧ 总结记忆</text>
+      <text x="150" y="540" text-anchor="middle" fill="#cfe6ff" font-size="11">异步 LLM 摘要 ≤50 字</text>
+      <text x="150" y="556" text-anchor="middle" fill="#cfe6ff" font-size="11">append summary_memory.jsonl</text>
+    </g>
+
+    <!-- Files panel (right column) -->
+    <text x="960" y="34" fill="#9fb0cc" font-size="13" letter-spacing="2">PERSISTENT FILES · /SD:/RustMcuClaw</text>
+    <line x1="960" y1="42" x2="1180" y2="42" stroke="#243652"/>
+
+    <g>
+      <rect x="960" y="290" width="220" height="280" rx="14" fill="url(#gFile)" stroke="#7b61ff" stroke-opacity=".55"/>
+      <text x="1070" y="316" text-anchor="middle" fill="#e7eef9" font-size="14" font-weight="700">📁 数据目录</text>
+
+      <rect x="978" y="332" width="184" height="30" rx="6" fill="#0c1626" stroke="#3b5380"/>
+      <text x="990" y="352" fill="#cfe6ff" font-size="11">rmcc.toml</text>
+      <text x="1150" y="352" text-anchor="end" fill="#9fb0cc" font-size="10">cfg</text>
+
+      <rect x="978" y="368" width="184" height="30" rx="6" fill="#0c1626" stroke="#3b5380"/>
+      <text x="990" y="388" fill="#cfe6ff" font-size="11">soul.md</text>
+      <text x="1150" y="388" text-anchor="end" fill="#9fb0cc" font-size="10">人设</text>
+
+      <rect x="978" y="404" width="184" height="30" rx="6" fill="#0c1626" stroke="#3b5380"/>
+      <text x="990" y="424" fill="#cfe6ff" font-size="11">user.md</text>
+      <text x="1150" y="424" text-anchor="end" fill="#9fb0cc" font-size="10">用户</text>
+
+      <rect x="978" y="440" width="184" height="30" rx="6" fill="#0c1626" stroke="#3b5380"/>
+      <text x="990" y="460" fill="#cfe6ff" font-size="11">role.md</text>
+      <text x="1150" y="460" text-anchor="end" fill="#9fb0cc" font-size="10">角色</text>
+
+      <rect x="978" y="476" width="184" height="30" rx="6" fill="#0c1626" stroke="#7b61ff"/>
+      <text x="990" y="496" fill="#cfe6ff" font-size="11">summary_memory.jsonl</text>
+      <text x="1150" y="496" text-anchor="end" fill="#7b61ff" font-size="10">写</text>
+
+      <rect x="978" y="512" width="184" height="30" rx="6" fill="#0c1626" stroke="#ffb454"/>
+      <text x="990" y="532" fill="#cfe6ff" font-size="11">tasks.json</text>
+      <text x="1150" y="532" text-anchor="end" fill="#ffb454" font-size="10">读写</text>
+    </g>
+
+    <!-- Files → prompt (read) -->
+    <path d="M960,440 C 700,440 350,330 260,210" stroke="#7b61ff" stroke-width="2" fill="none" stroke-dasharray="4 4" marker-end="url(#aaP)"/>
+    <text x="600" y="370" fill="#7b61ff" font-size="11" font-style="italic">read · 注入提示词</text>
+
+    <!-- Summary → file (write) -->
+    <path d="M260,520 C 600,540 800,540 960,500" stroke="#7b61ff" stroke-width="2" fill="none" marker-end="url(#aaP)"/>
+    <text x="610" y="555" fill="#7b61ff" font-size="11" font-style="italic">append · 总结落盘</text>
+
+    <!-- tasks.json bidirectional -->
+    <path d="M820,200 C 900,260 920,420 978,520" stroke="#ffb454" stroke-width="1.6" fill="none" stroke-dasharray="3 4" marker-end="url(#aaW)" marker-start="url(#aaW)"/>
+    <text x="900" y="350" fill="#ffb454" font-size="11" font-style="italic">tool: tasks</text>
+
+    <!-- Main vertical flow arrows -->
+    <path d="M150,144 L150,170" stroke="#cfe6ff" stroke-width="2" fill="none" marker-end="url(#aa)"/>
+    <path d="M260,210 C 320,210 350,170 380,160" stroke="#cfe6ff" stroke-width="2" fill="none" marker-end="url(#aa)"/>
+    <path d="M510,204 L510,240" stroke="#cfe6ff" stroke-width="2" fill="none" marker-end="url(#aa)"/>
+    <path d="M510,314 L510,340" stroke="#cfe6ff" stroke-width="2" fill="none" marker-end="url(#aa)"/>
+    <path d="M510,460 L510,490" stroke="#2de2b6" stroke-width="2.5" fill="none" marker-end="url(#aaG)"/>
+    <path d="M380,527 L260,527" stroke="#7b61ff" stroke-width="2" fill="none" marker-end="url(#aaP)"/>
+
+    <!-- Next round feedback -->
+    <path d="M40,527 C 10,500 10,200 40,180" stroke="#57b8ff" stroke-width="1.6" fill="none" stroke-dasharray="3 4" marker-end="url(#aa)"/>
+    <text x="10" y="360" fill="#57b8ff" font-size="11" font-style="italic" transform="rotate(-90 10 360)">下一轮 · history_limit</text>
+
+    <!-- Bottom legend -->
+    <rect x="40" y="640" width="1140" height="78" rx="12" fill="#0e1a30" stroke="#243652"/>
+    <text x="60" y="664" fill="#9fb0cc" font-size="12" font-weight="600">关键约束</text>
+    <text x="60"  y="686" fill="#cfe6ff" font-size="11">• history_limit = 6 轮：超过则裁剪老消息，靠 summary 补足上下文</text>
+    <text x="60"  y="704" fill="#cfe6ff" font-size="11">• max_tool_loops = 4：避免 LLM 工具调用死循环</text>
+    <text x="620" y="686" fill="#cfe6ff" font-size="11">• summary ≤ 50 字：单条精简，jsonl 仅 append，断电不丢</text>
+    <text x="620" y="704" fill="#cfe6ff" font-size="11">• 三入口共享同一 handle_line：CLI / 飞书 / 任务到期触发完全等价</text>
+  </svg>
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h4>提示词组装顺序</h4>
+      <ol style="margin:6px 0 0;padding-left:20px;font-size:14px;color:#cfdbed">
+        <li><code>soul.md</code> — 助手核心人格</li>
+        <li><code>role.md</code> — 行为/边界约束</li>
+        <li><code>user.md</code> — 用户画像</li>
+        <li>近 N 条 <code>summary</code> — 长期记忆</li>
+        <li>最近 history_limit 轮对话</li>
+        <li>当前用户输入</li>
+      </ol></div>
+    <div class="card"><h4>Tool 能力</h4>
+      <ul>
+        <li><code>task.add / list / done</code> — 周期 ≥ 10 min</li>
+        <li><code>fs.read / write</code> — 仅限 /SD:/RustMcuClaw</li>
+        <li><code>time.now</code> — wall_clock_base + uptime</li>
+        <li><code>feishu.reply</code> — 走 ATFS 通道回消息</li>
+        <li>调用结果以 <code>tool</code> 角色回填 messages[]</li>
+      </ul></div>
+  </div>
+</section>
+
+<!-- ───────────── ★ 技术栈分层（嵌套方块，纯 CSS） ───────────── -->
+<section id="stack">
+  <h2>★ 技术栈分层视图</h2>
+  <p class="lead">把整个工程按“从云到硅”自上而下拍扁——每一层都是一组并列方块，层间通过外层包裹形成嵌套：上层依赖下层提供的能力，下层完全不感知上层存在。左边主栈是 MCU/Rust 业务侧，右边小栈是 Z2Plus 网络协处理器侧。</p>
+
+  <div class="stack col-split">
+    <!-- ===== 左侧：MCU + Rust 主栈 ===== -->
+    <div>
+      <!-- L7 用户层 -->
+      <div class="layer l-app">
+        <span class="lh"><b>L7</b>用户 & 外部世界</span>
+        <div class="row">
+          <div class="blk acc3">PC 串口终端<small>putty / minicom</small></div>
+          <div class="blk acc3">飞书 App<small>消息 / 提及 / 卡片</small></div>
+          <div class="blk acc3">触摸屏交互<small>上下滑动 / 唤醒</small></div>
+          <div class="blk acc3">LCD 显示<small>SH8601Z 410×502</small></div>
+        </div>
+
+        <!-- L6 应用层 -->
+        <div class="layer l-app" style="margin-top:18px">
+          <span class="lh"><b>L6</b>应用 / 智能体</span>
+          <div class="row">
+            <div class="blk acc3">Chat CLI<small>handle_line()</small></div>
+            <div class="blk acc3">Feishu Agent<small>FSEV 转 LLM</small></div>
+            <div class="blk acc3">Task Scheduler<small>≥10 min 周期</small></div>
+            <div class="blk acc3">Heartbeat<small>poll_thread</small></div>
+            <div class="blk acc3">UI Renderer<small>Unifont + ring buf</small></div>
+          </div>
+
+          <!-- L5 Rust 业务核 -->
+          <div class="layer l-rust" style="margin-top:18px">
+            <span class="lh"><b>L5</b>Rust 业务核 <code>rustmcuclaw-mcu</code></span>
+            <div class="row">
+              <div class="blk acc4">app.rs<small>主循环 / loop</small></div>
+              <div class="blk acc4">llm.rs<small>Provider 抽象</small></div>
+              <div class="blk acc4">profiles.rs<small>soul/user/role</small></div>
+              <div class="blk acc4">memory.rs<small>summary jsonl</small></div>
+              <div class="blk acc4">tasks.rs<small>tasks.json</small></div>
+              <div class="blk acc4">config.rs<small>rmcc.toml (serde)</small></div>
+              <div class="blk acc4">serde_json_core<small>no_std JSON</small></div>
+              <div class="blk acc4">heapless / alloc<small>String/Vec</small></div>
+            </div>
+
+            <!-- L4 FFI -->
+            <div class="layer l-ffi" style="margin-top:18px">
+              <span class="lh"><b>L4</b>C ↔ Rust FFI 边界</span>
+              <div class="row">
+                <div class="blk acc2">claw_mcu_https_post_json</div>
+                <div class="blk acc2">claw_mcu_fs_read / write</div>
+                <div class="blk acc2">claw_mcu_display_push</div>
+                <div class="blk acc2">claw_mcu_now_secs</div>
+                <div class="blk acc2">claw_mcu_handle_feishu_event</div>
+                <div class="blk acc2">PSRAM bump allocator<small>GlobalAlloc</small></div>
+              </div>
+
+              <!-- L3 RTOS -->
+              <div class="layer l-rtos" style="margin-top:18px">
+                <span class="lh"><b>L3</b>Zephyr RTOS 子系统</span>
+                <div class="row">
+                  <div class="blk acc1">k_thread<small>cli/poll/urc/touch</small></div>
+                  <div class="blk acc1">k_mutex / k_msgq<small>claw_lock / rx</small></div>
+                  <div class="blk acc1">k_timer / k_work<small>动画</small></div>
+                  <div class="blk acc1">Logging<small>LOG_MODULE</small></div>
+                  <div class="blk acc1">Watchdog<small>kick_watchdog</small></div>
+                  <div class="blk acc1">Devicetree<small>aliases / chosen</small></div>
+                  <div class="blk acc1">Power Mgr<small>pm.h</small></div>
+                </div>
+
+                <!-- L2 HAL/Drivers -->
+                <div class="layer l-hal" style="margin-top:18px">
+                  <span class="lh"><b>L2</b>驱动 / HAL</span>
+                  <div class="row">
+                    <div class="blk">UART (uart2/3)<small>IRQ + msgq</small></div>
+                    <div class="blk">QSPI<small>LCD framebuffer</small></div>
+                    <div class="blk">SDIO<small>FatFS DISK_ACCESS</small></div>
+                    <div class="blk">I²C<small>CHSC6417 触摸</small></div>
+                    <div class="blk">FatFS<small>/SD:/RustMcuClaw</small></div>
+                    <div class="blk">PSRAM ctrl<small>psram_init.c</small></div>
+                    <div class="blk">SH8601Z<small>LCD 控制器</small></div>
+                    <div class="blk">Cache<small>zephyr/cache.h</small></div>
+                  </div>
+
+                  <!-- L1 SoC -->
+                  <div class="layer l-hw" style="margin-top:18px">
+                    <span class="lh"><b>L1</b>SoC / 硬件</span>
+                    <div class="row">
+                      <div class="blk acc5">Cortex-M55<small>RTL87x3G</small></div>
+                      <div class="blk acc5">SRAM<small>内核 / 驱动</small></div>
+                      <div class="blk acc5">PSRAM 4 MB<small>外部 QSPI</small></div>
+                      <div class="blk acc5">Flash<small>固件 / 资源</small></div>
+                      <div class="blk acc5">SD 卡<small>数据 / 字模</small></div>
+                      <div class="blk acc5">LCD Panel<small>410×502 R=80</small></div>
+                      <div class="blk acc5">Touch IC<small>CHSC6417</small></div>
+                      <div class="blk acc5">UART PHY<small>到 PC / Z2</small></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 右侧：Z2Plus 协处理器栈 ===== -->
+    <div class="side-stack">
+      <div class="layer l-app">
+        <span class="lh"><b>NET</b>云端</span>
+        <div class="row">
+          <div class="blk acc3">LLM Server<small>OpenAI · Kimi · GH</small></div>
+          <div class="blk acc4">Feishu Open API<small>wss · OAuth</small></div>
+          <div class="blk acc1">NTP Pool<small>校时</small></div>
+        </div>
+
+        <div class="layer l-app" style="margin-top:14px">
+          <span class="lh"><b>APP</b>应用协议</span>
+          <div class="row">
+            <div class="blk acc3">HTTPS / JSON<small>chat completions</small></div>
+            <div class="blk acc4">WebSocket Frames<small>Feishu 事件</small></div>
+            <div class="blk acc1">SNTP / NTPv4</div>
+          </div>
+
+          <div class="layer l-rust" style="margin-top:14px">
+            <span class="lh"><b>AT</b>AT 命令面</span>
+            <div class="row">
+              <div class="blk acc4">ATPN / ATWT<small>Wi-Fi 接入</small></div>
+              <div class="blk acc4">ATEP<small>SNTP</small></div>
+              <div class="blk acc4">ATKM<small>Kimi 快路径</small></div>
+              <div class="blk acc4">HTTPS POST<small>通用 OpenAI 兼容</small></div>
+              <div class="blk acc4">ATFS<small>飞书 wss</small></div>
+              <div class="blk acc4">[FSEV-…] URC<small>异步推送</small></div>
+            </div>
+
+            <div class="layer l-ffi" style="margin-top:14px">
+              <span class="lh"><b>TLS</b>安全</span>
+              <div class="row">
+                <div class="blk acc2">mbedTLS<small>TLS 1.2</small></div>
+                <div class="blk acc2">X.509 root CA</div>
+                <div class="blk acc2">HMAC / AES-GCM</div>
+              </div>
+
+              <div class="layer l-rtos" style="margin-top:14px">
+                <span class="lh"><b>NET</b>网络栈</span>
+                <div class="row">
+                  <div class="blk acc1">lwIP TCP / UDP / DNS</div>
+                  <div class="blk acc1">Wi-Fi STA<small>WPA2-PSK</small></div>
+                </div>
+
+                <div class="layer l-hal" style="margin-top:14px">
+                  <span class="lh"><b>HAL</b>射频 / UART</span>
+                  <div class="row">
+                    <div class="blk">RTL8720C PHY<small>2.4 GHz b/g/n</small></div>
+                    <div class="blk">UART (to MCU)<small>921600</small></div>
+                  </div>
+
+                  <div class="layer l-hw" style="margin-top:14px">
+                    <span class="lh"><b>HW</b>AmebaZ2+ SoC</span>
+                    <div class="row">
+                      <div class="blk acc5">KM4 Core</div>
+                      <div class="blk acc5">SRAM / Flash</div>
+                      <div class="blk acc5">天线 / RF FE</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid2" style="margin-top:14px">
+    <div class="card"><h4>读图方式</h4>
+      <ul>
+        <li>外层 = 上层；嵌套越深越靠近硬件</li>
+        <li>每个标签胶囊 (<code>L1…L7</code>) 标明该层在 OSI/技术栈中的相对位置</li>
+        <li>颜色按职责而非层级：青=应用、橙=Rust/AT、紫=FFI/TLS、蓝=RTOS/网络、灰=驱动、红=硅</li>
+      </ul></div>
+    <div class="card"><h4>层间契约</h4>
+      <ul>
+        <li><strong>L6 → L5</strong>：app/feishu/task 都调用同一个 Rust <code>handle_line</code></li>
+        <li><strong>L5 → L4</strong>：Rust 仅依赖 6 个 <code>extern "C"</code> 函数</li>
+        <li><strong>L4 → L3</strong>：FFI 内部使用 <code>k_mutex</code> 串行化全局上下文</li>
+        <li><strong>右栈 ↔ 左栈</strong>：仅通过 uart3 的 AT/URC 文本协议互通</li>
+      </ul></div>
+  </div>
+</section>
+
+<!-- ───────────────────────────── 2 整体架构 ───────────────────────────── -->
+<section id="arch">
+  <h2>2. 整体架构图</h2>
+  <p class="lead">双芯 + Rust 业务核的总体分层。MCU 侧负责一切“看得见”的部分，Z2Plus 负责一切“连出去”的部分，两者只通过一根 UART 解耦。</p>
+  <div class="mermaid">
+flowchart LR
+  subgraph USER["用户 / 外部世界"]
+    U1["用户串口 CLI<br/>(PC 终端)"]
+    U2["飞书 App<br/>消息事件"]
+    U3["LLM 云<br/>OpenAI / Kimi / GH"]
+    NTP["NTP 服务器"]
+  end
+
+  subgraph MCU["MCU · RTL87x3G (Zephyr RTOS)"]
+    direction TB
+    UART_CLI["uart2 / Console"]
+    CLI["claw_cli 线程"]
+    POLL["claw_poll 线程<br/>心跳 + 任务"]
+    URC["z2_urc 线程<br/>飞书事件解析"]
+    TCH["touch 线程"]
+    RUST["Rust 静态库<br/>(rustmcuclaw-mcu)"]
+    FFI["FFI 边界<br/>(claw_mcu_*)"]
+    FATFS["FatFS / SD 驱动"]
+    LCD["SH8601Z LCD<br/>+ Unifont 渲染"]
+    PSRAM["PSRAM 堆<br/>bump allocator"]
+  end
+
+  subgraph Z2["Z2Plus · AmebaZ2+ (AT 固件)"]
+    direction TB
+    AT["AT 命令解析"]
+    WIFI["Wi-Fi STA"]
+    HTTPS["HTTPS Client (mbedTLS)"]
+    WSS["WebSocket wss"]
+    SNTP["SNTP"]
+  end
+
+  U1 <-->|TTL Serial| UART_CLI
+  UART_CLI --> CLI
+  CLI --> RUST
+  POLL --> RUST
+  URC --> RUST
+  RUST <-->|extern C| FFI
+  FFI --> FATFS
+  FFI --> LCD
+  RUST -. alloc .-> PSRAM
+  TCH --> LCD
+
+  FFI <-->|uart3 AT/URC| AT
+  AT --> WIFI
+  AT --> HTTPS
+  AT --> WSS
+  AT --> SNTP
+
+  WIFI <-->|2.4G| U2
+  HTTPS <--> U3
+  WSS <--> U2
+  SNTP <--> NTP
+  </div>
+</section>
+
+<!-- ───────────────────────────── 3 MCU 侧 ───────────────────────────── -->
+<section id="mcu">
+  <h2>3. MCU 侧 (RTL87x3G) 软件架构</h2>
+  <p class="lead">MCU 上运行 Zephyr RTOS。所有“能阻塞”的工作各自占一根线程，互不抢占主聊天通路。Rust 库通过 <code>extern "C"</code> 暴露的几个入口函数被多线程并发调用，并自带 <code>k_mutex</code> 串行化。</p>
+
+  <div class="mermaid">
+flowchart TB
+  subgraph BOOT["main() / 启动"]
+    B1["init_psram_layout()"]
+    B2["FatFS mount /SD:"]
+    B3["init_display() + Unifont 加载"]
+    B4["uart IRQ 初始化"]
+    B5["rustmcuclaw_mcu_init()<br/>(PSRAM heap + 配置)"]
+    B6["生成线程: cli / poll / urc / touch"]
+    B1-->B2-->B3-->B4-->B5-->B6
+  end
+
+  subgraph THREADS["Zephyr 线程 (优先级越小越高)"]
+    T1["claw_cli  prio=5<br/>串口行 → Rust LLM"]
+    T2["claw_poll prio=6<br/>heartbeat / scheduled tasks"]
+    T3["z2_urc   prio=7<br/>FSEV 块重组 + 转发"]
+    T4["touch    prio=7<br/>滚动 / 唤醒"]
+    T5["sys_workq<br/>loading 动画"]
+  end
+
+  subgraph RUST["Rust crate · rustmcuclaw-mcu (no_std + alloc)"]
+    R1["app::handle_line()<br/>聊天主循环"]
+    R2["llm::Provider<br/>(OpenAI / Kimi / Compat)"]
+    R3["memory.rs<br/>summary jsonl"]
+    R4["tasks.rs<br/>调度器"]
+    R5["profiles.rs<br/>soul/user/role"]
+    R1-->R2
+    R1-->R3
+    R1-->R5
+    R4-->R1
+  end
+
+  subgraph FFIBLK["C FFI 边界"]
+    F1["claw_mcu_https_post_json()"]
+    F2["claw_mcu_fs_read/write()"]
+    F3["claw_mcu_display_push()"]
+    F4["claw_mcu_now_secs()"]
+    F5["rustmcuclaw_mcu_handle_feishu_event()"]
+  end
+
+  B6-->T1
+  B6-->T2
+  B6-->T3
+  B6-->T4
+  T1-->R1
+  T2-->R4
+  T3-->F5
+  F5-->R1
+  R2-->F1
+  R1-->F3
+  R3-->F2
+  R5-->F2
+  R1-->F4
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h4>线程职责</h4>
+      <table>
+        <tr><th>线程</th><th>栈</th><th>职责</th></tr>
+        <tr><td>claw_cli</td><td>12 KB</td><td>读 uart2 行输入 → Rust handle_line → LLM</td></tr>
+        <tr><td>claw_poll</td><td>12 KB</td><td>心跳、定时任务到期触发新一轮聊天</td></tr>
+        <tr><td>z2_urc</td><td>4 KB (PSRAM)</td><td>从 uart3 中识别 <code>[FSEV-BEGIN]</code>…<code>[FSEV-END]</code></td></tr>
+        <tr><td>touch</td><td>2 KB</td><td>CHSC6417 上下滑动 → 改 disp_scroll_offset</td></tr>
+        <tr><td>sys_workq</td><td>—</td><td>llm_loading 动画帧</td></tr>
+      </table></div>
+    <div class="card"><h4>关键互斥</h4>
+      <ul>
+        <li><code>claw_lock</code>：保护 Rust 全局上下文，使 cli / poll / urc 三个线程对同一个 LLM 上下文串行</li>
+        <li><code>z2_uart_lock</code>：保证 uart3 上 AT 命令-应答对不被另一线程的命令插入</li>
+        <li><code>display_lock</code>：动画 work 与 cli 渲染 framebuffer 互斥</li>
+      </ul></div>
+  </div>
+</section>
+
+<!-- ───────────────────────────── 4 Z2Plus 侧 ───────────────────────────── -->
+<section id="z2plus">
+  <h2>4. Z2Plus (AmebaZ2+) 协处理器</h2>
+  <p class="lead">Z2Plus 跑独立的 AT 固件，是 RustMcuClaw 唯一的“网络出口”。MCU 既不实现 Wi-Fi 也不实现 TLS，全部委托给 Z2Plus，通过一套 AT 命令 + URC 进行受控调用。</p>
+
+  <div class="mermaid">
+flowchart LR
+  subgraph MCU["MCU"]
+    M1["AT 命令<br/>(同步)"]
+    M2["URC 监听<br/>(异步)"]
+  end
+
+  subgraph Z2["AmebaZ2+ AT 固件"]
+    P["AT 解析器"]
+    PN["ATPN / ATWT<br/>Wi-Fi 接入"]
+    EP["ATEP<br/>SNTP 时间同步"]
+    KM["ATKM<br/>Kimi 快速通道"]
+    HC["通用 HTTPS POST<br/>(z2plus_https_post_json)"]
+    FS["ATFS<br/>飞书 wss 长连接"]
+    SD["ATSD<br/>调试 / 状态"]
+  end
+
+  M1 -->|"ATPN=ssid,pwd"| PN
+  M1 -->|"ATEP=host"| EP
+  M1 -->|"ATKM=prompt"| KM
+  M1 -->|"endpoint+json"| HC
+  M1 -->|"ATFS=app_id,secret"| FS
+
+  PN -. "OK / status" .-> M1
+  EP -. "epoch=..."  .-> M1
+  KM -. "ret=X http=Y + JSON body" .-> M1
+  HC -. "JSON body"  .-> M1
+
+  FS ==>|"长连接事件"| M2
+  M2 -. "[FSEV-BEGIN] payload [FSEV-END]" .- FS
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h4>AT 命令表（节选）</h4>
+      <table>
+        <tr><th>命令</th><th>方向</th><th>用途</th></tr>
+        <tr><td><code>ATPN</code></td><td>MCU→Z2</td><td>配 Wi-Fi SSID/PWD</td></tr>
+        <tr><td><code>ATWT</code></td><td>MCU→Z2</td><td>等待 Wi-Fi 连接 / 查询状态</td></tr>
+        <tr><td><code>ATEP</code></td><td>MCU→Z2</td><td>SNTP 同步，返回 UNIX epoch</td></tr>
+        <tr><td><code>ATKM</code></td><td>MCU→Z2</td><td>Kimi 快路径，Z2 端持有 key</td></tr>
+        <tr><td>通用 HTTPS</td><td>MCU→Z2</td><td>endpoint + header + JSON body</td></tr>
+        <tr><td><code>ATFS</code></td><td>MCU→Z2</td><td>启动飞书 wss 长连接</td></tr>
+        <tr><td><code>[FSEV-…]</code></td><td>Z2→MCU</td><td>飞书事件 URC 推送</td></tr>
+      </table></div>
+    <div class="card"><h4>设计取舍</h4>
+      <ul>
+        <li>ATKM 把 Kimi 鉴权放在 Z2 端，MCU 只传 prompt → 显著减小 MCU 传输/内存负担</li>
+        <li>通用 HTTPS POST 作为兜底：Rust 生成的 OpenAI-Compatible JSON 透传给 Z2</li>
+        <li>飞书 URC 用文本标记块包裹，避免分片误解析</li>
+        <li>失败时返回 <code>ret=X http=Y</code>，MCU 据此区分本地/网络/服务错误</li>
+      </ul></div>
+  </div>
+</section>
+
+<!-- ───────────────────────────── 5 UART 桥 ───────────────────────────── -->
+<section id="uart">
+  <h2>5. UART 桥（MCU ↔ Z2Plus）</h2>
+  <p class="lead">两条 UART 各司其职：<code>uart2</code> 暴露给 PC 终端做调试与用户对话；<code>uart3</code> 是 MCU 与 Z2Plus 之间的同步 AT + 异步 URC 双向通道。</p>
+
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant PC as PC 终端
+  participant U2 as uart2 IRQ
+  participant CLI as claw_cli
+  participant RUST as Rust core
+  participant U3 as uart3 (TX/RX)
+  participant Z2 as Z2Plus AT
+  participant URC as z2_urc 线程
+
+  PC->>U2: 用户输入字节
+  U2->>U2: irq_cb → k_msgq_put(cli_rx)
+  CLI->>U2: uart_read_line() 拼一整行
+  CLI->>RUST: rustmcuclaw_mcu_handle_line(line)
+
+  RUST->>U3: 持 z2_uart_lock,<br/>写 "ATKM=…" 或 通用 HTTPS body
+  Z2-->>U3: 状态行 "ret=0 http=200"
+  Z2-->>U3: JSON body (chunked, 1024B/30ms)
+  U3-->>RUST: uart_read_json_body() 重组 {…}
+  RUST-->>CLI: reply 字符串
+  CLI->>U2: serial_write(reply)
+  CLI->>RUST: 落 disp_lines + 推 LCD
+
+  par 并行
+    Z2-->>U3: [FSEV-BEGIN]…[FSEV-END]
+    U3-->>URC: 进入 z2_uart_rx_msgq
+    URC->>URC: 重组 fsev_buf
+    URC->>RUST: rustmcuclaw_mcu_handle_feishu_event()
+  end
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h4>uart2 (CLI / Console)</h4>
+      <ul>
+        <li>IRQ 驱动 + 2048 字节 msgq</li>
+        <li>支持 <code>\r</code>/<code>\n</code> 行结束，自动丢弃空行</li>
+        <li>可选本地回显（<code>CLI_LOCAL_ECHO</code>）</li>
+      </ul></div>
+    <div class="card"><h4>uart3 (Z2Plus AT)</h4>
+      <ul>
+        <li>同样 IRQ + msgq，专用于和 Z2 通信</li>
+        <li>大 JSON 分片传输：每 1024 B 节流 30 ms，避免 Z2 端溢出</li>
+        <li>JSON 解析机：在 <code>uart_read_json_body</code> 里逐字符跟踪深度/转义</li>
+        <li><code>z2_uart_lock</code> 保证 AT 命令-应答原子配对</li>
+      </ul></div>
+  </div>
+</section>
+
+<!-- ───────────────────────────── 6 HTTPS / LLM ───────────────────────────── -->
+<section id="https">
+  <h2>6. HTTPS 与 LLM 调用</h2>
+  <p class="lead">Rust crate 把 LLM 请求抽象为 <code>Provider</code>，最终落到一次“透明 HTTPS POST”。MCU 不掌握 TLS，只把 endpoint / header / body 交给 Z2Plus，Z2Plus 完成 TLS 握手并把响应原文回传。</p>
+
+  <div class="mermaid">
+flowchart TB
+  IN["claw_cli: 用户输入 line"]
+  M1["读取 soul/user/role + summary_memory"]
+  M2["Provider::build_request()<br/>OpenAI-Compatible JSON"]
+  M3{"provider.kind ?"}
+  KM["ATKM 快路径<br/>Z2 端 prompt"]
+  HC["通用 HTTPS POST<br/>endpoint+headers+body"]
+  M4["uart3: 写命令 + 等结果行"]
+  M5["uart_read_json_body()<br/>重组 choices/error"]
+  M6["serde_json_core 解析<br/>取 message.content"]
+  M7["更新对话历史 / 写 disp_lines"]
+  M8["round 结束后<br/>异步生成 summary"]
+
+  IN-->M1-->M2-->M3
+  M3 -->|"kind = kimi"| KM
+  M3 -->|"others"| HC
+  KM-->M4
+  HC-->M4
+  M4-->M5-->M6-->M7-->M8
+  </div>
+
+  <h3>OpenAI-Compatible 请求示例</h3>
+<pre><code>POST {endpoint}
+Authorization: Bearer {api_key}
+Content-Type: application/json
+
+{
+  "model": "moonshot-v1-8k",
+  "temperature": 0.2,
+  "max_tokens": 2048,
+  "messages": [
+    {"role":"system", "content":"<soul + role + user + 最近 N 条 summary>"},
+    {"role":"user",   "content":"今天天气如何？"}
+  ]
+}</code></pre>
+
+  <div class="grid2">
+    <div class="card"><h4>已支持 Provider</h4>
+      <ul>
+        <li><code>open_ai</code> · OpenAI 官方</li>
+        <li><code>kimi</code> · Moonshot（含 ATKM 快路径）</li>
+        <li><code>github_models</code> · GitHub Models marketplace</li>
+        <li><code>open_ai_compatible</code> · 自定义 endpoint</li>
+        <li><code>mock</code> · 离线测试不访问网络</li>
+      </ul></div>
+    <div class="card"><h4>错误模型</h4>
+      <ul>
+        <li><span class="pill w">ret&lt;0</span> 本地 / Z2 错（参数 / WiFi 未连）</li>
+        <li><span class="pill w">http≠200</span> 远端错（鉴权 / 限流），body 仍打印</li>
+        <li><span class="pill w">JSON 解析失败</span> 进入 fallback，本轮回复降级文本</li>
+        <li><span class="pill g">timeout 190 s</span> 给 LLM 留足思考时间</li>
+      </ul></div>
+  </div>
+</section>
+
+<!-- ───────────────────────────── 7 FEISHU ───────────────────────────── -->
+<section id="feishu">
+  <h2>7. 飞书 (Feishu) WebSocket 长连接</h2>
+  <p class="lead">为了实现“被动唤醒”，Z2Plus 维持一个到飞书开放平台的 wss 长连接；任何飞书事件都被打包成文本块 URC 推到 uart3，再由 MCU 的 <code>z2_urc</code> 线程重组、转交 Rust，自动进入 LLM 通道并把回答推回飞书。</p>
+
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant FS as Feishu OpenAPI
+  participant Z2 as Z2Plus (wss client)
+  participant U3 as uart3
+  participant URC as z2_urc 线程
+  participant RUST as Rust core
+  participant U2 as uart2 / LCD
+
+  Note over Z2,FS: 启动期: ATFS=app_id,app_secret<br/>Z2 拿到 app_access_token 并建立 wss
+  Z2->>FS: TLS + WebSocket Upgrade
+  FS-->>Z2: 101 Switching Protocols
+
+  loop 长连接保持
+    FS-->>Z2: 文本帧 (message / card / mention)
+    Z2->>U3: 写出 [FSEV-BEGIN]\nheader…\nbody (JSON)\n[FSEV-END]
+    U3->>URC: 字节进 z2_uart_rx_msgq
+    URC->>URC: 找到 BEGIN/END,<br/>把 12 KB fsev_buf 填满
+    URC->>RUST: rustmcuclaw_mcu_handle_feishu_event(buf,len)
+    RUST->>RUST: 解析 sender / chat_id / text
+    RUST->>RUST: 触发一次普通 LLM round
+    RUST->>U3: HTTPS POST → Feishu reply
+    U3->>FS: 通过 ATFS 通道回消息
+    RUST->>U2: 同步在本地 LCD 显示
+  end
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h4>URC 文本协议</h4>
+<pre><code>\r\n[FSEV-BEGIN]\r\n
+type: message_received\r\n
+chat_id: oc_xxx\r\n
+\r\n
+{"sender":"...","text":"早上好"}\r\n
+[FSEV-END]\r\n</code></pre>
+      <ul>
+        <li>独立优先级线程，避免与 CLI 抢锁导致回复饿死</li>
+        <li><code>FSEV_BUF_MAX = 12 KB</code>，超大事件被截断告警</li>
+      </ul></div>
+    <div class="card"><h4>双通道融合</h4>
+      <ul>
+        <li>飞书事件和 CLI 输入都汇入同一个 <code>app::handle_line</code></li>
+        <li>共享同一份记忆 / soul / role / tasks</li>
+        <li>LCD 标题颜色用 <code>DISPLAY_COL_SYSTEM</code> 区分推送来源</li>
+      </ul></div>
+  </div>
+</section>
+
+<!-- ───────────────────────────── 8 内存 / PSRAM ───────────────────────────── -->
+<section id="memory">
+  <h2>8. 内存与 PSRAM 布局</h2>
+  <p class="lead">MCU 的 SRAM 紧张，所有大缓冲与 Rust 堆都搬到 4 MB PSRAM。Rust 用一个简单的 <em>bump allocator</em> 适配 <code>no_std + alloc</code>，并在堆水位过高时主动重新初始化以避免长跑碎片化。</p>
+
+  <div class="mermaid">
+flowchart LR
+  subgraph SRAM["MCU SRAM (有限)"]
+    S1["Zephyr 内核结构"]
+    S2["驱动 / IRQ 栈"]
+    S3["少量临时缓冲"]
+  end
+
+  subgraph PSRAM["PSRAM 4 MB (外部 QSPI)"]
+    direction TB
+    P1["Rust 全局堆<br/>RUSTMCUCLAW_PSRAM_BASE / SIZE<br/>bump allocator"]
+    P2["disp_lines 70 × 161 B<br/>disp_colors 70 × u16"]
+    P3["unifont.bin ~2.06 MB<br/>(16 px 全 BMP 字模)"]
+    P4["fsev_buf 12 KB"]
+    P5["z2_urc 栈 4 KB"]
+    P6["cli / poll / touch 栈<br/>对齐到 ARCH_STACK_PTR_ALIGN"]
+    P7["LCD framebuffer<br/>410×502×2 ≈ 412 KB"]
+  end
+
+  subgraph SD["SD 卡 FatFS · /SD:/RustMcuClaw"]
+    direction TB
+    D1["rmcc.toml"]
+    D2["soul.md / user.md / role.md"]
+    D3["summary_memory.jsonl"]
+    D4["tasks.json"]
+    D5["unifont.bin (源)"]
+  end
+
+  S1 -.runtime.-> P1
+  D5 -->|boot 加载| P3
+  D1 --> P1
+  D2 --> P1
+  D3 --> P1
+  D4 --> P1
+  P1 -. heap&gt;70%<br/>重初始化 .-> P1
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h4>Rust allocator</h4>
+      <ul>
+        <li><code>rustmcuclaw_mcu_init()</code> 接收 <code>(base, size)</code></li>
+        <li>实现 <code>GlobalAlloc</code>：bump + free-list 兜底</li>
+        <li>堆水位 70% 时，<code>claw_poll</code> 会在空闲期触发 reinit</li>
+        <li>所有大 String / Vec / serde JSON buffer 都落在这里</li>
+      </ul></div>
+    <div class="card"><h4>SD 卡数据目录</h4>
+      <ul>
+        <li>挂载点 <code>/SD:</code>，FatFS 直接走 DISK_ACCESS</li>
+        <li>路径形式与 PC 版完全一致，便于离线编辑</li>
+        <li>首次启动写入默认 <code>rmcc.toml</code></li>
+        <li>Unifont 二进制由 <code>tools/gen_unifont_bin.py</code> 离线生成</li>
+      </ul></div>
+  </div>
+</section>
+
+<!-- ───────────────────────────── 9 UI / Display ───────────────────────────── -->
+<section id="ui">
+  <h2>9. UI / 显示子系统</h2>
+  <p class="lead">410×502 圆角 LCD（80 px 圆角）通过 QSPI 驱动。聊天界面是一个简单的“环形行缓冲 + GNU Unifont 16 px 渲染器”，无 LVGL/HoneyGUI 依赖，全部在 PSRAM 中操作 framebuffer。</p>
+
+  <div class="mermaid">
+flowchart TB
+  subgraph LCDPanel["SH8601Z LCD 410×502 (R=80)"]
+    direction TB
+    L1["标题区 y=0..79<br/>app/user/AI 角色"]
+    L2["分隔线 y=74..75"]
+    L3["聊天区 y=84..底部<br/>DISPLAY_MAX_LINES=70 行环"]
+    L4["底部安全区 R+gap=84 px"]
+  end
+
+  subgraph Pipeline["渲染管线"]
+    direction TB
+    R1["disp_lines / disp_colors (PSRAM)"]
+    R2["unifont_psram 字模查表"]
+    R3["逐字符 16×16 位图 → fb"]
+    R4["display_lock 互斥"]
+    R5["sh8601z_flush() → QSPI"]
+  end
+
+  subgraph Input["输入"]
+    I1["触摸 CHSC6417"]
+    I2["touch 线程 计算滑动"]
+    I3["disp_scroll_offset"]
+  end
+
+  R1-->R3
+  R2-->R3
+  R3-->R4-->R5-->LCDPanel
+  I1-->I2-->I3
+  I3-->R3
+
+  subgraph Anim["loading 动画"]
+    A1["k_timer anim_timer"]
+    A2["k_work anim_work"]
+    A1-->A2-->R4
+  end
+  </div>
+
+  <div class="grid2">
+    <div class="card"><h4>关键参数</h4>
+      <table>
+        <tr><th>项</th><th>值</th></tr>
+        <tr><td>分辨率</td><td>410 × 502 RGB565</td></tr>
+        <tr><td>圆角</td><td>R = 80 px</td></tr>
+        <tr><td>行高</td><td>18 px (16 字模 + 2 gap)</td></tr>
+        <tr><td>历史深度</td><td>70 行 × 160 字节</td></tr>
+        <tr><td>字模</td><td>GNU Unifont 16 px BMP 全集</td></tr>
+        <tr><td>动画</td><td>llm_loading 8 帧旋转</td></tr>
+      </table></div>
+    <div class="card"><h4>颜色语义 (RGB565)</h4>
+      <ul>
+        <li><code>0x07FF</code> 青 — 标题 / 用户输入</li>
+        <li><code>0xFFFF</code> 白 — AI 主回复</li>
+        <li><code>0x9EFB</code> 浅青 — system / tool 标记</li>
+        <li><code>0x8410</code> 灰 — loading / 设备副标题</li>
+        <li><code>0x4208</code> 深灰 — 分隔线</li>
+      </ul></div>
+  </div>
+</section>
+
+<!-- ───────────────────────────── 10 端到端 ───────────────────────────── -->
+<section id="flow">
+  <h2>10. 端到端聊天流程</h2>
+  <p class="lead">下图把上面的所有子系统串成一次完整对话：从串口输入 → LLM 应答 → LCD 刷屏 → 总结落盘。</p>
+
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant PC
+  participant U2 as uart2
+  participant CLI as claw_cli
+  participant RUST as Rust core
+  participant SD as FatFS/SD
+  participant U3 as uart3
+  participant Z2 as Z2Plus
+  participant LLM as LLM Cloud
+  participant LCD
+
+  PC->>U2: "今天提醒我喝水"
+  U2->>CLI: uart_read_line()
+  CLI->>LCD: 立即渲染用户输入 + 显示 loading
+  CLI->>RUST: handle_line(line)
+
+  RUST->>SD: 读 soul.md / user.md / role.md
+  RUST->>SD: 读 summary_memory.jsonl (最近 N)
+  RUST->>RUST: 组装 OpenAI-Compatible JSON
+  RUST->>U3: ATKM= … 或 通用 HTTPS POST
+  U3->>Z2: AT 命令
+  Z2->>LLM: TLS + HTTPS POST
+  LLM-->>Z2: JSON 响应
+  Z2-->>U3: ret=0 http=200 + body
+  U3-->>RUST: uart_read_json_body() 重组
+  RUST->>RUST: 解析 choices[0].message.content
+  RUST->>SD: 异步生成 ≤50 字 summary 落 jsonl
+  RUST->>RUST: 若包含 /task → tasks.rs 调度
+  RUST-->>CLI: reply 文本
+  CLI->>LCD: 关 loading + 渲染 AI 回复
+  CLI->>U2: serial_write(reply)
+  </div>
+</section>
+
+<!-- ───────────────────────────── 11 启动 ───────────────────────────── -->
+<section id="boot">
+  <h2>11. 启动序列</h2>
+  <p class="lead">从上电到第一行 prompt 出现的关键里程碑。任何一步失败都不会拖死后面的线程，CLI 始终可用以便诊断。</p>
+
+  <div class="mermaid">
+flowchart TB
+  S0["上电 / Reset"]
+  S1["Zephyr SOC init<br/>(PM/WDG/Clock)"]
+  S2["init_psram_layout()<br/>切分 unifont/fsev/栈/fb 槽位"]
+  S3["SD 挂载 /SD:"]
+  S4["加载 unifont.bin → PSRAM"]
+  S5["init_display()<br/>SH8601Z QSPI 上电 + 清屏"]
+  S6["uart2 / uart3 IRQ 初始化"]
+  S7["rustmcuclaw_mcu_init(base,size)<br/>Rust allocator 起来"]
+  S8["读取 / 写默认 rmcc.toml"]
+  S9["ATPN/ATWT 等 Wi-Fi 连上"]
+  S10["ATEP SNTP 校时<br/>(time.windows.com → 公共池轮询)"]
+  S11["ATFS 启动飞书 wss"]
+  S12["启动 cli / poll / urc / touch 线程"]
+  S13["显示 prompt, 等待输入"]
+
+  S0-->S1-->S2-->S3-->S4-->S5-->S6-->S7-->S8-->S9-->S10-->S11-->S12-->S13
+
+  S9 -. 失败 .-> S12
+  S10 -. 失败 .-> S12
+  S11 -. 失败 .-> S12
+  </div>
+
+  <h3>核心配置宏</h3>
+  <table>
+    <tr><th>宏</th><th>默认</th><th>含义</th></tr>
+    <tr><td><code>RUSTMCUCLAW_PSRAM_BASE</code></td><td>0x22000000</td><td>Rust 堆起点</td></tr>
+    <tr><td><code>RUSTMCUCLAW_PSRAM_SIZE</code></td><td>4 MB</td><td>Rust 堆大小</td></tr>
+    <tr><td><code>RUSTMCUCLAW_DATA_DIR</code></td><td>/SD:/RustMcuClaw</td><td>数据根目录</td></tr>
+    <tr><td><code>RUSTMCUCLAW_UNIX_EPOCH_OFFSET</code></td><td>1735689600</td><td>无网兜底 epoch（2025-01-01）</td></tr>
+    <tr><td><code>Z2_HTTPS_TIMEOUT_MS</code></td><td>190000</td><td>单次 LLM 调用超时</td></tr>
+    <tr><td><code>FSEV_BUF_MAX</code></td><td>12 KB</td><td>单条飞书事件上限</td></tr>
+    <tr><td><code>DISPLAY_MAX_LINES</code></td><td>70</td><td>LCD 历史行数</td></tr>
+  </table>
+</section>
+
+</main>
+
+<footer>
+  RustMcuClaw · RTL87X3G_MCU_SDK_Watch_Zephyr v1.14.1.3 ·
+  本页面通过 <a href="https://mermaid.js.org" target="_blank" style="color:var(--accent)">Mermaid</a> 在线渲染所有图表
+</footer>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      background: '#0c1828',
+      primaryColor: '#1c2d4a',
+      primaryTextColor: '#e7eef9',
+      primaryBorderColor: '#3b5380',
+      lineColor: '#7b9fd1',
+      secondaryColor: '#22345a',
+      tertiaryColor: '#1a2740',
+      fontFamily: 'Segoe UI, PingFang SC, Microsoft YaHei, sans-serif'
+    },
+    flowchart: { curve: 'basis', htmlLabels: true, padding: 14 },
+    sequence: { useMaxWidth: true, wrap: true }
+  });
+</script>
+</body>
+</html>

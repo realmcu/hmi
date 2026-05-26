@@ -1,0 +1,20 @@
+# West extension commands for the HMI / RustMcuClaw MCU application.
+# Referenced from manifest/rtl8773g-zephyr-hmi.yml via
+# manifest.self.west-commands. ASCII only on purpose: west reads this
+# file without specifying utf-8 on Windows (cp1252/gbk locale would
+# otherwise crash on Chinese characters).
+
+west-commands:
+  - file: applications/hmi/west_commands_extention/commands.py
+    commands:
+      - name: hmi-build
+        class: HmiBuild
+        help: >-
+          Build realtek-app/applications/hmi/RustMcuClaw/mcu
+          (default board: rtl87x3g_watch/rtl8783gbf).
+      - name: hmi-flash
+        class: HmiFlash
+        help: Flash the image produced by the previous hmi-build.
+      - name: hmi-clean
+        class: HmiClean
+        help: Remove the hmi build directory.

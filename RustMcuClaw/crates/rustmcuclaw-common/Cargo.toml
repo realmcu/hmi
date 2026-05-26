@@ -1,0 +1,10 @@
+[package]
+name = "rustmcuclaw-common"
+version = "0.1.0"
+edition = "2021"
+description = "Shared constants and prompts for RustMcuClaw PC and MCU targets."
+license = "MIT"
+
+[lib]
+name = "rustmcuclaw_common"
+path = "src/lib.rs"
