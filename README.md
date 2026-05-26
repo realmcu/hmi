@@ -1,13 +1,13 @@
-# HMI 编译说明
+# CLAW 编译说明
 
-RTL8773G HMI / RustMcuClaw MCU 工程的编译入口。
+工程的编译入口。
 
 ##  首次准备 (只做一次)
 
 确认顶层 west workspace 已经就绪：
 
 ```powershell
-cd C:\Users\triton_yu\Documents\hmi\zephyrproject
+cd C:\Users\triton_yu\Documents\claw\zephyrproject
 Get-Content .west\config
 ```
 
@@ -16,14 +16,14 @@ Get-Content .west\config
 ```ini
 [manifest]
 path = realtek-app
-file = applications/hmi/manifest/rtl8773g-zephyr-hmi.yml
+file = applications/claw/manifest/rtl8773g-zephyr-claw.yml
 
 [zephyr]
 base = zephyr
 ```
 
 这段配置会告诉 `west` 使用 `realtek-app` 作为 manifest 项目，并告诉 `west` 使用
-`applications/hmi/manifest/rtl8773g-zephyr-hmi.yml` 作为 manifest 文件。同时，这段配置还会告诉构建系统使用顶层
+`applications/claw/manifest/rtl8773g-zephyr-claw.yml` 作为 manifest 文件。同时，这段配置还会告诉构建系统使用顶层
 `zephyr\` 目录作为 Zephyr 基础目录。
 
 如果顶层目录中不存在 `.west\` 目录，请你手动创建 `.west\config` 文件，并把上述内容写入该文件。完成这一步后，请你执行以下命令：
@@ -36,15 +36,16 @@ west zephyr-export     # 这条命令会把当前 zephyr 注册给 CMake
 ## 编译
 
 ```powershell
-cd C:\Users\triton_yu\Documents\hmi\zephyrproject
-west hmi-build            # 默认 rtl87x3g_watch/rtl8783gbf
-west hmi-build -p always  # pristine 重新生成
+cd C:\Users\triton_yu\Documents\claw\zephyrproject
+west claw-build            # 默认 rtl87x3g_watch/rtl8783gbf
+west claw-build -p always  # pristine 重新生成
 ```
 
 等价的原始命令：
 
 ```powershell
-west build -b rtl87x3g_watch/rtl8783gbf ` realtek-app\applications\hmi\RustMcuClaw\mcu
+cd C:\Users\triton_yu\Documents\claw\zephyrproject
+west build -b rtl87x3g_watch/rtl8783gbf  realtek-app\applications\claw\RustMcuClaw\mcu
 ```
 
 
@@ -77,13 +78,13 @@ Z2PLUS 需要实现 HTTPS, WSS, ATCMD, 预生成固件位置：```RustMcuClaw\mc
 ##  目录速览
 
 ```
-hmi/
+claw/
 ├── README.md                          # 本文件
 ├── RustMcuClaw/mcu/                   # Zephyr 应用 (CMakeLists.txt 在此)
 ├── manifest/
-│   └── rtl8773g-zephyr-hmi.yml        # west manifest
+│   └── rtl8773g-zephyr-claw.yml        # west manifest
 └── west_commands_extention/
-    ├── west-commands.yml              # 注册 hmi-build / hmi-flash / hmi-clean
+    ├── west-commands.yml              # 注册 claw-build / claw-flash / claw-clean
     ├── commands.py                    # 命令实现
     └── README.md                      # 扩展命令详细说明
 ```

@@ -1,0 +1,50 @@
+
+
+manifest:
+  self:
+    path: realtek-app
+    west-commands: applications/claw/west_commands_extention/west-commands.yml
+
+  remotes:
+    - name: origin
+      url-base: ssh://cn4soc.rtkbf.com:29418
+
+  defaults:
+    remote: origin
+
+  projects:
+    - name: zephyr
+      repo-path: HoneyRepo/zephyr
+      revision: realtek-main-v3.7
+      path: zephyr
+      import:
+        name-allowlist:
+          - cmsis
+          - tinycrypt
+          - mbedtls
+          - fatfs
+
+    - name: honeygui
+      revision: master
+      repo-path: HoneyGUI
+      path: modules/honeygui
+
+    - name: lvgl
+      revision: lvgl_v9
+      repo-path: HoneyRepo/lvgl
+      path: modules/lvgl
+
+    - name: display
+      revision: master
+      repo-path: HoneyRepo/driver/display
+      path: modules/display
+
+    - name: wearable
+      revision: master
+      repo-path: Wearable
+      path: modules/wearable
+
+    - name: hal_realtek
+      repo-path: HoneyRepo/zephyr-hal
+      revision: master
+      path: modules/hal/realtek

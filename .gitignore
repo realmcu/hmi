@@ -1,3 +1,4 @@
 RustMcuClaw/mcu/bin
 RustMcuClaw/mcu/build
 RustMcuClaw/target
+west_commands_extention/__pycache__

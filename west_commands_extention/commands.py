@@ -1,28 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""West extension commands for the HMI / RustMcuClaw MCU project.
 
-These commands are registered through
-``realtek-app/applications/hmi/west_commands_extention/west-commands.yml``
-which is referenced by the manifest at
-``realtek-app/applications/hmi/manifest/rtl8773g-zephyr-hmi.yml``.
-
-They are thin wrappers around the stock ``west build`` / ``west flash``
-commands that pre-fill the application path and the default board, so the
-developer only needs to type::
-
-    west hmi-build
-    west hmi-flash
-
-instead of::
-
-    west build -b rtl87x3g_watch/rtl8783gbf \
-        realtek-app/applications/hmi/RustMcuClaw/mcu
-
-Any extra arguments passed on the command line are forwarded verbatim to
-the underlying ``west`` invocation, e.g.::
-
-    west hmi-build -p always -- -DEXTRA_CONF_FILE=prj_debug.conf
-"""
 
 from __future__ import annotations
 
@@ -39,12 +16,12 @@ from west.commands import WestCommand
 # ---------------------------------------------------------------------------
 
 # Path of this file:
-#   <topdir>/realtek-app/applications/hmi/west_commands_extention/commands.py
+#   <topdir>/realtek-app/applications/claw/west_commands_extention/commands.py
 #
 # We resolve the interesting paths relative to it so the commands keep
 # working no matter where the user calls ``west`` from.
 _THIS_FILE = Path(__file__).resolve()
-_HMI_DIR = _THIS_FILE.parent.parent              # .../applications/hmi
+_HMI_DIR = _THIS_FILE.parent.parent              # .../applications/claw
 _APP_DIR = _HMI_DIR / "RustMcuClaw" / "mcu"      # the Zephyr application
 _DEFAULT_BOARD = "rtl87x3g_watch/rtl8783gbf"
 _DEFAULT_BUILD_DIR = _APP_DIR / "build"
@@ -68,17 +45,17 @@ def _run_west(cmd_args: list[str]) -> int:
 
 
 # ---------------------------------------------------------------------------
-# west hmi-build
+# west claw-build
 # ---------------------------------------------------------------------------
 
 
 class HmiBuild(WestCommand):
     def __init__(self) -> None:
         super().__init__(
-            "hmi-build",
-            "build the HMI RustMcuClaw MCU application",
+            "claw-build",
+            "build the claw application",
             "Wrapper around `west build` for "
-            "realtek-app/applications/hmi/RustMcuClaw/mcu.",
+            "realtek-app/applications/claw/RustMcuClaw/mcu.",
             accepts_unknown_args=True,
         )
 
@@ -132,17 +109,17 @@ class HmiBuild(WestCommand):
 
 
 # ---------------------------------------------------------------------------
-# west hmi-flash
+# west claw-flash
 # ---------------------------------------------------------------------------
 
 
 class HmiFlash(WestCommand):
     def __init__(self) -> None:
         super().__init__(
-            "hmi-flash",
-            "flash the HMI RustMcuClaw MCU application",
+            "claw-flash",
+            "flash the claw application",
             "Wrapper around `west flash` that defaults the build directory "
-            "to the one used by `west hmi-build`.",
+            "to the one used by `west claw-build`.",
             accepts_unknown_args=True,
         )
 
@@ -163,7 +140,7 @@ class HmiFlash(WestCommand):
         if not Path(args.build_dir).is_dir():
             self.die(
                 f"build directory not found: {args.build_dir} "
-                "(run `west hmi-build` first)"
+                "(run `west claw-build` first)"
             )
         west_args = ["flash", "-d", args.build_dir]
         if unknown_args:
@@ -175,16 +152,16 @@ class HmiFlash(WestCommand):
 
 
 # ---------------------------------------------------------------------------
-# west hmi-clean
+# west claw-clean
 # ---------------------------------------------------------------------------
 
 
 class HmiClean(WestCommand):
     def __init__(self) -> None:
         super().__init__(
-            "hmi-clean",
-            "remove the HMI build directory",
-            "Delete the build directory used by `west hmi-build`.",
+            "claw-clean",
+            "remove the claw build directory",
+            "Delete the build directory used by `west claw-build`.",
         )
 
     def do_add_parser(self, parser_adder):
