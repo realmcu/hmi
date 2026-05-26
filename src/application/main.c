@@ -9,6 +9,7 @@
 #include "os_sched.h"
 #include "app_panel_init.h"
 #include "app_lower_init.h"
+#include "hmi_bt_task.h"
 #ifdef ENABLE_HONEYGUI
 #include "gui_server.h"
 #endif
@@ -42,6 +43,8 @@ int main(void)
     }
 #endif
 #endif
+
+    hmi_bt_task_init();
 
     os_sched_start();
     while (1);
