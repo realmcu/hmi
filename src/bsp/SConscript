@@ -29,12 +29,6 @@ path = [SDK_ROOT + '/inc/app',
         SDK_ROOT + '/inc/bluetooth/gap',
         SDK_ROOT + '/inc/bluetooth/profile',
         SDK_ROOT + '/inc/rtl87x3ep/hal/stack',
-        SDK_ROOT + '/src/framework/btm',
-        SDK_ROOT + '/src/app/gap_lib',
-        SDK_ROOT + '/src/app/gap_lib/common',
-        SDK_ROOT + '/src/app/gap_lib/br',
-        SDK_ROOT + '/src/app/gap_lib/le',
-        SDK_ROOT + '/src/ble_mgr',
         SDK_ROOT + '/bin/rtl87x3ep/upperstack_stamp',
         SDK_ROOT + '/bin/rtl87x3ep/flash_map_config/16M/flash_16M',
         SDK_ROOT + '/inc/hal/platform',
@@ -51,6 +45,8 @@ lib_src += [SDK_ROOT + '/bin/rtl87x3ep/gap_utils.lib']
 # lib_src += [SDK_ROOT + '/bin/rtl87x3ep/framework/console.lib']
 lib_src += [SDK_ROOT + '/bin/rtl87x3ep/framework/remote.lib']
 lib_src += [SDK_ROOT + '/bin/rtl87x3ep/framework/sysm.lib']
+lib_src += [SDK_ROOT + '/bin/rtl87x3ep/ble_mgr/ble_mgr_all.lib']
+lib_src += [SDK_ROOT + '/bin/rtl87x3ep/framework/btm.lib']
 # lib_src += [SDK_ROOT + '/bin/rtl87x3ep/filesystem.lib']
 lib_src += [SDK_ROOT + '/bin/rtl87x3ep/ROM.lib']
 lib_src += [SDK_ROOT + '/bin/rtl87x3ep/upperstack_4M.lib']
@@ -60,58 +56,11 @@ LIBDEFINES = ['TARGET_RTL8773E']
 lib = DefineGroup('lib', lib_src, depend = [''], CPPPATH = path, CPPDEFINES = LIBDEFINES, LINKFLAGS = LINKFLAGS)
 
 
-bt_src = []
-# btm framework
-bt_src += [SDK_ROOT + '/src/framework/btm/avctp.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bnep.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_a2dp.c']
-# bt_src += [SDK_ROOT + '/src/framework/btm/bt_att.c']
-# bt_src += [SDK_ROOT + '/src/framework/btm/bt_avp.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_avrcp.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_gap.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_hfp.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_hfp_ag.c']
-# bt_src += [SDK_ROOT + '/src/framework/btm/bt_hid_device.c']
-# bt_src += [SDK_ROOT + '/src/framework/btm/bt_hid_host.c']
-# bt_src += [SDK_ROOT + '/src/framework/btm/bt_hid_parser.c']
-# bt_src += [SDK_ROOT + '/src/framework/btm/bt_l2cap.c']
-# bt_src += [SDK_ROOT + '/src/framework/btm/bt_map.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_mgr.c']
-# bt_src += [SDK_ROOT + '/src/framework/btm/bt_opp.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_pan.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_pm.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_rdtp.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_rfc.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_roleswap.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_roleswap_relay.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_roleswap_sniffing.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_sdp.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/bt_spp.c']
-# bt_src += [SDK_ROOT + '/src/framework/btm/iap_cp.c']
-# bt_src += [SDK_ROOT + '/src/framework/btm/obex.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/rfc.c']
-bt_src += [SDK_ROOT + '/src/framework/btm/avdtp.c']
-# bt_src += [SDK_ROOT + '/src/framework/btm/bt_iap.c']
-# bt_src += [SDK_ROOT + '/src/framework/btm/bt_pbap.c']
-
-# ble_mgr
-bt_src += [SDK_ROOT + '/src/ble_mgr/bt_gatt_svc.c']
-bt_src += [SDK_ROOT + '/src/ble_mgr/bt_gatt_client.c']
-bt_src += [SDK_ROOT + '/src/ble_mgr/bt_gattc_storage.c']
-bt_src += [SDK_ROOT + '/src/ble_mgr/gatt_service_client.c']
-
-path = [SDK_ROOT + '/src/ble_mgr']
-
-BT_CPPDEFINES = ['CONFIG_REALTEK_BT_GATT_SVC_SUPPORT=1']
-BT_CPPDEFINES += ['CONFIG_REALTEK_BTM_PAN_SUPPORT=1']
-
-bt_group = DefineGroup('bluetooth', bt_src, depend = [''], CPPPATH = path, CPPDEFINES = BT_CPPDEFINES)
-
 io_hal_src = []
 io_hal_src += [SDK_ROOT + '/src/mcu/io_hal/common/hw_tim.c']
 path = [SDK_ROOT + '/inc/hal/io']
 IO_HAL_CPPDEFINES = []
 io_hal = DefineGroup('io_hal', io_hal_src, depend = [''], CPPPATH = path, CPPDEFINES = IO_HAL_CPPDEFINES)
 
-objs = bsp + lib + bt_group + io_hal
+objs = bsp + lib + io_hal
 Return('objs')
