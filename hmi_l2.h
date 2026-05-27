@@ -139,7 +139,7 @@ extern "C" {
 #define HMI_L2_XFER_ABORT_TIMEOUT   0x02u
 
 /* Maximum chunk size (bytes); constrained by L2 payload limit */
-#define HMI_L2_XFER_CHUNK_MAX       496u
+#define HMI_L2_XFER_CHUNK_MAX       2048u
 
 /*============================================================================*
  *                              API

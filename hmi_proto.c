@@ -249,8 +249,13 @@ bool proto_send(const uint8_t *data, uint16_t len)
     uint16_t seq = s_seq_id++;
     s_tx_frame_len = build_frame(s_tx_frame, 0, seq, data, len);
 
+    /* drain any stale ACK left over from a previous timed-out send */
+    while (os_sem_take(s_ack_sem, 0)) { }
+
     for (int attempt = 0; attempt < PROTO_MAX_RETRY; attempt++)
     {
+        s_ack_ok = false;
+
         if (s_send(s_tx_frame, s_tx_frame_len) < 0)
         {
             return false;

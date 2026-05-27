@@ -5,7 +5,7 @@
 
 /* PROTO_LOG_ENABLE  1 / 0  (default 1) */
 #ifndef PROTO_LOG_ENABLE
-#define PROTO_LOG_ENABLE  1
+#define PROTO_LOG_ENABLE  0
 #endif
 
 #if PROTO_LOG_ENABLE

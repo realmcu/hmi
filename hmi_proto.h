@@ -12,7 +12,7 @@ extern "C" {
  *                              Macros
  *============================================================================*/
 
-#define PROTO_MAX_PAYLOAD_LEN   504     /* max payload per frame per spec; BLE L0 layer handles MTU chunking */
+#define PROTO_MAX_PAYLOAD_LEN   (2048 + 8)     /* max payload per frame per spec; BLE L0 layer handles MTU chunking */
 
 /*============================================================================*
  *                              Types
