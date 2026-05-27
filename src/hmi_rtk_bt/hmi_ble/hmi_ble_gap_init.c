@@ -67,7 +67,7 @@ uint8_t adv_data[] =
     /* Local name */
     0x07,           /* length     */
     GAP_ADTYPE_LOCAL_NAME_COMPLETE, /* type="Complete local name" */
-    'e', 'B', 'a', 'd', 'g', 'e', /* eBadge */
+    'R', 'T', 'K', 'H', 'M', 'I', /* RTKHMI */
 
     /* Service */
     0x03,           /* length     */
@@ -93,7 +93,7 @@ uint8_t adv_data[] =
 void hmi_ble_gap_init(void)
 {
     /* Device name and device appearance */
-    uint8_t  device_name[GAP_DEVICE_NAME_LEN] = "eBadge";
+    uint8_t  device_name[GAP_DEVICE_NAME_LEN] = "RTKHMI";
     uint16_t appearance = GAP_GATT_APPEARANCE_WRIST_WORN;
     uint8_t  slave_init_mtu_req = true;
 
