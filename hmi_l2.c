@@ -224,23 +224,17 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                     break;
                 }
                 uint16_t seq = ((uint16_t)val[0] << 8) | val[1];
-                uint8_t  ack[3];
-                ack[0] = val[0];
-                ack[1] = val[1];
                 if (seq != s_xfer_next_seq)
                 {
-                    PROTO_LOG("L2 XFER DATA seq=%d expected=%d (seq err) val[0]=0x%02x val[1]=0x%02x",
-                              seq, s_xfer_next_seq, val[0], val[1]);
-                    ack[2] = HMI_L2_XFER_ACK_SEQ_ERR;
+                    PROTO_LOG("L2 XFER DATA seq=%d expected=%d, aborting", seq, s_xfer_next_seq);
+                    uint8_t reason = HMI_L2_XFER_ABORT_ERROR;
+                    xfer_send(HMI_L2_XFER_ABORT, &reason, 1);
+                    xfer_reset();
+                    break;
                 }
-                else
-                {
-                    PROTO_LOG("L2 XFER DATA seq=%d data_len=%d", seq, vl - 2);
-                    /* TODO: write (val + 2, vl - 2) to storage */
-                    s_xfer_next_seq++;
-                    ack[2] = HMI_L2_XFER_ACK_OK;
-                }
-                xfer_send(HMI_L2_XFER_DATA_ACK, ack, sizeof(ack));
+                PROTO_LOG("L2 XFER DATA seq=%d data_len=%d", seq, vl - 2);
+                /* TODO: write (val + 2, vl - 2) to storage */
+                s_xfer_next_seq++;
                 break;
             }
 
