@@ -81,9 +81,31 @@ if(CONFIG_REALTEK_HONEYGUI)
         halLib
         filesystemLib
         sysmLib
+        remoteLib
         romLib
         upperstackLib
         )
+
+    # Compile ble_mgr from source to avoid float ABI mismatch with precompiled .a
+    file(GLOB_RECURSE _ble_mgr_srcs ${REALTEK_SDK_BASE_PATH}/src/ble_mgr/*.c)
+    HEADER_DIRECTORIES(_ble_mgr_hdrs ${REALTEK_SDK_BASE_PATH}/src/ble_mgr)
+    target_sources(dashboard PRIVATE ${_ble_mgr_srcs})
+    target_include_directories(dashboard PRIVATE
+        ${_ble_mgr_hdrs}
+        ${REALTEK_SDK_BASE_PATH}/inc/ble_mgr
+        ${REALTEK_SDK_BASE_PATH}/inc/ble_mgr/bond
+    )
+    target_compile_definitions(dashboard PRIVATE
+        CONFIG_REALTEK_BT_GATT_SVC_SUPPORT=1
+        CONFIG_REALTEK_BT_GATT_CLIENT_SUPPORT=1
+    )
+
+    # Compile btm from source to avoid float ABI mismatch with precompiled .a
+    file(GLOB_RECURSE _btm_srcs ${REALTEK_SDK_BASE_PATH}/src/framework/btm/*.c)
+    target_sources(dashboard PRIVATE ${_btm_srcs})
+    target_include_directories(dashboard PRIVATE
+        ${REALTEK_SDK_BASE_PATH}/inc/framework/bt
+    )
 
     # Link display driver library if enabled
     if(CONFIG_REALTEK_DISPLAY)
@@ -109,6 +131,7 @@ else()
         halLib
         filesystemLib
         sysmLib
+        remoteLib
         romLib
         upperstackLib
         )
@@ -123,6 +146,26 @@ if(CONFIG_REALTEK_HONEYGUI)
 endif()
 target_sources(dashboard PRIVATE ${APP_SOURCES})
 target_include_directories(dashboard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/application)
+
+#==============================================================================
+# BT Module and Protocol (West project submodules)
+#==============================================================================
+set(APP_TARGET_NAME dashboard)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/hmi_rtk_bt
+                 ${CMAKE_CURRENT_BINARY_DIR}/hmi_rtk_bt)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/protocol
+                 ${CMAKE_CURRENT_BINARY_DIR}/protocol)
+
+#==============================================================================
+# BT Framework Sources (btm + ble_mgr)
+#==============================================================================
+# btm framework and ble_mgr provided by btmLib and bleMgrLib (libbtm.a / libble_mgr_all.a)
+
+#==============================================================================
+# IO HAL Sources
+#==============================================================================
+target_sources(dashboard PRIVATE
+    ${REALTEK_SDK_BASE_PATH}/src/mcu/io_hal/common/hw_tim.c)
 
 file(GLOB PORT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../src/ports/realgui_port/*.c)
 target_sources(dashboard PRIVATE ${PORT_SOURCES})
@@ -169,6 +212,13 @@ target_include_directories(dashboard PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../inc/rtl87x3ep
     ${CMAKE_CURRENT_SOURCE_DIR}/../mdk
     ${sdk_app_dir_path}
+    ${REALTEK_SDK_BASE_PATH}/inc/ble_mgr
+    ${REALTEK_SDK_BASE_PATH}/inc/framework/bt
+    ${REALTEK_SDK_BASE_PATH}/inc/framework/remote
+    ${REALTEK_SDK_BASE_PATH}/inc/framework/sysm
+    ${REALTEK_SDK_BASE_PATH}/inc/bluetooth/gap
+    ${REALTEK_SDK_BASE_PATH}/inc/bluetooth/profile
+    ${REALTEK_SDK_BASE_PATH}/inc/rtl87x3ep/hal/stack
 )
 
 #==============================================================================
