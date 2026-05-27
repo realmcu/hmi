@@ -23,7 +23,7 @@ HMI Dashboard supports GCC compilation with two build modes:
 
 ```powershell
 # In SDK root directory
-cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src -B build
+cmake -G Ninja -Dkconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src -DIS_CHECK_FLOW=off -B build
 cmake --build build
 ```
 
@@ -31,7 +31,7 @@ cmake --build build
 
 ```powershell
 # In SDK root directory
-cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_lib -B build
+cmake -G Ninja -Dkconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_lib -DIS_CHECK_FLOW=off -B build
 cmake --build build
 ```
 

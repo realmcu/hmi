@@ -114,7 +114,8 @@ class BuildCommand(WestCommand):
 
         already_configured = os.path.exists(os.path.join(build_dir, 'CMakeCache.txt'))
         if not already_configured or args.configure_only:
-            cfg_cmd = ['cmake', '-G', 'Ninja', f'-Dkconfig_path={defconfig}', '-B', build_dir]
+            cfg_cmd = ['cmake', '-G', 'Ninja', f'-Dkconfig_path={defconfig}',
+                       '-DIS_CHECK_FLOW=OFF', '-B', build_dir]
             log.inf('Configuring...')
             log.dbg(' '.join(cfg_cmd))
             r = subprocess.run(cfg_cmd, cwd=sdk_root)

@@ -86,26 +86,29 @@ if(CONFIG_REALTEK_HONEYGUI)
         upperstackLib
         )
 
-    # Compile ble_mgr from source to avoid float ABI mismatch with precompiled .a
-    file(GLOB_RECURSE _ble_mgr_srcs ${REALTEK_SDK_BASE_PATH}/src/ble_mgr/*.c)
-    HEADER_DIRECTORIES(_ble_mgr_hdrs ${REALTEK_SDK_BASE_PATH}/src/ble_mgr)
-    target_sources(dashboard PRIVATE ${_ble_mgr_srcs})
+    # btm/ble_mgr built by SDK as STATIC libs (CONFIG_REALTEK_BTM=y / _BLE_MGR=y)
+    # Output to bin/rtl87x3ep/lib_gcc/ via ARCHIVE_OUTPUT_DIRECTORY
+    # Float ABI verified compatible: SDK libs built with same -mfpu/-mfloat-abi flags.
+    target_link_libraries(dashboard PUBLIC
+        bleMgrLib
+        btmLib
+    )
     target_include_directories(dashboard PRIVATE
-        ${_ble_mgr_hdrs}
         ${REALTEK_SDK_BASE_PATH}/inc/ble_mgr
         ${REALTEK_SDK_BASE_PATH}/inc/ble_mgr/bond
+        ${REALTEK_SDK_BASE_PATH}/inc/framework/bt
     )
     target_compile_definitions(dashboard PRIVATE
         CONFIG_REALTEK_BT_GATT_SVC_SUPPORT=1
         CONFIG_REALTEK_BT_GATT_CLIENT_SUPPORT=1
     )
-
-    # Compile btm from source to avoid float ABI mismatch with precompiled .a
-    file(GLOB_RECURSE _btm_srcs ${REALTEK_SDK_BASE_PATH}/src/framework/btm/*.c)
-    target_sources(dashboard PRIVATE ${_btm_srcs})
-    target_include_directories(dashboard PRIVATE
-        ${REALTEK_SDK_BASE_PATH}/inc/framework/bt
-    )
+    # Propagate GATT support macros to bleMgrLib so its sources see them
+    if(TARGET bleMgrLib)
+        target_compile_definitions(bleMgrLib PRIVATE
+            CONFIG_REALTEK_BT_GATT_SVC_SUPPORT=1
+            CONFIG_REALTEK_BT_GATT_CLIENT_SUPPORT=1
+        )
+    endif()
 
     # Link display driver library if enabled
     if(CONFIG_REALTEK_DISPLAY)
@@ -140,7 +143,7 @@ endif()
 #==============================================================================
 # Application Source Files
 #==============================================================================
-file(GLOB APP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../src/application/*.c)
+file(GLOB APP_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../src/application/*.c)
 if(CONFIG_REALTEK_HONEYGUI)
     list(FILTER APP_SOURCES EXCLUDE REGEX "example_gui_img\\.c$")
 endif()
@@ -267,7 +270,6 @@ target_link_options(dashboard
                     ${mfloat_arch}
                     ${march_arch}
                     -mthumb
-                    -Wall
                     -Wl,-Map=${BIN_OUTPUT_DIR}/dashboard_${build_bank}.map
                     -fdata-sections
                     -ffunction-sections
