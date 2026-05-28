@@ -59,7 +59,7 @@ venv
 .DS_Store
 .clangd
 Inew.info
-protocol/
+transport/
 
 # Cargo drops lock files in projects to capture resolved dependencies.
 # We don't want to record these.
