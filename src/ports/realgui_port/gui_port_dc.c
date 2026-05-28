@@ -18,8 +18,9 @@
 #include "system_status_api.h"
 #include "fmc_api_ext.h"
 #include "section.h"
-#include "lcd_st7265_800480_rgb.h"
+//#include "lcd_st7265_800480_rgb.h"
 #include "drv_lcd.h"
+#include "lcd_st77916_360_360_qspi.h"
 
 #define LCD_SECTION_HEIGHT                      10
 
@@ -28,7 +29,7 @@
 #include <dma_channel.h>
 
 #define PSRAM_FRAME_BUF1_ADDR               0x4000000
-#define PSRAM_FRAME_BUF2_ADDR               (0x4000000 + 800 * 480 * 2)
+#define PSRAM_FRAME_BUF2_ADDR               (0x4000000 + 360 * 360 * 2)
 static uint32_t current_buffer = PSRAM_FRAME_BUF1_ADDR;
 static uint8_t dma_num = 0xa5, copy_num = 0xa5;
 
@@ -136,6 +137,8 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
     uint32_t total_section_cnt = dc->section_total;
 
     void *dst = (void *)(current_buffer + i * dc->fb_width * dc->fb_height * 2);
+
+//    gui_log("%s %d  %d", __FUNCTION__, __LINE__, i);
     if (i == 0)
     {
         gdma_start_transfer(dst, dc->frame_buf, dc->fb_width * dc->fb_height);
@@ -147,7 +150,17 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
         gdma_start_transfer(dst, dc->frame_buf, dc->fb_width * last_height);
         gdma_wait_transfer_done();
 
-        rtk_lcd_hal_update_framebuffer((uint8_t *)current_buffer, 0);
+        rtk_lcd_hal_transfer_done();
+        // gui_log("%s %d", __FUNCTION__, __LINE__);
+        rtk_lcd_hal_set_window(0, 0, dc->screen_width, dc->screen_height);
+        // gui_log("%s %d", __FUNCTION__, __LINE__);
+
+        // rtk_lcd_hal_update_framebuffer((uint8_t *)current_buffer, dc->screen_width * dc->screen_height);
+
+        rtk_lcd_hal_start_transfer((uint8_t *)current_buffer, dc->screen_width * dc->screen_height);
+        // rtk_lcd_hal_transfer_done();
+
+        //    gui_log("%s %d", __FUNCTION__, __LINE__);
 
         if (current_buffer == PSRAM_FRAME_BUF1_ADDR)
         {
@@ -183,9 +196,9 @@ static struct gui_dispdev dc =
 };
 
 SHM_DATA_SECTION static uint8_t __attribute__((aligned(4))) __attribute__((
-                                                                              used)) disp_write_buff1_port[800 * 10 * 2];
+                                                                              used)) disp_write_buff1_port[360 * 10 * 2];
 SHM_DATA_SECTION static uint8_t __attribute__((aligned(4))) __attribute__((
-                                                                              used)) disp_write_buff2_port[800 * 10 * 2];
+                                                                              used)) disp_write_buff2_port[360 * 10 * 2];
 
 void gui_port_dc_init(void)
 {

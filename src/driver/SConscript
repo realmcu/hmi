@@ -1,0 +1,19 @@
+#
+# Copyright (c) 2026, Realtek Semiconductor Corporation
+#
+# SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+#
+
+Import('SDK_ROOT')
+Import('HONEYGUI_ROOT')
+from building import *
+
+cwd = GetCurrentDir()
+CPPPATH = [cwd]
+group = []
+
+src = Glob('*.c')
+group = DefineGroup('driver', src, depend=[''], CPPPATH=CPPPATH)
+
+
+Return('group')

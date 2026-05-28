@@ -11,7 +11,7 @@
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
       <pArmCC>6220000::V6.22::.\ArmCompilerforEmbedded6.22</pArmCC>
-      <pCCUsed>6220000::V6.22::.\ArmCompilerforEmbedded6.22</pCCUsed>
+      <pCCUsed>5060750::V5.06 update 6 (build 750)::.\ARMCC_506build750</pCCUsed>
       <uAC6>1</uAC6>
       <TargetOption>
         <TargetCommonOption>
@@ -187,6 +187,7 @@
             <RvdsVP>2</RvdsVP>
             <RvdsMve>2</RvdsMve>
             <RvdsCdeCp>0</RvdsCdeCp>
+            <nBranchProt>0</nBranchProt>
             <hadIRAM2>1</hadIRAM2>
             <hadIROM2>1</hadIROM2>
             <StupSel>8</StupSel>
@@ -338,9 +339,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>  --include pre_define.h  --include stdbool.h --include app_flags.h</MiscControls>
-              <Define>DRV_LCD_HEIGHT=480, RTK_HAL_DRIVER, DRV_LCD_WIDTH=480, RTK_HAL_LCD, DRV_PIXEL_BITS=16, TARGET_RTL8773E, CONFIG_SOC_SERIES_RTL8773E=1, ENABLE_HONEYGUI, SUPPORT_ACCESS_SHM = 1</Define>
+              <Define>DRV_LCD_CORNER_RADIUS=0, DRV_PIXEL_BITS=16, SUPPORT_ACCESS_SHM = 1, ENABLE_HONEYGUI, CONFIG_SOC_SERIES_RTL8773E=1, RTK_HAL_DRIVER, DRV_LCD_HEIGHT=512, DRV_LCD_WIDTH=512, TARGET_RTL8773E, RTK_HAL_LCD</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\src\sample\gui\example\application\hml_designer;..\..\..\..\src\sample\gui\example\widget\glass_effect;..\..\..\..\src\sample\gui\example\widget\glass_effect\root_image;..\..\..\..\src\sample\gui\example\widget\image;..\..\..\..\src\sample\gui\example\widget\particle;..\..\..\..\src\sample\gui\example\widget\particle\root_image;..\..\..\..\src\sample\gui\realgui\widget\gui_particle\effects;..\..\..\..\src\sample\gui\example\widget\video;..\..\..\..\src\sample\gui\example\widget\video\root_image;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\src\mcu\display\hardware;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\src\sample\gui\realgui;..\..\..\..\src\sample\gui\realgui\3rd;..\..\..\..\src\sample\gui\realgui\3rd\cgltf;..\..\..\..\src\sample\gui\realgui\3rd\gifdec;..\..\..\..\src\sample\gui\realgui\3rd\Lite3D;..\..\..\..\src\sample\gui\realgui\3rd\Lite3D\widget;..\..\..\..\src\sample\gui\realgui\3rd\nanosvg;..\..\..\..\src\sample\gui\realgui\3rd\nanosvg\src;..\..\..\..\src\sample\gui\realgui\3rd\nanovg;..\..\..\..\src\sample\gui\realgui\3rd\nanovg\agge;..\..\..\..\src\sample\gui\realgui\3rd\nanovg\base;..\..\..\..\src\sample\gui\realgui\3rd\stb;..\..\..\..\src\sample\gui\realgui\3rd\tinyobj;..\..\..\..\src\sample\gui\realgui\3rd\tjpgd;..\..\..\..\src\sample\gui\realgui\core;..\..\..\..\src\sample\gui\realgui\dc;..\..\..\..\src\sample\gui\realgui\engine;..\..\..\..\src\sample\gui\realgui\engine\accel_hal;..\..\..\..\src\sample\gui\realgui\engine\blit;..\..\..\..\src\sample\gui\realgui\engine\blit\color;..\..\..\..\src\sample\gui\realgui\engine\codec;..\..\..\..\src\sample\gui\realgui\engine\codec\idu;..\..\..\..\src\sample\gui\realgui\engine\codec\jpeg;..\..\..\..\src\sample\gui\realgui\engine\codec\rle;..\..\..\..\src\sample\gui\realgui\engine\draw;..\..\..\..\src\sample\gui\realgui\engine\font;..\..\..\..\src\sample\gui\realgui\engine\post_process;..\..\..\..\src\sample\gui\realgui\input;..\..\..\..\src\sample\gui\realgui\misc;..\..\..\..\src\sample\gui\realgui\misc\tlsf;..\..\..\..\src\sample\gui\realgui\misc\vfs;..\..\..\..\src\sample\gui\realgui\misc\vfs\romfs;..\..\..\..\src\sample\gui\realgui\server;..\..\..\..\src\sample\gui\realgui\widget;..\..\..\..\src\sample\gui\realgui\widget\gui_canvas;..\..\..\..\src\sample\gui\realgui\widget\gui_card_list;..\..\..\..\src\sample\gui\realgui\widget\gui_geometry;..\..\..\..\src\sample\gui\realgui\widget\gui_gif;..\..\..\..\src\sample\gui\realgui\widget\gui_glass;..\..\..\..\src\sample\gui\realgui\widget\gui_gray;..\..\..\..\src\sample\gui\realgui\widget\gui_img;..\..\..\..\src\sample\gui\realgui\widget\gui_list;..\..\..\..\src\sample\gui\realgui\widget\gui_lite3d;..\..\..\..\src\sample\gui\realgui\widget\gui_lottie;..\..\..\..\src\sample\gui\realgui\widget\gui_menu_cellular;..\..\..\..\src\sample\gui\realgui\widget\gui_obj;..\..\..\..\src\sample\gui\realgui\widget\gui_qbcode;..\..\..\..\src\sample\gui\realgui\widget\gui_soccer;..\..\..\..\src\sample\gui\realgui\widget\gui_svg;..\..\..\..\src\sample\gui\realgui\widget\gui_text;..\..\..\..\src\sample\gui\realgui\widget\gui_video;..\..\..\..\src\sample\gui\realgui\widget\gui_view;..\..\..\..\src\sample\gui\realgui\widget\gui_win;..\src\ports\lvgl_port;..\src\ports\realgui_port;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs</IncludePath>
+              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\src\sample\gui\example\application\hml_designer;..\..\..\..\src\sample\gui\example\widget\glass_effect;..\..\..\..\src\sample\gui\example\widget\glass_effect\root_image;..\..\..\..\src\sample\gui\example\widget\msv1;..\..\..\..\src\sample\gui\example\widget\msv1\root_image;..\..\..\..\src\sample\gui\example\widget\particle;..\..\..\..\src\sample\gui\example\widget\particle\root_image;..\..\..\..\src\sample\gui\realgui\widget\gui_particle\effects;..\..\..\..\src\sample\gui\example\widget\video;..\..\..\..\src\sample\gui\example\widget\video\root_image;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\src\mcu\display\hardware;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\src\driver;..\..\..\..\src\sample\gui\realgui;..\..\..\..\src\sample\gui\realgui\3rd;..\..\..\..\src\sample\gui\realgui\3rd\cgltf;..\..\..\..\src\sample\gui\realgui\3rd\gifdec;..\..\..\..\src\sample\gui\realgui\3rd\Lite3D;..\..\..\..\src\sample\gui\realgui\3rd\Lite3D\widget;..\..\..\..\src\sample\gui\realgui\3rd\nanosvg;..\..\..\..\src\sample\gui\realgui\3rd\nanosvg\src;..\..\..\..\src\sample\gui\realgui\3rd\nanovg;..\..\..\..\src\sample\gui\realgui\3rd\nanovg\agge;..\..\..\..\src\sample\gui\realgui\3rd\nanovg\base;..\..\..\..\src\sample\gui\realgui\3rd\stb;..\..\..\..\src\sample\gui\realgui\3rd\tinyobj;..\..\..\..\src\sample\gui\realgui\3rd\tjpgd;..\..\..\..\src\sample\gui\realgui\core;..\..\..\..\src\sample\gui\realgui\dc;..\..\..\..\src\sample\gui\realgui\engine;..\..\..\..\src\sample\gui\realgui\engine\accel_hal;..\..\..\..\src\sample\gui\realgui\engine\blit;..\..\..\..\src\sample\gui\realgui\engine\blit\color;..\..\..\..\src\sample\gui\realgui\engine\codec;..\..\..\..\src\sample\gui\realgui\engine\codec\idu;..\..\..\..\src\sample\gui\realgui\engine\codec\jpeg;..\..\..\..\src\sample\gui\realgui\engine\codec\rle;..\..\..\..\src\sample\gui\realgui\engine\draw;..\..\..\..\src\sample\gui\realgui\engine\font;..\..\..\..\src\sample\gui\realgui\engine\post_process;..\..\..\..\src\sample\gui\realgui\input;..\..\..\..\src\sample\gui\realgui\misc;..\..\..\..\src\sample\gui\realgui\misc\tlsf;..\..\..\..\src\sample\gui\realgui\misc\vfs;..\..\..\..\src\sample\gui\realgui\misc\vfs\romfs;..\..\..\..\src\sample\gui\realgui\server;..\..\..\..\src\sample\gui\realgui\widget;..\..\..\..\src\sample\gui\realgui\widget\gui_canvas;..\..\..\..\src\sample\gui\realgui\widget\gui_card_list;..\..\..\..\src\sample\gui\realgui\widget\gui_geometry;..\..\..\..\src\sample\gui\realgui\widget\gui_gif;..\..\..\..\src\sample\gui\realgui\widget\gui_glass;..\..\..\..\src\sample\gui\realgui\widget\gui_gray;..\..\..\..\src\sample\gui\realgui\widget\gui_img;..\..\..\..\src\sample\gui\realgui\widget\gui_list;..\..\..\..\src\sample\gui\realgui\widget\gui_lite3d;..\..\..\..\src\sample\gui\realgui\widget\gui_lottie;..\..\..\..\src\sample\gui\realgui\widget\gui_menu_cellular;..\..\..\..\src\sample\gui\realgui\widget\gui_msv1;..\..\..\..\src\sample\gui\realgui\widget\gui_obj;..\..\..\..\src\sample\gui\realgui\widget\gui_qbcode;..\..\..\..\src\sample\gui\realgui\widget\gui_soccer;..\..\..\..\src\sample\gui\realgui\widget\gui_svg;..\..\..\..\src\sample\gui\realgui\widget\gui_text;..\..\..\..\src\sample\gui\realgui\widget\gui_video;..\..\..\..\src\sample\gui\realgui\widget\gui_view;..\..\..\..\src\sample\gui\realgui\widget\gui_win;..\src\ports\lvgl_port;..\src\ports\realgui_port;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -405,11 +406,6 @@
               <FilePath>..\config.h</FilePath>
             </File>
             <File>
-              <FileName>app_flags.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>..\src\application\app_flags.h</FilePath>
-            </File>
-            <File>
               <FileName>app_lower_init.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\src\application\app_lower_init.c</FilePath>
@@ -430,9 +426,9 @@
           <GroupName>realgui/demo</GroupName>
           <Files>
             <File>
-              <FileName>example_img.c</FileName>
+              <FileName>example_msv1.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\sample\gui\example\widget\image\example_img.c</FilePath>
+              <FilePath>..\..\..\..\src\sample\gui\example\widget\msv1\example_msv1.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -503,6 +499,21 @@
               <FileName>acc_ppe.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\src\mcu\display\bindings\honeygui\hardware_engine\PPE\rtl8773e\acc_ppe.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>driver</GroupName>
+          <Files>
+            <File>
+              <FileName>lcd_st77916_360_360_rd_qspi.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\driver\lcd_st77916_360_360_rd_qspi.c</FilePath>
+            </File>
+            <File>
+              <FileName>touch_cst816d_rd.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\driver\touch_cst816d_rd.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1025,6 +1036,16 @@
               <FilePath>..\..\..\..\src\sample\gui\realgui\widget\gui_menu_cellular\gui_menu_cellular.c</FilePath>
             </File>
             <File>
+              <FileName>msv1_decoder.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\sample\gui\realgui\widget\gui_msv1\msv1_decoder.c</FilePath>
+            </File>
+            <File>
+              <FileName>gui_msv1.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\sample\gui\realgui\widget\gui_msv1\gui_msv1.c</FilePath>
+            </File>
+            <File>
               <FileName>gui_obj.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\src\sample\gui\realgui\widget\gui_obj\gui_obj.c</FilePath>
@@ -1183,16 +1204,6 @@
               <FileName>key_button_8773e.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\src\app\Wearable\device\key_button\8773E\key_button_8773e.c</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>lcd_low_driver</GroupName>
-          <Files>
-            <File>
-              <FileName>lcd_st7265_800480_rgb.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\app\Wearable\device\lcd\8773E\lcd_st7265_800480_rgb.c</FilePath>
             </File>
           </Files>
         </Group>

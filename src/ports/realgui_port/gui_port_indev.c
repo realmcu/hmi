@@ -26,11 +26,13 @@
 //#include "module_button.h"
 #endif
 
+#include "touch_CST816d.h"
+
 static gui_touch_port_data_t raw_data = {0};
 
 static gui_wheel_port_data_t wheel_port_data = {0};
 
-#if TARGET_TOUCH_DEVICE != TOUCH_DEVICE_INVALID
+//#if TARGET_TOUCH_DEVICE != TOUCH_DEVICE_INVALID
 /***touch device***/
 gui_touch_port_data_t *port_touchpad_get_data()
 {
@@ -52,10 +54,11 @@ gui_touch_port_data_t *port_touchpad_get_data()
     raw_data.width = 0;
     pressing = touch_raw_data.is_press;
 
-    //gui_log("x %d y %d time %d cnt %d press %d",raw_data.x_coordinate, raw_data.y_coordinate, raw_data.timestamp_ms, raw_data.count_pressing, pressing);
+    // gui_log("x %d y %d time %d cnt %d press %d",raw_data.x_coordinate, raw_data.y_coordinate, raw_data.timestamp_ms, raw_data.count_pressing, pressing);
     if (pressing == true)
     {
         raw_data.event = GUI_TOUCH_EVENT_DOWN;
+        // gui_log("x %d y %d time %d  press %d",raw_data.x_coordinate, raw_data.y_coordinate, raw_data.timestamp_ms, pressing);
     }
     else
     {
@@ -89,10 +92,10 @@ gui_touch_port_data_t *port_touchpad_get_data()
 
 //    return &raw_data;
 }
-#endif
+//#endif
 
 
-
+#if 0
 gui_touch_port_data_t *port_touchpad_get_data()
 {
     bool pressing = 0;
@@ -111,7 +114,7 @@ gui_touch_port_data_t *port_touchpad_get_data()
     raw_data.event = GUI_TOUCH_EVENT_UP;
     return &raw_data;
 }
-
+#endif
 
 
 
@@ -147,10 +150,10 @@ static struct gui_indev indev =
 extern void gui_indev_info_register(struct gui_indev *info);
 void gui_port_indev_init(void)
 {
-//    extern void touch_driver_init(void);
-//    touch_driver_init();
+    extern void touch_driver_init(void);
+    touch_driver_init();
 //    gpio_button_init();
-//    touch_set_timeout_ms(indev.touch_timeout_ms);
+    touch_set_timeout_ms(indev.touch_timeout_ms);
     DBG_DIRECT("func: %s line = %d!", __FUNCTION__, __LINE__);
     gui_indev_info_register(&indev);
 }
