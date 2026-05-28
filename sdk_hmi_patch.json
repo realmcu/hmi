@@ -1,0 +1,39 @@
+{
+    "_comment": "Patch config for SDK_HMI.py sdk_package: use hmi_app instead of hmi, keep only chargecase+dashboard; add gui source without build artifacts",
+    "replace_add": {
+        "sdk/board/evb/hmi": [
+            ["sdk/board/evb/hmi_app/chargecase", "board/evb/hmi_app/chargecase"],
+            ["sdk/board/evb/hmi_app/dashboard",  "board/evb/hmi_app/dashboard"]
+        ]
+    },
+    "extra_add": [
+        ["sdk/src/sample/gui", "src/sample/gui"],
+        ["sdk/bin/rtl87x3ep/hal_utils.lib",  "bin/rtl87x3ep/hal_utils.lib"],
+        ["sdk/bin/rtl87x3ep/default_bin", "bin/rtl87x3ep/default_bin"]
+    ],
+    "extra_remove": [
+        ["src/sample/gui", ".*\\.o$"],
+        ["src/sample/gui", ".*\\.d$"],
+        ["src/sample/gui", ".*\\.axf$"],
+        ["src/sample/gui", ".*\\.lst$"],
+        ["src/sample/gui", "Objects$"],
+        ["src/sample/gui", "Listings$"],
+        "src/sample/gui/keil_sim",
+        "src/sample/gui/script",
+        "src/sample/gui/.git",
+        "src/sample/gui/.github",
+        "src/sample/gui/.gitignore",
+        "src/sample/gui/.git-commit-template",
+        "src/sample/gui/.gdbinit",
+        "src/sample/gui/.cppcheck_suppressions",
+        "src/sample/gui/.vscode",
+        "src/sample/gui/.readthedocs-cn.yaml",
+        "src/sample/gui/.readthedocs.yaml",
+        "src/sample/gui/AGENTS.md",
+        "src/sample/gui/CLAUDE.md",
+        "src/sample/gui/todo",
+        "src/sample/gui/doc",
+        "src/sample/gui/doxygen_graphviz",
+        "board/evb/hmi_app/dashboard/mdk/Objects"
+    ]
+}
