@@ -19,6 +19,10 @@ pub const HISTORY_CONTENT_MAX: usize = 64 * 1024;
 pub const USER_INPUT_MAX: usize = 64 * 1024;
 
 pub const MIN_TASK_INTERVAL_SECS: u64 = 30;
+/// Minimum interval for Rust-native sensor monitors. These never invoke the
+/// LLM, so the limit is purely about sensor read frequency and battery/network
+/// friendliness — much shorter than the LLM task minimum is fine.
+pub const MIN_MONITOR_INTERVAL_SECS: u64 = 1;
 pub const TASK_EXECUTION_PROMPT_PREFIX: &str = "【定时任务已到时间】不要把这句话理解为创建提醒、设置任务或记录待办。现在请直接执行这条任务，并面向用户给出回复。任务内容：";
 pub const NO_LONG_TERM_MEMORY_TEXT: &str = "本次对话无长期记忆";
 pub const SUMMARY_MEMORY_EMPTY_TEXT: &str = "暂无历史总结记忆。";
@@ -43,6 +47,9 @@ pub const TOOLS_PROMPT_SECTION: &str = concat!(
     "3. fs_write 参数 {\"path\": \"文件路径\", \"content\": \"...\", \"append\": false} ── 写入/覆盖文件；append=true 时追加。\n",
     "4. fs_exists 参数 {\"path\": \"文件路径\"}                      ── 判断文件或目录是否存在。\n",
     "5. sensor_read_temp_humidity 参数 {}                                ── 读取当前温湿度传感器，返回摄氏温度和相对湿度。\n",
+    "6. monitor_create 参数 {\"field\":\"humidity_pct|temp_c\",\"op\":\"gt|lt|gte|lte|eq\",\"threshold\":80,\"action\":\"feishu_send\",\"message\":\"提示文本，可含 {value}\",\"chat_id\":\"\"(可空,默认走 channels.feishu.default_chat_id),\"every_secs\":30,\"fire_once\":true} ── 创建一条由 Rust 原生轮询的传感器告警规则：每 every_secs 秒读一次传感器，命中条件时由 Rust 直接调用动作，不再回到 LLM。`{value}` 会被替换为实际读数（保留两位小数）。fire_once=true 表示触发一次后停用。\n",
+    "7. monitor_list 参数 {}                                              ── 列出全部告警规则及其状态。\n",
+    "8. monitor_delete 参数 {\"id\":\"规则 id 前缀\"}                       ── 按 id 前缀删除告警规则。\n",
     "\n",
     "调用协议：\n",
     "- 当且仅当用户的请求需要操作 SD 卡或后续会扩展的设备时，回复正文末尾追加一行：\n",
@@ -72,6 +79,11 @@ pub const TOOLS_PROMPT_SECTION: &str = concat!(
     "\n",
     "用户：把今天的日记写到 notes/diary.md\n",
     "助手：好的，我把日记追加到 notes/diary.md。<tool_call>{\"name\":\"fs_write\",\"arguments\":{\"path\":\"notes/diary.md\",\"content\":\"2026-05-15 ...\\n\",\"append\":true}}</tool_call>\n",
+    "\n",
+    "用户：等湿度高于 80 时给我发飞书消息。\n",
+    "助手：好的，我创建一条 Rust 原生告警规则，每 30 秒查一次湿度，第一次超过 80 就发飞书并自动停用。<tool_call>{\"name\":\"monitor_create\",\"arguments\":{\"field\":\"humidity_pct\",\"op\":\"gt\",\"threshold\":80,\"action\":\"feishu_send\",\"message\":\"湿度已达 {value}%RH，超过阈值 80\",\"every_secs\":30,\"fire_once\":true}}</tool_call>\n",
+    "（claw 回灌 [tool_results]，确认规则已创建）\n",
+    "助手：已设置好，等湿度超过 80%RH 时我会给你发一条飞书消息。\n",
 );
 
 pub fn format_task_chat_input(task_title: &str) -> String {

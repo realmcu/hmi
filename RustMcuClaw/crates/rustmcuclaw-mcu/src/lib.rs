@@ -1,4 +1,4 @@
-#![no_std]
+﻿#![no_std]
 #![allow(static_mut_refs)]
 
 extern crate alloc;
@@ -17,7 +17,7 @@ use font8x8::{BASIC_FONTS, UnicodeFonts};
 use rustmcuclaw_common::{
     format_mcu_system_prompt, format_task_chat_input, CHAT_REQUEST_BODY_MAX,
     DEFAULT_HEARTBEAT_INTERVAL_SECS, DEFAULT_HISTORY_LIMIT, DEFAULT_MAX_TOKENS,
-    DEFAULT_MAX_TOOL_LOOPS, HISTORY_CONTENT_MAX, MIN_TASK_INTERVAL_SECS,
+    DEFAULT_MAX_TOOL_LOOPS, HISTORY_CONTENT_MAX, MIN_MONITOR_INTERVAL_SECS, MIN_TASK_INTERVAL_SECS,
     SUMMARY_MEMORY_EMPTY_TEXT, SYSTEM_PROMPT_MAX,
 };
 use serde::{Deserialize, Serialize};
@@ -138,6 +138,10 @@ struct FeishuConfig {
     app_secret: String,
     /// Open Lark base URL (defaults to https://open.feishu.cn when empty).
     endpoint: String,
+    /// Default `chat_id` used by Rust-native monitor actions when the
+    /// LLM-supplied rule leaves `chat_id` empty. Without this the
+    /// `monitor_create` tool rejects rules that omit a recipient.
+    default_chat_id: String,
 }
 
 #[derive(Clone)]
@@ -172,6 +176,7 @@ struct FileConfig {
     role: String,
     summary_memory: String,
     tasks: String,
+    monitors: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -214,6 +219,33 @@ struct Task {
     completed: bool,
 }
 
+/// Rust-native sensor monitor rule.  Once `monitor_create` registers one,
+/// the `poll()` loop reads the sensor, compares against `threshold`, and
+/// triggers `action_kind` entirely in Rust �?no further LLM round-trips.
+#[derive(Serialize, Deserialize, Clone)]
+struct Monitor {
+    id: String,
+    every_secs: u64,
+    /// Runtime-only scheduling field. NOT serialized �?there is no reason to
+    /// write a "next check time" to the SD card. On load it is always reset
+    /// to `now + every_secs`. Only the rule itself and `fired` are durable.
+    #[serde(skip)]
+    next_check_at_secs: u64,
+    /// Sensor field name. Supported: "humidity_pct", "temp_c".
+    field: String,
+    /// Comparison op. Supported: "gt", "lt", "gte", "lte", "eq".
+    op: String,
+    threshold: f32,
+    /// Action kind. Supported: "feishu_send".
+    action_kind: String,
+    /// Empty string means use `channels.feishu.default_chat_id`.
+    action_chat_id: String,
+    /// Message body. `{value}` is replaced with the actual reading.
+    action_message: String,
+    fire_once: bool,
+    fired: bool,
+}
+
 struct App {
     config: Config,
     history: Vec<Message>,
@@ -222,6 +254,7 @@ struct App {
     role: String,
     summary_memory: String,
     tasks: Vec<Task>,
+    monitors: Vec<Monitor>,
     seq: u64,
     last_heartbeat: u64,
     /// Cached Feishu tenant_access_token. Empty when never fetched or expired.
@@ -230,6 +263,11 @@ struct App {
     feishu_token_expires_at: u64,
     /// Small ring of recently-handled Feishu `message_id`s for deduplication.
     feishu_recent_ids: Vec<String>,
+    /// The `chat_id` of the most recent Feishu message received by Claw.
+    /// Used as the default recipient for monitor actions so the user never
+    /// has to configure a chat_id manually: if you told Claw via Feishu,
+    /// Claw already knows where to reply.
+    active_feishu_chat_id: String,
 }
 
 static mut APP: Option<App> = None;
@@ -254,15 +292,21 @@ const DEFAULT_CONFIG: &str = concat!(
     "user = \"user.md\"\n",
     "role = \"role.md\"\n",
     "summary_memory = \"summary_memory.jsonl\"\n",
-    "tasks = \"tasks.json\"\n\n",
+    "tasks = \"tasks.json\"\n",
+    "monitors = \"monitors.json\"\n\n",
     "[channels.feishu]\n",
     "# Feishu / Lark open-platform app. Long-connection event subscription is WIP.\n",
-    "# App Secret is sensitive — write the real value into the SD card copy of\n",
+    "# App Secret is sensitive �?write the real value into the SD card copy of\n",
     "# rmcc.toml manually; the firmware never embeds it.\n",
     "enabled = false\n",
     "app_id = \"cli_a92512f2f3391bd4\"\n",
     "app_secret = \"\"\n",
     "endpoint = \"https://open.feishu.cn\"\n",
+    "# Default recipient used by Rust-native monitor rules when the LLM\n",
+    "# leaves the rule's chat_id empty. Fill this in to make `\"give me a\n",
+    "# Feishu message\"` style natural-language requests work without the\n",
+    "# LLM having to guess a chat_id.\n",
+    "default_chat_id = \"\"\n",
 );
 
 const DEFAULT_SOUL: &str = "你是 Claw，一个运行在 RTL8783G EVB 上的串口智能体。\n";
@@ -311,12 +355,14 @@ pub unsafe extern "C" fn rustmcuclaw_mcu_init(
     let _ = ensure_file(&join(&config.data_dir, &config.files.role), DEFAULT_ROLE);
     let _ = ensure_file(&join(&config.data_dir, &config.files.summary_memory), "");
     let _ = ensure_file(&join(&config.data_dir, &config.files.tasks), "[]\n");
+    let _ = ensure_file(&join(&config.data_dir, &config.files.monitors), "[]\n");
 
     let soul_path = join(&config.data_dir, &config.files.soul);
     let user_path = join(&config.data_dir, &config.files.user);
     let role_path = join(&config.data_dir, &config.files.role);
     let summary_path = join(&config.data_dir, &config.files.summary_memory);
     let tasks_path = join(&config.data_dir, &config.files.tasks);
+    let monitors_path = join(&config.data_dir, &config.files.monitors);
 
     APP = Some(App {
         soul: read_text(&soul_path).unwrap_or_else(|_| DEFAULT_SOUL.to_string()),
@@ -324,6 +370,7 @@ pub unsafe extern "C" fn rustmcuclaw_mcu_init(
         role: read_text(&role_path).unwrap_or_else(|_| DEFAULT_ROLE.to_string()),
         summary_memory: read_text(&summary_path).unwrap_or_default(),
         tasks: load_tasks_from_path(&tasks_path),
+        monitors: load_monitors_from_path(&monitors_path),
         config,
         history: Vec::new(),
         seq: 0,
@@ -331,6 +378,7 @@ pub unsafe extern "C" fn rustmcuclaw_mcu_init(
         feishu_token: String::new(),
         feishu_token_expires_at: 0,
         feishu_recent_ids: Vec::new(),
+        active_feishu_chat_id: String::new(),
     });
 
     write_out(out, out_cap, "RustMcuClaw MCU ready. Type /help for commands.\r\nclaw> ");
@@ -489,13 +537,13 @@ pub unsafe extern "C" fn rustmcuclaw_mcu_heap_size() -> usize {
 /// Draw text into a caller-provided RGB565 framebuffer using the built-in
 /// `font8x8` bitmap font.  No heap allocation is performed.
 ///
-/// * `pixels`  – pointer to the RGB565 framebuffer (row-major, `width × height` `u16` words).
-/// * `width`   – framebuffer width in pixels.
-/// * `height`  – framebuffer height in pixels.
-/// * `x`, `y` – top-left text origin (may be 0).
-/// * `text`    – null-terminated UTF-8 string to render.
-/// * `fg`      – foreground colour in RGB565.
-/// * `scale`   – pixel magnification: 1 → 8×8 per glyph, 2 → 16×16, etc.
+/// * `pixels`  �?pointer to the RGB565 framebuffer (row-major, `width × height` `u16` words).
+/// * `width`   �?framebuffer width in pixels.
+/// * `height`  �?framebuffer height in pixels.
+/// * `x`, `y` �?top-left text origin (may be 0).
+/// * `text`    �?null-terminated UTF-8 string to render.
+/// * `fg`      �?foreground colour in RGB565.
+/// * `scale`   �?pixel magnification: 1 �?8×8 per glyph, 2 �?16×16, etc.
 ///
 /// Returns the number of glyphs rendered, or a negative value on bad input.
 #[no_mangle]
@@ -570,7 +618,7 @@ pub unsafe extern "C" fn rustmcuclaw_mcu_draw_text_rgb565(
 
         // ── Fall back to font8x8 for ASCII / Latin when unifont is absent ──
         if !ch.is_ascii() {
-            // Non-ASCII glyph not in PSRAM font — advance one halfwidth cell.
+            // Non-ASCII glyph not in PSRAM font �?advance one halfwidth cell.
             cursor_x += 8 * sc;
             continue;
         }
@@ -627,6 +675,7 @@ impl Default for Config {
                 role: "role.md".to_string(),
                 summary_memory: "summary_memory.jsonl".to_string(),
                 tasks: "tasks.json".to_string(),
+                monitors: "monitors.json".to_string(),
             },
             channels: ChannelsConfig::default(),
         }
@@ -917,8 +966,9 @@ impl App {
     fn doctor(&self) -> String {
         let fs = &self.config.channels.feishu;
         let fs_endpoint = if fs.endpoint.is_empty() { "https://open.feishu.cn" } else { fs.endpoint.as_str() };
+        let default_chat = if fs.default_chat_id.is_empty() { "<unset>" } else { fs.default_chat_id.as_str() };
         format!(
-            "RustMcuClaw MCU doctor:\r\n  data_dir: {}\r\n  provider: {} / {}\r\n  endpoint: {}\r\n  history_limit: {}\r\n  max_tool_loops: {}\r\n  heartbeat: {} / {}s\r\n  heap: PSRAM bump allocator\r\n  fs: PSRAM FATFS via Zephyr FS callbacks\r\n  net: Z2Plus HTTPS callback\r\n  channel.feishu: {} app_id={} secret={} endpoint={}\r\nclaw> ",
+            "RustMcuClaw MCU doctor:\r\n  data_dir: {}\r\n  provider: {} / {}\r\n  endpoint: {}\r\n  history_limit: {}\r\n  max_tool_loops: {}\r\n  heartbeat: {} / {}s\r\n  heap: PSRAM bump allocator\r\n  fs: PSRAM FATFS via Zephyr FS callbacks\r\n  net: Z2Plus HTTPS callback\r\n  channel.feishu: {} app_id={} secret={} endpoint={} default_chat_id={}\r\n  monitors: {} active\r\nclaw> ",
             self.config.data_dir,
             self.config.provider.kind,
             self.config.provider.model,
@@ -931,6 +981,8 @@ impl App {
             if fs.app_id.is_empty() { "<unset>" } else { fs.app_id.as_str() },
             mask_secret(&fs.app_secret),
             fs_endpoint,
+            default_chat,
+            self.monitors.iter().filter(|m| !(m.fire_once && m.fired)).count(),
         )
     }
 
@@ -976,6 +1028,9 @@ impl App {
             Some(s) if !s.is_empty() => s.to_string(),
             _ => return Some("[fsev] missing chat_id".to_string()),
         };
+        // Remember this chat so Rust-native monitor rules can reach the user
+        // without requiring a manually-configured default_chat_id.
+        self.active_feishu_chat_id = chat_id.clone();
 
         let msg_type = v.pointer("/event/message/message_type").and_then(|x| x.as_str()).unwrap_or("");
         if msg_type != "text" {
@@ -983,7 +1038,6 @@ impl App {
             let _ = self.feishu_send_text(&chat_id, &note);
             return Some(format!("[fsev skip-type] {}", msg_type));
         }
-
         let content_str = v.pointer("/event/message/content").and_then(|x| x.as_str()).unwrap_or("");
         let inner: serde_json::Value = match serde_json::from_str(content_str) {
             Ok(v) => v,
@@ -1123,6 +1177,13 @@ impl App {
         }
     }
 
+    fn save_monitors(&self) {
+        if let Ok(mut text) = serde_json::to_string_pretty(&self.monitors) {
+            text.push('\n');
+            let _ = write_text(&join(&self.config.data_dir, &self.config.files.monitors), &text, false);
+        }
+    }
+
     fn task_list(&self) -> String {
         if self.tasks.is_empty() {
             return "No tasks.\r\nclaw> ".to_string();
@@ -1224,6 +1285,159 @@ impl App {
         if changed {
             self.save_tasks();
         }
+
+        // Rust-native sensor monitor loop: reads sensors, compares against
+        // user-defined thresholds, and triggers actions without invoking the
+        // LLM. This is the path that turns natural-language requests like
+        // “等湿度高于 80 时给我发飞书�?into deterministic, low-cost loops.
+        let monitor_out = self.poll_monitors(now);
+        if !monitor_out.is_empty() {
+            out.push_str(&monitor_out);
+        }
+
+        out
+    }
+
+    /// Iterate registered monitors, check the ones whose `next_check_at` is
+    /// due, evaluate the condition against a single fresh sensor read, and
+    /// fire matching actions. Returns user-visible status text (empty when
+    /// nothing happened).
+    fn poll_monitors(&mut self, now: u64) -> String {
+        let mut out = String::new();
+        let mut due_indexes: Vec<usize> = Vec::new();
+        for (idx, m) in self.monitors.iter().enumerate() {
+            if m.fire_once && m.fired {
+                continue;
+            }
+            if m.next_check_at_secs <= now {
+                due_indexes.push(idx);
+            }
+        }
+        if due_indexes.is_empty() {
+            return out;
+        }
+
+        let mut temp_milli_c: i32 = 0;
+        let mut humidity_milli_pct: i32 = 0;
+        let sensor_ok = unsafe {
+            claw_mcu_read_temp_humidity(&mut temp_milli_c, &mut humidity_milli_pct) >= 0
+        };
+
+        let mut changed = false;
+        for idx in due_indexes {
+            // Always advance the schedule so a failing read does not pin the
+            // task at “due�?and spin every poll(). `next_check_at` is
+            // intentionally NOT persisted on every tick �?it is a runtime
+            // schedule, not durable state. After reboot, monitors simply
+            // re-schedule from `now + every_secs`. This avoids hammering the
+            // SD card every `every_secs` seconds when nothing actually changed.
+            {
+                let m = &mut self.monitors[idx];
+                m.next_check_at_secs = now.saturating_add(m.every_secs);
+            }
+
+            if !sensor_ok {
+                let id = self.monitors[idx].id.clone();
+                let _ = write!(out, "\r\n[monitor {}] sensor read failed\r\n", id);
+                continue;
+            }
+
+            let temp_c = (temp_milli_c as f32) / 1000.0;
+            let humidity_pct = (humidity_milli_pct as f32) / 1000.0;
+
+            let (matched, value, action_kind, chat_id, message, id, fire_once) = {
+                let m = &self.monitors[idx];
+                let v = match m.field.as_str() {
+                    "humidity_pct" => humidity_pct,
+                    "temp_c" => temp_c,
+                    _ => f32::NAN,
+                };
+                let hit = if v.is_nan() {
+                    false
+                } else {
+                    match m.op.as_str() {
+                        "gt" => v > m.threshold,
+                        "lt" => v < m.threshold,
+                        "gte" => v >= m.threshold,
+                        "lte" => v <= m.threshold,
+                        "eq" => (v - m.threshold).abs() < 0.001,
+                        _ => false,
+                    }
+                };
+                (
+                    hit,
+                    v,
+                    m.action_kind.clone(),
+                    m.action_chat_id.clone(),
+                    m.action_message.clone(),
+                    m.id.clone(),
+                    m.fire_once,
+                )
+            };
+
+            if !matched {
+                continue;
+            }
+
+            let rendered = message.replace("{value}", &format!("{:.2}", value));
+            let recipient = if !chat_id.is_empty() {
+                chat_id
+            } else if !self.active_feishu_chat_id.is_empty() {
+                self.active_feishu_chat_id.clone()
+            } else {
+                self.config.channels.feishu.default_chat_id.clone()
+            };
+
+            match action_kind.as_str() {
+                "feishu_send" => {
+                    if recipient.is_empty() {
+                        let _ = write!(
+                            out,
+                            "\r\n[monitor {}] action skipped: no chat_id (set channels.feishu.default_chat_id)\r\n",
+                            id
+                        );
+                    } else {
+                        match self.feishu_send_text(&recipient, &rendered) {
+                            Ok(()) => {
+                                let _ = write!(
+                                    out,
+                                    "\r\n[monitor {}] fired: {}\r\n",
+                                    id, rendered
+                                );
+                                if fire_once {
+                                    self.monitors[idx].fired = true;
+                                    // `fired` is durable state �?persist now so
+                                    // a reboot does not re-trigger the same alert.
+                                    changed = true;
+                                }
+                            }
+                            Err(e) => {
+                                // Leave `fired` untouched so the next tick retries.
+                                let _ = write!(
+                                    out,
+                                    "\r\n[monitor {}] feishu send failed: {}\r\n",
+                                    id, e
+                                );
+                            }
+                        }
+                    }
+                }
+                other => {
+                    let _ = write!(
+                        out,
+                        "\r\n[monitor {}] unknown action_kind '{}'\r\n",
+                        id, other
+                    );
+                }
+            }
+        }
+
+        if changed {
+            self.save_monitors();
+        }
+        if !out.is_empty() {
+            out.push_str("claw> ");
+        }
         out
     }
 
@@ -1233,8 +1447,8 @@ impl App {
     }
 
     /// Resolve a tool-supplied path:
-    ///   * absolute (starts with '/') → returned as-is
-    ///   * relative → joined under the configured data_dir
+    ///   * absolute (starts with '/') �?returned as-is
+    ///   * relative �?joined under the configured data_dir
     ///   * '..' segments are rejected to prevent escaping the data_dir
     fn resolve_tool_path(&self, path: &str) -> Result<String, String> {
         let trimmed = path.trim();
@@ -1261,13 +1475,16 @@ impl App {
     ///
     /// Adding a new device (servo, temperature sensor, ...) only requires
     /// adding another arm here and documenting it in `TOOLS_PROMPT_SECTION`.
-    fn execute_tool(&self, name: &str, args: &serde_json::Value) -> String {
+    fn execute_tool(&mut self, name: &str, args: &serde_json::Value) -> String {
         match name {
             "fs_list" => self.tool_fs_list(args),
             "fs_read" => self.tool_fs_read(args),
             "fs_write" => self.tool_fs_write(args),
             "fs_exists" => self.tool_fs_exists(args),
             "sensor_read_temp_humidity" => self.tool_sensor_read_temp_humidity(args),
+            "monitor_create" => self.tool_monitor_create(args),
+            "monitor_list" => self.tool_monitor_list(args),
+            "monitor_delete" => self.tool_monitor_delete(args),
             other => format!("ERR: unknown tool '{other}'"),
         }
     }
@@ -1379,6 +1596,137 @@ impl App {
             format_milli_value(humidity_milli_pct)
         )
     }
+
+    fn tool_monitor_create(&mut self, args: &serde_json::Value) -> String {
+        let field = match args.get("field").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None => return "ERR: missing string argument 'field'".to_string(),
+        };
+        if !matches!(field.as_str(), "humidity_pct" | "temp_c") {
+            return format!(
+                "ERR: unknown field '{}'. Allowed: humidity_pct, temp_c",
+                field
+            );
+        }
+        let op = match args.get("op").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None => return "ERR: missing string argument 'op'".to_string(),
+        };
+        if !matches!(op.as_str(), "gt" | "lt" | "gte" | "lte" | "eq") {
+            return format!("ERR: unknown op '{}'. Allowed: gt, lt, gte, lte, eq", op);
+        }
+        let threshold = match args.get("threshold").and_then(|v| v.as_f64()) {
+            Some(n) => n as f32,
+            None => return "ERR: missing number argument 'threshold'".to_string(),
+        };
+        let action = args
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("feishu_send")
+            .to_string();
+        if action != "feishu_send" {
+            return format!("ERR: unknown action '{}'. Allowed: feishu_send", action);
+        }
+        let chat_id = args
+            .get("chat_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let message = match args.get("message").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None => return "ERR: missing string argument 'message'".to_string(),
+        };
+        let requested_secs = args
+            .get("every_secs")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(30);
+        let every_secs = requested_secs.max(MIN_MONITOR_INTERVAL_SECS);
+        let fire_once = args
+            .get("fire_once")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        // Recipient priority: explicit chat_id > active Feishu session (the
+        // chat the user is currently talking in) > configured default_chat_id.
+        // This means that if you tell Claw via Feishu, it already knows where
+        // to send the alert without any manual configuration.
+        let effective_chat = if !chat_id.is_empty() {
+            chat_id.clone()
+        } else if !self.active_feishu_chat_id.is_empty() {
+            self.active_feishu_chat_id.clone()
+        } else {
+            self.config.channels.feishu.default_chat_id.clone()
+        };
+        if effective_chat.is_empty() {
+            return "ERR: no Feishu chat_id available. Either send this request from a Feishu chat so Claw can auto-detect it, or fill in channels.feishu.default_chat_id in rmcc.toml".to_string();
+        }
+
+        let now = now_secs();
+        let id = self.next_id();
+        let next_check_at_secs = now.saturating_add(every_secs);
+        let monitor = Monitor {
+            id: id.clone(),
+            every_secs,
+            next_check_at_secs,
+            field: field.clone(),
+            op: op.clone(),
+            threshold,
+            action_kind: action,
+            action_chat_id: chat_id,
+            action_message: message,
+            fire_once,
+            fired: false,
+        };
+        self.monitors.push(monitor);
+        self.save_monitors();
+        format!(
+            "OK: monitor {id} created on {field} {op} {threshold}, every {every_secs}s, fire_once={fire_once}"
+        )
+    }
+
+    fn tool_monitor_list(&self, _args: &serde_json::Value) -> String {
+        if self.monitors.is_empty() {
+            return "OK: no monitors".to_string();
+        }
+        let mut out = String::from("OK: monitors\n");
+        for m in &self.monitors {
+            let state = if m.fired { "fired" } else { "active" };
+            let _ = writeln!(
+                out,
+                "  {} [{}] {} {} {} every {}s next_in ~{}s action={} chat_id={} fire_once={}",
+                m.id,
+                state,
+                m.field,
+                m.op,
+                m.threshold,
+                m.every_secs,
+                m.next_check_at_secs.saturating_sub(now_secs()),
+                m.action_kind,
+                if m.action_chat_id.is_empty() {
+                    "<default>"
+                } else {
+                    m.action_chat_id.as_str()
+                },
+                m.fire_once,
+            );
+        }
+        out
+    }
+
+    fn tool_monitor_delete(&mut self, args: &serde_json::Value) -> String {
+        let id_prefix = match args.get("id").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None => return "ERR: missing string argument 'id'".to_string(),
+        };
+        if id_prefix.is_empty() {
+            return "ERR: empty id prefix".to_string();
+        }
+        let before = self.monitors.len();
+        self.monitors.retain(|m| !m.id.starts_with(&id_prefix));
+        let removed = before - self.monitors.len();
+        self.save_monitors();
+        format!("OK: removed {removed} monitor(s) matching id prefix '{id_prefix}'")
+    }
 }
 
 /// Render an app secret as `head…tail` so /doctor never leaks the full value
@@ -1467,7 +1815,7 @@ struct ToolCall {
 
 /// Locate every `<tool_call>...</tool_call>` block in the raw LLM reply and
 /// parse the inner JSON. Malformed or unknown-shape blocks are skipped
-/// silently — the calling logic surfaces a tool error string in their place.
+/// silently �?the calling logic surfaces a tool error string in their place.
 fn parse_tool_calls(raw: &str) -> Vec<ToolCall> {
     const OPEN: &str = "<tool_call>";
     const CLOSE: &str = "</tool_call>";
@@ -1501,7 +1849,7 @@ fn parse_tool_calls(raw: &str) -> Vec<ToolCall> {
     out
 }
 
-/// Replace each parsed `<tool_call>` span with a compact `[→ name]` marker so
+/// Replace each parsed `<tool_call>` span with a compact `[�?name]` marker so
 /// the displayed assistant reply does not contain raw JSON.
 fn strip_tool_calls(raw: &str, calls: &[ToolCall]) -> String {
     if calls.is_empty() {
@@ -1513,7 +1861,7 @@ fn strip_tool_calls(raw: &str, calls: &[ToolCall]) -> String {
         let (start, end) = call.span;
         if start >= last {
             out.push_str(&raw[last..start]);
-            let _ = write!(out, "[→ {}]", call.name);
+            let _ = write!(out, "[�?{}]", call.name);
             last = end;
         }
     }
@@ -1554,10 +1902,12 @@ fn parse_config(text: &str, mut cfg: Config) -> Config {
             ("files", "role") => cfg.files.role = parse_string(value),
             ("files", "summary_memory") => cfg.files.summary_memory = parse_string(value),
             ("files", "tasks") => cfg.files.tasks = parse_string(value),
+            ("files", "monitors") => cfg.files.monitors = parse_string(value),
             ("channels.feishu", "enabled") => cfg.channels.feishu.enabled = parse_bool(value),
             ("channels.feishu", "app_id") => cfg.channels.feishu.app_id = parse_string(value),
             ("channels.feishu", "app_secret") => cfg.channels.feishu.app_secret = parse_string(value),
             ("channels.feishu", "endpoint") => cfg.channels.feishu.endpoint = parse_string(value),
+            ("channels.feishu", "default_chat_id") => cfg.channels.feishu.default_chat_id = parse_string(value),
             _ => {}
         }
     }
@@ -1588,6 +1938,18 @@ fn ensure_file(path: &str, default: &str) -> Result<(), String> {
 fn load_tasks_from_path(path: &str) -> Vec<Task> {
     let text = read_text(path).unwrap_or_else(|_| "[]".to_string());
     serde_json::from_str::<Vec<Task>>(&text).unwrap_or_default()
+}
+
+fn load_monitors_from_path(path: &str) -> Vec<Monitor> {
+    let text = read_text(path).unwrap_or_else(|_| "[]".to_string());
+    let mut monitors = serde_json::from_str::<Vec<Monitor>>(&text).unwrap_or_default();
+    // Reschedule all non-fired monitors from now so the device does not try
+    // to make up for missed checks after a reboot.
+    let now = now_secs();
+    for m in &mut monitors {
+        m.next_check_at_secs = now.saturating_add(m.every_secs);
+    }
+    monitors
 }
 
 fn path_exists(path: &str) -> bool {
