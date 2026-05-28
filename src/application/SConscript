@@ -19,7 +19,7 @@ if GetDepend(['CONFIG_REALTEK_HONEYGUI_LIB']):
 elif GetDepend(['CONFIG_REALTEK_HONEYGUI_SRC']):
     # Use source code from submodule (example), exclude local example_gui_img.c
     src = Glob('*.c')
-    SrcRemove(src, 'example_gui_img.c')
+    SrcRemove(src, 'example_msv1.c')
     group = DefineGroup('app', src, depend=[''], CPPPATH=CPPPATH)
     group += SConscript(HONEYGUI_ROOT + '/example/SConscript')
 

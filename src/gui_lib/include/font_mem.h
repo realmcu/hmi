@@ -30,6 +30,53 @@ typedef struct
     uint8_t char_h;
 } GUI_CHAR_HEAD;
 
+/*============================================================================*
+ *                V3 Typography Types (Standard Typography Model)
+ *============================================================================*/
+#if ENABLE_FONT_V3_TYPO
+
+/** @brief Typography metrics from V3 header extension fields (font units) */
+typedef struct
+{
+    int16_t ascender;        /**< font ascender (positive, font units) */
+    int16_t descender;       /**< font descender (negative, font units) */
+    int16_t line_gap;        /**< font lineGap (font units) */
+    uint16_t units_per_em;   /**< font design units per em */
+} gui_font_typo_metrics_t;
+
+/** @brief V3 per-glyph header (bearing-based, 6 bytes packed) */
+#pragma pack(push, 1)
+typedef struct
+{
+    int8_t bearing_x;        /**< horizontal bearing from origin to glyph left (pixels) */
+    int8_t bearing_y;        /**< vertical bearing from baseline to glyph top (pixels) */
+    uint8_t width;           /**< tight bbox width (pixels) */
+    uint8_t height;          /**< tight bbox height (pixels) */
+    uint8_t advance;         /**< horizontal advance width (pixels) */
+    uint8_t reserved;        /**< reserved, set to 0 */
+} GUI_BMP_GLYPH_HEAD_V2;
+#pragma pack(pop)
+
+/** @brief Pixel-level typography layout parameters */
+typedef struct
+{
+    int16_t baseline;        /**< baseline Y offset in pixels (= ascent_px) */
+    int16_t ascent_px;       /**< ascender in pixels */
+    int16_t descent_px;      /**< |descender| in pixels */
+    int16_t line_height;     /**< default line height in pixels */
+} gui_font_typo_layout_t;
+
+/** @brief Typography context, computed once per text widget */
+typedef struct
+{
+    bool is_v3;                          /**< true if V3 font detected */
+    int16_t baseline_px;                 /**< baseline Y offset (pixels), 0 for V1 */
+    int16_t default_line_height;         /**< default line height (pixels) */
+    gui_font_typo_metrics_t metrics;     /**< raw metrics (valid only when is_v3=true) */
+} gui_font_typo_context_t;
+
+#endif /* ENABLE_FONT_V3_TYPO */
+
 typedef struct
 {
     uint8_t *font_file;
@@ -57,6 +104,41 @@ typedef struct
     uint8_t *font_name;
 } GUI_FONT_HEAD_BMP;
 #pragma pack()
+
+#if ENABLE_FONT_V3_TYPO
+/**
+ * @brief Parse typography metrics from a V3 binary font header.
+ *
+ * @param header Pointer to the font header.
+ * @param out_metrics Output typography metrics (populated on success).
+ * @return true if V3 metrics were successfully parsed, false for V1 or invalid data.
+ */
+bool gui_font_bmp_parse_typo_metrics(const GUI_FONT_HEAD_BMP *header,
+                                     gui_font_typo_metrics_t *out_metrics);
+
+/**
+ * @brief Calculate pixel-level typography layout from font metrics.
+ *
+ * @param metrics Typography metrics (from V3 header).
+ * @param font_size Font size in pixels (em-size).
+ * @return Computed layout parameters.
+ */
+gui_font_typo_layout_t gui_font_typo_calc_layout(const gui_font_typo_metrics_t *metrics,
+                                                 uint8_t font_size);
+
+/**
+ * @brief Build typography context from font header.
+ *
+ * For V3 headers, populates all fields from extension data.
+ * For V1 headers, returns is_v3=false with baseline_px=0 and default_line_height=font_size.
+ *
+ * @param header Pointer to the font header.
+ * @param font_size Font size in pixels.
+ * @return Typography context for layout use.
+ */
+gui_font_typo_context_t gui_font_bmp_get_typo_context(const GUI_FONT_HEAD_BMP *header,
+                                                      uint8_t font_size);
+#endif /* ENABLE_FONT_V3_TYPO */
 
 /**
  * @brief Initialize the character binary file and store the font and
@@ -133,25 +215,6 @@ void gui_font_mem_unload(gui_text_t *text);
 void gui_font_mem_destroy(gui_text_t *text);
 
 /**
- * @brief Get the pixel width of the text in the current font file.
- *
- * @param content Text pointer.
- * @param font_bin_addr Font file address.
- * @param charset Text encoding format.
- * @return Character width.
- */
-uint32_t gui_get_mem_char_width(void *content, void *font_bin_addr, TEXT_CHARSET charset);
-
-/**
- * @brief Get the pixel width of the utf-8 text in the current font file.
- *
- * @param content Text pointer.
- * @param font_bin_addr Font file address.
- * @return Character width.
- */
-uint32_t gui_get_mem_utf8_char_width(void *content, void *font_bin_addr);
-
-/**
  * @brief Get the font library node by size.
  *
  * @param font_size Font size.
@@ -181,6 +244,22 @@ void gui_font_mem_layout(gui_text_t *text, gui_text_rect_t *rect);
  * @param text Widget pointer.
  */
 void gui_font_get_dot_info(gui_text_t *text);
+
+/**
+ * @brief Search for a glyph in all registered BMP fonts (fallback).
+ * Iterates font_lib nodes with matching font_size, ordered by priority,
+ * skipping the primary font. Only searches BMP type fonts.
+ *
+ * @param unicode Unicode code point to search.
+ * @param font_size Font size to match.
+ * @param skip_file Primary font file to skip (already searched).
+ * @param out_chr Output character info (populated on success).
+ * @param out_line_byte Output line byte width.
+ * @return 0 on success, -1 if not found in any fallback BMP font.
+ */
+int gui_font_bmp_fallback_search(uint32_t unicode, uint8_t font_size,
+                                 uint8_t *skip_file, mem_char_t *out_chr,
+                                 int32_t *out_line_byte);
 
 #ifdef __cplusplus
 }

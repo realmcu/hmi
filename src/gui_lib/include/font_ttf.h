@@ -22,6 +22,7 @@ extern "C" {
 #include "gui_text.h"
 #include "font_rendering_utils.h"
 #include "font_lib_manager.h"
+#include "font_mem.h"
 
 
 /*============================================================================*
@@ -173,17 +174,38 @@ void gui_font_ttf_unload(gui_text_t *text);
  */
 void gui_font_ttf_adapt_rect(gui_text_t *text, gui_text_rect_t *rect);
 
+#if ENABLE_FONT_V3_TYPO
 /**
- * @brief Get the pixel width of the text in the current ttf font file.
+ * @brief Build typography context from TTF font header.
  *
- * @param content Text pointer.
- * @param font_bin_addr Font file address.
- * @param charset Text encoding format.
- * @param font_height Font height in pixels.
- * @return Character width.
+ * For V3 headers (version[0] >= 3), populates all fields from header metrics.
+ * Reads units_per_em from the header extension (last 2 bytes of header).
+ * For legacy headers (version[0] < 3), returns is_v3=false with baseline_px=0.
+ *
+ * @param header   Pointer to TTF font header.
+ * @param font_height Font height in pixels (em-size for V3, canvas size for legacy).
+ * @return Typography context for layout use.
  */
-uint32_t gui_get_ttf_char_width(void *content, void *font_bin_addr, TEXT_CHARSET charset,
-                                uint16_t font_height);
+gui_font_typo_context_t gui_font_ttf_get_typo_context(const GUI_FONT_HEAD_TTF *header,
+                                                      uint16_t font_height);
+#endif /* ENABLE_FONT_V3_TYPO */
+
+/**
+ * @brief Search for a glyph in all registered TTF fonts (fallback).
+ * Iterates font_lib TTF nodes ordered by priority, skipping the primary font.
+ * TTF fonts are scalable so font_size matching is not required.
+ * Only populates char_w/char_h/dot_addr for MEMADDR mode.
+ *
+ * @param unicode Unicode code point to search.
+ * @param font_height Desired font height in pixels (for scale calculation).
+ * @param bold_weight Bold weight for advance calculation.
+ * @param skip_file Primary font file to skip (already searched).
+ * @param out_chr Output character info (populated on success).
+ * @return 0 on success, -1 if not found in any fallback TTF font.
+ */
+int gui_font_ttf_fallback_search(uint32_t unicode, uint16_t font_height,
+                                 uint8_t bold_weight, uint8_t *skip_file,
+                                 mem_char_t *out_chr);
 
 #ifdef __cplusplus
 }

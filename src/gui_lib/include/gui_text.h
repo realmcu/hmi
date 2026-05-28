@@ -95,15 +95,18 @@ typedef struct gui_text
     int16_t offset_x;
     int16_t offset_y;
     uint16_t font_height;
+    gui_rect_t scope_rect;  /**< self scope clip area (relative to text) */
 
     TEXT_MODE mode;
     TEXT_CHARSET charset;
     FONT_SRC_TYPE font_type;
     FONT_SRC_MODE font_mode;
+    BLEND_MODE_TYPE font_blend_mode;    /**< blend mode for font rendering */
     uint8_t emoji_size;
     uint8_t checksum;
     int8_t extra_letter_spacing;
     int8_t extra_line_spacing;
+    int16_t line_height;            /**< explicit line height (0 = use default) */
     uint8_t bold_weight;
 
     bool layout_refresh   : 1;
@@ -113,6 +116,8 @@ typedef struct gui_text
     bool ispasswd         : 1;
     bool wordwrap         : 1;
     bool scope            : 1;
+    bool scope_self       : 1;  /**< scope set by gui_text_set_scope */
+    bool scope_absolute   : 1;  /**< 0=relative to text, 1=absolute screen coords */
     bool arabic           : 1;
     bool thai             : 1;
     bool hebrew           : 1;
@@ -185,7 +190,7 @@ void gui_text_set(gui_text_t    *this_widget,
  * @brief Set text mode of this_widget text widget.
  * @note If text line count was more than one, it will display on the left even if it was set left or right.
  * @param this_widget Text widget pointer.
- * @param mode There are three modes: LEFT, CENTER, and RIGHT.
+ * @param mode Text layout mode (e.g., LEFT, CENTER, RIGHT, MULTI_LEFT, SCROLL_X, VERTICAL_LEFT_TOP, RTL_RIGHT, etc.).
  */
 void gui_text_mode_set(gui_text_t *this_widget, TEXT_MODE mode);
 
@@ -228,6 +233,14 @@ void gui_text_extra_letter_spacing_set(gui_text_t *this_widget, int8_t extra_let
  * @param extra_line_spacing Extra line spacing.
  */
 void gui_text_extra_line_spacing_set(gui_text_t *this_widget, int8_t extra_line_spacing);
+
+/**
+ * @brief Set explicit line height for multi-line layout (Figma "Line height" property).
+ *
+ * @param this_widget Text box widget pointer.
+ * @param line_height Line height in pixels. 0 = use default calculated line height.
+ */
+void gui_text_set_line_height(gui_text_t *this_widget, int16_t line_height);
 
 /**
  * @brief Enable/disable matrix-based image rendering for text.
@@ -360,6 +373,53 @@ gui_text_t *gui_text_create(void       *parent,
                             int16_t     w,
                             int16_t     h);
 
+/**
+ * @brief Perform text layout measurement without rendering.
+ *
+ * Triggers the full font loading and layout pipeline using the widget's
+ * current properties, then writes results back to the widget's fields:
+ * char_width_sum, char_height_sum, char_line_sum, active_font_len, font_len.
+ *
+ * Can be called right after gui_text_set() / gui_text_mode_set() etc.,
+ * before any draw cycle.
+ *
+ * @param this_widget Text widget pointer (must have content and font set).
+ */
+void gui_text_layout_measure(gui_text_t *this_widget);
+
+/**
+ * @brief Set a clip scope on the text widget (relative to text position).
+ *
+ * Only the portion of text inside the scope rectangle will be drawn.
+ * Coordinates are relative to the text widget's own top-left corner.
+ *
+ * @param this_widget Text widget pointer.
+ * @param x X offset of the visible area relative to text.
+ * @param y Y offset of the visible area relative to text.
+ * @param w Width of the visible area.
+ * @param h Height of the visible area.
+ */
+void gui_text_set_scope(gui_text_t *this_widget, int16_t x, int16_t y, int16_t w, int16_t h);
+
+/**
+ * @brief Set an absolute clip scope on the text widget (screen coordinates).
+ *
+ * @param this_widget Text widget pointer.
+ * @param x X coordinate on screen.
+ * @param y Y coordinate on screen.
+ * @param w Width of the visible area.
+ * @param h Height of the visible area.
+ */
+void gui_text_set_scope_absolute(gui_text_t *this_widget, int16_t x, int16_t y, int16_t w,
+                                 int16_t h);
+
+/**
+ * @brief Set font blend mode for text rendering.
+ *
+ * @param this_widget Text widget pointer.
+ * @param blend_mode Blend mode (e.g., IMG_PLUS_DARKER for darken blend).
+ */
+void gui_text_set_font_blend_mode(gui_text_t *this_widget, BLEND_MODE_TYPE blend_mode);
 
 gui_inline bool gui_text_rect_hit(gui_text_rect_t *a, gui_rect_t *b)
 {
@@ -369,7 +429,7 @@ gui_inline bool gui_text_rect_hit(gui_text_rect_t *a, gui_rect_t *b)
     if (b->y2 < a->y1) { return false; }
     return true;
 }
-gui_inline bool gui_scroll_text_rect_hit(gui_text_rect_t *a, gui_rect_t *b)
+gui_inline bool gui_text_scope_rect_hit(gui_text_rect_t *a, gui_rect_t *b)
 {
     if (a->xboundright < b->x1) { return false; }
     if (b->x2 < a->xboundleft) { return false; }

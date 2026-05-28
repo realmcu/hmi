@@ -49,7 +49,7 @@
 // <o> HoneyGUI Build Mode
 //  <0=> Build Lib
 //  <1=> Build Source Code
-#define CONFIG_REALTEK_HONEYGUI_BUILD_MODE  1
+#define CONFIG_REALTEK_HONEYGUI_BUILD_MODE  0
 
 #if CONFIG_REALTEK_HONEYGUI_BUILD_MODE == 0
 #define CONFIG_REALTEK_HONEYGUI_LIB
