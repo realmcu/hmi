@@ -445,8 +445,12 @@ def generate_package(config: dict, package_key: str,
 
 def parse_args():
     script_dir = Path(__file__).resolve().parent
+    repo_root = script_dir.parent.parent  # HoneyComb root (script lives at script/hmi_script/)
+
+    default_workspace = str(repo_root)
+    default_output = str(repo_root / "build" / "sdk_package")
     default_config = str(
-        script_dir / "honeycomb" / "script" / "build" /
+        repo_root / "script" / "build" /
         "release_config" / "rtl87x3ep" / "SDK_COMMON.py"
     )
 
@@ -457,12 +461,12 @@ def parse_args():
         epilog=__doc__,
     )
     p.add_argument(
-        "--workspace", required=True,
-        help="Path to the workspace root that contains the 'sdk/' subfolder.",
+        "--workspace", default=default_workspace,
+        help=f"Path to the workspace root that contains the 'sdk/' subfolder. Default: {default_workspace}",
     )
     p.add_argument(
-        "--output", required=True,
-        help="Path where the generated SDK package will be written.",
+        "--output", default=default_output,
+        help=f"Path where the generated SDK package will be written. Default: {default_output}",
     )
     p.add_argument(
         "--config", default=default_config,
