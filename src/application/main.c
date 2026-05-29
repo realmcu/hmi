@@ -43,6 +43,13 @@ int main(void)
 #endif
 #endif
 
+    extern void hmi_bt_task_init(void);
+    extern void hmi_proto_task_init(void);
+    extern void hmi_l2_handlers_register(void);
+    hmi_bt_task_init();
+    hmi_proto_task_init();
+    hmi_l2_handlers_register();
+
     os_sched_start();
     while (1);
 
