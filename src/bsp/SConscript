@@ -34,18 +34,32 @@ path = [SDK_ROOT + '/inc/app',
         SDK_ROOT + '/inc/hal/platform',
         SDK_ROOT + '/inc/hal/io',
         SDK_ROOT + '/inc/rtl87x3ep/io',
-        SDK_ROOT + '/inc/os/FreeRTOS']
+        SDK_ROOT + '/inc/os/FreeRTOS',
+        SDK_ROOT + '/inc/bluetooth/gap',
+        SDK_ROOT + '/inc/bluetooth/profile',
+        SDK_ROOT + '/inc/bluetooth/profile/client',
+        SDK_ROOT + '/inc/bluetooth/profile/server',
+        SDK_ROOT + '/inc/bluetooth/leaudio',
+        SDK_ROOT + '/inc/ble_mgr',
+        SDK_ROOT + '/inc/framework/bt',
+        SDK_ROOT + '/inc/framework/audio',
+        SDK_ROOT + '/inc/framework/remote',
+        SDK_ROOT + '/inc/framework/sysm']
 
 
-# src += [SDK_ROOT + '/bin/rtl87x3ep/gap_lib/gap_utils_4M.lib']
-# src += [SDK_ROOT + '/bin/rtl87x3ep/framework/console.lib']
-# src += [SDK_ROOT + '/bin/rtl87x3ep/framework/remote.lib']
-# src += [SDK_ROOT + '/bin/rtl87x3ep/framework/sysm.lib']
 # src += [SDK_ROOT + '/bin/rtl87x3ep/filesystem.lib']
 src += [SDK_ROOT + '/bin/rtl87x3ep/ROM.lib']
 src += [SDK_ROOT + '/bin/rtl87x3ep/upperstack_4M.lib']
+src += [SDK_ROOT + '/bin/rtl87x3ep/gap_lib/gap_utils_4M.lib']
 src += [SDK_ROOT + '/bin/rtl87x3ep/hal_utils.lib']
+src += [SDK_ROOT + '/bin/rtl87x3ep/ble_mgr/ble_mgr_all.lib']
+src += [SDK_ROOT + '/bin/rtl87x3ep/framework/console.lib']
+src += [SDK_ROOT + '/bin/rtl87x3ep/framework/sysm.lib']
+src += [SDK_ROOT + '/bin/rtl87x3ep/framework/remote.lib']
+src += [SDK_ROOT + '/bin/rtl87x3ep/framework/btm.lib']
 
+
+src += Glob(SDK_ROOT + '/src/mcu/io_hal/common/hw_tim.c')
 
 # src += Glob(SDK_ROOT + '/src/mcu/display/driver/lcdc/device/src/rtl_common/*.c')
 src += Glob(SDK_ROOT + '/src/mcu/display/hardware/ppe/src/device/rtl8773e/rtl_ppe.c')

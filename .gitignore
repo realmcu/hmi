@@ -31,3 +31,5 @@ gcc/bin/
 # JLink runtime files
 **/mdk/JLinkLog.txt
 **/mdk/JLinkLog*.txt
+
+src/transport/

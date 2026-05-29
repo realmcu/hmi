@@ -3,12 +3,12 @@
  *
  * SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
  */
-
+ 
 #define VERSION_MAJOR            0
 #define VERSION_MINOR            0
 #define VERSION_REVISION         0
 #define VERSION_BUILDNUM         0
-#define VERSION_GCID             0x34a47438
+#define VERSION_GCID             0x45697dfb
 #define CUSTOMER_NAME            sdk-v1
 #define CN_1                     's'
 #define CN_2                     'd'
@@ -18,16 +18,16 @@
 #define CN_6                     '1'
 #define CN_7                     '#'
 #define CN_8                     '#'
-#define BUILDING_TIME            Thu May 28 16:52:20 2026
+#define BUILDING_TIME            Fri May 29 16:18:00 2026
 #define NAME2STR(a)              #a
 #define CUSTOMER_NAME_S          #NAME2STR(CUSTOMER_NAME)
 #define NUM4STR(a,b,c,d)         #a "." #b "." #c "." #d
 #define VERSIONBUILDSTR(a,b,c,d) NUM4STR(a,b,c,d)
 #define VERSION_BUILD_STR        VERSIONBUILDSTR(VERSION_MAJOR,VERSION_MINOR,VERSION_REVISION,VERSION_BUILD)
-#define COMMIT                   34a47438f57f
-#define BUILDING_TIME_STR        Thu_2026_05_28_16_52_20
-#define BUILDER                  roy_xie
-#define BUILDER_STR              roy_xie
+#define COMMIT                   45697dfb0cfa
+#define BUILDING_TIME_STR        Fri_2026_05_29_16_18_00
+#define BUILDER                  howie_wang
+#define BUILDER_STR              howie_wang
 #define TO_STR(R) NAME2STR(R)
 #define GENERATE_VERSION_MSG(MSG, VERSION, COMMIT, BUILDING_TIME, BUILDER) \
     GENERATE_VERSION_MSG_(MSG, VERSION, COMMIT, BUILDING_TIME, BUILDER)

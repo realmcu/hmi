@@ -11,7 +11,7 @@
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
       <pArmCC>6220000::V6.22::.\ArmCompilerforEmbedded6.22</pArmCC>
-      <pCCUsed>6220000::V6.22::..\..\AC\622</pCCUsed>
+      <pCCUsed>5060750::V5.06 update 6 (build 750)::.\ARMCC_506build750</pCCUsed>
       <uAC6>1</uAC6>
       <TargetOption>
         <TargetCommonOption>
@@ -187,7 +187,6 @@
             <RvdsVP>2</RvdsVP>
             <RvdsMve>2</RvdsMve>
             <RvdsCdeCp>0</RvdsCdeCp>
-            <nBranchProt>0</nBranchProt>
             <hadIRAM2>1</hadIRAM2>
             <hadIROM2>1</hadIROM2>
             <StupSel>8</StupSel>
@@ -339,9 +338,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>  --include pre_define.h  --include stdbool.h --include app_flags.h</MiscControls>
-              <Define>RTK_HAL_LCD, CONFIG_SOC_SERIES_RTL8773E=1, TARGET_RTL8773E, ENABLE_HONEYGUI, RTK_HAL_DRIVER, SUPPORT_ACCESS_SHM = 1</Define>
+              <Define>TARGET_RTL8773E, RTK_HAL_LCD, RTK_HAL_DRIVER, SUPPORT_ACCESS_SHM = 1, CONFIG_SOC_SERIES_RTL8773E=1, ENABLE_HONEYGUI</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\src\mcu\display\hardware;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\src\driver;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\src\ports\realgui_port;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs</IncludePath>
+              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\src\mcu\display\hardware;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\bluetooth\profile\client;..\..\..\..\inc\bluetooth\profile\server;..\..\..\..\inc\bluetooth\leaudio;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\audio;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\src\driver;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\src\ports\realgui_port;..\src\transport;..\src\transport\bluetooth;..\src\transport\bluetooth\hmi_app;..\src\transport\bluetooth\hmi_ble;..\src\transport\bluetooth\hmi_ble\private_service;..\src\transport\bluetooth\hmi_br_edr;..\src\transport\l2_handlers;..\src\transport\protocol;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -451,9 +450,44 @@
               <FilePath>..\..\..\..\bin\rtl87x3ep\upperstack_4M.lib</FilePath>
             </File>
             <File>
+              <FileName>gap_utils_4M.lib</FileName>
+              <FileType>4</FileType>
+              <FilePath>..\..\..\..\bin\rtl87x3ep\gap_lib\gap_utils_4M.lib</FilePath>
+            </File>
+            <File>
               <FileName>hal_utils.lib</FileName>
               <FileType>4</FileType>
               <FilePath>..\..\..\..\bin\rtl87x3ep\hal_utils.lib</FilePath>
+            </File>
+            <File>
+              <FileName>ble_mgr_all.lib</FileName>
+              <FileType>4</FileType>
+              <FilePath>..\..\..\..\bin\rtl87x3ep\ble_mgr\ble_mgr_all.lib</FilePath>
+            </File>
+            <File>
+              <FileName>console.lib</FileName>
+              <FileType>4</FileType>
+              <FilePath>..\..\..\..\bin\rtl87x3ep\framework\console.lib</FilePath>
+            </File>
+            <File>
+              <FileName>sysm.lib</FileName>
+              <FileType>4</FileType>
+              <FilePath>..\..\..\..\bin\rtl87x3ep\framework\sysm.lib</FilePath>
+            </File>
+            <File>
+              <FileName>remote.lib</FileName>
+              <FileType>4</FileType>
+              <FilePath>..\..\..\..\bin\rtl87x3ep\framework\remote.lib</FilePath>
+            </File>
+            <File>
+              <FileName>btm.lib</FileName>
+              <FileType>4</FileType>
+              <FilePath>..\..\..\..\bin\rtl87x3ep\framework\btm.lib</FilePath>
+            </File>
+            <File>
+              <FileName>hw_tim.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\io_hal\common\hw_tim.c</FilePath>
             </File>
             <File>
               <FileName>rtl_ppe.c</FileName>
@@ -554,6 +588,116 @@
               <FileName>gui_port_os.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\src\ports\realgui_port\gui_port_os.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>transport</GroupName>
+          <Files>
+            <File>
+              <FileName>hmi_ble_ctrl.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_app\hmi_ble_ctrl.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_ble_nus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_app\hmi_ble_nus.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_bt_a2dp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_app\hmi_bt_a2dp.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_bt_avrcp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_app\hmi_bt_avrcp.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_bt_hfp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_app\hmi_bt_hfp.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_bt_pan.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_app\hmi_bt_pan.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_bt_spp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_app\hmi_bt_spp.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_bt_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_app\hmi_bt_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_ble_gap_cb.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_ble\hmi_ble_gap_cb.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_ble_gap_init.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_ble\hmi_ble_gap_init.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_ble_gap_msg.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_ble\hmi_ble_gap_msg.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_ble_profile_init.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_ble\hmi_ble_profile_init.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_ctrl_service.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_ble\private_service\hmi_ctrl_service.c</FilePath>
+            </File>
+            <File>
+              <FileName>nordic_uart_service.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_ble\private_service\nordic_uart_service.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_br_edr_gap_cb.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_br_edr\hmi_br_edr_gap_cb.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_br_edr_gap_init.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_br_edr\hmi_br_edr_gap_init.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_br_edr_link.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\bluetooth\hmi_br_edr\hmi_br_edr_link.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_l2_handlers.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\l2_handlers\hmi_l2_handlers.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_l2.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\protocol\hmi_l2.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_proto.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\protocol\hmi_proto.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_protocal_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\transport\protocol\hmi_protocal_task.c</FilePath>
             </File>
           </Files>
         </Group>
