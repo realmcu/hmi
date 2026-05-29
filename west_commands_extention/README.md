@@ -92,6 +92,22 @@ section              size      addr
 MP binary : 126,976 bytes  (124.0 KB)
 ```
 
+### `west sync`
+
+**替代 `west update` 的推荐命令**：先执行标准 `west update`，再对所有包含
+`.gitmodules` 的 West project 自动执行 `git submodule update --init --recursive`。
+
+```bash
+# 等价于：west update && git -C honeycomb submodule update --init --recursive
+west sync
+
+# 可以透传任何 west update 的原生参数
+west sync --narrow
+west sync -o=--depth=1
+```
+
+> 不破坏 `west update` 原始行为，仅在其完成后追加 submodule 更新步骤。
+
 ## MDK 工程
 
 MDK 工程使用 `board/evb/hmi_dashboard/mdk/` 下的 Keil 工程文件，与 west 无关，直接在 Keil IDE 中编译和下载即可。

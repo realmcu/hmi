@@ -18,3 +18,6 @@ west-commands:
       - name: size
         class: SizeCommand
         help: Show firmware memory usage via arm-none-eabi-size
+      - name: sync
+        class: SyncCommand
+        help: Run west update then git submodule update for all projects

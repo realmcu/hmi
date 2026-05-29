@@ -221,6 +221,51 @@ class FlashCommand(WestCommand):
         subprocess.run(cmd)
 
 
+class SyncCommand(WestCommand):
+    def __init__(self):
+        super().__init__(
+            'sync', 'update all repos and submodules',
+            'Run west update then git submodule update --init --recursive '
+            'for every project that contains a .gitmodules file'
+        )
+
+    def do_add_parser(self, parser_adder, **kwargs):
+        return parser_adder.add_parser(self.name, help=self.help,
+                                       description=self.description)
+
+    def do_run(self, args, unknown_args):
+        topdir = self.manifest.topdir
+
+        # Step 1: delegate to the real west update, forwarding any extra flags
+        cmd = ['west', 'update'] + list(unknown_args)
+        log.inf('Running: ' + ' '.join(cmd))
+        r = subprocess.run(cmd, cwd=topdir)
+        if r.returncode != 0:
+            log.die('west update failed')
+
+        # Step 2: for each manifest project that ships submodules, update them
+        updated = []
+        for project in self.manifest.projects:
+            proj_dir = os.path.join(topdir, project.path)
+            if not os.path.isdir(proj_dir):
+                continue
+            if not os.path.isfile(os.path.join(proj_dir, '.gitmodules')):
+                continue
+            log.inf(f'Updating submodules in {project.path} ...')
+            r = subprocess.run(
+                ['git', 'submodule', 'update', '--init', '--recursive'],
+                cwd=proj_dir,
+            )
+            if r.returncode != 0:
+                log.wrn(f'git submodule update failed in {project.path}')
+            else:
+                updated.append(project.path)
+
+        if updated:
+            log.inf('Submodules updated in: ' + ', '.join(updated))
+        log.inf('Sync complete.')
+
+
 class SizeCommand(WestCommand):
     def __init__(self):
         super().__init__(
