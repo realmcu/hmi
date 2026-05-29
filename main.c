@@ -31,6 +31,7 @@ int main(void)
 
     hmi_bt_task_init();
     hmi_proto_task_init();
+    extern void hmi_l2_handlers_register(void);
     hmi_l2_handlers_register();
 
     // gui_server_init();

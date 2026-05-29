@@ -4,8 +4,8 @@
         {
             "type": "shell",
             "label": "g++.exe build active file",
-            // "command": "west build -b rtl87x3g_evb . -p",
-            "command": "west build -b rtl87x3g_evb .",
+            "command": "west build -b rtl87x3g_evb . -p",
+            // "command": "west build -b rtl87x3g_evb .",
             // "command": "west flash",
             "options": {
                 "cwd": "${workspaceFolder}"
