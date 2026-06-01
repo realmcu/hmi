@@ -9,12 +9,43 @@ from west.commands import WestCommand
 from west import log
 
 
-def _sdk_root(topdir: str) -> str:
-    return os.path.join(topdir, 'honeycomb', 'sdk')
+def _sdk_root(manifest) -> str:
+    this_file = os.path.normcase(os.path.abspath(__file__))
+
+    # Find the manifest project that directly contains this file
+    own_abspath = None
+    for project in manifest.projects:
+        try:
+            abspath = os.path.normcase(os.path.abspath(project.abspath))
+        except Exception:
+            continue
+        if this_file.startswith(abspath + os.sep) and (
+                own_abspath is None or len(abspath) > len(own_abspath)):
+            own_abspath = abspath
+
+    if own_abspath is None:
+        raise ValueError('Cannot locate own project in manifest')
+
+    # Find the project whose abspath is a proper ancestor of own_abspath
+    best_path = None
+    best_len = -1
+    for project in manifest.projects:
+        try:
+            abspath = os.path.normcase(os.path.abspath(project.abspath))
+        except Exception:
+            continue
+        if abspath != own_abspath and own_abspath.startswith(abspath + os.sep):
+            if len(abspath) > best_len:
+                best_path = project.abspath
+                best_len = len(abspath)
+
+    if best_path is None:
+        raise ValueError('Cannot find SDK project (ancestor of hmi_dashboard) in manifest')
+    return best_path
 
 
-def _build_dir(topdir: str) -> str:
-    return os.path.join(_sdk_root(topdir), 'build')
+def _build_dir(manifest) -> str:
+    return os.path.join(_sdk_root(manifest), 'build')
 
 
 DEFCONFIGS = {
@@ -36,8 +67,8 @@ class ProjectInfo(WestCommand):
 
     def do_run(self, args, unknown_args):
         topdir = self.manifest.topdir
-        sdk_root = _sdk_root(topdir)
-        build_dir = _build_dir(topdir)
+        sdk_root = _sdk_root(self.manifest)
+        build_dir = _build_dir(self.manifest)
         built = os.path.exists(build_dir)
 
         log.inf('RTL8773E Dashboard Project')
@@ -60,16 +91,6 @@ class ProjectInfo(WestCommand):
                     log.inf('  Output ELFs:')
                     for elf in elfs:
                         log.inf(f'    {elf}')
-
-        version_h = os.path.join(sdk_root, 'board', 'evb', 'hmi_dashboard', 'version.h')
-        if os.path.exists(version_h):
-            log.inf('')
-            log.inf('  Version:')
-            with open(version_h) as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith('#define') and 'VERSION' in line:
-                        log.inf(f'    {line}')
 
         log.inf('=' * 54)
 
@@ -103,9 +124,8 @@ class BuildCommand(WestCommand):
         return parser
 
     def do_run(self, args, unknown_args):
-        topdir = self.manifest.topdir
-        sdk_root = _sdk_root(topdir)
-        build_dir = _build_dir(topdir)
+        sdk_root = _sdk_root(self.manifest)
+        build_dir = _build_dir(self.manifest)
         defconfig = DEFCONFIGS[args.mode]
 
         if args.clean and os.path.exists(build_dir):
@@ -155,9 +175,8 @@ class CleanCommand(WestCommand):
         return parser
 
     def do_run(self, args, unknown_args):
-        topdir = self.manifest.topdir
-        sdk_root = _sdk_root(topdir)
-        build_dir = _build_dir(topdir)
+        sdk_root = _sdk_root(self.manifest)
+        build_dir = _build_dir(self.manifest)
 
         if os.path.exists(build_dir):
             log.inf(f'Removing {build_dir}')
@@ -204,8 +223,7 @@ class FlashCommand(WestCommand):
         if args.userdata and not args.userdata_addr:
             log.die('--userdata-addr is required when --userdata is given')
 
-        topdir = self.manifest.topdir
-        sdk_root = _sdk_root(topdir)
+        sdk_root = _sdk_root(self.manifest)
         download_bat = os.path.join(
             sdk_root, 'board', 'evb', 'hmi_dashboard', 'gcc', 'download.bat'
         )
@@ -289,8 +307,7 @@ class SizeCommand(WestCommand):
         return elfs
 
     def do_run(self, args, unknown_args):
-        topdir = self.manifest.topdir
-        sdk_root = _sdk_root(topdir)
+        sdk_root = _sdk_root(self.manifest)
         elfs = self._find_elfs(sdk_root)
 
         if not elfs:

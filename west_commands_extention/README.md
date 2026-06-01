@@ -37,7 +37,7 @@ west build --configure-only
 
 ```powershell
 # 在 honeycomb/sdk/ 目录下
-cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src -Dcompile_lib_only=OFF -B build
+cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src -DIS_CHECK_FLOW=OFF -Dcompile_lib_only=OFF -B build
 cmake --build build
 ```
 
