@@ -60,6 +60,7 @@ venv
 .clangd
 Inew.info
 transport/
+FlashDB/
 
 # Cargo drops lock files in projects to capture resolved dependencies.
 # We don't want to record these.

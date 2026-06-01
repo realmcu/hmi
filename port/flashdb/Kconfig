@@ -1,0 +1,2 @@
+# FlashDB Zephyr module Kconfig
+# FlashDB 通过 port/flashdb/CMakeLists.txt 直接编译，无需 Kconfig 选项
