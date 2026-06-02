@@ -7,157 +7,452 @@
 
 // Timer animation counters
 uint16_t easy_demoMainView_timer_cnt = 0;
-uint16_t img_2_timer_cnt = 0;
+uint16_t mainface_view_1_timer_cnt = 0;
+uint16_t mainface_view_2_timer_cnt = 0;
+uint16_t mainface_view_3_timer_cnt = 0;
+uint16_t mainface_view_4_timer_cnt = 0;
+uint16_t mainface_view_5_timer_cnt = 0;
+uint16_t mainface_view_6_timer_cnt = 0;
+uint16_t mainface_view_7_timer_cnt = 0;
+uint16_t top_view_timer_cnt = 0;
+uint16_t icon_bat_timer_cnt = 0;
+uint16_t lbl_1_timer_cnt = 0;
 
 // Event callback function implementations
 
-// Preset timer callback functions
-
-/**
- * 动画 1
- * Component: img_2
- * Mode: Preset actions (multi-segment animation)
- * Segments: 2
- */
-void img_2_timer_0_cb(void *obj)
+void easy_demoMainView_key_0_cb(void *obj, gui_event_t *e)
 {
-    gui_obj_t *target = (gui_obj_t *)obj;
-    const uint16_t total_cnt_max = 100;
-
-    const uint16_t seg0_start = 0;
-    const uint16_t seg0_end = 50;
-    const uint16_t seg1_start = 50;
-    const uint16_t seg1_end = 100;
-
-    img_2_timer_cnt++;
-
-    // Segment 1: 500ms, 1 action(s)
-    if (img_2_timer_cnt > seg0_start && img_2_timer_cnt <= seg0_end)
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Menu") == 0)
     {
-        uint16_t seg_cnt = img_2_timer_cnt - seg0_start;
-        const uint16_t seg_cnt_max = seg0_end - seg0_start;
-
-        // Adjust scale: (1, 1) -> (0.5, 0.5)
-        const float zoom_x_origin = 1;
-        const float zoom_x_target = 0.5;
-        const float zoom_y_origin = 1;
-        const float zoom_y_target = 0.5;
-        float zoom_x_cur = zoom_x_origin + (zoom_x_target - zoom_x_origin) * seg_cnt / seg_cnt_max;
-        float zoom_y_cur = zoom_y_origin + (zoom_y_target - zoom_y_origin) * seg_cnt / seg_cnt_max;
-        gui_img_scale((gui_img_t *)target, zoom_x_cur, zoom_y_cur);
-
-    }
-    // Segment 2: 500ms, 1 action(s)
-    else if (img_2_timer_cnt > seg1_start && img_2_timer_cnt <= seg1_end)
-    {
-        uint16_t seg_cnt = img_2_timer_cnt - seg1_start;
-        const uint16_t seg_cnt_max = seg1_end - seg1_start;
-
-        // Adjust scale: (0.5, 0.5) -> (1, 1)
-        const float zoom_x_origin = 0.5;
-        const float zoom_x_target = 1;
-        const float zoom_y_origin = 0.5;
-        const float zoom_y_target = 1;
-        float zoom_x_cur = zoom_x_origin + (zoom_x_target - zoom_x_origin) * seg_cnt / seg_cnt_max;
-        float zoom_y_cur = zoom_y_origin + (zoom_y_target - zoom_y_origin) * seg_cnt / seg_cnt_max;
-        gui_img_scale((gui_img_t *)target, zoom_x_cur, zoom_y_cur);
-
-    }
-
-    if (img_2_timer_cnt >= total_cnt_max)
-    {
-        img_2_timer_cnt = 0; // Reset counter, continue loop
+        gui_view_switch_direct(gui_view_get_current(), "bt_View", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
     }
 }
 
+void easy_demoMainView_key_1_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Power") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "menuMainView", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_1_key_0_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Menu") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "bt_View", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_1_key_1_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Power") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "menuMainView", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_2_key_0_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Menu") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "bt_View", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_2_key_1_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Power") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "menuMainView", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_3_key_0_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Menu") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "bt_View", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_3_key_1_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Power") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "menuMainView", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_4_key_0_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Menu") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "bt_View", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_4_key_1_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Power") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "menuMainView", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_5_key_0_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Menu") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "bt_View", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_5_key_1_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Power") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "menuMainView", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_6_key_0_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Menu") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "bt_View", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_6_key_1_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Power") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "menuMainView", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_7_key_0_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Menu") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "bt_View", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void mainface_view_7_key_1_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Power") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "menuMainView", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void bg_circle_key_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Menu") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "bt_View", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
+
+void icon_del_clicked_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    click_delete_icon(obj, e);
+}
+
+void icon_fl_clicked_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    gui_view_switch_direct(gui_view_get_current(), "view_fl", SWITCH_INIT_STATE,
+                           SWITCH_IN_NONE_ANIMATION);
+}
+
+void icon_sl_clicked_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    click_screen_light_icon(obj, e);
+}
+
+void icon_as_clicked_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    click_auto_sleep_icon(obj, e);
+}
+
+void img_3_key_cb(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    // Check key name
+    if (strcmp(e->indev_name, "Menu") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "top_view", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+    else if (strcmp(e->indev_name, "Power") == 0)
+    {
+        gui_view_switch_direct(gui_view_get_current(), "top_view", SWITCH_INIT_STATE,
+                               SWITCH_IN_NONE_ANIMATION);
+    }
+}
 
 /* @protected start custom_functions */
 // Custom functions
-#include "tp_algo.h"
-uint8_t watchface_idx = 0;
-uint8_t watchface_num = 3;
-void *watchface_list[3] =
-{
-    "/wallpaper_1.mjpeg",
-    "/wallpaper_2.mjpeg",
-    "/wallpaper_3.mjpeg",
-};
-static int16_t y_rec = 0;
-void switch_watchface(void *obj)
-{
-    gui_obj_tree_free(vid_1);
-    vid_1 = gui_video_create_from_fs((gui_obj_t *)obj, "vid_1", watchface_list[watchface_idx], 0, 0,
-                                     360, 360);
-    gui_video_set_frame_rate((gui_video_t *)vid_1, 30.f);
-    gui_video_set_repeat_count((gui_video_t *)vid_1, GUI_VIDEO_REPEAT_INFINITE);
-    gui_video_set_state((gui_video_t *)vid_1, GUI_VIDEO_STATE_PLAYING);
-}
-
-void easy_demoMainView_timer_init_cb(void *obj)
+void top_view_timer_0_cb(void *obj)
 {
     GUI_UNUSED(obj);
-    y_rec = 0;
-    switch_watchface(win_1);
-    gui_obj_create_timer(obj, 10, true, easy_demoMainView_timer_0_cb);
-    gui_obj_start_timer(obj);
+    void *view_next = "easy_demoMainView";
+    switch (mainface_idx)
+    {
+    case 1:
+        view_next = "mainface_view_1";
+        break;
+    case 2:
+        view_next = "mainface_view_2";
+        break;
+    case 3:
+        view_next = "mainface_view_3";
+        break;
+    case 4:
+        view_next = "mainface_view_4";
+        break;
+    case 5:
+        view_next = "mainface_view_5";
+        break;
+    case 6:
+        view_next = "mainface_view_6";
+        break;
+    case 7:
+        view_next = "mainface_view_7";
+        break;
+
+    default:
+        break;
+    }
+    gui_view_switch_on_event(obj, view_next, SWITCH_OUT_TO_TOP_USE_TRANSLATION, SWITCH_INIT_STATE,
+                             GUI_EVENT_TOUCH_MOVE_UP);
+    gui_obj_delete_timer(obj);
+}
+
+void easy_demoMainView_update_idx_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    mainface_idx = 0;
+}
+
+void mainface_view_1_update_idx_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    mainface_idx = 1;
+}
+
+void mainface_view_2_update_idx_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    mainface_idx = 2;
+}
+
+void mainface_view_3_update_idx_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    mainface_idx = 3;
+}
+
+void mainface_view_4_update_idx_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    mainface_idx = 4;
+}
+
+void mainface_view_5_update_idx_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    mainface_idx = 5;
+}
+
+void mainface_view_6_update_idx_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    mainface_idx = 6;
+}
+
+void mainface_view_7_update_idx_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    mainface_idx = 7;
 }
 void easy_demoMainView_timer_0_cb(void *obj)
 {
     GUI_UNUSED(obj);
-    touch_info_t *tp = tp_get_info();
+    switch_mainface(obj, 0);
+    gui_obj_create_timer(obj, 20, true, easy_demoMainView_update_idx_cb);
+    gui_obj_start_timer(obj);
+}
 
-    if (tp->pressing && tp->type == TOUCH_HOLD_Y)
+void mainface_view_1_timer_0_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    switch_mainface(obj, 1);
+    gui_obj_create_timer(obj, 20, true, mainface_view_1_update_idx_cb);
+    gui_obj_start_timer(obj);
+}
+
+void mainface_view_2_timer_0_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    switch_mainface(obj, 2);
+    gui_obj_create_timer(obj, 20, true, mainface_view_2_update_idx_cb);
+    gui_obj_start_timer(obj);
+}
+
+void mainface_view_3_timer_0_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    switch_mainface(obj, 3);
+    gui_obj_create_timer(obj, 20, true, mainface_view_3_update_idx_cb);
+    gui_obj_start_timer(obj);
+}
+
+void mainface_view_4_timer_0_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    switch_mainface(obj, 4);
+    gui_obj_create_timer(obj, 20, true, mainface_view_4_update_idx_cb);
+    gui_obj_start_timer(obj);
+}
+
+void mainface_view_5_timer_0_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    switch_mainface(obj, 5);
+    gui_obj_create_timer(obj, 20, true, mainface_view_5_update_idx_cb);
+    gui_obj_start_timer(obj);
+}
+
+void mainface_view_6_timer_0_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    switch_mainface(obj, 6);
+    gui_obj_create_timer(obj, 20, true, mainface_view_6_update_idx_cb);
+    gui_obj_start_timer(obj);
+}
+
+void mainface_view_7_timer_0_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    switch_mainface(obj, 7);
+    gui_obj_create_timer(obj, 20, true, mainface_view_7_update_idx_cb);
+    gui_obj_start_timer(obj);
+}
+
+void lbl_1_timer_0_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+    gui_obj_hidden(obj, !is_auto_sleep_mode);
+    gui_obj_stop_timer(obj);
+}
+
+void icon_bat_timer_0_cb(void *obj)
+{
+    GUI_UNUSED(obj);
+
+#ifdef _HONEYGUI_SIMULATOR_
+    soc_val--;
+    if (soc_val == 0) { soc_val = 100; }
+#endif
+    void *img_src = "/image/A8/bat_100_icon.bin";
+    switch (soc_val / 20)
     {
-        int16_t y = y_rec + tp->deltaY;
-        if (y < 0)
-        {
-            y = 0;
-        }
-        else if (y > 360)
-        {
-            y = 360;
-        }
-        gui_img_translate(img_1, 0, y);
-        gui_log("img_1.y = %d\n", y);
+    case 0:
+        img_src = "/image/A8/bat_20_icon.bin";
+        break;
+    case 1:
+        img_src = "/image/A8/bat_40_icon.bin";
+        break;
+    case 2:
+        img_src = "/image/A8/bat_60_icon.bin";
+        break;
+    case 3:
+        img_src = "/image/A8/bat_80_icon.bin";
+        break;
+
+    default:
+        break;
     }
-    else if (tp->type == TOUCH_LEFT_SLIDE_QUICK || tp->type == TOUCH_LEFT_SLIDE)
-    {
-        if (img_1->t_y > 0) { return; }
-        watchface_idx++;
-        watchface_idx %= watchface_num;
-        switch_watchface(win_1);
-    }
-    else if (tp->type == TOUCH_RIGHT_SLIDE_QUICK || tp->type == TOUCH_RIGHT_SLIDE)
-    {
-        if (img_1->t_y > 0) { return; }
-        watchface_idx += watchface_num;
-        watchface_idx--;
-        watchface_idx %= watchface_num;
-        switch_watchface(win_1);
-    }
-    else if ((int16_t)(img_1->t_y) % 360 != 0)
-    {
-        int16_t y = (int16_t)img_1->t_y;
-        const int16_t step = 20;
-        if (y >= 180)
-        {
-            y += step;
-        }
-        else
-        {
-            y -= step;
-        }
-        if (y <= 0)
-        {
-            y = 0;
-        }
-        else if (y >= 360)
-        {
-            y = 360;
-        }
-        y_rec = y;
-        gui_img_translate(img_1, 0, y);
-        gui_log("img_1.y = %d\n", y);
-    }
+    gui_img_set_src(icon_bat, img_src, IMG_SRC_FILESYS);
 }
 /* @protected end custom_functions */

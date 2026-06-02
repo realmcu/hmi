@@ -34,4 +34,7 @@ gcc/bin/
 *.txt
 *.log
 
+# compile
+*.o
+
 src/transport/

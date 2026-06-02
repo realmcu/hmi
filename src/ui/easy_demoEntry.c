@@ -10,10 +10,10 @@ static int app_init(void)
     gui_vfs_mount_posix("/", "./assets");
 #else
     // SOC: Mount romfs from flash address
-    gui_vfs_mount_romfs("/", (void *)0x704D1000, 0);
+    gui_vfs_mount_romfs("/", (void *)0x0240f400, 0);
 #endif
 
-    gui_view_create(gui_obj_get_root(), "view_1", 0, 0, 0, 0);
+    gui_view_create(gui_obj_get_root(), "easy_demoMainView", 0, 0, 0, 0);
     return 0;
 }
 
