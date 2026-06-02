@@ -61,6 +61,7 @@ venv
 Inew.info
 transport/
 FlashDB/
+posix-device/
 
 # Cargo drops lock files in projects to capture resolved dependencies.
 # We don't want to record these.
