@@ -111,16 +111,16 @@ void bt_icon_timer_0_cb(void *obj)
 {
     GUI_UNUSED(obj);
 
-    uint32_t color = 0;
+    void *src = NULL;
     if (is_bt_connect)
     {
-        color = 0xFF00FF00;
+        src = "/image/A8/bt_icon_conn.bin";
     }
     else
     {
-        color = 0xFFFF0000;
+        src = "/image/A8/bt_icon_discon.bin";
     }
-    gui_img_a8_recolor((gui_img_t *)bt_icon, color);
+    gui_img_set_src((gui_img_t *)bt_icon, src, IMG_SRC_FILESYS);
 
     bt_icon_timer_cnt++;
     if (bt_icon_timer_cnt >= 200)

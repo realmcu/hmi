@@ -1,6 +1,6 @@
 /**
  * menu UI Implementation (Auto-generated, do not modify manually)
- * Generated at: 2026-06-02T09:25:26.900Z
+ * Generated at: 2026-06-02T11:57:21.442Z
  */
 #include "menu_ui.h"
 #include "../callbacks/menu_callbacks.h"
@@ -49,13 +49,12 @@ static void lst_1_note_design(gui_obj_t *obj, void *param)
             // Create img_11 (hg_image)
             img_11 = gui_img_create_from_fs((gui_obj_t *)note, "img_11", "/image/A8/arrow_r_icon.bin", 284, 15,
                                             11, 21);
-            gui_img_set_mode((gui_img_t *)img_11, IMG_2D_SW_FIX_A8_FG);
-            gui_img_a8_recolor((gui_img_t *)img_11, 0xFFFFFFFF);
+            gui_img_set_mode((gui_img_t *)img_11, IMG_BYPASS_MODE);
             gui_obj_show((gui_obj_t *)img_11, true);
             // Create lbl_6 (hg_label)
             lbl_6 = gui_text_create((gui_obj_t *)note, "lbl_6", 117, 0, 125, 50);
             gui_text_set((gui_text_t *)lbl_6, "Reset", GUI_FONT_SRC_BMP, gui_rgb(255, 255, 255), 5, 20);
-            gui_text_type_set((gui_text_t *)lbl_6, "/font/Inter_24pt_Regular_size20_bits4_bitmap.bin",
+            gui_text_type_set((gui_text_t *)lbl_6, "/font/Inter_24pt_SemiBold_size20_bits4_bitmap.bin",
                               FONT_SRC_FILESYS);
             gui_text_mode_set((gui_text_t *)lbl_6, MID_LEFT);
             gui_obj_add_event_cb(obj, click_menu_reset_button, GUI_EVENT_TOUCH_CLICKED, NULL);
@@ -66,8 +65,7 @@ static void lst_1_note_design(gui_obj_t *obj, void *param)
             // Create img_12 (hg_image)
             img_12 = gui_img_create_from_fs((gui_obj_t *)note, "img_12", "/image/A8/arrow_r_icon.bin", 284, 15,
                                             11, 21);
-            gui_img_set_mode((gui_img_t *)img_12, IMG_2D_SW_FIX_A8_FG);
-            gui_img_a8_recolor((gui_img_t *)img_12, 0xFFFFFFFF);
+            gui_img_set_mode((gui_img_t *)img_12, IMG_BYPASS_MODE);
             gui_obj_show((gui_obj_t *)img_12, true);
             // Create img_14 (hg_image)
             img_14 = gui_img_create_from_fs((gui_obj_t *)note, "img_14", "/image/erase_icon.bin", 50, 0, 50,
@@ -77,7 +75,7 @@ static void lst_1_note_design(gui_obj_t *obj, void *param)
             lbl_7 = gui_text_create((gui_obj_t *)note, "lbl_7", 117, 0, 160, 50);
             gui_text_set((gui_text_t *)lbl_7, "Format Storage", GUI_FONT_SRC_BMP, gui_rgb(255, 255, 255), 14,
                          20);
-            gui_text_type_set((gui_text_t *)lbl_7, "/font/Inter_24pt_Regular_size20_bits4_bitmap.bin",
+            gui_text_type_set((gui_text_t *)lbl_7, "/font/Inter_24pt_SemiBold_size20_bits4_bitmap.bin",
                               FONT_SRC_FILESYS);
             gui_text_mode_set((gui_text_t *)lbl_7, MID_LEFT);
             gui_obj_add_event_cb(obj, click_menu_fs_button, GUI_EVENT_TOUCH_CLICKED, NULL);
@@ -88,8 +86,7 @@ static void lst_1_note_design(gui_obj_t *obj, void *param)
             // Create img_13 (hg_image)
             img_13 = gui_img_create_from_fs((gui_obj_t *)note, "img_13", "/image/A8/arrow_r_icon.bin", 284, 15,
                                             11, 21);
-            gui_img_set_mode((gui_img_t *)img_13, IMG_2D_SW_FIX_A8_FG);
-            gui_img_a8_recolor((gui_img_t *)img_13, 0xFFFFFFFF);
+            gui_img_set_mode((gui_img_t *)img_13, IMG_BYPASS_MODE);
             gui_obj_show((gui_obj_t *)img_13, true);
             // Create img_15 (hg_image)
             img_15 = gui_img_create_from_fs((gui_obj_t *)note, "img_15", "/image/power_off_icon.bin", 50, 0, 50,
@@ -98,7 +95,7 @@ static void lst_1_note_design(gui_obj_t *obj, void *param)
             // Create lbl_8 (hg_label)
             lbl_8 = gui_text_create((gui_obj_t *)note, "lbl_8", 117, 0, 160, 50);
             gui_text_set((gui_text_t *)lbl_8, "Power off", GUI_FONT_SRC_BMP, gui_rgb(255, 255, 255), 9, 20);
-            gui_text_type_set((gui_text_t *)lbl_8, "/font/Inter_24pt_Regular_size20_bits4_bitmap.bin",
+            gui_text_type_set((gui_text_t *)lbl_8, "/font/Inter_24pt_SemiBold_size20_bits4_bitmap.bin",
                               FONT_SRC_FILESYS);
             gui_text_mode_set((gui_text_t *)lbl_8, MID_LEFT);
             gui_obj_add_event_cb(obj, click_menu_power_off_button, GUI_EVENT_TOUCH_CLICKED, NULL);
@@ -174,18 +171,16 @@ static void menuDetailView_switch_in(gui_view_t *view)
     gui_obj_create_timer((gui_obj_t *)lbl_option, 1000, true, lbl_option_timer_0_cb);
 
     // Create img_16 (hg_image)
-    img_16 = gui_img_create_from_fs((gui_obj_t *)view, "img_16", "/image/A8/rect_bg.bin", 217, 223, 94,
-                                    48);
-    gui_img_set_mode((gui_img_t *)img_16, IMG_2D_SW_FIX_A8_FG);
-    gui_img_a8_recolor((gui_img_t *)img_16, 0xFFFF0000);
+    img_16 = gui_img_create_from_fs((gui_obj_t *)view, "img_16", "/image/A8/rect_bg_red.bin", 217, 223,
+                                    94, 48);
+    gui_img_set_mode((gui_img_t *)img_16, IMG_BYPASS_MODE);
     gui_obj_show((gui_obj_t *)img_16, true);
     gui_obj_add_event_cb(img_16, (gui_event_cb_t)img_16_clicked_cb, GUI_EVENT_TOUCH_CLICKED, NULL);
 
     // Create img_17 (hg_image)
-    img_17 = gui_img_create_from_fs((gui_obj_t *)view, "img_17", "/image/A8/rect_bg.bin", 53, 223, 94,
-                                    48);
-    gui_img_set_mode((gui_img_t *)img_17, IMG_2D_SW_FIX_A8_FG);
-    gui_img_a8_recolor((gui_img_t *)img_17, 0xFF5B5B5B);
+    img_17 = gui_img_create_from_fs((gui_obj_t *)view, "img_17", "/image/A8/rect_bg_grey.bin", 53, 223,
+                                    94, 48);
+    gui_img_set_mode((gui_img_t *)img_17, IMG_BYPASS_MODE);
     gui_obj_show((gui_obj_t *)img_17, true);
     gui_obj_add_event_cb(img_17, (gui_event_cb_t)img_17_clicked_cb, GUI_EVENT_TOUCH_CLICKED, NULL);
 

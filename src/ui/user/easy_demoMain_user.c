@@ -79,18 +79,13 @@ void create_win_del(gui_obj_t *parent)
 
     gui_img_t *img = gui_img_create_from_fs(win_del, 0, "/image/A8/circle_360_bg.bin", 0, 180, 360,
                                             360);
-    gui_img_set_mode(img, IMG_2D_SW_FIX_A8_FG);
-    gui_img_a8_recolor(img, 0xFF000000);
+    gui_img_set_mode(img, IMG_SRC_OVER_MODE);
     gui_img_set_opacity(img, 122);
 
-    img = gui_img_create_from_fs(win_del, 0, "/image/A8/delete_iocn.bin", 63, 231, 100, 100);
-    gui_img_set_mode(img, IMG_2D_SW_FIX_A8_FG);
-    gui_img_a8_recolor(img, 0xFFFFFFFF);
+    img = gui_img_create_from_fs(win_del, 0, "/image/A8/delete_icon.bin", 63, 231, 100, 100);
     gui_obj_add_event_cb(img, (gui_event_cb_t)click_delete_icon_detail, GUI_EVENT_TOUCH_CLICKED, NULL);
 
     img = gui_img_create_from_fs(win_del, 0, "/image/A8/back_icon.bin", 198, 231, 100, 100);
-    gui_img_set_mode(img, IMG_2D_SW_FIX_A8_FG);
-    gui_img_a8_recolor(img, 0xFFFFFFFF);
     gui_obj_add_event_cb(img, (gui_event_cb_t)click_back_icon, GUI_EVENT_TOUCH_CLICKED, NULL);
 }
 
@@ -192,7 +187,15 @@ void switch_mainface(gui_obj_t *parent, uint8_t idx)
     gui_view_switch_on_event((void *)parent, view_left, SWITCH_OUT_TO_RIGHT_USE_TRANSLATION,
                              SWITCH_IN_FROM_LEFT_USE_TRANSLATION, GUI_EVENT_TOUCH_MOVE_RIGHT);
 
-    if (dev_mode == MODE_DELETE) { create_win_del(parent); }
+    if (dev_mode == MODE_DELETE)
+    {
+        create_win_del(parent);
+    }
+    else
+    {
+        gui_view_switch_on_event((void *)parent, "top_view", SWITCH_INIT_STATE,
+                                 SWITCH_IN_FROM_TOP_USE_TRANSLATION, GUI_EVENT_TOUCH_MOVE_DOWN);
+    }
 }
 
 void click_auto_sleep_icon(void *obj, gui_event_t *e)
@@ -368,13 +371,28 @@ void click_delete_icon_detail(void *obj, gui_event_t *e)
 #endif
 }
 
+void click_share_icon(void *obj, gui_event_t *e)
+{
+    GUI_UNUSED(obj);
+    GUI_UNUSED(e);
+    gui_view_switch_direct(gui_view_get_current(), "shareMainView", SWITCH_INIT_STATE,
+                           SWITCH_IN_NONE_ANIMATION);
+
+#ifdef _HONEYGUI_SIMULATOR_
+    // TODO
+#else
+    // TODO
+#endif
+}
+
 void click_back_icon(void *obj, gui_event_t *e)
 {
     GUI_UNUSED(obj);
     GUI_UNUSED(e);
     dev_mode = MODE_DEFAULT;
     gui_obj_tree_free(GUI_BASE(obj)->parent);
-
+    gui_view_switch_on_event(gui_view_get_current(), "top_view", SWITCH_INIT_STATE,
+                             SWITCH_IN_FROM_TOP_USE_TRANSLATION, GUI_EVENT_TOUCH_MOVE_DOWN);
 #ifdef _HONEYGUI_SIMULATOR_
     // TODO
 #else

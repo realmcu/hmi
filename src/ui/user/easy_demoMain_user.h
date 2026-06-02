@@ -45,6 +45,7 @@ void mainface_list_delete(void);
 
 void click_auto_sleep_icon(void *obj, gui_event_t *e);
 void click_screen_light_icon(void *obj, gui_event_t *e);
+void click_share_icon(void *obj, gui_event_t *e);
 void click_delete_icon(void *obj, gui_event_t *e);
 void click_delete_icon_detail(void *obj, gui_event_t *e);
 void click_back_icon(void *obj, gui_event_t *e);

@@ -23,6 +23,7 @@ void bg_circle_key_cb(void *obj, gui_event_t *e);
 void easy_demoMainView_key_0_cb(void *obj, gui_event_t *e);
 void easy_demoMainView_key_1_cb(void *obj, gui_event_t *e);
 void icon_as_clicked_cb(void *obj, gui_event_t *e);
+void icon_connect_clicked_cb(void *obj, gui_event_t *e);
 void icon_del_clicked_cb(void *obj, gui_event_t *e);
 void icon_fl_clicked_cb(void *obj, gui_event_t *e);
 void icon_sl_clicked_cb(void *obj, gui_event_t *e);

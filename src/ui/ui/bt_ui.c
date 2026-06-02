@@ -1,6 +1,6 @@
 /**
  * bt UI Implementation (Auto-generated, do not modify manually)
- * Generated at: 2026-06-02T09:25:26.882Z
+ * Generated at: 2026-06-02T11:57:21.238Z
  */
 #include "bt_ui.h"
 #include "../callbacks/bt_callbacks.h"
@@ -38,9 +38,8 @@ static void bt_View_switch_in(gui_view_t *view)
 
     // Create circle_scale (hg_image)
     circle_scale = gui_img_create_from_fs((gui_obj_t *)view, "circle_scale",
-                                          "/image/A8/circle_360_bg.bin", 0, 0, 360, 360);
-    gui_img_set_mode((gui_img_t *)circle_scale, IMG_2D_SW_FIX_A8_FG);
-    gui_img_a8_recolor((gui_img_t *)circle_scale, 0xFFFFFFFF);
+                                          "/image/A8/circle_360_bg_white.bin", 0, 0, 360, 360);
+    gui_img_set_mode((gui_img_t *)circle_scale, IMG_BYPASS_MODE);
     gui_img_set_quality((gui_img_t *)circle_scale, true);
     gui_img_translate((gui_img_t *)circle_scale, 180.0f, 180.0f);
     gui_img_set_focus((gui_img_t *)circle_scale, 180.0f, 180.0f);
@@ -50,10 +49,8 @@ static void bt_View_switch_in(gui_view_t *view)
     gui_obj_create_timer((gui_obj_t *)circle_scale, 10, true, circle_scale_timer_0_cb);
 
     // Create bt_icon (hg_image)
-    bt_icon = gui_img_create_from_fs((gui_obj_t *)view, "bt_icon", "/image/A8/bt_icon.bin", 162, 115,
-                                     35, 57);
-    gui_img_set_mode((gui_img_t *)bt_icon, IMG_2D_SW_FIX_A8_FG);
-    gui_img_a8_recolor((gui_img_t *)bt_icon, 0xFFFF0000);
+    bt_icon = gui_img_create_from_fs((gui_obj_t *)view, "bt_icon", "/image/A8/bt_icon_discon.bin", 162,
+                                     115, 35, 57);
     gui_obj_show((gui_obj_t *)bt_icon, true);
     // Bind timer: 动画 1
     gui_obj_create_timer((gui_obj_t *)bt_icon, 20, true, bt_icon_timer_0_cb);
@@ -62,14 +59,14 @@ static void bt_View_switch_in(gui_view_t *view)
     lbl_5 = gui_text_create((gui_obj_t *)view, "lbl_5", 0, 290, 360, 24);
     gui_text_set((gui_text_t *)lbl_5, "Click any button to exit", GUI_FONT_SRC_BMP, gui_rgb(255, 255,
                  255), 24, 20);
-    gui_text_type_set((gui_text_t *)lbl_5, "/font/Inter_24pt_Regular_size20_bits4_bitmap.bin",
+    gui_text_type_set((gui_text_t *)lbl_5, "/font/Inter_24pt_SemiBold_size20_bits4_bitmap.bin",
                       FONT_SRC_FILESYS);
     gui_text_mode_set((gui_text_t *)lbl_5, CENTER);
 
     // Create lbl_4 (hg_label)
     lbl_4 = gui_text_create((gui_obj_t *)view, "lbl_4", 108, 196, 145, 24);
     gui_text_set((gui_text_t *)lbl_4, "Pair mode", GUI_FONT_SRC_BMP, gui_rgb(0, 0, 0), 9, 20);
-    gui_text_type_set((gui_text_t *)lbl_4, "/font/Inter_24pt_Regular_size20_bits4_bitmap.bin",
+    gui_text_type_set((gui_text_t *)lbl_4, "/font/Inter_24pt_SemiBold_size20_bits4_bitmap.bin",
                       FONT_SRC_FILESYS);
     gui_text_mode_set((gui_text_t *)lbl_4, CENTER);
 

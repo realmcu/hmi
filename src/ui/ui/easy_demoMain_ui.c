@@ -1,6 +1,6 @@
 /**
  * easy_demoMain UI Implementation (Auto-generated, do not modify manually)
- * Generated at: 2026-06-02T09:25:26.891Z
+ * Generated at: 2026-06-02T11:57:21.280Z
  */
 #include "easy_demoMain_ui.h"
 #include "../callbacks/easy_demoMain_callbacks.h"
@@ -41,8 +41,7 @@ static void easy_demoMainView_switch_in(gui_view_t *view)
     // Bind timer: 动画 1
     gui_obj_create_timer((gui_obj_t *)view, 1000, true, easy_demoMainView_timer_0_cb);
 
-    gui_view_switch_on_event(view, "top_view", SWITCH_INIT_STATE, SWITCH_IN_FROM_TOP_USE_TRANSLATION,
-                             GUI_EVENT_TOUCH_MOVE_DOWN);
+    GUI_UNUSED(view);
 
     gui_obj_add_event_cb((gui_obj_t *)view, (gui_event_cb_t)easy_demoMainView_key_0_cb,
                          GUI_EVENT_KB_SHORT_PRESSED, NULL);
@@ -73,8 +72,7 @@ static void mainface_view_1_switch_in(gui_view_t *view)
     // Bind timer: 动画 1
     gui_obj_create_timer((gui_obj_t *)view, 1000, true, mainface_view_1_timer_0_cb);
 
-    gui_view_switch_on_event(view, "top_view", SWITCH_INIT_STATE, SWITCH_IN_FROM_TOP_USE_TRANSLATION,
-                             GUI_EVENT_TOUCH_MOVE_DOWN);
+    GUI_UNUSED(view);
 
     gui_obj_add_event_cb((gui_obj_t *)view, (gui_event_cb_t)mainface_view_1_key_0_cb,
                          GUI_EVENT_KB_SHORT_PRESSED, NULL);
@@ -105,8 +103,7 @@ static void mainface_view_2_switch_in(gui_view_t *view)
     // Bind timer: 动画 1
     gui_obj_create_timer((gui_obj_t *)view, 1000, true, mainface_view_2_timer_0_cb);
 
-    gui_view_switch_on_event(view, "top_view", SWITCH_INIT_STATE, SWITCH_IN_FROM_TOP_USE_TRANSLATION,
-                             GUI_EVENT_TOUCH_MOVE_DOWN);
+    GUI_UNUSED(view);
 
     gui_obj_add_event_cb((gui_obj_t *)view, (gui_event_cb_t)mainface_view_2_key_0_cb,
                          GUI_EVENT_KB_SHORT_PRESSED, NULL);
@@ -137,8 +134,7 @@ static void mainface_view_3_switch_in(gui_view_t *view)
     // Bind timer: 动画 1
     gui_obj_create_timer((gui_obj_t *)view, 1000, true, mainface_view_3_timer_0_cb);
 
-    gui_view_switch_on_event(view, "top_view", SWITCH_INIT_STATE, SWITCH_IN_FROM_TOP_USE_TRANSLATION,
-                             GUI_EVENT_TOUCH_MOVE_DOWN);
+    GUI_UNUSED(view);
 
     gui_obj_add_event_cb((gui_obj_t *)view, (gui_event_cb_t)mainface_view_3_key_0_cb,
                          GUI_EVENT_KB_SHORT_PRESSED, NULL);
@@ -169,8 +165,7 @@ static void mainface_view_4_switch_in(gui_view_t *view)
     // Bind timer: 动画 1
     gui_obj_create_timer((gui_obj_t *)view, 1000, true, mainface_view_4_timer_0_cb);
 
-    gui_view_switch_on_event(view, "top_view", SWITCH_INIT_STATE, SWITCH_IN_FROM_TOP_USE_TRANSLATION,
-                             GUI_EVENT_TOUCH_MOVE_DOWN);
+    GUI_UNUSED(view);
 
     gui_obj_add_event_cb((gui_obj_t *)view, (gui_event_cb_t)mainface_view_4_key_0_cb,
                          GUI_EVENT_KB_SHORT_PRESSED, NULL);
@@ -201,8 +196,7 @@ static void mainface_view_5_switch_in(gui_view_t *view)
     // Bind timer: 动画 1
     gui_obj_create_timer((gui_obj_t *)view, 1000, true, mainface_view_5_timer_0_cb);
 
-    gui_view_switch_on_event(view, "top_view", SWITCH_INIT_STATE, SWITCH_IN_FROM_TOP_USE_TRANSLATION,
-                             GUI_EVENT_TOUCH_MOVE_DOWN);
+    GUI_UNUSED(view);
 
     gui_obj_add_event_cb((gui_obj_t *)view, (gui_event_cb_t)mainface_view_5_key_0_cb,
                          GUI_EVENT_KB_SHORT_PRESSED, NULL);
@@ -233,8 +227,7 @@ static void mainface_view_6_switch_in(gui_view_t *view)
     // Bind timer: 动画 1
     gui_obj_create_timer((gui_obj_t *)view, 1000, true, mainface_view_6_timer_0_cb);
 
-    gui_view_switch_on_event(view, "top_view", SWITCH_INIT_STATE, SWITCH_IN_FROM_TOP_USE_TRANSLATION,
-                             GUI_EVENT_TOUCH_MOVE_DOWN);
+    GUI_UNUSED(view);
 
     gui_obj_add_event_cb((gui_obj_t *)view, (gui_event_cb_t)mainface_view_6_key_0_cb,
                          GUI_EVENT_KB_SHORT_PRESSED, NULL);
@@ -265,8 +258,7 @@ static void mainface_view_7_switch_in(gui_view_t *view)
     // Bind timer: 动画 1
     gui_obj_create_timer((gui_obj_t *)view, 1000, true, mainface_view_7_timer_0_cb);
 
-    gui_view_switch_on_event(view, "top_view", SWITCH_INIT_STATE, SWITCH_IN_FROM_TOP_USE_TRANSLATION,
-                             GUI_EVENT_TOUCH_MOVE_DOWN);
+    GUI_UNUSED(view);
 
     gui_obj_add_event_cb((gui_obj_t *)view, (gui_event_cb_t)mainface_view_7_key_0_cb,
                          GUI_EVENT_KB_SHORT_PRESSED, NULL);
@@ -308,8 +300,7 @@ static void top_view_switch_in(gui_view_t *view)
     // Create bg_circle (hg_image)
     bg_circle = gui_img_create_from_fs(win_menu, "bg_circle", "/image/A8/circle_360_bg.bin", 0, 0, 360,
                                        360);
-    gui_img_set_mode((gui_img_t *)bg_circle, IMG_2D_SW_FIX_A8_FG);
-    gui_img_a8_recolor((gui_img_t *)bg_circle, 0xFF000000);
+    gui_img_set_mode((gui_img_t *)bg_circle, IMG_SRC_OVER_MODE);
     gui_img_set_opacity((gui_img_t *)bg_circle, 100);
     gui_obj_show((gui_obj_t *)bg_circle, true);
     gui_obj_add_event_cb(bg_circle, (gui_event_cb_t)bg_circle_key_cb, GUI_EVENT_KB_SHORT_PRESSED, NULL);
@@ -318,31 +309,29 @@ static void top_view_switch_in(gui_view_t *view)
     // Create icon_del (hg_image)
     icon_del = gui_img_create_from_fs(win_menu, "icon_del", "/image/A8/delete_icon.bin", 244, 109, 100,
                                       100);
-    gui_img_set_mode((gui_img_t *)icon_del, IMG_2D_SW_FIX_A8_FG);
-    gui_img_a8_recolor((gui_img_t *)icon_del, 0xFFFFFFFF);
+    gui_img_set_mode((gui_img_t *)icon_del, IMG_SRC_OVER_MODE);
     gui_obj_show((gui_obj_t *)icon_del, true);
     gui_obj_add_event_cb(icon_del, (gui_event_cb_t)icon_del_clicked_cb, GUI_EVENT_TOUCH_CLICKED, NULL);
 
     // Create icon_fl (hg_image)
     icon_fl = gui_img_create_from_fs(win_menu, "icon_fl", "/image/A8/flashlight_icon.bin", 17, 109, 100,
                                      100);
-    gui_img_set_mode((gui_img_t *)icon_fl, IMG_2D_SW_FIX_A8_FG);
-    gui_img_a8_recolor((gui_img_t *)icon_fl, 0xFFFFFFFF);
+    gui_img_set_mode((gui_img_t *)icon_fl, IMG_SRC_OVER_MODE);
     gui_obj_show((gui_obj_t *)icon_fl, true);
     gui_obj_add_event_cb(icon_fl, (gui_event_cb_t)icon_fl_clicked_cb, GUI_EVENT_TOUCH_CLICKED, NULL);
 
     // Create icon_connect (hg_image)
     icon_connect = gui_img_create_from_fs(win_menu, "icon_connect", "/image/A8/connect_icon.bin", 194,
                                           225, 100, 100);
-    gui_img_set_mode((gui_img_t *)icon_connect, IMG_2D_SW_FIX_A8_FG);
-    gui_img_a8_recolor((gui_img_t *)icon_connect, 0xFFFFFFFF);
+    gui_img_set_mode((gui_img_t *)icon_connect, IMG_SRC_OVER_MODE);
     gui_obj_show((gui_obj_t *)icon_connect, true);
+    gui_obj_add_event_cb(icon_connect, (gui_event_cb_t)icon_connect_clicked_cb, GUI_EVENT_TOUCH_CLICKED,
+                         NULL);
 
     // Create icon_bat (hg_image)
     icon_bat = gui_img_create_from_fs(win_menu, "icon_bat", "/image/A8/bat_100_icon.bin", 151, 142, 58,
                                       34);
-    gui_img_set_mode((gui_img_t *)icon_bat, IMG_2D_SW_FIX_A8_FG);
-    gui_img_a8_recolor((gui_img_t *)icon_bat, 0xFFFFFFFF);
+    gui_img_set_mode((gui_img_t *)icon_bat, IMG_SRC_OVER_MODE);
     gui_obj_show((gui_obj_t *)icon_bat, true);
     // Bind timer: 动画 1
     gui_obj_create_timer((gui_obj_t *)icon_bat, 1000, true, icon_bat_timer_0_cb);
@@ -365,7 +354,7 @@ static void top_view_switch_in(gui_view_t *view)
     lbl_1 = gui_text_create(win_menu, "lbl_1", 111, 194, 144, 24);
     gui_text_set((gui_text_t *)lbl_1, "Auto sleep mode", GUI_FONT_SRC_BMP, gui_rgb(255, 255, 255), 15,
                  18);
-    gui_text_type_set((gui_text_t *)lbl_1, "/font/Inter_24pt_Regular_size18_bits4_bitmap.bin",
+    gui_text_type_set((gui_text_t *)lbl_1, "/font/Inter_24pt_SemiBold_size18_bits4_bitmap.bin",
                       FONT_SRC_FILESYS);
     gui_text_mode_set((gui_text_t *)lbl_1, LEFT);
     // Bind timer: 动画 1
@@ -396,7 +385,7 @@ static void view_1_switch_in(gui_view_t *view)
     // Create vid_test (hg_video)
     vid_test = gui_lite_video_create_from_fs((gui_obj_t *)view, "vid_test", "/wallpaper_1.avi", 0, 0,
                                              365, 360);
-    gui_lite_video_set_frame_rate((gui_lite_video_t *)vid_test, 35.f);
+    gui_lite_video_set_frame_rate((gui_lite_video_t *)vid_test, 30.f);
     gui_lite_video_set_repeat_count((gui_lite_video_t *)vid_test, GUI_VIDEO_REPEAT_INFINITE);
     gui_lite_video_set_state((gui_lite_video_t *)vid_test, GUI_VIDEO_STATE_PLAYING);
     gui_obj_show((gui_obj_t *)vid_test, true);
@@ -424,10 +413,9 @@ static void view_fl_switch_in(gui_view_t *view)
 
 
     // Create img_3 (hg_image)
-    img_3 = gui_img_create_from_fs((gui_obj_t *)view, "img_3", "/image/A8/circle_360_bg.bin", 0, 0, 360,
-                                   360);
-    gui_img_set_mode((gui_img_t *)img_3, IMG_2D_SW_FIX_A8_FG);
-    gui_img_a8_recolor((gui_img_t *)img_3, 0xFFFFFFFF);
+    img_3 = gui_img_create_from_fs((gui_obj_t *)view, "img_3", "/image/A8/circle_360_bg_white.bin", 0,
+                                   0, 360, 360);
+    gui_img_set_mode((gui_img_t *)img_3, IMG_BYPASS_MODE);
     gui_obj_show((gui_obj_t *)img_3, true);
     gui_obj_add_event_cb(img_3, (gui_event_cb_t)img_3_key_cb, GUI_EVENT_KB_SHORT_PRESSED, NULL);
     gui_obj_focus_set((gui_obj_t *)img_3);

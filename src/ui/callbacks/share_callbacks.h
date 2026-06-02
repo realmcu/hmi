@@ -14,6 +14,7 @@ extern uint16_t img_8_timer_cnt;
 // Event callback function declarations
 void img_4_clicked_cb(void *obj, gui_event_t *e);
 void img_5_clicked_cb(void *obj, gui_event_t *e);
+void shareSecondView_key_0_cb(void *obj, gui_event_t *e);
 
 // User-configured timer callback function declarations
 void circle_anime_timer_0_cb(void *obj);

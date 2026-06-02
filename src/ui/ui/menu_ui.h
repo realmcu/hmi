@@ -1,6 +1,6 @@
 /**
  * menu UI Definition (Auto-generated, do not modify manually)
- * Generated at: 2026-06-02T09:25:26.900Z
+ * Generated at: 2026-06-02T11:57:21.442Z
  */
 #ifndef MENU_UI_H
 #define MENU_UI_H
