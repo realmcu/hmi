@@ -22,7 +22,7 @@ int main(void)
     Pad_Config(P3_1, PAD_PINMUX_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_DISABLE, PAD_OUT_LOW);
     DBG_DIRECT("!!!!! remap log pin!!!");
 #endif
-    // app_system_lower_init();
+    app_system_lower_init();
     printf("Hello World! %s\n", CONFIG_BOARD_TARGET);
     printf("[main] thread id: %p, name: %s, priority: %d\n",
            k_current_get(),
@@ -34,7 +34,7 @@ int main(void)
     extern void hmi_l2_handlers_register(void);
     hmi_l2_handlers_register();
 
-    // gui_server_init();
+    gui_server_init();
 
     return 0;
 }

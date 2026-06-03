@@ -1,35 +1,47 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "type": "shell",
-            "label": "g++.exe build active file",
-            "command": "west build -b rtl87x3g_evb . -p",
-            // "command": "west build -b rtl87x3g_evb .",
-            // "command": "west flash",
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "problemMatcher": [
-                "$gcc"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            
-        },
-        {
-            "label": "Run West Flash",
-            "type": "shell",
-            "command": "west",
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "args": [
-              "flash"
-            ],
-            "problemMatcher": []
-          }
-    ]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "West Build",
+      "type": "shell",
+      "command": "west build -b rtl87x3g_evb .",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$gcc"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "West Flash",
+      "type": "process",
+      "command": "/mnt/d/mpcli_exe_v4.0.0.5/mpcli.exe",
+      "args": [
+        "-c",
+        "com3",
+        "-p",
+        "-A",
+        "0x7009E000",
+        "-F",
+        "Z:\\home\\howie_wang\\workspace\\eBadge\\zephyrproject\\realtek-app\\applications\\eBadge\\bin\\app.bin",
+        "-b",
+        "3000000",
+        "-M",
+        "5",
+        "-r",
+        "-u",
+        "-d",
+        "-T",
+        "RTL87X3G"
+      ],
+      "options": {
+        "cwd": "/mnt/d/mpcli_exe_v4.0.0.5"
+      },
+      "problemMatcher": []
+    }
+  ]
 }
