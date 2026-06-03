@@ -17,10 +17,17 @@ west info
 封装 cmake configure + ninja build，省去每次手打长命令。
 
 ```bash
-# 默认：source 模式，bank0
+# 默认：源码 GUI + bank0（等价 -m src_bank0）
 west build
 
-# library 模式（使用预编译 libgui.a，编译更快）
+# 完整 4 种 mode：<gui>_<bank>
+west build -m src_bank0   # 源码 GUI，A 槽（默认）
+west build -m src_bank1   # 源码 GUI，B 槽
+west build -m lib_bank0   # 预编译 libgui.a，A 槽（迭代更快）
+west build -m lib_bank1   # 预编译 libgui.a，B 槽
+
+# 向后兼容别名：-m src → src_bank0、-m lib → lib_bank0
+west build -m src
 west build -m lib
 
 # 先清理再编译
@@ -36,8 +43,8 @@ west build --configure-only
 等价的手动命令：
 
 ```powershell
-# 在 honeycomb/sdk/ 目录下
-cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src -DIS_CHECK_FLOW=OFF -Dcompile_lib_only=OFF -B build
+# 在 honeycomb/sdk/ 目录下，以 src_bank0 为例
+cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src_bank0 -DIS_CHECK_FLOW=OFF -Dcompile_lib_only=OFF -B build
 cmake --build build
 ```
 
@@ -58,16 +65,21 @@ west clean --all
 调用 `gcc/download.bat`，自动定位 MP binary 并通过串口烧录到设备。
 
 ```bash
-# 使用 download.bat 默认串口（COM3）
+# 使用 download.bat 默认串口（COM3），默认 mode = src_bank0
 west flash
 
 # 指定串口
 west flash -p COM5
 
+# 烧录 bank1 镜像（必须与之前 west build -m 的 mode 对应）
+west flash -m src_bank1
+west flash -m lib_bank1 -p COM5
+
 # 同时烧录 userdata 分区
 west flash -p COM3 --userdata path/to/userdata.bin --userdata-addr 0x00A00000
 ```
 
+> `-m` 决定从哪个 `bin/RTL8773E.hmi_dashboard_<mode>/` 目录捞取 `dashboard_<bank>_MP-*.bin`。
 > 依赖 `download/mpcli/mpcli.exe`，烧录完成后会有 `[DONE]` 或 `[FAILED]` 提示。
 
 ### `west size`
@@ -81,7 +93,7 @@ west size
 示例输出：
 
 ```text
-ELF: .../gcc/bin/RTL8773E.hmi_dashboard_src/honeygui_src.elf
+ELF: .../gcc/bin/RTL8773E.hmi_dashboard_src_bank0/honeygui_src.elf
 
 section              size      addr
 .text              123456  0x00100000

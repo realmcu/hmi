@@ -9,10 +9,14 @@ from west.commands import WestCommand
 from west import log
 
 
-def _sdk_root(manifest) -> str:
-    this_file = os.path.normcase(os.path.abspath(__file__))
+def _cmake_src(manifest) -> str:
+    """Return the CMake source root: the directory containing board/evb/hmi_dashboard/.
 
-    # Find the manifest project that directly contains this file
+    hmi_dashboard is always structured as <cmake_src>/board/evb/hmi_dashboard/,
+    so going 3 levels up from its West project abspath is environment-independent —
+    works regardless of whether a wrapper project (e.g. honeycomb/) exists.
+    """
+    this_file = os.path.normcase(os.path.abspath(__file__))
     own_abspath = None
     for project in manifest.projects:
         try:
@@ -24,34 +28,32 @@ def _sdk_root(manifest) -> str:
             own_abspath = abspath
 
     if own_abspath is None:
-        raise ValueError('Cannot locate own project in manifest')
+        raise ValueError('Cannot locate hmi_dashboard project in manifest')
 
-    # Find the project whose abspath is a proper ancestor of own_abspath
-    best_path = None
-    best_len = -1
-    for project in manifest.projects:
-        try:
-            abspath = os.path.normcase(os.path.abspath(project.abspath))
-        except Exception:
-            continue
-        if abspath != own_abspath and own_abspath.startswith(abspath + os.sep):
-            if len(abspath) > best_len:
-                best_path = project.abspath
-                best_len = len(abspath)
-
-    if best_path is None:
-        raise ValueError('Cannot find SDK project (ancestor of hmi_dashboard) in manifest')
-    return best_path
+    # own_abspath ends with .../board/evb/hmi_dashboard — go 3 levels up
+    return os.path.normpath(os.path.join(own_abspath, '..', '..', '..'))
 
 
 def _build_dir(manifest) -> str:
-    return os.path.join(_sdk_root(manifest), 'build')
+    # Place build/ alongside the cmake source root (one level up)
+    return os.path.join(os.path.dirname(_cmake_src(manifest)), 'build')
 
 
 DEFCONFIGS = {
-    'src': 'board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src',
-    'lib': 'board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_lib',
+    'src_bank0': 'board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src_bank0',
+    'src_bank1': 'board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src_bank1',
+    'lib_bank0': 'board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_lib_bank0',
+    'lib_bank1': 'board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_lib_bank1',
 }
+
+# Back-compat shorthand: old `-m src` / `-m lib` map to bank0 variants.
+_MODE_ALIASES = {'src': 'src_bank0', 'lib': 'lib_bank0'}
+_MODE_CHOICES = list(DEFCONFIGS.keys()) + list(_MODE_ALIASES.keys())
+
+
+def _resolve_mode(mode: str) -> str:
+    """Apply alias map; return the canonical mode name used to index DEFCONFIGS."""
+    return _MODE_ALIASES.get(mode, mode)
 
 
 class ProjectInfo(WestCommand):
@@ -67,19 +69,19 @@ class ProjectInfo(WestCommand):
 
     def do_run(self, args, unknown_args):
         topdir = self.manifest.topdir
-        sdk_root = _sdk_root(self.manifest)
+        cmake_src = _cmake_src(self.manifest)
         build_dir = _build_dir(self.manifest)
         built = os.path.exists(build_dir)
 
         log.inf('RTL8773E Dashboard Project')
         log.inf('=' * 54)
         log.inf(f'  Workspace : {topdir}')
-        log.inf(f'  SDK root  : {sdk_root}')
+        log.inf(f'  SDK root  : {cmake_src}')
         log.inf(f'  Build dir : {build_dir}')
         log.inf(f'  Built     : {"yes" if built else "no — run: west build"}')
 
         if built:
-            bin_root = os.path.join(sdk_root, 'board', 'evb', 'hmi_dashboard', 'bin')
+            bin_root = os.path.join(cmake_src, 'board', 'evb', 'hmi_dashboard', 'gcc', 'bin')
             if os.path.exists(bin_root):
                 elfs = []
                 for root, _dirs, files in os.walk(bin_root):
@@ -106,8 +108,10 @@ class BuildCommand(WestCommand):
         parser = parser_adder.add_parser(self.name, help=self.help,
                                          description=self.description)
         parser.add_argument(
-            '-m', '--mode', choices=['src', 'lib'], default='src',
-            help='src=build from source, lib=use precompiled libgui.a (default: src)'
+            '-m', '--mode', choices=_MODE_CHOICES, default='src_bank0',
+            help=('build target: src_bank0/src_bank1/lib_bank0/lib_bank1; '
+                  'src and lib are shorthand for src_bank0 / lib_bank0 '
+                  '(default: src_bank0)')
         )
         parser.add_argument(
             '-c', '--clean', action='store_true',
@@ -124,9 +128,10 @@ class BuildCommand(WestCommand):
         return parser
 
     def do_run(self, args, unknown_args):
-        sdk_root = _sdk_root(self.manifest)
+        cmake_src = _cmake_src(self.manifest)
         build_dir = _build_dir(self.manifest)
-        defconfig = DEFCONFIGS[args.mode]
+        mode = _resolve_mode(args.mode)
+        defconfig = DEFCONFIGS[mode]
 
         if args.clean and os.path.exists(build_dir):
             log.inf(f'Cleaning: {build_dir}')
@@ -134,11 +139,12 @@ class BuildCommand(WestCommand):
 
         already_configured = os.path.exists(os.path.join(build_dir, 'CMakeCache.txt'))
         if not already_configured or args.configure_only:
-            cfg_cmd = ['cmake', '-G', 'Ninja', '-D', f'kconfig_path={defconfig}',
+            cfg_cmd = ['cmake', '-G', 'Ninja', '-S', cmake_src,
+                       '-D', f'kconfig_path={defconfig}',
                        '-DIS_CHECK_FLOW=OFF', '-Dcompile_lib_only=OFF', '-B', build_dir]
             log.inf('Configuring...')
             log.dbg(' '.join(cfg_cmd))
-            r = subprocess.run(cfg_cmd, cwd=sdk_root)
+            r = subprocess.run(cfg_cmd, cwd=cmake_src)
             if r.returncode != 0:
                 log.die('CMake configure failed')
 
@@ -151,7 +157,7 @@ class BuildCommand(WestCommand):
             build_cmd += ['--parallel', str(args.jobs)]
         log.inf('Building...')
         log.dbg(' '.join(build_cmd))
-        r = subprocess.run(build_cmd, cwd=sdk_root)
+        r = subprocess.run(build_cmd, cwd=cmake_src)
         if r.returncode != 0:
             log.die('Build failed')
 
@@ -175,7 +181,7 @@ class CleanCommand(WestCommand):
         return parser
 
     def do_run(self, args, unknown_args):
-        sdk_root = _sdk_root(self.manifest)
+        cmake_src = _cmake_src(self.manifest)
         build_dir = _build_dir(self.manifest)
 
         if os.path.exists(build_dir):
@@ -186,7 +192,7 @@ class CleanCommand(WestCommand):
             log.inf('Nothing to clean (build directory does not exist).')
 
         if args.all:
-            bin_dir = os.path.join(sdk_root, 'board', 'evb', 'hmi_dashboard', 'bin')
+            bin_dir = os.path.join(cmake_src, 'board', 'evb', 'hmi_dashboard', 'bin')
             if os.path.exists(bin_dir):
                 log.inf(f'Removing {bin_dir}')
                 shutil.rmtree(bin_dir)
@@ -210,6 +216,10 @@ class FlashCommand(WestCommand):
             help='serial COM port (default: COM3, as defined in download.bat)'
         )
         parser.add_argument(
+            '-m', '--mode', choices=_MODE_CHOICES, default='src_bank0',
+            help='which build to flash (default: src_bank0)'
+        )
+        parser.add_argument(
             '--userdata', metavar='FILE',
             help='optional userdata binary to flash'
         )
@@ -223,16 +233,18 @@ class FlashCommand(WestCommand):
         if args.userdata and not args.userdata_addr:
             log.die('--userdata-addr is required when --userdata is given')
 
-        sdk_root = _sdk_root(self.manifest)
+        cmake_src = _cmake_src(self.manifest)
         download_bat = os.path.join(
-            sdk_root, 'board', 'evb', 'hmi_dashboard', 'gcc', 'download.bat'
+            cmake_src, 'board', 'evb', 'hmi_dashboard', 'gcc', 'download.bat'
         )
         if not os.path.exists(download_bat):
             log.die(f'download.bat not found: {download_bat}')
 
-        cmd = ['cmd', '/c', download_bat]
-        if args.port:
-            cmd.append(args.port)
+        # download.bat now takes [COM] [MODE] [USERDATA_FILE USERDATA_ADDR]
+        # — both COM and MODE are positional, supply defaults if not given.
+        mode = _resolve_mode(args.mode)
+        port = args.port if args.port else 'COM3'
+        cmd = ['cmd', '/c', download_bat, port, mode]
         if args.userdata:
             cmd += [args.userdata, args.userdata_addr]
 
@@ -295,20 +307,20 @@ class SizeCommand(WestCommand):
         return parser_adder.add_parser(self.name, help=self.help,
                                        description=self.description)
 
-    def _find_elfs(self, sdk_root: str):
-        bin_root = os.path.join(sdk_root, 'board', 'evb', 'hmi_dashboard', 'gcc', 'bin')
+    def _find_elfs(self, cmake_src: str):
+        bin_root = os.path.join(cmake_src, 'board', 'evb', 'hmi_dashboard', 'gcc', 'bin')
         elfs = []
         if not os.path.exists(bin_root):
             return elfs
         for root, _dirs, files in os.walk(bin_root):
             for f in files:
-                if f.startswith('honeygui_') and f.endswith('.elf'):
+                if f.endswith('.elf'):
                     elfs.append(os.path.join(root, f))
         return elfs
 
     def do_run(self, args, unknown_args):
-        sdk_root = _sdk_root(self.manifest)
-        elfs = self._find_elfs(sdk_root)
+        cmake_src = _cmake_src(self.manifest)
+        elfs = self._find_elfs(cmake_src)
 
         if not elfs:
             log.die('No ELF found. Run: west build')
