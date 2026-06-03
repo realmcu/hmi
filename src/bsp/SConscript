@@ -26,6 +26,7 @@ path = [SDK_ROOT + '/inc/app',
         SDK_ROOT + '/inc/framework/bt',
         SDK_ROOT + '/inc/framework/remote',
         SDK_ROOT + '/inc/framework/sysm',
+        SDK_ROOT + '/inc/framework/audio',
         SDK_ROOT + '/inc/bluetooth/gap',
         SDK_ROOT + '/inc/bluetooth/profile',
         SDK_ROOT + '/inc/rtl87x3ep/hal/stack',
@@ -41,7 +42,7 @@ LINKFLAGS = '--diag_suppress=L6314 --datacompressor off'
 bsp = DefineGroup('bsp', src, depend = [''], CPPPATH = path, CPPDEFINES = CPPDEFINES, LINKFLAGS = LINKFLAGS)
 
 lib_src = []
-lib_src += [SDK_ROOT + '/bin/rtl87x3ep/gap_utils.lib']
+lib_src += [SDK_ROOT + '/bin/rtl87x3ep/gap_lib/gap_utils_4M.lib']
 # lib_src += [SDK_ROOT + '/bin/rtl87x3ep/framework/console.lib']
 lib_src += [SDK_ROOT + '/bin/rtl87x3ep/framework/remote.lib']
 lib_src += [SDK_ROOT + '/bin/rtl87x3ep/framework/sysm.lib']
