@@ -18,8 +18,7 @@
 #define UART_FLAG_RX_DATA_RDY  BIT(0)
 #endif
 
-/* RTK UART API declarations */
-extern void UART_SendBuf(UART_TypeDef *UARTx, uint8_t *buf, uint16_t len);
+/* UART_SendData is the RTK HAL function declared in rtl876x_uart.h */
 
 /* ---------- driver private data (one per UART controller) ---------- */
 typedef struct
@@ -130,7 +129,7 @@ static int uart_write(void *drv_data, void *file_priv,
 
     uart_drv_data_t *d = (uart_drv_data_t *)drv_data;
 
-    UART_SendBuf(((UART_TypeDef *)d->uart_dev), (uint8_t *)buf, (uint16_t)count);
+    UART_SendData(((UART_TypeDef *)d->uart_dev), (const uint8_t *)buf, (uint16_t)count);
     return (int)count;
 }
 
@@ -146,7 +145,7 @@ static int uart_ioctl(void *drv_data, void *file_priv,
     {
     case POSIX_UART_IOCTL_SET_CONFIG:
         {
-            if (cmd & POSIX_FLAG_ISR)
+            if (posix_port_in_isr())
             {
                 return POSIX_ERR_ISR;
             }

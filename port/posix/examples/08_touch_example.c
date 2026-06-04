@@ -46,6 +46,7 @@ void example_touch(void)
 
 #ifdef CONFIG_SHELL
 #include <zephyr/shell/shell.h>
+#include "posix_port.h"
 static bool s_posix_touch_inited = false;
 
 static int cmd_touch_read(const struct shell *sh, size_t argc, char **argv)
@@ -61,8 +62,9 @@ static int cmd_touch_read(const struct shell *sh, size_t argc, char **argv)
     int ret = posix_read(fd, &data, sizeof(data));
     if (ret >= 0)
     {
-        shell_print(sh, "touch: x=%d y=%d pressed=%d ts=%u",
-                    data.x, data.y, data.pressed, data.timestamp_ms);
+        shell_print(sh, "touch: x=%d y=%d pressed=%d",
+                    data.points[0].x, data.points[0].y,
+                    (data.point_count > 0 && data.points[0].status == POSIX_TOUCH_PRESS) ? 1 : 0);
     }
     else
     {

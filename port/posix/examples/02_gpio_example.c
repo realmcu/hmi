@@ -80,3 +80,31 @@ void example_gpio(void)
     posix_close(led);
     posix_close(btn);
 }
+
+#ifdef CONFIG_SHELL
+#include <zephyr/shell/shell.h>
+#include "posix_port.h"
+static bool s_gpio_inited = false;
+
+static int cmd_gpio_test(const struct shell *sh, size_t argc, char **argv)
+{
+    if (!s_gpio_inited) { posix_port_init_all(); s_gpio_inited = true; }
+
+    posix_fd_t fd = posix_open("/dev/gpio0/p0");
+    if (fd == POSIX_FD_NULL) { shell_error(sh, "open /dev/gpio0/p0 failed"); return -1; }
+
+    /* Configure pin as input */
+    posix_gpio_config_t cfg = {POSIX_GPIO_DIR_INPUT, POSIX_GPIO_PULL_NONE, 0};
+    posix_ioctl(fd, POSIX_GPIO_IOCTL_SET_DIR, &cfg);
+
+    /* Read pin value */
+    int val = 0;
+    posix_read(fd, &val, sizeof(val));
+    shell_print(sh, "gpio0/p0 value = %d", val);
+
+    posix_close(fd);
+    shell_print(sh, "POSIX GPIO test PASSED");
+    return 0;
+}
+SHELL_CMD_REGISTER(posix_gpio, NULL, "POSIX GPIO smoke test", cmd_gpio_test);
+#endif /* CONFIG_SHELL */

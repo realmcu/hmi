@@ -49,7 +49,6 @@ static void *gpio_open(void *drv_data, const char *path)
     if (!p) { return NULL; }
     p++;                     /* 跳过 '/' */
     if (*p == 'p') { p++; }
-    if (*p == 'i') { p += 2; }   /* 跳过 "in" */
 
     char *end;
     long pin = strtol(p, &end, 10);
@@ -172,7 +171,7 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
     case POSIX_GPIO_IOCTL_GET_VALUE:
         {
             posix_gpio_value_t *v = (posix_gpio_value_t *)arg;
-            v->value = (int)GPIO_ReadInputDataBit(d->port,
+            v->value = (int)GPIO_ReadInputDataBit(f->drv->port,
                                                   (uint32_t)(1u << f->pin));
             return POSIX_OK;
         }

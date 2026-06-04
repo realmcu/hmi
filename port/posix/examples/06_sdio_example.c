@@ -63,3 +63,20 @@ void example_sdio(void)
     /* === 6. 关闭 === */
     posix_close(sd);
 }
+
+#ifdef CONFIG_SHELL
+#include <zephyr/shell/shell.h>
+#include "posix_port.h"
+static bool s_sdio_inited = false;
+
+static int cmd_sdio_test(const struct shell *sh, size_t argc, char **argv)
+{
+    if (!s_sdio_inited) { posix_port_init_all(); s_sdio_inited = true; }
+    posix_fd_t fd = posix_open("/dev/sdio0");
+    if (fd == POSIX_FD_NULL) { shell_print(sh, "sdio0 not registered — no port driver yet"); return 0; }
+    shell_print(sh, "open OK");
+    posix_close(fd);
+    return 0;
+}
+SHELL_CMD_REGISTER(posix_sdio, NULL, "POSIX SDIO smoke test", cmd_sdio_test);
+#endif /* CONFIG_SHELL */

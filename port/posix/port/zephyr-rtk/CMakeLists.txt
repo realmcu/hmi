@@ -20,3 +20,5 @@ target_include_directories(app PUBLIC
     ${POSIX_DEVICE_ROOT}/include         # posix.h, posix_device.h, etc.
     ${POSIX_DEVICE_ROOT}/include/ioctls  # per-device ioctl headers
 )
+
+zephyr_linker_sources(SECTIONS ${CMAKE_CURRENT_SOURCE_DIR}/posix_init.ld)

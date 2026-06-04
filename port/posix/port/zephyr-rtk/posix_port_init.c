@@ -5,6 +5,7 @@
 
 #include "posix_port.h"
 #include "os_sync.h"
+#include <zephyr/kernel.h>
 
 /* RTK OS mutex handle */
 static void *s_posix_mutex = NULL;
@@ -13,7 +14,6 @@ static void *s_posix_mutex = NULL;
 extern bool os_mutex_create(void **pp_handle);
 extern bool os_mutex_take(void *p_handle, uint32_t wait_ms);
 extern bool os_mutex_give(void *p_handle);
-extern bool os_is_in_interrupt(void);
 
 #define OS_WAIT_FOREVER 0xFFFFFFFFU
 
@@ -35,7 +35,7 @@ void posix_unlock(void)
 
 bool posix_port_in_isr(void)
 {
-    return os_is_in_interrupt();
+    return k_is_in_isr();
 }
 
 void posix_port_lock_init(void)

@@ -51,7 +51,7 @@ void example_uart(void)
     const char *msg = "Hello UART!\r\n";
     posix_write(uart, msg, strlen(msg));
 
-    /* === 4. 接收（阻塞，等待数据） === */
+    /* === 4. 接收（非阻塞轮询：FIFO 为空时立即返回 0） === */
     uint8_t buf[64];
     int n = posix_read(uart, buf, sizeof(buf));
     /* n = 实际读取的字节数，< 0 表示错误 */
@@ -66,8 +66,27 @@ void example_uart(void)
     /* 之后每收到一个字节，on_uart_rx 在 ISR 中被调用 */
 
     /* === 6. 等待发送完成（DMA 场景） === */
-    posix_ioctl(uart, POSIX_UART_IOCTL_TX_FLUSH);
+    posix_ioctl(uart, POSIX_UART_IOCTL_TX_FLUSH, NULL);
 
     /* === 7. 关闭 === */
     posix_close(uart);
 }
+
+#ifdef CONFIG_SHELL
+#include <zephyr/shell/shell.h>
+#include "posix_port.h"
+static bool s_uart_inited = false;
+
+static int cmd_uart_test(const struct shell *sh, size_t argc, char **argv)
+{
+    if (!s_uart_inited) { posix_port_init_all(); s_uart_inited = true; }
+    posix_fd_t fd = posix_open("/dev/uart0");
+    if (fd == POSIX_FD_NULL) { shell_error(sh, "open /dev/uart0 failed"); return -1; }
+    int n = posix_write(fd, "Hello POSIX\r\n", 14);
+    shell_print(sh, "wrote %d bytes", n);
+    posix_close(fd);
+    shell_print(sh, "POSIX UART test PASSED");
+    return 0;
+}
+SHELL_CMD_REGISTER(posix_uart, NULL, "POSIX UART smoke test", cmd_uart_test);
+#endif /* CONFIG_SHELL */

@@ -16,7 +16,7 @@ void example_pwm(void)
 {
     /* === 1. 打开设备 === */
     posix_fd_t pwm = posix_open("/dev/pwm0");
-    if (!pwm)
+    if (pwm == POSIX_FD_NULL)
     {
         return;
     }
@@ -54,3 +54,20 @@ void example_pwm(void)
     /* === 6. 关闭 === */
     posix_close(pwm);
 }
+
+#ifdef CONFIG_SHELL
+#include <zephyr/shell/shell.h>
+#include "posix_port.h"
+static bool s_pwm_inited = false;
+
+static int cmd_pwm_test(const struct shell *sh, size_t argc, char **argv)
+{
+    if (!s_pwm_inited) { posix_port_init_all(); s_pwm_inited = true; }
+    posix_fd_t fd = posix_open("/dev/pwm0");
+    if (fd == POSIX_FD_NULL) { shell_print(sh, "pwm0 not registered — no port driver yet"); return 0; }
+    shell_print(sh, "open OK");
+    posix_close(fd);
+    return 0;
+}
+SHELL_CMD_REGISTER(posix_pwm, NULL, "POSIX PWM smoke test", cmd_pwm_test);
+#endif /* CONFIG_SHELL */

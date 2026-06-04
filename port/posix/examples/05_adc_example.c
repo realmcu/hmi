@@ -63,3 +63,20 @@ void example_adc(void)
     /* === 6. 关闭 === */
     posix_close(adc);
 }
+
+#ifdef CONFIG_SHELL
+#include <zephyr/shell/shell.h>
+#include "posix_port.h"
+static bool s_adc_inited = false;
+
+static int cmd_adc_test(const struct shell *sh, size_t argc, char **argv)
+{
+    if (!s_adc_inited) { posix_port_init_all(); s_adc_inited = true; }
+    posix_fd_t fd = posix_open("/dev/adc0");
+    if (fd == POSIX_FD_NULL) { shell_print(sh, "adc0 not registered — no port driver yet"); return 0; }
+    shell_print(sh, "open OK");
+    posix_close(fd);
+    return 0;
+}
+SHELL_CMD_REGISTER(posix_adc, NULL, "POSIX ADC smoke test", cmd_adc_test);
+#endif /* CONFIG_SHELL */
