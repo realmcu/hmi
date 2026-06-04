@@ -341,7 +341,7 @@
               <MiscControls>  --include pre_define.h  --include stdbool.h --include app_flags.h</MiscControls>
               <Define>TARGET_RTL8773E, RTK_HAL_LCD, RTK_HAL_DRIVER, SUPPORT_ACCESS_SHM = 1, CONFIG_SOC_SERIES_RTL8773E=1, ENABLE_HONEYGUI</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\src\mcu\display\hardware;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\bluetooth\profile\client;..\..\..\..\inc\bluetooth\profile\server;..\..\..\..\inc\bluetooth\leaudio;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\audio;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\src\driver;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\src\ports\realgui_port;..\src\transport;..\src\transport\bluetooth;..\src\transport\bluetooth\hmi_app;..\src\transport\bluetooth\hmi_ble;..\src\transport\bluetooth\hmi_ble\private_service;..\src\transport\bluetooth\hmi_br_edr;..\src\transport\l2_handlers;..\src\transport\protocol;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\src\ui\callbacks;..\src\ui\ui;..\src\ui\user;..\src\file_db;..\src\file_db\port\nor_flash</IncludePath>
+              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\src\mcu\display\hardware;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\bluetooth\profile\client;..\..\..\..\inc\bluetooth\profile\server;..\..\..\..\inc\bluetooth\leaudio;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\audio;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\src\driver;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\src\ports\realgui_port;..\src\transport;..\src\transport\bluetooth;..\src\transport\bluetooth\hmi_app;..\src\transport\bluetooth\hmi_ble;..\src\transport\bluetooth\hmi_ble\private_service;..\src\transport\bluetooth\hmi_br_edr;..\src\transport\l2_handlers;..\src\transport\protocol;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\designer\src\callbacks;..\designer\src\ui;..\designer\src\user;..\src\file_db;..\src\file_db\port\nor_flash</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -789,67 +789,67 @@
             <File>
               <FileName>easy_demoEntry.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\src\ui\easy_demoEntry.c</FilePath>
+              <FilePath>..\designer\src\easy_demoEntry.c</FilePath>
             </File>
             <File>
               <FileName>bt_callbacks.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\src\ui\callbacks\bt_callbacks.c</FilePath>
+              <FilePath>..\designer\src\callbacks\bt_callbacks.c</FilePath>
             </File>
             <File>
               <FileName>easy_demoMain_callbacks.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\src\ui\callbacks\easy_demoMain_callbacks.c</FilePath>
+              <FilePath>..\designer\src\callbacks\easy_demoMain_callbacks.c</FilePath>
             </File>
             <File>
               <FileName>menu_callbacks.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\src\ui\callbacks\menu_callbacks.c</FilePath>
+              <FilePath>..\designer\src\callbacks\menu_callbacks.c</FilePath>
             </File>
             <File>
               <FileName>share_callbacks.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\src\ui\callbacks\share_callbacks.c</FilePath>
-            </File>
-            <File>
-              <FileName>bt_ui.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\src\ui\ui\bt_ui.c</FilePath>
-            </File>
-            <File>
-              <FileName>easy_demoMain_ui.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\src\ui\ui\easy_demoMain_ui.c</FilePath>
-            </File>
-            <File>
-              <FileName>menu_ui.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\src\ui\ui\menu_ui.c</FilePath>
-            </File>
-            <File>
-              <FileName>share_ui.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\src\ui\ui\share_ui.c</FilePath>
+              <FilePath>..\designer\src\callbacks\share_callbacks.c</FilePath>
             </File>
             <File>
               <FileName>bt_user.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\src\ui\user\bt_user.c</FilePath>
+              <FilePath>..\designer\src\user\bt_user.c</FilePath>
             </File>
             <File>
               <FileName>easy_demoMain_user.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\src\ui\user\easy_demoMain_user.c</FilePath>
+              <FilePath>..\designer\src\user\easy_demoMain_user.c</FilePath>
             </File>
             <File>
               <FileName>menu_user.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\src\ui\user\menu_user.c</FilePath>
+              <FilePath>..\designer\src\user\menu_user.c</FilePath>
             </File>
             <File>
               <FileName>share_user.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\src\ui\user\share_user.c</FilePath>
+              <FilePath>..\designer\src\user\share_user.c</FilePath>
+            </File>
+            <File>
+              <FileName>bt_ui.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\designer\src\ui\bt_ui.c</FilePath>
+            </File>
+            <File>
+              <FileName>easy_demoMain_ui.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\designer\src\ui\easy_demoMain_ui.c</FilePath>
+            </File>
+            <File>
+              <FileName>menu_ui.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\designer\src\ui\menu_ui.c</FilePath>
+            </File>
+            <File>
+              <FileName>share_ui.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\designer\src\ui\share_ui.c</FilePath>
             </File>
           </Files>
         </Group>

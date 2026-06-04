@@ -996,7 +996,7 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\src\ui\easy_demoEntry.c</PathWithFileName>
+      <PathWithFileName>..\designer\src\easy_demoEntry.c</PathWithFileName>
       <FilenameWithoutPath>easy_demoEntry.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
@@ -1008,7 +1008,7 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\src\ui\callbacks\bt_callbacks.c</PathWithFileName>
+      <PathWithFileName>..\designer\src\callbacks\bt_callbacks.c</PathWithFileName>
       <FilenameWithoutPath>bt_callbacks.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
@@ -1020,7 +1020,7 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\src\ui\callbacks\easy_demoMain_callbacks.c</PathWithFileName>
+      <PathWithFileName>..\designer\src\callbacks\easy_demoMain_callbacks.c</PathWithFileName>
       <FilenameWithoutPath>easy_demoMain_callbacks.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
@@ -1032,7 +1032,7 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\src\ui\callbacks\menu_callbacks.c</PathWithFileName>
+      <PathWithFileName>..\designer\src\callbacks\menu_callbacks.c</PathWithFileName>
       <FilenameWithoutPath>menu_callbacks.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
@@ -1044,7 +1044,7 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\src\ui\callbacks\share_callbacks.c</PathWithFileName>
+      <PathWithFileName>..\designer\src\callbacks\share_callbacks.c</PathWithFileName>
       <FilenameWithoutPath>share_callbacks.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
@@ -1056,8 +1056,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\src\ui\ui\bt_ui.c</PathWithFileName>
-      <FilenameWithoutPath>bt_ui.c</FilenameWithoutPath>
+      <PathWithFileName>..\designer\src\user\bt_user.c</PathWithFileName>
+      <FilenameWithoutPath>bt_user.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -1068,8 +1068,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\src\ui\ui\easy_demoMain_ui.c</PathWithFileName>
-      <FilenameWithoutPath>easy_demoMain_ui.c</FilenameWithoutPath>
+      <PathWithFileName>..\designer\src\user\easy_demoMain_user.c</PathWithFileName>
+      <FilenameWithoutPath>easy_demoMain_user.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -1080,8 +1080,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\src\ui\ui\menu_ui.c</PathWithFileName>
-      <FilenameWithoutPath>menu_ui.c</FilenameWithoutPath>
+      <PathWithFileName>..\designer\src\user\menu_user.c</PathWithFileName>
+      <FilenameWithoutPath>menu_user.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -1092,8 +1092,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\src\ui\ui\share_ui.c</PathWithFileName>
-      <FilenameWithoutPath>share_ui.c</FilenameWithoutPath>
+      <PathWithFileName>..\designer\src\user\share_user.c</PathWithFileName>
+      <FilenameWithoutPath>share_user.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -1104,8 +1104,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\src\ui\user\bt_user.c</PathWithFileName>
-      <FilenameWithoutPath>bt_user.c</FilenameWithoutPath>
+      <PathWithFileName>..\designer\src\ui\bt_ui.c</PathWithFileName>
+      <FilenameWithoutPath>bt_ui.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -1116,8 +1116,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\src\ui\user\easy_demoMain_user.c</PathWithFileName>
-      <FilenameWithoutPath>easy_demoMain_user.c</FilenameWithoutPath>
+      <PathWithFileName>..\designer\src\ui\easy_demoMain_ui.c</PathWithFileName>
+      <FilenameWithoutPath>easy_demoMain_ui.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -1128,8 +1128,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\src\ui\user\menu_user.c</PathWithFileName>
-      <FilenameWithoutPath>menu_user.c</FilenameWithoutPath>
+      <PathWithFileName>..\designer\src\ui\menu_ui.c</PathWithFileName>
+      <FilenameWithoutPath>menu_ui.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
@@ -1140,8 +1140,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\src\ui\user\share_user.c</PathWithFileName>
-      <FilenameWithoutPath>share_user.c</FilenameWithoutPath>
+      <PathWithFileName>..\designer\src\ui\share_ui.c</PathWithFileName>
+      <FilenameWithoutPath>share_ui.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>

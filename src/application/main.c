@@ -63,7 +63,7 @@ int main(void)
 
 
     wdg_kick();
-    // fdb_flash_nor_erase_sector((uint32_t)MOUNT_DB);
+//    fdb_flash_nor_erase_sector((uint32_t)MOUNT_DB);
     int fmc_rc = fmc_flash_nor_read((uint32_t)MOUNT_DB, s_dir_cache, sizeof(s_dir_cache));
     APP_PRINT_INFO1("fdb fmc_flash_nor_read rc=%d", fmc_rc);
     fdb_nor_cfg_t s_cfg =
