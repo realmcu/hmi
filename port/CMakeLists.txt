@@ -44,5 +44,4 @@ if(1) #set to 1 to enable or variable to for depnedency
             endif()
         endif()
     endforeach()
-    zephyr_code_relocate(FILES gui_port_os.c LOCATION SRAM)
 endif()

@@ -47,7 +47,7 @@ static void *touch_open(void *d, const char *p)
             return &s_touch_files[i];
         }
     }
-    return NULL;
+    return POSIX_OPEN_ERR;
 }
 
 static int touch_close(void *d, void *f)
@@ -69,7 +69,7 @@ static int touch_close(void *d, void *f)
  * result into the POSIX touch abstraction.  The Zephyr device handle lives in
  * drv_data that was resolved at init time; the app layer never sees Zephyr APIs.
  */
-static int touch_read(void *d, void *f, void *buf, size_t count)
+static posix_ssize_t touch_read(void *d, void *f, void *buf, size_t count)
 {
     (void)f;
     touch_drv_data_t *drv = (touch_drv_data_t *)d;
@@ -103,10 +103,10 @@ static int touch_read(void *d, void *f, void *buf, size_t count)
         data->points[0].pressure  = 0;
     }
 
-    return (int)sizeof(posix_touch_data_t);
+    return (posix_ssize_t)sizeof(posix_touch_data_t);
 }
 
-static int touch_write(void *d, void *f, const void *b, size_t c)
+static posix_ssize_t touch_write(void *d, void *f, const void *b, size_t c)
 {
     (void)d; (void)f; (void)b; (void)c;
     return POSIX_ERR_NOSUPP;

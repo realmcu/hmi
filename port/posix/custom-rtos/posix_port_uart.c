@@ -43,7 +43,7 @@ static void *uart_open(void *drv_data, const char *path)
             break;
         }
     }
-    if (!f) { return NULL; }
+    if (!f) { return POSIX_OPEN_ERR; }
 
     f->drv = (uart_drv_data_t *)drv_data;
     f->cfg.baudrate = 115200;  /* 默认配置 */
@@ -70,8 +70,8 @@ static int uart_close(void *drv_data, void *file_priv)
 }
 
 /* ---------- read ---------- */
-static int uart_read(void *drv_data, void *file_priv,
-                     void *buf, size_t count)
+static posix_ssize_t uart_read(void *drv_data, void *file_priv,
+                               void *buf, size_t count)
 {
     uart_file_t *f = (uart_file_t *)file_priv;
     uart_drv_data_t *d = (uart_drv_data_t *)drv_data;
@@ -92,8 +92,8 @@ static int uart_read(void *drv_data, void *file_priv,
 }
 
 /* ---------- write ---------- */
-static int uart_write(void *drv_data, void *file_priv,
-                      const void *buf, size_t count)
+static posix_ssize_t uart_write(void *drv_data, void *file_priv,
+                                const void *buf, size_t count)
 {
     uart_drv_data_t *d = (uart_drv_data_t *)drv_data;
     (void)file_priv;
@@ -103,7 +103,7 @@ static int uart_write(void *drv_data, void *file_priv,
         /* ISR 中：逐个写入 TX FIFO */
         /* for (size_t i = 0; i < count; i++)
          *     hw_uart_write_char(d->reg_base, ((const uint8_t*)buf)[i]); */
-        return (int)count;
+        return (posix_ssize_t)count;
     }
 
     /* 任务上下文：阻塞发送 */
@@ -123,7 +123,7 @@ static int uart_ioctl(void *drv_data, void *file_priv,
     {
     case POSIX_UART_IOCTL_SET_CONFIG:
         {
-            if (cmd & POSIX_FLAG_ISR) { return POSIX_ERR_ISR; }
+            if (posix_port_in_isr()) { return POSIX_ERR_ISR; }
             const posix_uart_config_t *cfg = (const posix_uart_config_t *)arg;
             /* hw_uart_config(d->reg_base, cfg->baudrate, cfg->data_bits,
              *     cfg->parity, cfg->stop_bits, cfg->flow_control); */

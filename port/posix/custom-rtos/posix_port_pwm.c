@@ -34,11 +34,11 @@ static void *pwm_open(void *d, const char *path)
 }
 
 static int pwm_close(void *d, void *f) { (void)d; /*free f*/; return 0; }
-static int pwm_read(void *d, void *f, void *b, size_t c)
+static posix_ssize_t pwm_read(void *d, void *f, void *b, size_t c)
 {
     (void)d; (void)f; (void)b; (void)c; return POSIX_ERR_NOSUPP;
 }
-static int pwm_write(void *d, void *f, const void *b, size_t c)
+static posix_ssize_t pwm_write(void *d, void *f, const void *b, size_t c)
 {
     (void)d; (void)f; (void)b; (void)c; return POSIX_ERR_NOSUPP;
 }

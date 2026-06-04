@@ -13,14 +13,14 @@ static void *spi_open(void *d, const char *path)
     return f;
 }
 static int spi_close(void *d, void *f) { (void)d; /*free f*/ return 0; }
-static int spi_read(void *d, void *f, void *buf, size_t len)
+static posix_ssize_t spi_read(void *d, void *f, void *buf, size_t len)
 {
     (void)f;
     /* 发 0xFF 收数据 */
     /* hw_spi_transfer(((spi_drv_t*)d)->reg_base, NULL, buf, len); */
     (void)d; (void)buf; (void)len; return POSIX_ERR_NOSUPP;
 }
-static int spi_write(void *d, void *f, const void *buf, size_t len)
+static posix_ssize_t spi_write(void *d, void *f, const void *buf, size_t len)
 {
     (void)f;
     /* hw_spi_transfer(((spi_drv_t*)d)->reg_base, buf, NULL, len); */

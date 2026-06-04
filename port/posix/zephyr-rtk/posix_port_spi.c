@@ -132,7 +132,7 @@ static void *spi_open(void *d, const char *path)
 
     spi_drv_t  *drv = (spi_drv_t *)d;
     spi_file_t *f   = spi_alloc_file();
-    if (!f) { return NULL; }
+    if (!f) { return POSIX_OPEN_ERR; }
 
     f->drv               = drv;
     f->cfg.freq_hz       = 1000000U;
@@ -155,19 +155,19 @@ static int spi_close(void *d, void *fh)
 }
 
 /* Read-only: send 0x00 dummy bytes, capture MISO */
-static int spi_read_fn(void *d, void *fh, void *buf, size_t len)
+static posix_ssize_t spi_read_fn(void *d, void *fh, void *buf, size_t len)
 {
     (void)d;
     spi_file_t *f = (spi_file_t *)fh;
-    return spi_do_transfer(f->drv->spi, NULL, (uint8_t *)buf, len);
+    return (posix_ssize_t)spi_do_transfer(f->drv->spi, NULL, (uint8_t *)buf, len);
 }
 
 /* Write-only: send TX bytes, discard MISO */
-static int spi_write_fn(void *d, void *fh, const void *buf, size_t len)
+static posix_ssize_t spi_write_fn(void *d, void *fh, const void *buf, size_t len)
 {
     (void)d;
     spi_file_t *f = (spi_file_t *)fh;
-    return spi_do_transfer(f->drv->spi, (const uint8_t *)buf, NULL, len);
+    return (posix_ssize_t)spi_do_transfer(f->drv->spi, (const uint8_t *)buf, NULL, len);
 }
 
 static int spi_ioctl(void *d, void *fh, unsigned long cmd, void *arg)

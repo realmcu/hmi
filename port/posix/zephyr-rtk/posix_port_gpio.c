@@ -46,13 +46,13 @@ static void *gpio_open(void *drv_data, const char *path)
 
     /* 解析 pin 号：找 "/p" 后的数字 */
     const char *p = strstr(path, "/p");
-    if (!p) { return NULL; }
+    if (!p) { return POSIX_OPEN_ERR; }
     p++;                     /* 跳过 '/' */
     if (*p == 'p') { p++; }
 
     char *end;
     long pin = strtol(p, &end, 10);
-    if (*end != '\0' || pin < 0 || pin > 255) { return NULL; }
+    if (*end != '\0' || pin < 0 || pin > 255) { return POSIX_OPEN_ERR; }
 
     /* 从静态池分配 */
     gpio_file_t *f = NULL;
@@ -65,7 +65,7 @@ static void *gpio_open(void *drv_data, const char *path)
             break;
         }
     }
-    if (!f) { return NULL; }
+    if (!f) { return POSIX_OPEN_ERR; }
 
     f->drv       = d;
     f->pin       = (int)pin;
@@ -88,8 +88,8 @@ static int gpio_close(void *drv_data, void *file_priv)
 }
 
 /* ---------- read：读引脚电平 ---------- */
-static int gpio_read(void *drv_data, void *file_priv,
-                     void *buf, size_t count)
+static posix_ssize_t gpio_read(void *drv_data, void *file_priv,
+                               void *buf, size_t count)
 {
     (void)drv_data;
     if (count < sizeof(int)) { return POSIX_ERR_INVAL; }
@@ -97,12 +97,12 @@ static int gpio_read(void *drv_data, void *file_priv,
 
     uint8_t level = GPIO_ReadInputDataBit(f->drv->port, (uint32_t)(1u << f->pin));
     *(int *)buf = (int)level;
-    return (int)sizeof(int);
+    return (posix_ssize_t)sizeof(int);
 }
 
 /* ---------- write：写引脚电平 ---------- */
-static int gpio_write(void *drv_data, void *file_priv,
-                      const void *buf, size_t count)
+static posix_ssize_t gpio_write(void *drv_data, void *file_priv,
+                                const void *buf, size_t count)
 {
     (void)drv_data;
     if (count < sizeof(int)) { return POSIX_ERR_INVAL; }
@@ -112,7 +112,7 @@ static int gpio_write(void *drv_data, void *file_priv,
     GPIO_WriteBit(f->drv->port,
                   (uint32_t)(1u << f->pin),
                   val ? Bit_SET : Bit_RESET);
-    return (int)sizeof(int);
+    return (posix_ssize_t)sizeof(int);
 }
 
 /* ---------- ioctl ---------- */
@@ -122,15 +122,12 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
     gpio_file_t     *f = (gpio_file_t *)file_priv;
     gpio_drv_data_t *d = (gpio_drv_data_t *)drv_data;
 
-    int           is_isr   = (cmd & POSIX_FLAG_ISR) ? 1 : 0;
-    unsigned long real_cmd = cmd & ~POSIX_FLAG_ISR;
-
-    switch (real_cmd)
+    switch (cmd)
     {
 
     case POSIX_GPIO_IOCTL_SET_DIR:
         {
-            if (is_isr) { return POSIX_ERR_ISR; }
+            if (posix_port_in_isr()) { return POSIX_ERR_ISR; }
             posix_gpio_config_t *cfg = (posix_gpio_config_t *)arg;
             f->direction = cfg->direction;
             f->pull      = cfg->pull;
@@ -153,7 +150,7 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
 
     case POSIX_GPIO_IOCTL_SET_PULL:
         {
-            if (is_isr) { return POSIX_ERR_ISR; }
+            if (posix_port_in_isr()) { return POSIX_ERR_ISR; }
             posix_gpio_config_t *cfg = (posix_gpio_config_t *)arg;
             f->pull = cfg->pull;
             /* RTK SDK does not expose a standalone pull API;
@@ -221,7 +218,7 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
 
     case POSIX_GPIO_IOCTL_SET_IRQ:
         {
-            if (is_isr) { return POSIX_ERR_ISR; }
+            if (posix_port_in_isr()) { return POSIX_ERR_ISR; }
             /* posix_gpio_irq_t *irq = (posix_gpio_irq_t *)arg;
              * RTK interrupt registration is board-specific; hook up via
              * platform interrupt manager (not exposed in rtl_gpio.h). */

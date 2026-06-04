@@ -33,7 +33,7 @@ static void *gsensor_open(void *d, const char *p)
             return &s_gsensor_files[i];
         }
     }
-    return NULL;
+    return POSIX_OPEN_ERR;
 }
 
 static int gsensor_close(void *d, void *f)
@@ -48,7 +48,7 @@ static int gsensor_close(void *d, void *f)
     return 0;
 }
 
-static int gsensor_read(void *d, void *f, void *buf, size_t count)
+static posix_ssize_t gsensor_read(void *d, void *f, void *buf, size_t count)
 {
     (void)d;
     (void)f;
@@ -58,7 +58,7 @@ static int gsensor_read(void *d, void *f, void *buf, size_t count)
     return POSIX_ERR_NOSUPP;
 }
 
-static int gsensor_write(void *d, void *f, const void *buf, size_t count)
+static posix_ssize_t gsensor_write(void *d, void *f, const void *buf, size_t count)
 {
     (void)d;
     (void)f;

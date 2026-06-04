@@ -14,7 +14,7 @@ static void *touch_open(void *d, const char *p)
 static int touch_close(void *d, void *f) { (void)d; /*free f*/; return 0; }
 
 /* posix_read = 读取触摸数据 */
-static int touch_read(void *d, void *f, void *buf, size_t count)
+static posix_ssize_t touch_read(void *d, void *f, void *buf, size_t count)
 {
     touch_drv_t *drv = (touch_drv_t *)d; (void)f;
     if (count < sizeof(posix_touch_data_t)) { return POSIX_ERR_INVAL; }
@@ -22,9 +22,9 @@ static int touch_read(void *d, void *f, void *buf, size_t count)
     /* hw_touch_read(drv->unit, t); */
     /* return sizeof(posix_touch_data_t); */
     (void)drv; (void)buf; (void)count; memset(buf, 0, sizeof(posix_touch_data_t));
-    return sizeof(posix_touch_data_t);
+    return (posix_ssize_t)sizeof(posix_touch_data_t);
 }
-static int touch_write(void *d, void *f, const void *b, size_t c)
+static posix_ssize_t touch_write(void *d, void *f, const void *b, size_t c)
 {
     (void)d; (void)f; (void)b; (void)c; return POSIX_ERR_NOSUPP;
 }

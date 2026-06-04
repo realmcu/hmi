@@ -57,7 +57,7 @@ static void *uart_open(void *drv_data, const char *path)
     }
     if (!f)
     {
-        return NULL;
+        return POSIX_OPEN_ERR;
     }
 
     f->drv             = (uart_drv_data_t *)drv_data;
@@ -85,8 +85,8 @@ static int uart_close(void *drv_data, void *file_priv)
 }
 
 /* ---------- read ---------- */
-static int uart_read(void *drv_data, void *file_priv,
-                     void *buf, size_t count)
+static posix_ssize_t uart_read(void *drv_data, void *file_priv,
+                               void *buf, size_t count)
 {
     (void)file_priv;
 
@@ -100,7 +100,7 @@ static int uart_read(void *drv_data, void *file_priv,
         if (UART_GetFlagState(((UART_TypeDef *)d->uart_dev), UART_FLAG_RX_DATA_RDY))
         {
             dst[0] = UART_ReceiveByte(((UART_TypeDef *)d->uart_dev));
-            return 1;
+            return (posix_ssize_t)1;
         }
         return POSIX_ERR_AGAIN;
     }
@@ -118,19 +118,19 @@ static int uart_read(void *drv_data, void *file_priv,
         }
     }
 
-    return (int)read;
+    return (posix_ssize_t)read;
 }
 
 /* ---------- write ---------- */
-static int uart_write(void *drv_data, void *file_priv,
-                      const void *buf, size_t count)
+static posix_ssize_t uart_write(void *drv_data, void *file_priv,
+                                const void *buf, size_t count)
 {
     (void)file_priv;
 
     uart_drv_data_t *d = (uart_drv_data_t *)drv_data;
 
     UART_SendData(((UART_TypeDef *)d->uart_dev), (const uint8_t *)buf, (uint16_t)count);
-    return (int)count;
+    return (posix_ssize_t)count;
 }
 
 /* ---------- ioctl ---------- */

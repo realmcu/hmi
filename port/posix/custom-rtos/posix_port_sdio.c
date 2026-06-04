@@ -13,7 +13,7 @@ static void *sdio_open(void *d, const char *p)
 static int sdio_close(void *d, void *f) { (void)d; /*free f*/; return 0; }
 
 /* 提供 posix_read/posix_write 的块设备风格 API */
-static int sdio_read(void *d, void *f, void *buf, size_t count)
+static posix_ssize_t sdio_read(void *d, void *f, void *buf, size_t count)
 {
     sdio_drv_t *drv = (sdio_drv_t *)d;
     /* 最简单实现：读第一个块 */
@@ -21,7 +21,7 @@ static int sdio_read(void *d, void *f, void *buf, size_t count)
     (void)drv; (void)buf; (void)count; (void)f;
     return POSIX_ERR_NOSUPP;
 }
-static int sdio_write(void *d, void *f, const void *buf, size_t count)
+static posix_ssize_t sdio_write(void *d, void *f, const void *buf, size_t count)
 {
     sdio_drv_t *drv = (sdio_drv_t *)d;
     (void)drv; (void)buf; (void)count; (void)f;

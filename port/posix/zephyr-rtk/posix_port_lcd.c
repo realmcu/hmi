@@ -93,7 +93,7 @@ static void *lcd_open(void *drv_data, const char *path)
     lcd_file_t *file = lcd_file_alloc();
     if (!file)
     {
-        return NULL;
+        return POSIX_OPEN_ERR;
     }
 
     file->drv             = drv;
@@ -136,8 +136,8 @@ static int lcd_close(void *drv_data, void *file_priv)
  * Because the ioctl header provided does NOT define posix_lcd_write_t,
  * we always use convention (b): raw buffer + current window.
  */
-static int lcd_write(void *drv_data, void *file_priv,
-                     const void *buf, size_t len)
+static posix_ssize_t lcd_write(void *drv_data, void *file_priv,
+                               const void *buf, size_t len)
 {
     (void)drv_data;
     lcd_file_t *file = (lcd_file_t *)file_priv;
@@ -155,10 +155,10 @@ static int lcd_write(void *drv_data, void *file_priv,
     rtk_lcd_hal_start_transfer((void *)buf, (uint32_t)len);
     rtk_lcd_hal_transfer_done();
 
-    return (int)len;
+    return (posix_ssize_t)len;
 }
 
-static int lcd_read(void *drv_data, void *file_priv, void *buf, size_t count)
+static posix_ssize_t lcd_read(void *drv_data, void *file_priv, void *buf, size_t count)
 {
     (void)drv_data;
     (void)file_priv;

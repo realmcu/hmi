@@ -13,14 +13,14 @@ static void *adc_open(void *d, const char *p)
 static int adc_close(void *d, void *f) { (void)d; /*free f*/; return 0; }
 
 /* posix_read = 单次采样（默认 channel 0） */
-static int adc_read(void *d, void *f, void *buf, size_t count)
+static posix_ssize_t adc_read(void *d, void *f, void *buf, size_t count)
 {
     (void)d; adc_file_t *file = (adc_file_t *)f;
     if (count < sizeof(uint32_t)) { return POSIX_ERR_INVAL; }
     /* *(uint32_t*)buf = hw_adc_read(file->drv->reg_base, 0); */
-    (void)file; return sizeof(uint32_t);
+    (void)file; return (posix_ssize_t)sizeof(uint32_t);
 }
-static int adc_write(void *d, void *f, const void *b, size_t c)
+static posix_ssize_t adc_write(void *d, void *f, const void *b, size_t c)
 {
     (void)d; (void)f; (void)b; (void)c; return POSIX_ERR_NOSUPP;
 }

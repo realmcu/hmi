@@ -14,13 +14,13 @@ static void *lcd_open(void *d, const char *p)
 static int lcd_close(void *d, void *f) { (void)d; /*free f*/; return 0; }
 
 /* posix_write = 发像素数据（刷屏） */
-static int lcd_write(void *d, void *f, const void *buf, size_t len)
+static posix_ssize_t lcd_write(void *d, void *f, const void *buf, size_t len)
 {
     (void)d; lcd_file_t *file = (lcd_file_t *)f;
     /* hw_lcd_send_data(file->drv->reg_base, buf, len); */
-    (void)file; (void)buf; (void)len; return (int)len;
+    (void)file; (void)buf; (void)len; return (posix_ssize_t)len;
 }
-static int lcd_read(void *d, void *f, void *b, size_t c)
+static posix_ssize_t lcd_read(void *d, void *f, void *b, size_t c)
 {
     (void)d; (void)f; (void)b; (void)c; return POSIX_ERR_NOSUPP;
 }

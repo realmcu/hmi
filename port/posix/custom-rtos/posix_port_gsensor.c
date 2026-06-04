@@ -13,15 +13,15 @@ static void *gsensor_open(void *d, const char *p)
 static int gsensor_close(void *d, void *f) { (void)d; /*free f*/; return 0; }
 
 /* posix_read = 读三轴数据 */
-static int gsensor_read(void *d, void *f, void *buf, size_t count)
+static posix_ssize_t gsensor_read(void *d, void *f, void *buf, size_t count)
 {
     gsensor_drv_t *drv = (gsensor_drv_t *)d; (void)f;
     if (count < sizeof(posix_gsensor_axis_t)) { return POSIX_ERR_INVAL; }
     /* hw_gsensor_read_xyz(drv->unit, (posix_gsensor_axis_t *)buf); */
     (void)drv; (void)buf; (void)count;
-    return sizeof(posix_gsensor_axis_t);
+    return (posix_ssize_t)sizeof(posix_gsensor_axis_t);
 }
-static int gsensor_write(void *d, void *f, const void *b, size_t c)
+static posix_ssize_t gsensor_write(void *d, void *f, const void *b, size_t c)
 {
     (void)d; (void)f; (void)b; (void)c; return POSIX_ERR_NOSUPP;
 }
