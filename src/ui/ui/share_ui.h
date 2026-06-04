@@ -1,6 +1,6 @@
 /**
  * share UI Definition (Auto-generated, do not modify manually)
- * Generated at: 2026-06-02T11:57:21.537Z
+ * Generated at: 2026-06-04T02:36:21.867Z
  */
 #ifndef SHARE_UI_H
 #define SHARE_UI_H

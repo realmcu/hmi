@@ -220,7 +220,7 @@ static struct gui_os_api os_api =
     .mem_size = GUI_HEAP_SIZE,
 
     .lower_mem_addr = (void *)(0x4000000 + 360 * 360 * 2 * 2),
-    .lower_mem_size = 0x300000,
+    .lower_mem_size = 0x200000,
     .mem_threshold_size = 10 * 1024,
 
 #if (F_APP_GUI_USE_PSRAM == 1)

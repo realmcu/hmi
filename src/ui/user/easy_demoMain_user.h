@@ -10,8 +10,8 @@
  */
 
 // Add custom declarations here
-#define  SCREEN_H  360
-#define  MAINFACE_NUM  10
+#define  SCREEN_SIZE  360
+#define  MAINFACE_NUM_MAX  8
 
 
 typedef enum
@@ -19,6 +19,12 @@ typedef enum
     SRC_IMG = 0,
     SRC_VIDEO,
 } MAINFACE_SRC_TYPE;
+
+typedef struct mainface_src
+{
+    void *data;
+    MAINFACE_SRC_TYPE type;
+} mainface_src_t;
 
 typedef enum
 {
@@ -30,8 +36,7 @@ typedef enum
 
 extern uint8_t mainface_idx;
 extern uint8_t mainface_num;
-extern MAINFACE_SRC_TYPE mainface_src_type;
-extern void *mainface_list[MAINFACE_NUM];
+extern mainface_src_t mainface_list[MAINFACE_NUM_MAX];
 
 extern bool is_auto_sleep_mode;
 extern bool is_bt_connect;
@@ -49,5 +54,9 @@ void click_share_icon(void *obj, gui_event_t *e);
 void click_delete_icon(void *obj, gui_event_t *e);
 void click_delete_icon_detail(void *obj, gui_event_t *e);
 void click_back_icon(void *obj, gui_event_t *e);
+
+
+void mainface_list_add(gui_msg_t *msg); //msg->payload should be mainface_src_t
+uint8_t mainface_list_init(void **data_list, uint32_t n); //ret: user's mainface num
 
 #endif // EASY_DEMOMAIN_USER_H

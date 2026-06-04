@@ -8,7 +8,7 @@
 #define VERSION_MINOR            0
 #define VERSION_REVISION         0
 #define VERSION_BUILDNUM         0
-#define VERSION_GCID             0xe07c8126
+#define VERSION_GCID             0x6d64561e
 #define CUSTOMER_NAME            sdk-v1
 #define CN_1                     's'
 #define CN_2                     'd'
@@ -18,14 +18,14 @@
 #define CN_6                     '1'
 #define CN_7                     '#'
 #define CN_8                     '#'
-#define BUILDING_TIME            Tue Jun  2 19:57:59 2026
+#define BUILDING_TIME            Thu Jun  4 10:42:27 2026
 #define NAME2STR(a)              #a
 #define CUSTOMER_NAME_S          #NAME2STR(CUSTOMER_NAME)
 #define NUM4STR(a,b,c,d)         #a "." #b "." #c "." #d
 #define VERSIONBUILDSTR(a,b,c,d) NUM4STR(a,b,c,d)
 #define VERSION_BUILD_STR        VERSIONBUILDSTR(VERSION_MAJOR,VERSION_MINOR,VERSION_REVISION,VERSION_BUILD)
-#define COMMIT                   e07c812662fc
-#define BUILDING_TIME_STR        Tue_2026_06_02_19_57_59
+#define COMMIT                   6d64561ee2f9
+#define BUILDING_TIME_STR        Thu_2026_06_04_10_42_27
 #define BUILDER                  roy_xie
 #define BUILDER_STR              roy_xie
 #define TO_STR(R) NAME2STR(R)
