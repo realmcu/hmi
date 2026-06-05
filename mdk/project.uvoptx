@@ -340,8 +340,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\..\..\..\bin\rtl87x3ep\gap_utils.lib</PathWithFileName>
-      <FilenameWithoutPath>gap_utils.lib</FilenameWithoutPath>
+      <PathWithFileName>..\..\..\..\bin\rtl87x3ep\gap_lib\gap_utils_4M.lib</PathWithFileName>
+      <FilenameWithoutPath>gap_utils_4M.lib</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>
