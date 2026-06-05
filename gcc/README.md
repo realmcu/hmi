@@ -2,42 +2,36 @@
 
 ## Overview
 
-HMI Dashboard supports GCC compilation with two build modes:
+HMI Dashboard supports GCC compilation with a 2×2 build mode matrix: GUI source (`src`) or precompiled library (`lib`), combined with OTA slot A (`bank0`) or B (`bank1`).
 
-1. **Source Code Mode** - Build HoneyGUI from source code (GUI sub-repository)
-2. **Library Mode** - Link with precompiled `libgui.a`
+## Build Mode Matrix
 
-## Build Modes Comparison
-
-| Feature | Source Code Mode | Library Mode |
-|---------|-----------------|--------------|
-| Build Time | Longer | Shorter |
-| Flexibility | Can select demos | Fixed demo |
+| Feature | Source Mode (src) | Library Mode (lib) |
+|---------|-------------------|--------------------|
+| Build Time | Longer (5-10 min first run) | Shorter (~1 min) |
 | Debug Support | Full source debug | Limited |
-| Configuration | All Kconfig options | None |
-| Required | GUI sub-repository | libgui.a |
+| Demo Selection | Switchable | Fixed |
+| Required | GUI sub-repository | libgui.a (provided) |
 
 ## Build Commands
 
-### Source Code Mode
+Run from the SDK root directory (`honeycomb/sdk/`):
 
 ```powershell
-# In SDK root directory
-cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src -DIS_CHECK_FLOW=off -Dcompile_lib_only=OFF -B build
+# Default: source mode, bank0
+cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src_bank0 -DIS_CHECK_FLOW=off -Dcompile_lib_only=OFF -B build
 cmake --build build
 ```
 
-### Library Mode
+For other modes, replace the suffix: `src_bank0` → `src_bank1` / `lib_bank0` / `lib_bank1`.
 
-```powershell
-# In SDK root directory
-cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_lib -DIS_CHECK_FLOW=off -Dcompile_lib_only=OFF -B build
-cmake --build build
-```
+> **Tip**: Use `lib_bank0` for daily iteration; switch to `src_bank0` only when debugging GUI internals.
 
-## Demo Selection (Source Code Mode Only)
+## Demo Selection (Source Mode Only)
 
-Edit `defconfig.RTL8773E.hmi_dashboard_src` to select different demos:
+Edit `defconfig.RTL8773E.hmi_dashboard_src_bank0` to select a demo (only one at a time):
+
+> `src_bank1` has the same demo options — it differs only by `CONFIG_REALTEK_COMPILE_BANK1=y`.
 
 ```ini
 # Demo Selection - Uncomment ONE option
@@ -52,21 +46,20 @@ CONFIG_REALTEK_BUILD_EXAMPLE_IMAGE_WIDGET=y
 
 ## Output Files
 
-After successful build, output files are located in:
+Build outputs are isolated per mode under `board/evb/hmi_dashboard/bin/RTL8773E.hmi_dashboard_<mode>/`:
 
 ```
-board/evb/hmi_dashboard/bin/<config_name>/
-├── honeygui_bank0.elf      # ELF file
-├── honeygui_bank0.hex      # HEX file
-├── honeygui_bank0.bin      # Binary file
-├── honeygui_bank0_MP.bin   # Signed binary with header
-├── honeygui_bank0.map      # Link map
-└── honeygui_bank0.disasm   # Disassembly
+# Example: bin/RTL8773E.hmi_dashboard_src_bank0/
+honeygui_src.elf              # ELF file
+dashboard_bank0_MP-*.bin      # Signed binary for flashing
+
+# bank1 modes (src_bank1 / lib_bank1):
+dashboard_bank1_MP-*.bin      # Signed binary for flashing
 ```
 
 ## Feature Configuration
 
-Available GUI features in `defconfig.RTL8773E.hmi_dashboard_src`:
+Available GUI features in `defconfig.RTL8773E.hmi_dashboard_src_bank0`:
 
 ```ini
 # 3D Graphics

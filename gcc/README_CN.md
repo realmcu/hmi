@@ -2,12 +2,12 @@
 
 HMI Dashboard 是 HoneyGUI 在 RTL8773E 平台上的演示应用，支持 GCC 编译。
 
-## 两种构建模式
+## 构建模式矩阵
 
-| 特性 | 源码模式 | 库模式 |
-|------|----------|--------|
+| 特性 | 源码模式（src） | 库模式（lib） |
+|------|----------------|--------------|
 | 编译速度 | 较慢（首次 5-10 分钟） | 快（约 1 分钟） |
-| 调式 | 可调试 GUI 源码 | 无法调试 GUI 内部 |
+| 调试 | 可调试 GUI 源码 | 无法调试 GUI 内部 |
 | Demo 选择 | 可切换 | 固定 |
 | 前置条件 | 需 GUI 子仓库 | 需 `libgui.a`（已提供） |
 
@@ -16,20 +16,18 @@ HMI Dashboard 是 HoneyGUI 在 RTL8773E 平台上的演示应用，支持 GCC �
 在仓库根目录 `sdk/` 下执行：
 
 ```powershell
-# === 源码模式 ===
-cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src -DIS_CHECK_FLOW=off -Dcompile_lib_only=OFF -B build
-cmake --build build
-
-# === 库模式 ===
-cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_lib -DIS_CHECK_FLOW=off -Dcompile_lib_only=OFF -B build
+# 默认：源码模式，A 槽
+cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src_bank0 -DIS_CHECK_FLOW=off -Dcompile_lib_only=OFF -B build
 cmake --build build
 ```
 
-> **说明**：`lib_gcc/` 下的通用 `.a` 已预编译在仓库中，无需额外处理。
+其他 mode 只需将末尾替换：`src_bank0` → `src_bank1` / `lib_bank0` / `lib_bank1`。
+
+> **推荐**：日常迭代使用 `lib_bank0`；需要调试 GUI 源码时切换到 `src_bank0`。
 
 ## 选择 Demo（仅源码模式）
 
-编辑 `defconfig.RTL8773E.hmi_dashboard_src`，取消注释一个 Demo 选项（只能选一个）：
+编辑 `defconfig.RTL8773E.hmi_dashboard_src_bank0`，取消注释一个 Demo 选项（只能选一个）：
 
 ```ini
 # 2D 图形
@@ -54,13 +52,15 @@ CONFIG_REALTEK_BUILD_EXAMPLE_IMAGE_WIDGET=y
 
 ## 输出文件
 
-编译后在 `board/evb/hmi_dashboard/bin/<config_name>/`：
+编译后产物隔离到 `board/evb/hmi_dashboard/bin/RTL8773E.hmi_dashboard_<mode>/`：
 
 ```
-honeygui_bank0.elf       ELF 文件
-honeygui_bank0.bin       烧录用 BIN
-honeygui_bank0_MP.bin    含签名的 BIN
-honeygui_bank0.map       内存映射
+# 以 src_bank0 为例：bin/RTL8773E.hmi_dashboard_src_bank0/
+honeygui_src.elf              ELF 文件
+dashboard_bank0_MP-*.bin      含签名的烧录 BIN
+
+# bank1 mode 产物（bin/RTL8773E.hmi_dashboard_src_bank1/ 或 lib_bank1/）
+dashboard_bank1_MP-*.bin      含签名的烧录 BIN
 ```
 
 ## 常见问题

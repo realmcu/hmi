@@ -12,7 +12,7 @@ applications with display and wireless connectivity.
 | Bluetooth (BLE + BR/EDR) | 🚧 In Development |
 | BLE private protocol | 🚧 In Development |
 | OTA firmware update | 🚧 In Development |
-| Dual build modes (source / library) | ✅ Available |
+| 4-mode build matrix (src/lib × bank0/bank1) | ✅ Available |
 | Dual toolchain support (GCC / Keil MDK) | ✅ Available |
 
 ## Hardware
@@ -45,12 +45,14 @@ west update
 ### 2. Build the firmware
 
 ```bash
-# Source mode — compiles HoneyGUI from source (full build)
+# Default: source mode, bank0 (OTA slot A)
 west build
 
-# Library mode — links precompiled libgui.a (faster iteration)
-west build -m lib
+# Library mode, bank0 — links precompiled libgui.a (faster iteration)
+west build -m lib_bank0
 ```
+
+Other modes: `src_bank1` / `lib_bank1` (OTA slot B) — replace the `-m` value accordingly.
 
 ### 3. Flash the firmware
 
@@ -63,14 +65,17 @@ west flash -p COM5    # specify a different port
 
 | Command | Description |
 |---|---|
-| `west build` | Full source build |
-| `west build -m lib` | Library mode (precompiled GUI) |
+| `west build` | Default build (equivalent to `-m src_bank0`) |
+| `west build -m lib_bank0` | Library mode, slot A (precompiled GUI, faster) |
+| `west build -m src_bank1` | Source mode, slot B |
+| `west build -m lib_bank1` | Library mode, slot B |
 | `west build -c` | Clean then rebuild |
 | `west build -j 8` | Set parallel job count |
 | `west clean` | Remove build directory |
 | `west clean --all` | Remove build directory and bin output |
-| `west flash` | Flash via serial (default COM3) |
+| `west flash` | Flash via serial (default COM3, src_bank0) |
 | `west flash -p <port>` | Flash via specified port |
+| `west flash -m <mode>` | Flash image for specified mode (must match build) |
 | `west size` | Show ELF section sizes |
 | `west info` | Show workspace and build status |
 
@@ -79,22 +84,16 @@ west flash -p COM5    # specify a different port
 Run from the `honeycomb/sdk/` directory:
 
 ```bash
-# Source mode
+# Default: source mode, bank0
 cmake -G Ninja \
-  -Dkconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src \
-  -DIS_CHECK_FLOW=off \
-  -Dcompile_lib_only=OFF \
-  -B build
-cmake --build build
-
-# Library mode
-cmake -G Ninja \
-  -Dkconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_lib \
+  -Dkconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src_bank0 \
   -DIS_CHECK_FLOW=off \
   -Dcompile_lib_only=OFF \
   -B build
 cmake --build build
 ```
+
+For other modes, replace the suffix: `src_bank0` → `src_bank1` / `lib_bank0` / `lib_bank1`.
 
 ### Keil MDK
 

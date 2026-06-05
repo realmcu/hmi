@@ -11,7 +11,7 @@
 | 蓝牙（BLE + BR/EDR） | 🚧 开发中 |
 | BLE 私有协议 | 🚧 开发中 |
 | OTA 空中升级 | 🚧 开发中 |
-| 双构建模式（源码 / 预编译库） | ✅ 可用 |
+| 4 种构建模式（src/lib × bank0/bank1） | ✅ 可用 |
 | 双工具链支持（GCC / Keil MDK） | ✅ 可用 |
 
 ## 硬件规格
@@ -44,12 +44,14 @@ west update
 ### 2. 构建固件
 
 ```bash
-# 源码模式——从源码编译 HoneyGUI（完整构建）
+# 默认：源码模式，bank0（OTA A 槽）
 west build
 
-# 库模式——链接预编译 libgui.a（迭代更快）
-west build -m lib
+# 库模式，bank0——链接预编译 libgui.a（迭代更快）
+west build -m lib_bank0
 ```
+
+其他 mode：`src_bank1` / `lib_bank1`（OTA B 槽），用法同上替换 `-m` 参数。
 
 ### 3. 烧录固件
 
@@ -62,14 +64,17 @@ west flash -p COM5    # 指定串口
 
 | 命令 | 说明 |
 |---|---|
-| `west build` | 完整源码构建 |
-| `west build -m lib` | 库模式（预编译 GUI） |
+| `west build` | 默认构建（等价 `-m src_bank0`） |
+| `west build -m lib_bank0` | 库模式，A 槽（预编译 GUI，迭代更快） |
+| `west build -m src_bank1` | 源码模式，B 槽 |
+| `west build -m lib_bank1` | 库模式，B 槽 |
 | `west build -c` | 清空后重新构建 |
 | `west build -j 8` | 指定并行 job 数 |
 | `west clean` | 删除 build 目录 |
 | `west clean --all` | 同时删除 build 目录和 bin 输出 |
-| `west flash` | 通过串口烧录（默认 COM3） |
+| `west flash` | 通过串口烧录（默认 COM3，src_bank0） |
 | `west flash -p <port>` | 指定串口烧录 |
+| `west flash -m <mode>` | 烧录指定 mode 的镜像（须与 build 时一致） |
 | `west size` | 查看 ELF 各 section 大小 |
 | `west info` | 显示 workspace 及构建状态 |
 
@@ -78,22 +83,16 @@ west flash -p COM5    # 指定串口
 在 `honeycomb/sdk/` 目录下执行：
 
 ```bash
-# 源码模式
+# 默认：源码模式，bank0
 cmake -G Ninja \
-  -Dkconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src \
-  -DIS_CHECK_FLOW=off \
-  -Dcompile_lib_only=OFF \
-  -B build
-cmake --build build
-
-# 库模式
-cmake -G Ninja \
-  -Dkconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_lib \
+  -Dkconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src_bank0 \
   -DIS_CHECK_FLOW=off \
   -Dcompile_lib_only=OFF \
   -B build
 cmake --build build
 ```
+
+其他 mode 将末尾替换：`src_bank0` → `src_bank1` / `lib_bank0` / `lib_bank1`。
 
 ### Keil MDK
 
