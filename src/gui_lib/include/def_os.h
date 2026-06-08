@@ -36,6 +36,7 @@ typedef struct gui_os_api
     bool (*mq_send)(void *handle, void *buffer, uint32_t size, uint32_t timeout);
     bool (*mq_send_urgent)(void *handle, void *buffer, uint32_t size, uint32_t timeout);
     bool (*mq_recv)(void *handle, void *buffer, uint32_t size, uint32_t timeout);
+    uint32_t (*mq_count)(void *handle);
 
     void *(*f_malloc)(uint32_t);
     void *(*f_realloc)(void *ptr, uint32_t);

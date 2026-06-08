@@ -19,8 +19,29 @@
 #include "file_db_port_nor_flash.h"
 #include "fmc_api.h"
 
+#if 0  // streaming
+#include "gui_stream.h"
+#define STREAM_DB  (void *)(0x4000000 + 0x300000)
+#define STREAM_SIZE  0x100000u
+#define MAX_FRAME       (50u * 1024u)   /* per-buffer cap (>> any real frame) */
+#define POOL_BUFS       6u              /* FIFO depth per stream              */
+// static uint8_t       s_pool_duck[MAX_FRAME * POOL_BUFS + 64u];
+typedef struct
+{
+    // avi_info_t       info;
+    stp_transport_t *tp;
+    uint8_t         *pool;
+    uint32_t         pool_size;
+    uint32_t         interval_ms;
+    const char      *label;
+    volatile bool    running;
+} demo_stream_t;
+#endif
+
+
+
 // #define MOUNT_DB  (void *)(0x4000000 + 0x300000)
-#define MOUNT_DB  (void *)(0x240F400 + 0x400000)
+#define MOUNT_DB  (void *)(0x240F400 + 0x700000u)
 static uint8_t s_dir_cache[4096];   /* >= align_up(dir_bytes, sector_size) */
 
 int fdb_flash_nor_read(uint32_t addr, void *data, uint32_t len)
@@ -56,13 +77,10 @@ int main(void)
     extern void rtk_lcd_hal_init(void);
     rtk_lcd_hal_init();
 
-    // file_db mount
-    // memset(MOUNT_DB, 0, 0x100000);
-    // fdb_port_ram_setup(MOUNT_DB, 0x100000);
-    // fdb_init(fdb_port_ram_get_ops());
-
 
     wdg_kick();
+
+#if 1  // flash file store
 //    fdb_flash_nor_erase_sector((uint32_t)MOUNT_DB);
     int fmc_rc = fmc_flash_nor_read((uint32_t)MOUNT_DB, s_dir_cache, sizeof(s_dir_cache));
     APP_PRINT_INFO1("fdb fmc_flash_nor_read rc=%d", fmc_rc);
@@ -72,7 +90,7 @@ int main(void)
         .program = (fdb_nor_hal_write_t)fdb_flash_nor_prog_sector,     /* page-program；len 受 page_size 限制 */
         .erase_sector = (fdb_nor_hal_erase_t)fdb_flash_nor_erase_sector,/* 擦一个扇区，参数必须扇区对齐       */
         .base_addr = (uint32_t)MOUNT_DB,   /* file_db 区域在芯片上的起始地址      */
-        .region_size = 0x300000, /* file_db 区域大小                    */
+        .region_size = 0x200000, /* file_db 区域大小                    */
         .sector_size = 4096, /* 例如 4096                           */
         .page_size = 256,   /* 例如 256；< sector_size             */
         .dir_bytes            = 4096,                 /* == data_offset(FDB_DATA_ALIGN=4096 时) */
@@ -132,6 +150,41 @@ int main(void)
     // construct resouce list
     extern uint8_t mainface_list_init(void **data_list, uint32_t n);
     mainface_list_init(file_array, file_num);
+#endif
+
+#if 0  // streaming
+
+    extern demo_stream_t s_stream_bt;
+    s_stream_bt.tp          = NULL;
+    s_stream_bt.pool        = STREAM_DB;
+    s_stream_bt.pool_size   = STREAM_SIZE;
+    s_stream_bt.label       = NULL;
+    s_stream_bt.interval_ms = 46;
+
+    static const stp_class_cfg_t classes[] =
+    {
+        { .buf_size = MAX_FRAME, .buf_count = POOL_BUFS },
+    };
+    stp_config_t cfg;
+    stp_config_default(&cfg);
+    cfg.pool        = s_stream_bt.pool;
+    cfg.pool_size   = s_stream_bt.pool_size;
+    cfg.align       = 4;
+    cfg.classes     = classes;
+    cfg.class_count = 1;
+    cfg.drop_mode   = STP_DROP_NONE;
+
+    s_stream_bt.tp = stp_create(&cfg);
+    if (!s_stream_bt.tp)
+    {
+        DBG_DIRECT("stream demo: stp_create failed\n");
+        return NULL;
+    }
+
+
+#endif
+
+
 
 
 
