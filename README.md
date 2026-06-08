@@ -42,6 +42,9 @@ west init -l .manifest
 west update
 ```
 
+After the initial setup, use `west sync` instead of `west update` for day-to-day syncing.
+It force-updates the manifest repo first, then runs `west update` and submodule updates.
+
 ### 2. Build the firmware
 
 ```bash
@@ -77,6 +80,7 @@ west flash -p COM5    # specify a different port
 | `west flash -p <port>` | Flash via specified port |
 | `west flash -m <mode>` | Flash image for specified mode (must match build) |
 | `west size` | Show ELF section sizes |
+| `west sync` | Force-update manifest repo, then `west update`, then submodule update |
 | `west info` | Show workspace and build status |
 
 ### CMake direct invocation (alternative)

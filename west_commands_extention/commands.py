@@ -255,8 +255,9 @@ class SyncCommand(WestCommand):
     def __init__(self):
         super().__init__(
             'sync', 'update all repos and submodules',
-            'Run west update then git submodule update --init --recursive '
-            'for every project that contains a .gitmodules file'
+            'Force-update the manifest repo, run west update, then '
+            'git submodule update --init --recursive for every project '
+            'that contains a .gitmodules file'
         )
 
     def do_add_parser(self, parser_adder, **kwargs):
@@ -265,6 +266,28 @@ class SyncCommand(WestCommand):
 
     def do_run(self, args, unknown_args):
         topdir = self.manifest.topdir
+
+        # Step 0: force-update the manifest repo itself
+        manifest_dir = self.manifest.projects[0].abspath
+        log.inf(f'Fetching manifest repo: {manifest_dir}')
+        r = subprocess.run(['git', 'fetch', 'origin'], cwd=manifest_dir)
+        if r.returncode != 0:
+            log.wrn('git fetch on manifest repo failed, skipping reset')
+        else:
+            res = subprocess.run(
+                ['git', 'branch', '--show-current'],
+                cwd=manifest_dir, capture_output=True, text=True,
+            )
+            branch = res.stdout.strip()
+            if branch:
+                r = subprocess.run(
+                    ['git', 'reset', '--hard', f'origin/{branch}'],
+                    cwd=manifest_dir,
+                )
+                if r.returncode != 0:
+                    log.wrn('git reset --hard on manifest repo failed')
+            else:
+                log.wrn('Manifest repo is in detached HEAD state, skipping reset')
 
         # Step 1: delegate to the real west update, forwarding any extra flags
         cmd = ['west', 'update'] + list(unknown_args)

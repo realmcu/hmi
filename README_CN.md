@@ -41,6 +41,9 @@ west init -l .manifest
 west update
 ```
 
+初始化完成后，日常同步请用 `west sync` 代替 `west update`。
+它会先强制更新 manifest 仓库，再执行 `west update` 和 submodule 更新。
+
 ### 2. 构建固件
 
 ```bash
@@ -76,6 +79,7 @@ west flash -p COM5    # 指定串口
 | `west flash -p <port>` | 指定串口烧录 |
 | `west flash -m <mode>` | 烧录指定 mode 的镜像（须与 build 时一致） |
 | `west size` | 查看 ELF 各 section 大小 |
+| `west sync` | 强制更新 manifest 仓库 + `west update` + submodule 更新 |
 | `west info` | 显示 workspace 及构建状态 |
 
 ### CMake 直接调用（备用方式）

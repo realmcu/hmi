@@ -106,11 +106,13 @@ MP binary : 126,976 bytes  (124.0 KB)
 
 ### `west sync`
 
-**替代 `west update` 的推荐命令**：先执行标准 `west update`，再对所有包含
-`.gitmodules` 的 West project 自动执行 `git submodule update --init --recursive`。
+**替代 `west update` 的推荐命令**，按顺序执行三步：
+
+1. **强制更新 manifest 仓库**（`.manifest/`）：`git fetch origin` + `git reset --hard origin/<branch>`
+2. **`west update`**：按最新 manifest YAML 同步所有 West project
+3. **submodule 更新**：对所有含 `.gitmodules` 的 project 执行 `git submodule update --init --recursive`
 
 ```bash
-# 等价于：west update && git -C honeycomb submodule update --init --recursive
 west sync
 
 # 可以透传任何 west update 的原生参数
@@ -118,7 +120,7 @@ west sync --narrow
 west sync -o=--depth=1
 ```
 
-> 不破坏 `west update` 原始行为，仅在其完成后追加 submodule 更新步骤。
+> manifest 仓库处于 detached HEAD 时，步骤 1 会跳过 reset 并打印警告，不阻断后续流程。
 
 ## MDK 工程
 
