@@ -11,8 +11,7 @@ message(STATUS "[APP]hmi_dashboard cmake start build")
 #==============================================================================
 include_directories(${REALTEK_SDK_BASE_PATH}/inc/os)
 
-# Preinclude file (equivalent to MDK pre_define.h)
-# This defines RAM_TYPE_DATA_ON and other macros needed by display drivers
+# Defines RAM_TYPE_DATA_ON and other macros needed by display drivers
 set(PRE_DEFINE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../mdk/pre_define.h)
 
 # Add preinclude globally so display library also gets it
@@ -42,7 +41,7 @@ endif()
 #==============================================================================
 # GUI Library Build (source or precompiled)
 #==============================================================================
-if(CONFIG_REALTEK_HONEYGUI)
+if(CONFIG_REALTEK_HONEYGUI_BUILD_SRC)
     add_subdirectory(${REALTEK_SDK_BASE_PATH}/src/sample/gui ${CMAKE_CURRENT_BINARY_DIR}/gui)
 endif()
 
@@ -68,83 +67,81 @@ set_target_properties(dashboard PROPERTIES
                       OUTPUT_NAME dashboard_${build_bank})
 
 #==============================================================================
-# GUI Library Configuration
+# Library Link Configuration
 #==============================================================================
-if(CONFIG_REALTEK_HONEYGUI)
-    message(STATUS "[HoneyGUI] Building from source code")
+if(compile_lib)
+    target_link_libraries(dashboard PUBLIC
+        ${bleMgrLib_link}
+        ${btmLib_link}
+        ${halLib_link}
+        ${filesystemLib_link}
+        ${sysmLib_link}
+        ${remoteLib_link}
+        )
+endif()
 
+if(CONFIG_REALTEK_HONEYGUI_BUILD_SRC)
+    message(STATUS "[HoneyGUI] Building from source code")
     target_link_libraries(dashboard PUBLIC
         -Wl,--whole-archive guiLib -Wl,--no-whole-archive
-        ${lib_gap}
-        ${lib_rom}
-        ${lib_upperstack}
-        halLib
-        filesystemLib
-        sysmLib
-        remoteLib
-        romLib
-        upperstackLib
         )
-
-    # btm/ble_mgr built by SDK as STATIC libs (CONFIG_REALTEK_BTM=y / _BLE_MGR=y)
-    # Output to bin/rtl87x3ep/lib_gcc/ via ARCHIVE_OUTPUT_DIRECTORY
-    # Float ABI verified compatible: SDK libs built with same -mfpu/-mfloat-abi flags.
-    target_link_libraries(dashboard PUBLIC
-        bleMgrLib
-        btmLib
-    )
-    target_include_directories(dashboard PRIVATE
-        ${REALTEK_SDK_BASE_PATH}/inc/ble_mgr
-        ${REALTEK_SDK_BASE_PATH}/inc/ble_mgr/bond
-        ${REALTEK_SDK_BASE_PATH}/inc/framework/bt
-    )
-    target_compile_definitions(dashboard PRIVATE
-        CONFIG_REALTEK_BT_GATT_SVC_SUPPORT=1
-        CONFIG_REALTEK_BT_GATT_CLIENT_SUPPORT=1
-    )
-    # Propagate GATT support macros to bleMgrLib so its sources see them
-    if(TARGET bleMgrLib)
-        target_compile_definitions(bleMgrLib PRIVATE
-            CONFIG_REALTEK_BT_GATT_SVC_SUPPORT=1
-            CONFIG_REALTEK_BT_GATT_CLIENT_SUPPORT=1
-        )
-    endif()
-
-    # Link display driver library if enabled
-    if(CONFIG_REALTEK_DISPLAY)
-        target_link_libraries(dashboard PUBLIC realtek_display_driver_library)
-    endif()
-
     target_compile_definitions(dashboard PRIVATE
         CONFIG_REALTEK_HONEYGUI=1
         CONFIG_REALTEK_BUILD_HONEYGUI_SRC=1
         ENABLE_HONEYGUI
     )
-
 else()
-    # Use precompiled library
     message(STATUS "[HoneyGUI] Using precompiled library")
-
     target_include_directories(dashboard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/gui_lib/include)
     target_link_libraries(dashboard PUBLIC
+        -Wl,--whole-archive
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/gui_lib/gcc/libgui.a
-        ${lib_gap}
-        ${lib_rom}
-        ${lib_upperstack}
-        halLib
-        filesystemLib
-        sysmLib
-        remoteLib
-        romLib
-        upperstackLib
+        -Wl,--no-whole-archive
         )
+    target_compile_definitions(dashboard PRIVATE
+        ENABLE_HONEYGUI
+    )
+    # display lib links `guiLib` when GUI_ACC is on; provide a header-only stub
+    # so acc_ppe.c finds the GUI headers (symbols come from libgui.a above).
+    if(NOT TARGET guiLib)
+        add_library(guiLib INTERFACE)
+        target_include_directories(guiLib INTERFACE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../src/gui_lib/include)
+    endif()
+endif()
+
+# ble_mgr/btm have circular dependency with host stack; wrap with --start-group.
+target_link_libraries(dashboard PUBLIC
+    -Wl,--start-group
+    ${lib_gap}
+    ${lib_rom}
+    ${lib_upperstack}
+    bleMgrLib
+    btmLib
+    -Wl,--end-group
+    halLib
+    filesystemLib
+    sysmLib
+    remoteLib
+    upperstackLib
+    m
+    )
+
+target_compile_definitions(dashboard PRIVATE
+    CONFIG_REALTEK_BT_GATT_SVC_SUPPORT=1
+    CONFIG_REALTEK_BT_GATT_CLIENT_SUPPORT=1
+)
+
+if(CONFIG_REALTEK_DISPLAY)
+    target_link_libraries(dashboard PUBLIC realtek_display_driver_library)
 endif()
 
 #==============================================================================
 # Application Source Files
 #==============================================================================
 file(GLOB APP_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../src/application/*.c)
-if(CONFIG_REALTEK_HONEYGUI)
+if(CONFIG_REALTEK_HONEYGUI_BUILD_SRC)
+    # Source mode pulls demo content from the gui sample, so drop the local example.
     list(FILTER APP_SOURCES EXCLUDE REGEX "example_gui_img\\.c$")
 endif()
 target_sources(dashboard PRIVATE ${APP_SOURCES})
@@ -158,11 +155,6 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/hmi_rtk_bt
                  ${CMAKE_CURRENT_BINARY_DIR}/hmi_rtk_bt)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/protocol
                  ${CMAKE_CURRENT_BINARY_DIR}/protocol)
-
-#==============================================================================
-# BT Framework Sources (btm + ble_mgr)
-#==============================================================================
-# btm framework and ble_mgr provided by btmLib and bleMgrLib (libbtm.a / libble_mgr_all.a)
 
 #==============================================================================
 # IO HAL Sources
@@ -185,16 +177,6 @@ if(CONFIG_REALTEK_ROMFS)
     target_include_directories(dashboard PRIVATE ${DEVICE_SRC_DIR}/system/dfs/romfs)
 endif()
 
-#==============================================================================
-# Library Link (when compile_lib is set)
-#==============================================================================
-if(compile_lib)
-    target_link_libraries(dashboard PUBLIC
-        ${halLib_link}
-        ${filesystemLib_link}
-        ${sysmLib_link}
-        )
-endif()
 
 #==============================================================================
 # Compile Definitions
@@ -216,6 +198,7 @@ target_include_directories(dashboard PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../mdk
     ${sdk_app_dir_path}
     ${REALTEK_SDK_BASE_PATH}/inc/ble_mgr
+    ${REALTEK_SDK_BASE_PATH}/inc/ble_mgr/bond
     ${REALTEK_SDK_BASE_PATH}/inc/framework/bt
     ${REALTEK_SDK_BASE_PATH}/inc/framework/remote
     ${REALTEK_SDK_BASE_PATH}/inc/framework/sysm
@@ -288,7 +271,6 @@ target_link_options(dashboard
 set(gcc_tool_path ${REALTEK_SDK_BASE_PATH}/tool/Gadgets/gcc_tool)
 set(debug_table_tool_path ${REALTEK_SDK_BASE_PATH}/tool/Gadgets/build_debug_table_tool)
 
-# Platform-specific tool selection
 set(gcc_tool_linux_path ${REALTEK_SDK_BASE_PATH}/tool/Gadgets/gcc_tool_linux)
 if(BUILD_IN_WINDOW)
     set(HEX2BIN_TOOL           ${gcc_tool_path}/Hex2Bin.exe)

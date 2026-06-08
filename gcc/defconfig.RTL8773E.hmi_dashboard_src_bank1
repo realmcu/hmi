@@ -27,8 +27,8 @@ CONFIG_REALTEK_APP_HMI_DASHBOARD_SUPPORT=y
 
 # GUI Build Mode - Source Code
 CONFIG_REALTEK_GUI=y
-CONFIG_REALTEK_HONEYGUI_BUILD_SRC=y
 CONFIG_REALTEK_HONEYGUI=y
+CONFIG_REALTEK_HONEYGUI_BUILD_SRC=y
 
 # Demo Selection - Image Widget Demo (default)
 # Uncomment ONE of the following options:
