@@ -116,4 +116,26 @@
 		/* 不写 dht22 属性 → 驱动认定为 DHT11 */
 		status = "okay";
 	};
+
+	/* Board-direct LEDs driven by GPIO. The Rust agent exposes them by
+	 * label: "led1" = 一号灯 (P1_1, gpioa 8).
+	 *
+	 * P2_1 is now dedicated to the WS2812B RGB strip, so only led1 remains
+	 * as a board-direct GPIO LED.
+	 *
+	 * Polarity is absorbed by Zephyr's GPIO_ACTIVE_* flags so higher layers
+	 * can keep using on=1 / off=0 without caring about the board wiring:
+	 *   - led1 (P1_1): cathode tied to GPIO, anode to VCC -> ACTIVE_LOW */
+	claw_leds: claw-leds {
+		compatible = "gpio-leds";
+		led1: led_1 {
+			gpios = <&gpioa 8 GPIO_ACTIVE_LOW>;
+			label = "led1";
+		};
+	};
+
+	/* WS2812B addressable RGB LED strip (30 LEDs) on P2_1 (gpioa 16).
+	 * Driven by software bit-banging from src/ws2812_strip.c — there is no
+	 * DT node for it because we do raw register writes that bypass the
+	 * Zephyr GPIO driver during the timing-critical transmission window. */
 };

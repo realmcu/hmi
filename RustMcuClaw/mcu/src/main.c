@@ -3,6 +3,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/cache.h>
@@ -19,6 +20,7 @@
 #include "psram_init.h"
 #include "rustmcuclaw_mcu.h"
 #include "lcd_sh8601z_410_502_qspi.h"
+#include "ws2812_strip.h"
 
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(touch_device), okay)
 #include "touch_CHSC6417_zephyr.h"
@@ -79,10 +81,9 @@ LOG_MODULE_REGISTER(rustmcuclaw_mcu, LOG_LEVEL_INF);
 static const char *const k_atep_hosts[] =
 {
 
-    "time.windows.com",
+
     "cn.pool.ntp.org",
-    "time.google.com",
-    "time.cloudflare.com",
+
     "pool.ntp.org",
 };
 static uint64_t wall_clock_base_secs = 0;
@@ -1612,6 +1613,146 @@ int claw_mcu_read_temp_humidity(int32_t *temp_milli_c, int32_t *humidity_milli_p
     return 0;
 }
 
+/* ---------- Board-direct LEDs ---------------------------------------- */
+
+/* Each entry is bound at compile time from the `claw_leds { led_1; led_2; }`
+ * node in the overlay. Adding a new LED is a two-step operation: declare a
+ * `led_N { gpios = ...; label = "ledN"; };` child in the overlay, then add a
+ * matching row here. The Rust agent will pick it up automatically through
+ * claw_mcu_led_count() / claw_mcu_led_name(). */
+#define LED_DT_SPEC(node_id) GPIO_DT_SPEC_GET_OR(node_id, gpios, {0})
+
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(claw_leds), okay)
+
+struct claw_led_entry
+{
+    const char *label;
+    struct gpio_dt_spec spec;
+};
+
+static struct claw_led_entry claw_led_table[] =
+{
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(led1), okay)
+    { .label = "led1", .spec = LED_DT_SPEC(DT_NODELABEL(led1)) },
+#endif
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(led2), okay)
+    { .label = "led2", .spec = LED_DT_SPEC(DT_NODELABEL(led2)) },
+#endif
+};
+
+#define CLAW_LED_COUNT ((int)ARRAY_SIZE(claw_led_table))
+
+/* Configure all LEDs as outputs (off) on first use. We do it lazily rather
+ * than at boot so a missing/disabled pinmux only fails the LED tools, not
+ * the whole agent. */
+static int claw_led_ensure_configured(int idx)
+{
+    if (idx < 0 || idx >= CLAW_LED_COUNT)
+    {
+        return -EINVAL;
+    }
+    const struct gpio_dt_spec *spec = &claw_led_table[idx].spec;
+    if (!device_is_ready(spec->port))
+    {
+        LOG_WRN("LED %s: GPIO controller not ready", claw_led_table[idx].label);
+        return -ENODEV;
+    }
+    int ret = gpio_pin_configure_dt(spec, GPIO_OUTPUT_INACTIVE);
+    if (ret < 0)
+    {
+        LOG_WRN("LED %s: configure failed: %d", claw_led_table[idx].label, ret);
+    }
+    return ret;
+}
+
+int claw_mcu_led_count(void)
+{
+    return CLAW_LED_COUNT;
+}
+
+int claw_mcu_led_name(int idx, uint8_t *out, size_t out_cap)
+{
+    if (idx < 0 || idx >= CLAW_LED_COUNT || !out || out_cap == 0)
+    {
+        return -EINVAL;
+    }
+    const char *label = claw_led_table[idx].label;
+    size_t need = strlen(label) + 1;
+    if (need > out_cap)
+    {
+        return -ENOSPC;
+    }
+    memcpy(out, label, need);
+    return 0;
+}
+
+int claw_mcu_led_set(int idx, int on)
+{
+    int ret = claw_led_ensure_configured(idx);
+    if (ret < 0)
+    {
+        return ret;
+    }
+    ret = gpio_pin_set_dt(&claw_led_table[idx].spec, on ? 1 : 0);
+    if (ret < 0)
+    {
+        LOG_WRN("LED %s: set %d failed: %d", claw_led_table[idx].label, on, ret);
+    }
+    else
+    {
+        LOG_INF("LED %s -> %s", claw_led_table[idx].label, on ? "on" : "off");
+    }
+    return ret;
+}
+
+int claw_mcu_led_get(int idx)
+{
+    int ret = claw_led_ensure_configured(idx);
+    if (ret < 0)
+    {
+        return ret;
+    }
+    int v = gpio_pin_get_dt(&claw_led_table[idx].spec);
+    if (v < 0)
+    {
+        return v;
+    }
+    return v ? 1 : 0;
+}
+
+#else /* claw_leds node missing or disabled */
+
+int claw_mcu_led_count(void) { return 0; }
+int claw_mcu_led_name(int idx, uint8_t *out, size_t out_cap)
+{
+    (void)idx; (void)out; (void)out_cap;
+    return -ENODEV;
+}
+int claw_mcu_led_set(int idx, int on)
+{
+    (void)idx; (void)on;
+    return -ENODEV;
+}
+int claw_mcu_led_get(int idx)
+{
+    (void)idx;
+    return -ENODEV;
+}
+
+#endif /* claw_leds */
+
+void claw_mcu_sleep_ms(uint32_t ms)
+{
+    /* Cap at 5 s so a runaway tool call cannot stall the agent poll
+     * loop for an unbounded period, while still being long enough for
+     * any reasonable UI animation. */
+    if (ms > 5000U)
+    {
+        ms = 5000U;
+    }
+    k_msleep(ms);
+}
+
 int64_t claw_mcu_fs_read(const char *path, uint8_t *out, size_t out_cap)
 {
     struct fs_file_t file;
@@ -2688,7 +2829,7 @@ static void display_draw_header(void)
     rustmcuclaw_mcu_draw_text_rgb565(
         display_fb, display_width, display_height,
         title_x, 14,
-        "   Claw",
+        " Claw",
         DISPLAY_COL_TITLE, 2);
 
     /* ── Row 2: "RTL87X3G" left-aligned + HH:MM:SS right-aligned, y=44 ── */
@@ -2696,7 +2837,7 @@ static void display_draw_header(void)
     rustmcuclaw_mcu_draw_text_rgb565(
         display_fb, display_width, display_height,
         DISPLAY_MARGIN_X, 44,
-        "RTL87X3G",
+        "  RTL87X3G",
         DISPLAY_COL_DEVICE, 1);
 
     /* Right: current time (UTC+8).  Falls back to "--:--:--" before sync. */
@@ -2876,6 +3017,20 @@ static void display_chat_render(void)
 
     claw_mcu_display_present_rgb565(display_fb, display_width, display_height);
     k_mutex_unlock(&display_lock);
+}
+
+/* Bridge for the Rust side: append `text` to the on-screen chat log using
+ * `color` (RGB565) and immediately re-render.  Used so messages the agent
+ * sends to Feishu also appear on the board screen.  Safe to call from any
+ * thread; display_chat_add_text() + display_chat_render() take display_lock. */
+void claw_mcu_display_push(const char *text, uint16_t color)
+{
+    if (!text || !text[0])
+    {
+        return;
+    }
+    display_chat_add_text(text, color);
+    display_chat_render();
 }
 
 /* ── Loading animation callbacks ─────────────────────────────────────────
@@ -3541,6 +3696,9 @@ int main(void)
     }
     LOG_INF("CLI UART IRQ RX enabled, queue=%u", (unsigned)CLI_UART_RX_QUEUE_LEN);
 
+
+
+
     psram_init();
     ret = init_psram_layout();
     if (ret < 0)
@@ -3635,6 +3793,7 @@ int main(void)
     }
     /* ---------------------------------------- */
 
+#if 0 /* Boot-time SNTP sync disabled — re-enable when network is stable */
     /* Boot-time wall-clock sync via Z2Plus SNTP (non-fatal). The Z2 net card
      * auto-joins WiFi in its own task, so association + DHCP can take several
      * seconds after our boot point. Retry a few times with backoff and proceed
@@ -3686,6 +3845,7 @@ int main(void)
         }
         display_chat_render();
     }
+#endif /* Boot-time SNTP sync disabled */
 
     k_mutex_lock(&claw_lock, K_FOREVER);
     kick_watchdog();

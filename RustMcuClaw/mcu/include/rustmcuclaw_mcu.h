@@ -58,6 +58,31 @@ int64_t claw_mcu_fs_read(const char *path, uint8_t *out, size_t out_cap);
 int claw_mcu_fs_write(const char *path, const uint8_t *data, size_t data_len, bool append);
 int64_t claw_mcu_fs_list(const char *path, uint8_t *out, size_t out_cap);
 int claw_mcu_read_temp_humidity(int32_t *temp_milli_c, int32_t *humidity_milli_pct);
+
+/* Board-direct LED control (driven by GPIO via the `gpio-leds` overlay
+ * node `claw_leds`). The firmware owns a fixed table of named LEDs and
+ * exposes them to the Rust agent by integer index.
+ *
+ *   claw_mcu_led_count() -> number of LEDs known to the firmware
+ *   claw_mcu_led_name(idx, out, out_cap) -> copy null-terminated label
+ *       (e.g. "led1") into `out`. Returns 0 on success, negative on bad
+ *       index or insufficient buffer.
+ *   claw_mcu_led_set(idx, on) -> 1 = on, 0 = off. Returns 0 on success.
+ *   claw_mcu_led_get(idx)  -> 1 if on, 0 if off, negative on error.
+ *
+ * Index-based addressing keeps the LLM <-> hardware boundary clean: the
+ * agent enumerates names via led_list at runtime instead of hard-coding
+ * pin numbers in prompts. */
+int claw_mcu_led_count(void);
+int claw_mcu_led_name(int idx, uint8_t *out, size_t out_cap);
+int claw_mcu_led_set(int idx, int on);
+int claw_mcu_led_get(int idx);
+
+/* Yield-aware sleep used by the Rust agent for short, non-realtime
+ * intervals (e.g. LED blink pacing). Capped on the C side so a buggy LLM
+ * call cannot stall the poll loop indefinitely. */
+void claw_mcu_sleep_ms(uint32_t ms);
+
 int64_t claw_mcu_https_post_json(const char *endpoint,
                                  const char *api_key,
                                  const uint8_t *body,

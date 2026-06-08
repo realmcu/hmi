@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLAW · 运行在芯片上的 AI 智能体</title>
+<style>
+  :root{
+    --ink:#0c1116;
+    --ink-soft:#3a4754;
+    --muted:#697885;
+    --line:#e4ebf0;
+    --bg:#ffffff;
+    --bg-soft:#f6fafb;
+    --cyan:#009fd4;
+    --cyan-deep:#0077b8;
+    --cyan-soft:#e0f4fc;
+    --grad:linear-gradient(120deg,#0096e0 0%,#00bcd6 55%,#34d6c0 100%);
+    --grad-soft:linear-gradient(135deg,#f0faff 0%,#e6f6fb 100%);
+    --shadow:0 18px 50px -28px rgba(0,140,160,.45);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    color:var(--ink);
+    background:var(--bg);
+    line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--cyan-deep);text-decoration:none;}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px;}
+  section{padding:88px 0;}
+
+  /* ---- nav ---- */
+  header.nav{
+    position:sticky;top:0;z-index:50;
+    background:rgba(255,255,255,.82);
+    backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--line);
+  }
+  .nav-inner{display:flex;align-items:center;justify-content:space-between;height:64px;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;letter-spacing:.5px;}
+  .brand .dot{
+    width:14px;height:14px;border-radius:4px;background:var(--grad);
+    box-shadow:0 0 0 4px var(--cyan-soft);
+  }
+  .nav-links{display:flex;gap:30px;font-size:15px;}
+  .nav-links a{color:var(--ink-soft);font-weight:500;transition:color .2s;}
+  .nav-links a:hover{color:var(--cyan-deep);}
+  @media(max-width:720px){.nav-links{display:none;}}
+
+  /* ---- hero ---- */
+  .hero{
+    position:relative;overflow:hidden;
+    background:var(--grad-soft);
+    border-bottom:1px solid var(--line);
+    padding:96px 0 88px;
+  }
+  .hero::before{
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(620px 320px at 88% -10%,rgba(0,194,214,.18),transparent 60%),
+      radial-gradient(520px 320px at -5% 110%,rgba(52,214,192,.14),transparent 60%);
+    pointer-events:none;
+  }
+  .hero .wrap{position:relative;}
+  .pill{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:6px 14px;border-radius:999px;
+    background:#fff;border:1px solid var(--line);
+    font-size:13px;color:var(--cyan-deep);font-weight:600;
+    box-shadow:0 6px 18px -12px rgba(0,140,160,.5);
+  }
+  .pill::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--cyan);}
+  h1.hero-title{
+    font-size:54px;line-height:1.12;margin:22px 0 18px;font-weight:800;letter-spacing:-.5px;
+  }
+  h1.hero-title .grad{
+    background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .hero-sub{font-size:20px;color:var(--ink-soft);max-width:680px;margin:0 0 32px;}
+  .cta{display:flex;gap:14px;flex-wrap:wrap;}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:13px 26px;border-radius:12px;font-weight:600;font-size:15px;
+    border:1px solid transparent;cursor:pointer;transition:transform .15s,box-shadow .2s;
+  }
+  .btn-primary{background:var(--grad);color:#fff;box-shadow:var(--shadow);}
+  .btn-primary:hover{transform:translateY(-2px);}
+  .btn-ghost{background:#fff;border-color:var(--line);color:var(--ink);}
+  .btn-ghost:hover{border-color:var(--cyan);color:var(--cyan-deep);}
+
+  .hero-stats{display:flex;gap:40px;margin-top:54px;flex-wrap:wrap;}
+  .stat .num{font-size:30px;font-weight:800;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .stat .lbl{font-size:14px;color:var(--muted);}
+
+  /* ---- section heading ---- */
+  .head{max-width:720px;margin-bottom:54px;}
+  .eyebrow{
+    font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+    color:var(--cyan-deep);
+  }
+  h2{font-size:36px;margin:12px 0 14px;font-weight:800;letter-spacing:-.3px;}
+  .head p{font-size:18px;color:var(--ink-soft);margin:0;}
+
+  /* ---- feature grid ---- */
+  .grid{display:grid;gap:22px;grid-template-columns:repeat(3,1fr);}
+  @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:620px){.grid{grid-template-columns:1fr;}}
+  .card{
+    background:#fff;border:1px solid var(--line);border-radius:18px;padding:28px;
+    transition:transform .18s,box-shadow .25s,border-color .2s;
+  }
+  .card:hover{transform:translateY(-4px);box-shadow:var(--shadow);border-color:#cdeef2;}
+  .ic{
+    width:46px;height:46px;border-radius:12px;display:grid;place-items:center;margin-bottom:16px;
+    background:var(--cyan-soft);color:var(--cyan-deep);
+  }
+  .ic svg{width:24px;height:24px;}
+  .card h3{margin:0 0 8px;font-size:19px;}
+  .card p{margin:0;color:var(--muted);font-size:15px;}
+
+  /* ---- showcase ---- */
+  .show{background:var(--bg-soft);border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+  .show-row{
+    display:grid;grid-template-columns:1.05fr 1fr;gap:48px;align-items:center;
+    padding:46px 0;border-bottom:1px dashed var(--line);
+  }
+  .show-row:last-child{border-bottom:none;}
+  .show-row.rev{grid-template-columns:1fr 1.05fr;}
+  .show-row.rev .media{order:-1;}
+  @media(max-width:820px){
+    .show-row,.show-row.rev{grid-template-columns:1fr;}
+    .show-row.rev .media{order:0;}
+  }
+  .tag{
+    display:inline-block;font-size:12px;font-weight:700;letter-spacing:1px;
+    color:var(--cyan-deep);background:var(--cyan-soft);padding:4px 12px;border-radius:999px;margin-bottom:14px;
+  }
+  .show-row h3{font-size:24px;margin:0 0 12px;}
+  .show-row ul{margin:0;padding-left:20px;color:var(--ink-soft);}
+  .show-row li{margin:6px 0;}
+  .media{
+    border-radius:16px;overflow:hidden;border:1px solid var(--line);
+    background:#fff;box-shadow:var(--shadow);
+  }
+  .media img,.media video{display:block;width:100%;height:auto;}
+
+  /* ---- loop / core ---- */
+  .loop-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:48px;align-items:center;}
+  @media(max-width:820px){.loop-grid{grid-template-columns:1fr;}}
+  .steps{counter-reset:s;display:flex;flex-direction:column;gap:14px;}
+  .step{
+    display:flex;gap:16px;align-items:flex-start;
+    background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;
+  }
+  .step .n{
+    flex:none;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;
+    background:var(--grad);color:#fff;font-weight:800;font-size:15px;
+  }
+  .step b{display:block;font-size:16px;}
+  .step span{color:var(--muted);font-size:14px;}
+  .prompt-card{
+    background:var(--grad-soft);border:1px solid #cdeef2;border-radius:18px;padding:30px;
+  }
+  .prompt-card h4{margin:0 0 16px;font-size:18px;}
+  .chip-list{display:flex;flex-wrap:wrap;gap:10px;}
+  .chip{
+    background:#fff;border:1px solid var(--line);border-radius:999px;
+    padding:8px 16px;font-size:14px;font-weight:500;color:var(--ink-soft);
+  }
+  .chip::before{content:"+";color:var(--cyan-deep);font-weight:800;margin-right:7px;}
+
+  /* ---- architecture ---- */
+  .arch{background:var(--bg-soft);border-top:1px solid var(--line);}
+  .arch-frame{
+    margin-top:40px;border:1px solid var(--line);border-radius:18px;overflow:hidden;
+    background:#fff;box-shadow:var(--shadow);
+  }
+  .arch-frame img{display:block;width:100%;height:auto;}
+  .arch-legend{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:34px;}
+  @media(max-width:820px){.arch-legend{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:480px){.arch-legend{grid-template-columns:1fr;}}
+  .leg{border-left:3px solid var(--cyan);padding-left:14px;}
+  .leg b{display:block;font-size:15px;}
+  .leg span{font-size:13px;color:var(--muted);}
+
+  /* ---- footer ---- */
+  footer{background:var(--ink);color:#c7d2da;padding:54px 0 40px;}
+  footer .ftop{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;align-items:flex-start;}
+  footer .brand{color:#fff;}
+  footer .brand .dot{box-shadow:0 0 0 4px rgba(0,182,201,.25);}
+  footer p{margin:14px 0 0;max-width:420px;font-size:14px;color:#93a2ad;}
+  footer .cols{display:flex;gap:60px;flex-wrap:wrap;}
+  footer h5{color:#fff;font-size:14px;margin:0 0 12px;letter-spacing:.5px;}
+  footer a{display:block;color:#93a2ad;font-size:14px;margin:8px 0;}
+  footer a:hover{color:var(--cyan);}
+  .fbar{border-top:1px solid #1e2730;margin-top:36px;padding-top:22px;font-size:13px;color:#6c7b86;}
+
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease;}
+  .reveal.in{opacity:1;transform:none;}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand"><span class="dot"></span>CLAW</div>
+    <nav class="nav-links">
+      <a href="#showcase">实景演示</a>
+      <a href="#features">能力</a>
+      <a href="#core">智能体核心</a>
+      <a href="#arch">技术架构</a>
+    </nav>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <span class="pill">运行在 RTL8783G 芯片上的 AI 智能体</span>
+    <h1 class="hero-title">让一颗芯片<br>听懂<span class="grad">自然语言</span>，并动手去做</h1>
+    <p class="hero-sub">
+      CLAW 把云端大语言模型、本地智能体、外设驱动与网络能力融为一体。
+      你只需要用一句话说出需求，它就能思考、调用工具、操作硬件，并用自然语言回答你。
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="#showcase">看它怎么工作 →</a>
+      <a class="btn btn-ghost" href="#arch">了解技术架构</a>
+    </div>
+    <div class="hero-stats">
+      <div class="stat"><div class="num">多种聊天入口</div><div class="lbl">飞书 / 屏幕 / 串口</div></div>
+      <div class="stat"><div class="num">∞ 长期记忆</div><div class="lbl">记得你和它自己</div></div>
+      <div class="stat"><div class="num">自然语言</div><div class="lbl">全程自然语言，无需编程</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- SHOWCASE -->
+<section id="showcase" class="show">
+  <div class="wrap">
+    <div class="head reveal">
+      <div class="eyebrow">In Action</div>
+      <h2>实拍演示</h2>
+      <p>下面是 CLAW 在硬件上的实拍演示——从理解需求到完成动作，全程自动。</p>
+    </div>
+
+    <div class="show-row reveal">
+      <div class="text">
+        <span class="tag">环境感知 · 自动记录</span>
+        <h3>检测空气并写成日记</h3>
+        <ul>
+          <li>自己判断出当前环境只能检测温湿度</li>
+          <li>读取传感器并拿到真实数据</li>
+          <li>把结果总结成一段自然语言</li>
+          <li>在 SD 卡上新建文件并写入这份"日记"</li>
+        </ul>
+      </div>
+      <div class="media"><img src="检测湿度并记录日记.jpg" alt="检测湿度并记录日记"></div>
+    </div>
+
+    <div class="show-row rev reveal">
+      <div class="text">
+        <span class="tag">硬件控制</span>
+        <h3>一句话点亮彩虹灯带</h3>
+        <ul>
+          <li>学习系统提供的灯带控制方法</li>
+          <li>自动生成对应的控制指令</li>
+          <li>执行并核对实际效果</li>
+          <li>用自然语言告诉你它做了什么</li>
+        </ul>
+      </div>
+      <div class="media"><video src="彩虹灯带.mp4" controls muted playsinline poster="灯带.jpg"></video></div>
+    </div>
+
+    <div class="show-row reveal">
+      <div class="text">
+        <span class="tag">主动监测 · 自动报警</span>
+        <h3>湿度超标，自动亮灯警告</h3>
+        <ul>
+          <li>理解灯与监视器的配合用法</li>
+          <li>自行设置一个持续运行的监视器</li>
+          <li>视频中用喷雾触发湿度上升</li>
+          <li>条件命中后立即亮灯报警</li>
+        </ul>
+      </div>
+      <div class="media"><video src="喷雾.mp4" controls muted playsinline poster="湿度监测.jpg"></video></div>
+    </div>
+
+    <div class="show-row rev reveal">
+      <div class="text">
+        <span class="tag">身份认知 · 多端同步</span>
+        <h3>它知道自己是谁</h3>
+        <ul>
+          <li>通过角色文件了解自身身份与运行环境</li>
+          <li>对话内容同时在飞书和板载屏幕显示</li>
+          <li>多个入口，同一个 CLAW</li>
+        </ul>
+      </div>
+      <div class="media"><img src="你好.png" alt="知晓身份"></div>
+    </div>
+
+    <div class="show-row reveal">
+      <div class="text">
+        <span class="tag">长期记忆</span>
+        <h3>它还记得你们上次聊过什么</h3>
+        <ul>
+          <li>每次对话结束后自动生成摘要，存入 SD 卡</li>
+          <li>下次启动时读取记忆，作为上下文的一部分</li>
+        </ul>
+      </div>
+      <div class="media"><img src="image-1.png" alt="长期记忆"></div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="wrap">
+    <div class="head reveal">
+      <div class="eyebrow">Why CLAW</div>
+      <h2>不只是会聊天，更会动手</h2>
+      <p>普通的大语言模型只会回话；CLAW 在一颗小小的 MCU 上，把"理解—决策—执行"连成了完整闭环。</p>
+    </div>
+    <div class="grid">
+      <div class="card reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <h3>用一句话指挥</h3>
+        <p>通过飞书、板载触摸屏或串口终端，像跟人聊天一样下达指令，不需要任何专业语法。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 2.6 14H2a2 2 0 0 1 0-4h.1A1.6 1.6 0 0 0 4.6 7l-.1-.1A2 2 0 1 1 7.3 4.1l.1.1A1.6 1.6 0 0 0 9 4.6V4a2 2 0 0 1 4 0v.1A1.6 1.6 0 0 0 17 4.6l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8 1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></div>
+        <h3>真正操作硬件</h3>
+        <p>点亮灯带、读取温湿度传感器、读写 SD 卡——它能直接驱动板上的外设，把回答变成现实动作。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg></div>
+        <h3>会盯梢、会定时</h3>
+        <p>设定定时任务、持续监测信号——比如湿度超标就自动亮灯报警，无需你时刻守着。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
+        <h3>长期记忆</h3>
+        <p>每次对话都会被总结沉淀，下次见面它依然记得过往的约定与偏好。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <h3>知晓身份</h3>
+        <p>通过角色文件，它清楚自己是谁、运行在什么环境，也认得正在与之对话的你。</p>
+      </div>
+      <div class="card reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <h3>云端大脑加持</h3>
+        <p>无缝接入云端大语言模型，让一颗MCU芯片，也拥有强大的语言理解与推理能力。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CORE / LOOP -->
+<section id="core">
+  <div class="wrap">
+    <div class="head reveal">
+      <div class="eyebrow">The Core</div>
+      <h2>智能体循环：复杂任务的秘密</h2>
+      <p>面对一个复杂请求，CLAW 不会一口回答，而是反复"思考—调用工具—查看结果"，直到把事情真正做完——这正是它超越单纯语言模型的关键。</p>
+    </div>
+    <div class="loop-grid">
+      <div class="steps reveal">
+        <div class="step"><span class="n">1</span><div><b>理解你的需求</b><span>把这句话和它对环境的认知结合起来</span></div></div>
+        <div class="step"><span class="n">2</span><div><b>决定该用什么工具</b><span>读传感器？写 SD 卡？还是点灯？</span></div></div>
+        <div class="step"><span class="n">3</span><div><b>执行并拿到结果</b><span>真实操作硬件，获取真实反馈</span></div></div>
+        <div class="step"><span class="n">4</span><div><b>判断是否还要继续</b><span>没做完就回到上一步，继续循环</span></div></div>
+        <div class="step"><span class="n">5</span><div><b>给出自然语言回答</b><span>把整件事总结成通顺的一句话</span></div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:22px;">
+        <div class="media reveal"><img src="image.png" alt="智能体循环流程图"></div>
+        <div class="prompt-card reveal">
+          <h4>每一次思考，它都会综合这些信息</h4>
+          <div class="chip-list">
+            <span class="chip">你的输入</span>
+            <span class="chip">角色文件</span>
+            <span class="chip">长期记忆</span>
+            <span class="chip">本次聊天历史</span>
+            <span class="chip">工具使用方法</span>
+            <span class="chip">工具执行结果</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section id="arch" class="arch">
+  <div class="wrap">
+    <div class="head reveal">
+      <div class="eyebrow">Architecture</div>
+      <h2>充分利用芯片与外设的能力</h2>
+      <p>主控芯片承载 CLAW 的智能体核心，网络芯片负责与云端通信，二者协同，让小硬件做大事。</p>
+    </div>
+    <div class="arch-frame reveal">
+      <img src="架构图.png" alt="CLAW 技术架构图">
+    </div>
+    <div class="arch-legend">
+      <div class="leg reveal"><b>MCU 主控</b><span>运行 CLAW 应用、智能体核心与外设驱动</span></div>
+      <div class="leg reveal"><b>网络芯片</b><span>负责 Wi-Fi、安全通信与对外服务对接</span></div>
+      <div class="leg reveal"><b>云端服务</b><span>大语言模型、飞书、网络授时</span></div>
+      <div class="leg reveal"><b>板载外设</b><span>屏幕、传感器、SD 卡、舵机与灯带</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <div class="ftop">
+      <div>
+        <div class="brand"><span class="dot"></span>CLAW</div>
+        <p>运行在 MCU 上的 AI 智能体——用自然语言连接人、模型与真实世界的硬件。</p>
+      </div>
+      <div class="cols">
+        <div>
+          <h5>产品</h5>
+          <a href="#features">核心能力</a>
+          <a href="#showcase">实景演示</a>
+          <a href="#core">智能体循环</a>
+        </div>
+        <div>
+          <h5>技术</h5>
+          <a href="#arch">系统架构</a>
+          <a href="#arch">硬件平台 RTL8783G</a>
+          <a href="#arch">云端大模型接入</a>
+        </div>
+      </div>
+    </div>
+    <div class="fbar">© 2026 CLAW · 让芯片理解世界</div>
+  </div>
+</footer>
+
+<script>
+  const io=new IntersectionObserver((es)=>{
+    es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});
+  },{threshold:.12});
+  document.querySelectorAll('.reveal').forEach((el,i)=>{
+    el.style.transitionDelay=(i%3*0.06)+'s';
+    io.observe(el);
+  });
+</script>
+</body>
+</html>

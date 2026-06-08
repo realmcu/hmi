@@ -98,6 +98,18 @@ extern "C" {
     fn claw_mcu_fs_write(path: *const c_char, data: *const u8, data_len: usize, append: bool) -> i32;
     fn claw_mcu_fs_list(path: *const c_char, out: *mut u8, out_cap: usize) -> isize;
     fn claw_mcu_read_temp_humidity(temp_milli_c: *mut i32, humidity_milli_pct: *mut i32) -> i32;
+    /// Number of board-direct LEDs declared in the overlay.
+    fn claw_mcu_led_count() -> i32;
+    /// Copy the human label of LED `idx` (e.g. "led1") into `out` as a
+    /// null-terminated UTF-8 string. Returns 0 on success, negative errno on
+    /// bad index or insufficient buffer.
+    fn claw_mcu_led_name(idx: i32, out: *mut u8, out_cap: usize) -> i32;
+    /// Set LED `idx` on (`1`) or off (`0`). Returns 0 on success.
+    fn claw_mcu_led_set(idx: i32, on: i32) -> i32;
+    /// Returns 1 if LED `idx` is on, 0 if off, negative errno on error.
+    fn claw_mcu_led_get(idx: i32) -> i32;
+    /// Yield-aware sleep (Zephyr `k_msleep`). Capped at 5 s on the C side.
+    fn claw_mcu_sleep_ms(ms: u32);
     fn claw_mcu_https_post_json(
         endpoint: *const c_char,
         api_key: *const c_char,
@@ -111,6 +123,15 @@ extern "C" {
     /// Returns 8 (halfwidth) or 16 (fullwidth) on success, 0 if absent/not loaded.
     /// `out_rows` must point to an array of 16 u16 values (bit 15 = leftmost column).
     fn claw_mcu_unifont_get_glyph(codepoint: u32, out_rows: *mut u16) -> i32;
+    /// Append `text` to the on-screen chat log using RGB565 `color` and
+    /// re-render. Used to mirror outgoing Feishu messages onto the board screen.
+    fn claw_mcu_display_push(text: *const c_char, color: u16);
+    /// WS2812B RGB strip effect engine (non-blocking; all return immediately).
+    /// `duration_ms = 0` means run forever until replaced or stopped.
+    fn ws2812_strip_effect_stop() -> i32;
+    fn ws2812_strip_effect_solid(r: u8, g: u8, b: u8, duration_ms: u32) -> i32;
+    fn ws2812_strip_effect_blink(r: u8, g: u8, b: u8, period_ms: u32, duration_ms: u32) -> i32;
+    fn ws2812_strip_effect_rainbow(value: u8, frame_ms: u32, duration_ms: u32) -> i32;
 }
 
 #[derive(Clone)]
@@ -236,12 +257,21 @@ struct Monitor {
     /// Comparison op. Supported: "gt", "lt", "gte", "lte", "eq".
     op: String,
     threshold: f32,
-    /// Action kind. Supported: "feishu_send".
+    /// Action kind. Supported: "feishu_send", "led_set".
     action_kind: String,
-    /// Empty string means use `channels.feishu.default_chat_id`.
+    /// For `feishu_send`: target chat_id (empty = use active session or
+    /// `channels.feishu.default_chat_id`). Unused for `led_set`.
     action_chat_id: String,
-    /// Message body. `{value}` is replaced with the actual reading.
+    /// For `feishu_send`: message body (`{value}` = current reading).
+    /// For `led_set`: ignored (state comes from `action_target_state`).
     action_message: String,
+    /// For `led_set`: LED name (e.g. "led1"). Empty otherwise.
+    /// `#[serde(default)]` keeps older `monitors.json` files loadable.
+    #[serde(default)]
+    action_led_name: String,
+    /// For `led_set`: desired state ("on" | "off"). Empty otherwise.
+    #[serde(default)]
+    action_led_state: String,
     fire_once: bool,
     fired: bool,
 }
@@ -1049,6 +1079,15 @@ impl App {
             return Some("[fsev] empty text".to_string());
         }
 
+        // Mirror the inbound Feishu user message onto the board screen the same
+        // way the serial CLI shows local input: "> <text>" in user-cyan
+        // (DISPLAY_COL_USER = 0x07FF).
+        let in_line = format!("> {}", cleaned);
+        let in_c = c_string(&in_line);
+        unsafe {
+            claw_mcu_display_push(in_c.as_ptr() as *const c_char, 0x07FF);
+        }
+
         let reply = self.ask(&cleaned);
         // Strip the trailing "claw> " prompt suffix; `ask()` doesn't emit it
         // but a future refactor might. Also Feishu has a per-message size cap,
@@ -1166,6 +1205,13 @@ impl App {
                 self.feishu_token_expires_at = 0;
             }
             return Err(format!("send api code={}", code));
+        }
+        // Mirror the outgoing Feishu message onto the board screen so the user
+        // can see what the agent pushed to the chat. Pale-cyan (DISPLAY_COL_SYSTEM).
+        let screen_line = format!("→飞书: {}", text);
+        let line_c = c_string(&screen_line);
+        unsafe {
+            claw_mcu_display_push(line_c.as_ptr() as *const c_char, 0x9EFB);
         }
         Ok(())
     }
@@ -1345,7 +1391,17 @@ impl App {
             let temp_c = (temp_milli_c as f32) / 1000.0;
             let humidity_pct = (humidity_milli_pct as f32) / 1000.0;
 
-            let (matched, value, action_kind, chat_id, message, id, fire_once) = {
+            let (
+                matched,
+                value,
+                action_kind,
+                chat_id,
+                message,
+                led_name,
+                led_state,
+                id,
+                fire_once,
+            ) = {
                 let m = &self.monitors[idx];
                 let v = match m.field.as_str() {
                     "humidity_pct" => humidity_pct,
@@ -1370,6 +1426,8 @@ impl App {
                     m.action_kind.clone(),
                     m.action_chat_id.clone(),
                     m.action_message.clone(),
+                    m.action_led_name.clone(),
+                    m.action_led_state.clone(),
                     m.id.clone(),
                     m.fire_once,
                 )
@@ -1406,7 +1464,7 @@ impl App {
                                 );
                                 if fire_once {
                                     self.monitors[idx].fired = true;
-                                    // `fired` is durable state �?persist now so
+                                    // `fired` is durable state, persist now so
                                     // a reboot does not re-trigger the same alert.
                                     changed = true;
                                 }
@@ -1419,6 +1477,38 @@ impl App {
                                     id, e
                                 );
                             }
+                        }
+                    }
+                }
+                "led_set" => {
+                    let led_idx = match self.resolve_led(&led_name) {
+                        Ok(i) => i,
+                        Err(e) => {
+                            let _ = write!(
+                                out,
+                                "\r\n[monitor {}] led_set failed: {}\r\n",
+                                id, e
+                            );
+                            continue;
+                        }
+                    };
+                    let on = led_state == "on";
+                    let ret = unsafe { claw_mcu_led_set(led_idx, if on { 1 } else { 0 }) };
+                    if ret < 0 {
+                        let _ = write!(
+                            out,
+                            "\r\n[monitor {}] led_set({}) failed: {}\r\n",
+                            id, led_name, ret
+                        );
+                    } else {
+                        let _ = write!(
+                            out,
+                            "\r\n[monitor {}] fired: {} -> {} (value={:.2})\r\n",
+                            id, led_name, led_state, value
+                        );
+                        if fire_once {
+                            self.monitors[idx].fired = true;
+                            changed = true;
                         }
                     }
                 }
@@ -1485,8 +1575,280 @@ impl App {
             "monitor_create" => self.tool_monitor_create(args),
             "monitor_list" => self.tool_monitor_list(args),
             "monitor_delete" => self.tool_monitor_delete(args),
+            "led_list" => self.tool_led_list(args),
+            "led_set" => self.tool_led_set(args),
+            "led_blink" => self.tool_led_blink(args),
+            "strip_effect" => self.tool_strip_effect(args),
             other => format!("ERR: unknown tool '{other}'"),
         }
+    }
+
+    /// Resolve a user-facing LED name to a firmware index. Accepts the
+    /// canonical labels ("led1", "led2", …) emitted by `claw_mcu_led_name`,
+    /// case-insensitively. Returns Err with a friendly listing on miss so
+    /// the LLM gets enough info to retry without another `led_list`.
+    fn resolve_led(&self, name: &str) -> Result<i32, String> {
+        let count = unsafe { claw_mcu_led_count() };
+        if count <= 0 {
+            return Err("ERR: no LEDs available on this board".to_string());
+        }
+        let want = name.trim().to_ascii_lowercase();
+        let mut available: Vec<String> = Vec::new();
+        for i in 0..count {
+            let mut buf = [0u8; 32];
+            let ret = unsafe { claw_mcu_led_name(i, buf.as_mut_ptr(), buf.len()) };
+            if ret < 0 {
+                continue;
+            }
+            let nul = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
+            let label = String::from_utf8_lossy(&buf[..nul]).to_string();
+            if label.eq_ignore_ascii_case(&want) {
+                return Ok(i);
+            }
+            available.push(label);
+        }
+        Err(format!(
+            "ERR: unknown LED '{name}'. Available: {}",
+            available.join(", ")
+        ))
+    }
+
+    fn tool_led_list(&self, _args: &serde_json::Value) -> String {
+        let count = unsafe { claw_mcu_led_count() };
+        if count <= 0 {
+            return "OK: no LEDs available".to_string();
+        }
+        let mut out = String::from("OK: LEDs\n");
+        for i in 0..count {
+            let mut buf = [0u8; 32];
+            let ret = unsafe { claw_mcu_led_name(i, buf.as_mut_ptr(), buf.len()) };
+            if ret < 0 {
+                let _ = writeln!(out, "  [{i}] <name unavailable: {ret}>");
+                continue;
+            }
+            let nul = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
+            let label = String::from_utf8_lossy(&buf[..nul]);
+            let state = unsafe { claw_mcu_led_get(i) };
+            let state_str = match state {
+                1 => "on",
+                0 => "off",
+                _ => "unknown",
+            };
+            let _ = writeln!(out, "  {label} = {state_str}");
+        }
+        out
+    }
+
+    fn tool_led_set(&mut self, args: &serde_json::Value) -> String {
+        let name = match args.get("name").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None => return "ERR: missing string argument 'name'".to_string(),
+        };
+        // Accept the obvious string variants ("on"/"off", "1"/"0") and a
+        // bool fallback for resilience against LLM formatting drift.
+        let on = if let Some(s) = args.get("state").and_then(|v| v.as_str()) {
+            match s.trim().to_ascii_lowercase().as_str() {
+                "on" | "1" | "true" | "high" => true,
+                "off" | "0" | "false" | "low" => false,
+                other => return format!("ERR: bad state '{other}'. Use 'on' or 'off'."),
+            }
+        } else if let Some(b) = args.get("state").and_then(|v| v.as_bool()) {
+            b
+        } else if let Some(b) = args.get("on").and_then(|v| v.as_bool()) {
+            b
+        } else {
+            return "ERR: missing argument 'state' (\"on\"|\"off\")".to_string();
+        };
+        let idx = match self.resolve_led(&name) {
+            Ok(i) => i,
+            Err(e) => return e,
+        };
+        let ret = unsafe { claw_mcu_led_set(idx, if on { 1 } else { 0 }) };
+        if ret < 0 {
+            return format!("ERR: led_set({name}) failed: {ret}");
+        }
+        format!("OK: {name} -> {}", if on { "on" } else { "off" })
+    }
+
+    fn tool_led_blink(&mut self, args: &serde_json::Value) -> String {
+        let name = match args.get("name").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None => return "ERR: missing string argument 'name'".to_string(),
+        };
+        let times = args.get("times").and_then(|v| v.as_u64()).unwrap_or(3);
+        // Cap at 20 cycles so a stray LLM call cannot lock up `poll()` for
+        // tens of seconds. The default 200 ms period also keeps the upper
+        // bound modest (~8 s).
+        let times = times.min(20).max(1) as u32;
+        let period_ms = args
+            .get("period_ms")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(200)
+            .clamp(50, 1000) as u32;
+        let idx = match self.resolve_led(&name) {
+            Ok(i) => i,
+            Err(e) => return e,
+        };
+        // Remember the original state so blink is non-destructive: a blink
+        // does not silently flip a status LED off.
+        let prior = unsafe { claw_mcu_led_get(idx) };
+        for _ in 0..times {
+            unsafe {
+                let _ = claw_mcu_led_set(idx, 1);
+                claw_mcu_sleep_ms(period_ms);
+                let _ = claw_mcu_led_set(idx, 0);
+                claw_mcu_sleep_ms(period_ms);
+            }
+        }
+        // Restore the prior state explicitly so the LED ends in a known
+        // place AND so we can report it back to the caller. Without this
+        // the LLM has to guess the final state and tends to hallucinate
+        // (e.g. claim "灯已恢复常亮" when it is actually off).
+        let final_state = if prior == 1 { "on" } else { "off" };
+        unsafe {
+            let _ = claw_mcu_led_set(idx, if prior == 1 { 1 } else { 0 });
+        }
+        format!(
+            "OK: blinked {name} {times} time(s) at {period_ms}ms (final state: {final_state})"
+        )
+    }
+
+    /// Control the WS2812B RGB strip on P2_1. Three persistent effects plus
+    /// off; each replaces whatever was running before and keeps going until
+    /// changed again (the underlying engine uses duration_ms = 0 = forever).
+    ///
+    /// args:
+    ///   "effect": "rainbow" | "solid" | "blink" | "off"   (required)
+    ///   rainbow: "speed" 1..10 (10 = fastest, default 5),
+    ///            "brightness" 0..255 (default 80)
+    ///   solid/blink: colour via "color" name (red/green/blue/white/yellow/
+    ///                cyan/magenta/orange/purple/pink and 红/绿/蓝/白/黄/青/
+    ///                紫/橙/粉) OR explicit "r","g","b" 0..255;
+    ///                "brightness" 0..255 scales a named colour (default 120)
+    ///   blink: extra "period_ms" 100..5000 (default 500)
+    fn tool_strip_effect(&mut self, args: &serde_json::Value) -> String {
+        let effect = args
+            .get("effect")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+
+        match effect.as_str() {
+            "off" | "stop" | "clear" => {
+                let ret = unsafe { ws2812_strip_effect_stop() };
+                if ret < 0 {
+                    return format!("ERR: strip off failed: {ret}");
+                }
+                "OK: 灯带已关闭".to_string()
+            }
+            "rainbow" | "彩虹" => {
+                let speed = args
+                    .get("speed")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(5)
+                    .clamp(1, 10);
+                let brightness = args
+                    .get("brightness")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(80)
+                    .min(255) as u8;
+                // speed 1 -> 120 ms/frame (slow), speed 10 -> 12 ms/frame (fast).
+                let frame_ms = ((11 - speed) * 12) as u32;
+                let ret = unsafe { ws2812_strip_effect_rainbow(brightness, frame_ms, 0) };
+                if ret < 0 {
+                    return format!("ERR: strip rainbow failed: {ret}");
+                }
+                format!("OK: 彩虹效果 (速度 {speed}/10, 亮度 {brightness})")
+            }
+            "solid" | "纯色" | "纯色灯" => {
+                let (r, g, b) = match Self::parse_strip_color(args, 120) {
+                    Ok(rgb) => rgb,
+                    Err(e) => return e,
+                };
+                let ret = unsafe { ws2812_strip_effect_solid(r, g, b, 0) };
+                if ret < 0 {
+                    return format!("ERR: strip solid failed: {ret}");
+                }
+                format!("OK: 纯色灯 (R{r} G{g} B{b})")
+            }
+            "blink" | "闪烁" | "闪烁灯" => {
+                let (r, g, b) = match Self::parse_strip_color(args, 120) {
+                    Ok(rgb) => rgb,
+                    Err(e) => return e,
+                };
+                let period_ms = args
+                    .get("period_ms")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(500)
+                    .clamp(100, 5000) as u32;
+                let ret = unsafe { ws2812_strip_effect_blink(r, g, b, period_ms, 0) };
+                if ret < 0 {
+                    return format!("ERR: strip blink failed: {ret}");
+                }
+                format!("OK: 纯色闪烁 (R{r} G{g} B{b}, 周期 {period_ms}ms)")
+            }
+            "" => "ERR: missing argument 'effect' (rainbow|solid|blink|off)".to_string(),
+            other => format!(
+                "ERR: unknown effect '{other}'. Use rainbow, solid, blink or off."
+            ),
+        }
+    }
+
+    /// Resolve a strip colour from `args`: explicit "r"/"g"/"b" (0..255) take
+    /// priority; otherwise a "color" name is looked up and scaled by
+    /// "brightness" (0..255, default `default_brightness`).
+    fn parse_strip_color(
+        args: &serde_json::Value,
+        default_brightness: u8,
+    ) -> Result<(u8, u8, u8), String> {
+        let has_rgb = args.get("r").is_some()
+            || args.get("g").is_some()
+            || args.get("b").is_some();
+        if has_rgb {
+            let r = args.get("r").and_then(|v| v.as_u64()).unwrap_or(0).min(255) as u8;
+            let g = args.get("g").and_then(|v| v.as_u64()).unwrap_or(0).min(255) as u8;
+            let b = args.get("b").and_then(|v| v.as_u64()).unwrap_or(0).min(255) as u8;
+            return Ok((r, g, b));
+        }
+
+        let name = args
+            .get("color")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        if name.is_empty() {
+            return Err(
+                "ERR: missing colour: provide 'color' name or 'r'/'g'/'b' (0..255)".to_string(),
+            );
+        }
+        // Base colour at full scale; brightness scales it down to protect the
+        // 5 V rail and let the user dim a named colour.
+        let base: (u32, u32, u32) = match name.as_str() {
+            "red" | "红" | "红色" => (255, 0, 0),
+            "green" | "绿" | "绿色" => (0, 255, 0),
+            "blue" | "蓝" | "蓝色" => (0, 0, 255),
+            "white" | "白" | "白色" => (255, 255, 255),
+            "yellow" | "黄" | "黄色" => (255, 255, 0),
+            "cyan" | "青" | "青色" => (0, 255, 255),
+            "magenta" | "品红" => (255, 0, 255),
+            "purple" | "violet" | "紫" | "紫色" => (160, 32, 240),
+            "orange" | "橙" | "橙色" => (255, 110, 0),
+            "pink" | "粉" | "粉色" | "粉红" => (255, 96, 160),
+            other => {
+                return Err(format!(
+                    "ERR: unknown colour '{other}'. Use red/green/blue/white/yellow/cyan/magenta/purple/orange/pink or r/g/b."
+                ))
+            }
+        };
+        let brightness = args
+            .get("brightness")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(default_brightness as u64)
+            .min(255);
+        let scale = |c: u32| ((c * brightness as u32) / 255) as u8;
+        Ok((scale(base.0), scale(base.1), scale(base.2)))
     }
 
     fn tool_fs_list(&self, args: &serde_json::Value) -> String {
@@ -1624,18 +1986,12 @@ impl App {
             .and_then(|v| v.as_str())
             .unwrap_or("feishu_send")
             .to_string();
-        if action != "feishu_send" {
-            return format!("ERR: unknown action '{}'. Allowed: feishu_send", action);
+        if !matches!(action.as_str(), "feishu_send" | "led_set") {
+            return format!(
+                "ERR: unknown action '{}'. Allowed: feishu_send, led_set",
+                action
+            );
         }
-        let chat_id = args
-            .get("chat_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let message = match args.get("message").and_then(|v| v.as_str()) {
-            Some(s) => s.to_string(),
-            None => return "ERR: missing string argument 'message'".to_string(),
-        };
         let requested_secs = args
             .get("every_secs")
             .and_then(|v| v.as_u64())
@@ -1646,20 +2002,62 @@ impl App {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        // Recipient priority: explicit chat_id > active Feishu session (the
-        // chat the user is currently talking in) > configured default_chat_id.
-        // This means that if you tell Claw via Feishu, it already knows where
-        // to send the alert without any manual configuration.
-        let effective_chat = if !chat_id.is_empty() {
-            chat_id.clone()
-        } else if !self.active_feishu_chat_id.is_empty() {
-            self.active_feishu_chat_id.clone()
-        } else {
-            self.config.channels.feishu.default_chat_id.clone()
+        // Per-action argument parsing. Each branch fills in the durable
+        // fields that `poll_monitors` will read back at fire time.
+        let (chat_id, message, led_name, led_state) = match action.as_str() {
+            "feishu_send" => {
+                let chat_id = args
+                    .get("chat_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let message = match args.get("message").and_then(|v| v.as_str()) {
+                    Some(s) => s.to_string(),
+                    None => return "ERR: missing string argument 'message'".to_string(),
+                };
+                // Recipient priority: explicit chat_id > active Feishu session
+                // > configured default_chat_id. This means that if you tell
+                // Claw via Feishu, it already knows where to send the alert.
+                let effective_chat = if !chat_id.is_empty() {
+                    chat_id.clone()
+                } else if !self.active_feishu_chat_id.is_empty() {
+                    self.active_feishu_chat_id.clone()
+                } else {
+                    self.config.channels.feishu.default_chat_id.clone()
+                };
+                if effective_chat.is_empty() {
+                    return "ERR: no Feishu chat_id available. Either send this request from a Feishu chat so Claw can auto-detect it, or fill in channels.feishu.default_chat_id in rmcc.toml".to_string();
+                }
+                (chat_id, message, String::new(), String::new())
+            }
+            "led_set" => {
+                let led_name = match args.get("led").and_then(|v| v.as_str()) {
+                    Some(s) => s.to_string(),
+                    None => {
+                        return "ERR: missing string argument 'led' (e.g. \"led1\")"
+                            .to_string()
+                    }
+                };
+                // Validate the LED exists right now so the user gets the
+                // error at create time instead of silently at fire time.
+                if let Err(e) = self.resolve_led(&led_name) {
+                    return e;
+                }
+                let state = args
+                    .get("state")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("on")
+                    .trim()
+                    .to_ascii_lowercase();
+                if !matches!(state.as_str(), "on" | "off") {
+                    return format!(
+                        "ERR: bad state '{state}'. Use 'on' or 'off'."
+                    );
+                }
+                (String::new(), String::new(), led_name, state)
+            }
+            _ => unreachable!(),
         };
-        if effective_chat.is_empty() {
-            return "ERR: no Feishu chat_id available. Either send this request from a Feishu chat so Claw can auto-detect it, or fill in channels.feishu.default_chat_id in rmcc.toml".to_string();
-        }
 
         let now = now_secs();
         let id = self.next_id();
@@ -1671,9 +2069,11 @@ impl App {
             field: field.clone(),
             op: op.clone(),
             threshold,
-            action_kind: action,
+            action_kind: action.clone(),
             action_chat_id: chat_id,
             action_message: message,
+            action_led_name: led_name,
+            action_led_state: led_state,
             fire_once,
             fired: false,
         };

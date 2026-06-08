@@ -22,6 +22,7 @@ zephyr_include_directories(
 target_sources(app PRIVATE
     src/main.c
     src/psram_init.c
+    src/ws2812_strip.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../watch/src/module/clk/clk_mgr.c
 )
 
@@ -43,6 +44,15 @@ string(TOUPPER "${RUST_TARGET}" RUST_TARGET_ENV)
 string(REPLACE "-" "_" RUST_TARGET_ENV "${RUST_TARGET_ENV}")
 string(REPLACE "." "_" RUST_TARGET_ENV "${RUST_TARGET_ENV}")
 
+# Re-glob every Rust source under crates/ so a change in any workspace member
+# (rustmcuclaw-mcu, rustmcuclaw-common, future crates) re-triggers cargo. The
+# previous version only listed rustmcuclaw-mcu/src/lib.rs which silently
+# skipped relinking when only common-crate prompts/constants had changed.
+file(GLOB_RECURSE RUST_SOURCES CONFIGURE_DEPENDS
+    ${RUST_WORKSPACE_DIR}/crates/*.rs
+    ${RUST_WORKSPACE_DIR}/crates/*/Cargo.toml
+)
+
 add_custom_command(
     OUTPUT ${RUST_STATIC_LIB}
     COMMAND ${CMAKE_COMMAND} -E env
@@ -57,8 +67,7 @@ add_custom_command(
     WORKING_DIRECTORY ${RUST_WORKSPACE_DIR}
     DEPENDS
         ${RUST_WORKSPACE_DIR}/Cargo.toml
-        ${RUST_CRATE_DIR}/Cargo.toml
-        ${RUST_CRATE_DIR}/src/lib.rs
+        ${RUST_SOURCES}
     COMMENT "Building RustMcuClaw MCU Rust static library"
     VERBATIM
 )
