@@ -10,11 +10,6 @@
 #include <string.h>
 
 /* ---------- 设备私有数据（每个 UART 控制器一个）---------- */
-/* ---------- 静态文件池 ---------- */
-#define MAX_UART_FILES   4
-static uart_file_t s_uart_files[MAX_UART_FILES];
-static int s_uart_file_used[MAX_UART_FILES];
-
 typedef struct
 {
     int              unit;            /* 0/1/2 */
@@ -28,6 +23,11 @@ typedef struct
     posix_uart_config_t cfg;          /* 当前配置 */
     posix_uart_rx_cb_t rx_cb;        /* 接收回调 */
 } uart_file_t;
+
+/* ---------- 静态文件池 ---------- */
+#define MAX_UART_FILES   4
+static uart_file_t s_uart_files[MAX_UART_FILES];
+static int s_uart_file_used[MAX_UART_FILES];
 
 /* ---------- open ---------- */
 static void *uart_open(void *drv_data, const char *path)

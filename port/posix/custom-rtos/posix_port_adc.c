@@ -5,12 +5,29 @@
 typedef struct { int unit; uintptr_t reg_base; } adc_drv_t;
 typedef struct { adc_drv_t *drv; posix_adc_config_t cfg; } adc_file_t;
 
+#define MAX_ADC_FILES  4
+static adc_file_t s_adc_files[MAX_ADC_FILES];
+static int s_adc_file_used[MAX_ADC_FILES];
+
 static void *adc_open(void *d, const char *p)
 {
-    (void)p; adc_file_t *f = (adc_file_t *)/*alloc*/;
+    (void)p;
+    adc_file_t *f = NULL;
+    for (int i = 0; i < MAX_ADC_FILES; i++)
+    {
+        if (!s_adc_file_used[i]) { s_adc_file_used[i] = 1; f = &s_adc_files[i]; break; }
+    }
+    if (!f) { return POSIX_OPEN_ERR; }
     f->drv = (adc_drv_t *)d; return f;
 }
-static int adc_close(void *d, void *f) { (void)d; /*free f*/; return 0; }
+static int adc_close(void *d, void *fv)
+{
+    (void)d;
+    adc_file_t *f = (adc_file_t *)fv;
+    int idx = f - s_adc_files;
+    if (idx >= 0 && idx < MAX_ADC_FILES) { s_adc_file_used[idx] = 0; }
+    return 0;
+}
 
 /* posix_read = 单次采样（默认 channel 0） */
 static posix_ssize_t adc_read(void *d, void *f, void *buf, size_t count)

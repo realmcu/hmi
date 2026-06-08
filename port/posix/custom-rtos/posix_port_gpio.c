@@ -18,11 +18,6 @@
 #include <stdlib.h>
 
 /* ---------- GPIO 控制器私有数据 ---------- */
-/* ---------- 静态文件池 ---------- */
-#define MAX_GPIO_FILES   16
-static gpio_file_t s_gpio_files[MAX_GPIO_FILES];
-static int s_gpio_file_used[MAX_GPIO_FILES];
-
 typedef struct
 {
     int       unit;
@@ -37,6 +32,11 @@ typedef struct
     uint8_t         direction;   /* 缓存 */
     uint8_t         pull;
 } gpio_file_t;
+
+/* ---------- 静态文件池 ---------- */
+#define MAX_GPIO_FILES   16
+static gpio_file_t s_gpio_files[MAX_GPIO_FILES];
+static int s_gpio_file_used[MAX_GPIO_FILES];
 
 /* ---------- open：解析路径，绑定 pin ---------- */
 static void *gpio_open(void *drv_data, const char *path)

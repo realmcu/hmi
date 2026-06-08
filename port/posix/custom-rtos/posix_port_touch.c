@@ -6,12 +6,29 @@
 typedef struct { int unit; uint8_t i2c_addr; } touch_drv_t;
 typedef struct { touch_drv_t *drv; posix_touch_config_t cfg; } touch_file_t;
 
+#define MAX_TOUCH_FILES  2
+static touch_file_t s_touch_files[MAX_TOUCH_FILES];
+static int s_touch_file_used[MAX_TOUCH_FILES];
+
 static void *touch_open(void *d, const char *p)
 {
-    (void)p; touch_file_t *f = (touch_file_t *)/*alloc*/;
+    (void)p;
+    touch_file_t *f = NULL;
+    for (int i = 0; i < MAX_TOUCH_FILES; i++)
+    {
+        if (!s_touch_file_used[i]) { s_touch_file_used[i] = 1; f = &s_touch_files[i]; break; }
+    }
+    if (!f) { return POSIX_OPEN_ERR; }
     f->drv = (touch_drv_t *)d; f->cfg.i2c_addr = f->drv->i2c_addr; return f;
 }
-static int touch_close(void *d, void *f) { (void)d; /*free f*/; return 0; }
+static int touch_close(void *d, void *fv)
+{
+    (void)d;
+    touch_file_t *f = (touch_file_t *)fv;
+    int idx = f - s_touch_files;
+    if (idx >= 0 && idx < MAX_TOUCH_FILES) { s_touch_file_used[idx] = 0; }
+    return 0;
+}
 
 /* posix_read = 读取触摸数据 */
 static posix_ssize_t touch_read(void *d, void *f, void *buf, size_t count)

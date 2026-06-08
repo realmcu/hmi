@@ -18,7 +18,7 @@ target_include_directories(app PUBLIC
 
 zephyr_linker_sources(SECTIONS ${CMAKE_CURRENT_SOURCE_DIR}/posix_init_zephyr.ld)
 
-add_subdirectory(zephyr-rtk)
+add_subdirectory(custom-rtos)
 
 
 

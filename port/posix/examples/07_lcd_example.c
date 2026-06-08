@@ -94,7 +94,7 @@ static int cmd_lcd_fill(const struct shell *sh, size_t argc, char **argv)
     {
         posix_lcd_rect_t win = {0, (uint16_t)row, (uint16_t)line_w, 1};
         posix_ioctl(fd, POSIX_LCD_IOCTL_SET_WINDOW, &win);
-        posix_write(fd, s_fill_line, (size_t)(line_w * 2));
+        posix_write(fd, s_fill_line, (size_t)(line_w));
     }
 
     posix_close(fd);

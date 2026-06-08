@@ -5,12 +5,29 @@
 typedef struct { int unit; uintptr_t reg_base; } sdio_drv_t;
 typedef struct { sdio_drv_t *drv; posix_sdio_config_t cfg; } sdio_file_t;
 
+#define MAX_SDIO_FILES  2
+static sdio_file_t s_sdio_files[MAX_SDIO_FILES];
+static int s_sdio_file_used[MAX_SDIO_FILES];
+
 static void *sdio_open(void *d, const char *p)
 {
-    (void)p; sdio_file_t *f = (sdio_file_t *)/*alloc*/;
+    (void)p;
+    sdio_file_t *f = NULL;
+    for (int i = 0; i < MAX_SDIO_FILES; i++)
+    {
+        if (!s_sdio_file_used[i]) { s_sdio_file_used[i] = 1; f = &s_sdio_files[i]; break; }
+    }
+    if (!f) { return POSIX_OPEN_ERR; }
     f->drv = (sdio_drv_t *)d; return f;
 }
-static int sdio_close(void *d, void *f) { (void)d; /*free f*/; return 0; }
+static int sdio_close(void *d, void *fv)
+{
+    (void)d;
+    sdio_file_t *f = (sdio_file_t *)fv;
+    int idx = f - s_sdio_files;
+    if (idx >= 0 && idx < MAX_SDIO_FILES) { s_sdio_file_used[idx] = 0; }
+    return 0;
+}
 
 /* 提供 posix_read/posix_write 的块设备风格 API */
 static posix_ssize_t sdio_read(void *d, void *f, void *buf, size_t count)

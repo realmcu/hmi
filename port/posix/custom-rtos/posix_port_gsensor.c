@@ -5,12 +5,29 @@
 typedef struct { int unit; uint8_t i2c_addr; } gsensor_drv_t;
 typedef struct { gsensor_drv_t *drv; posix_gsensor_config_t cfg; } gsensor_file_t;
 
+#define MAX_GSENSOR_FILES  2
+static gsensor_file_t s_gsensor_files[MAX_GSENSOR_FILES];
+static int s_gsensor_file_used[MAX_GSENSOR_FILES];
+
 static void *gsensor_open(void *d, const char *p)
 {
-    (void)p; gsensor_file_t *f = (gsensor_file_t *)/*alloc*/;
+    (void)p;
+    gsensor_file_t *f = NULL;
+    for (int i = 0; i < MAX_GSENSOR_FILES; i++)
+    {
+        if (!s_gsensor_file_used[i]) { s_gsensor_file_used[i] = 1; f = &s_gsensor_files[i]; break; }
+    }
+    if (!f) { return POSIX_OPEN_ERR; }
     f->drv = (gsensor_drv_t *)d; return f;
 }
-static int gsensor_close(void *d, void *f) { (void)d; /*free f*/; return 0; }
+static int gsensor_close(void *d, void *fv)
+{
+    (void)d;
+    gsensor_file_t *f = (gsensor_file_t *)fv;
+    int idx = f - s_gsensor_files;
+    if (idx >= 0 && idx < MAX_GSENSOR_FILES) { s_gsensor_file_used[idx] = 0; }
+    return 0;
+}
 
 /* posix_read = 读三轴数据 */
 static posix_ssize_t gsensor_read(void *d, void *f, void *buf, size_t count)

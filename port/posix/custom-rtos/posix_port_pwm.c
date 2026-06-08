@@ -1,6 +1,8 @@
 #include "posix.h"
 #include "posix_init.h"
 #include "ioctls/posix_ioctl_pwm.h"
+#include <string.h>
+#include <stdlib.h>
 
 /* PWM 没有流式数据，read/write 返回 NOSUPP，全部通过 ioctl 控制 */
 
@@ -16,11 +18,20 @@ typedef struct
     int channel;
 } pwm_file_t;
 
+#define MAX_PWM_FILES  8
+static pwm_file_t s_pwm_files[MAX_PWM_FILES];
+static int s_pwm_file_used[MAX_PWM_FILES];
+
 static void *pwm_open(void *d, const char *path)
 {
     /* 解析 channel: /dev/pwm0 的默认 channel=0
      * 或 /dev/pwm0/ch1 指定 channel */
-    pwm_file_t *f = (pwm_file_t *)/*alloc*/;
+    pwm_file_t *f = NULL;
+    for (int i = 0; i < MAX_PWM_FILES; i++)
+    {
+        if (!s_pwm_file_used[i]) { s_pwm_file_used[i] = 1; f = &s_pwm_files[i]; break; }
+    }
+    if (!f) { return POSIX_OPEN_ERR; }
     f->drv = (pwm_drv_t *)d;
     f->channel = 0; /* 默认 channel 0 */
     /* 如果路径中有 /chN 则解析 channel 号 */
@@ -33,7 +44,14 @@ static void *pwm_open(void *d, const char *path)
     return f;
 }
 
-static int pwm_close(void *d, void *f) { (void)d; /*free f*/; return 0; }
+static int pwm_close(void *d, void *fv)
+{
+    (void)d;
+    pwm_file_t *f = (pwm_file_t *)fv;
+    int idx = f - s_pwm_files;
+    if (idx >= 0 && idx < MAX_PWM_FILES) { s_pwm_file_used[idx] = 0; }
+    return 0;
+}
 static posix_ssize_t pwm_read(void *d, void *f, void *b, size_t c)
 {
     (void)d; (void)f; (void)b; (void)c; return POSIX_ERR_NOSUPP;

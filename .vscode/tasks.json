@@ -4,7 +4,7 @@
     {
       "label": "West Build",
       "type": "shell",
-      "command": "west build -b rtl87x3g_evb . -p",
+      "command": "west build -b rtl87x3g_evb",
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -42,6 +42,18 @@
         "cwd": "/mnt/d/mpcli_exe_v4.0.0.5"
       },
       "problemMatcher": []
+    },
+    {
+      "label": "West Rebuild",
+      "type": "shell",
+      "command": "west build -b rtl87x3g_evb -p",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$gcc"
+      ],
+      "group": "build"
     }
   ]
 }

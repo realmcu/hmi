@@ -5,14 +5,30 @@
 typedef struct { int unit; uintptr_t reg_base; } spi_drv_t;
 typedef struct { spi_drv_t *drv; posix_spi_config_t cfg; } spi_file_t;
 
+#define MAX_SPI_FILES  4
+static spi_file_t s_spi_files[MAX_SPI_FILES];
+static int s_spi_file_used[MAX_SPI_FILES];
+
 static void *spi_open(void *d, const char *path)
 {
     (void)path;
-    spi_file_t *f = (spi_file_t *)/*alloc*/;
+    spi_file_t *f = NULL;
+    for (int i = 0; i < MAX_SPI_FILES; i++)
+    {
+        if (!s_spi_file_used[i]) { s_spi_file_used[i] = 1; f = &s_spi_files[i]; break; }
+    }
+    if (!f) { return POSIX_OPEN_ERR; }
     f->drv = (spi_drv_t *)d;
     return f;
 }
-static int spi_close(void *d, void *f) { (void)d; /*free f*/ return 0; }
+static int spi_close(void *d, void *fv)
+{
+    (void)d;
+    spi_file_t *f = (spi_file_t *)fv;
+    int idx = f - s_spi_files;
+    if (idx >= 0 && idx < MAX_SPI_FILES) { s_spi_file_used[idx] = 0; }
+    return 0;
+}
 static posix_ssize_t spi_read(void *d, void *f, void *buf, size_t len)
 {
     (void)f;
