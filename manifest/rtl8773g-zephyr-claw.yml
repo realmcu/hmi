@@ -39,10 +39,8 @@ manifest:
       repo-path: HoneyRepo/driver/display
       path: modules/display
 
-    - name: wearable
-      revision: master
-      repo-path: Wearable
-      path: modules/wearable
+
+    
 
     - name: hal_realtek
       repo-path: HoneyRepo/zephyr-hal

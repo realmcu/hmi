@@ -278,8 +278,8 @@ static const struct device *const touch_dev =
 static const struct device *const touch_dev = NULL;
 #endif
 
-static k_thread_stack_t cli_stack_area[CLI_STACK_SIZE]
-__aligned(PSRAM_STACK_ALIGN);
+/* CLI stack lives in PSRAM (allocated in init_psram_layout) to spare SRAM. */
+static k_thread_stack_t *cli_stack_area;
 static k_thread_stack_t poll_stack_area[POLL_STACK_SIZE]
 __aligned(PSRAM_STACK_ALIGN);
 static k_thread_stack_t touch_stack_area[TOUCH_STACK_SIZE]
@@ -1174,6 +1174,11 @@ static int init_psram_layout(void)
     claw_out = (uint8_t *)cursor;
     cursor += CLAW_OUT_MAX;
 
+    /* CLI thread stack (kept in PSRAM to spare SRAM). */
+    cursor = ROUND_UP(cursor, PSRAM_STACK_ALIGN);
+    cli_stack_area = (k_thread_stack_t *)cursor;
+    cursor += CLI_STACK_SIZE;
+
 #if HAVE_Z2_UART
     /* Feishu URC reassembly scratch — header lines + payload + tail marker. */
     cursor = ROUND_UP(cursor, sizeof(uintptr_t));
@@ -1217,9 +1222,11 @@ static int init_psram_layout(void)
     rust_heap_base = cursor;
     rust_heap_size = limit - cursor;
 
-    LOG_INF("PSRAM carve: claw_out=%p(%u) unifont=%p(%u) rust_heap=%p(%u)",
+    LOG_INF("PSRAM carve: claw_out=%p(%u) cli_stack=%p(%u) unifont=%p(%u) rust_heap=%p(%u)",
             (void *)claw_out,
             (unsigned)CLAW_OUT_MAX,
+            (void *)cli_stack_area,
+            (unsigned)CLI_STACK_SIZE,
             (void *)unifont_psram,
             (unsigned)UNIFONT_PSRAM_MAX,
             (void *)(uintptr_t)rust_heap_base,

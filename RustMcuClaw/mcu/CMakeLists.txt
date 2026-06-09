@@ -16,8 +16,8 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/VERSION ${CMAKE_BINARY_DIR}/../VERSIO
 zephyr_include_directories(
     include
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../watch/src/module/clk
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../modules/wearable/device/lcd/8773G
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../modules/display/device/touch/8773G
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../modules/display/device/general/lcd/8773G
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../modules/display/device/zephyr/touch/8773G
 )
 target_sources(app PRIVATE
     src/main.c
@@ -26,7 +26,6 @@ target_sources(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../watch/src/module/clk/clk_mgr.c
 )
 
-target_link_libraries(app PRIVATE realtek_wearable_library)
 target_link_libraries(app PRIVATE realtek_display_driver_library)
 
 find_program(CARGO_EXECUTABLE cargo)
