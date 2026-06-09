@@ -1,0 +1,61 @@
+ 0000001   Realtek Semiconductor Corporation <-> File Version [4.1.9.0]
+ 0000002   Seq No: 9, unknown log sub type: 4, raw data: 7E-10-09-67-00-2D-01-04-00-00-00-00-05-00-00-01-20-30-36-2D-30-39-23-31-31-3A-30-31-3A-31-36-2E-32-30-30-28.
+ 0000003   Seq No: 9, unknown log sub type: 4, raw data: 7E-10-09-67-01-2D-01-04-00-00-00-00-05-00-00-01-20-30-36-2D-30-39-23-31-31-3A-30-31-3A-31-36-2E-32-30-30-28.
+ 0000004  06-09#11:01:16.263  016  0009040.083  osif-zephyr init success!
+ 0000005  06-09#11:01:16.263  017  0009048.555  >>> SYS Patch
+ 0000006  06-09#11:01:16.263  018  0009057.667  Warning! Updating exceptions' ISR! Vector number: 3
+ 0000007  06-09#11:01:16.263  019  0009154.611  <<< SYS Patch
+ 0000008  06-09#11:01:16.349  023  0000079.476  *** Booting Zephyr OS build 2b03c855f728 ***
+
+ 0000009  06-09#11:01:16.488  026  0000221.188  stack_patch_entry >>>
+ 0000010  06-09#11:01:16.488  049  0000228.698  LOWERSTACK init success!
+ 0000011  06-09#11:01:16.521  075  0000246.012  RAM type of heap: 0, heap size: 102400, allocated 0, free 102300, max allocated 0
+
+ 0000012  06-09#11:01:16.521  076  0000246.542  RAM type of heap: 2, heap size: 63488, allocated 37216, free 26116, max allocated 37216
+
+ 0000013  06-09#11:01:16.521  079  0000247.285  RAM type of heap: 0, heap size: 102400, allocated 0, free 102300, max allocated 0
+
+ 0000014  06-09#11:01:16.521  080  0000247.815  RAM type of heap: 2, heap size: 63488, allocated 37216, free 26116, max allocated 37216
+
+ 0000015   Error: Log is broken, level 2.
+ 0000016   DebugTool info: Maybe there are missing logs! (06-09#11:01:16.521)
+ 0000017   DebugTool info: Maybe there are missing logs! (06-09#11:01:16.521)
+ 0000018  06-09#11:01:16.521  095  0000256.105  [Zephyr] <inf> z2plus tcp receiver start
+ 0000019  06-09#11:01:18.754  245  0002468.919  [Zephyr] <inf> z2plus power enabled
+ 0000020  06-09#11:01:19.785  251  0003509.629  [Zephyr] <err> sdio_handler: err_int_status.d16 0x1
+ 0000021  06-09#11:01:19.785  252  0003509.856  [Zephyr] <inf> Legacy card detected, no CMD8 support
+ 0000022  06-09#11:01:19.785  253  0003510.406  [Zephyr] <err> sdio_handler: err_int_status.d16 0x1
+ 0000023  06-09#11:01:19.785  254  0003510.529  [Zephyr] <inf> Legacy card detected, no CMD8 support
+ 0000024  06-09#11:01:19.785  255  0003511.065  [Zephyr] <err> sdio_handler: err_int_status.d16 0x1
+ 0000025  06-09#11:01:19.785  000  0003511.184  [Zephyr] <inf> Legacy card detected, no CMD8 support
+ 0000026  06-09#11:01:19.785  001  0003511.717  [Zephyr] <err> sdio_handler: err_int_status.d16 0x1
+ 0000027  06-09#11:01:19.822  002  0003511.834  [Zephyr] <inf> Legacy card detected, no CMD8 support
+ 0000028  06-09#11:01:19.822  003  0003512.367  [Zephyr] <err> sdio_handler: err_int_status.d16 0x1
+ 0000029  06-09#11:01:19.822  004  0003512.478  [Zephyr] <inf> Legacy card detected, no CMD8 support
+ 0000030  06-09#11:01:19.822  005  0003513.012  [Zephyr] <err> sdio_handler: err_int_status.d16 0x1
+ 0000031  06-09#11:01:19.822  006  0003513.128  [Zephyr] <inf> Legacy card detected, no CMD8 support
+ 0000032  06-09#11:01:19.822  007  0003513.661  [Zephyr] <err> sdio_handler: err_int_status.d16 0x1
+ 0000033  06-09#11:01:19.822  008  0003513.778  [Zephyr] <inf> Legacy card detected, no CMD8 support
+ 0000034  06-09#11:01:19.822  009  0003514.312  [Zephyr] <err> sdio_handler: err_int_status.d16 0x1
+ 0000035  06-09#11:01:19.822  010  0003514.433  [Zephyr] <inf> Legacy card detected, no CMD8 support
+ 0000036  06-09#11:01:19.822  011  0003514.965  [Zephyr] <err> sdio_handler: err_int_status.d16 0x1
+ 0000037  06-09#11:01:19.822  012  0003515.090  [Zephyr] <inf> Legacy card detected, no CMD8 support
+ 0000038  06-09#11:01:19.822  013  0003515.624  [Zephyr] <err> sdio_handler: err_int_status.d16 0x1
+ 0000039  06-09#11:01:19.822  014  0003515.745  [Zephyr] <inf> Legacy card detected, no CMD8 support
+ 0000040  06-09#11:01:19.822  015  0003516.279  [Zephyr] <err> sdio_handler: err_int_status.d16 0x1
+ 0000041  06-09#11:01:19.822  016  0003516.396  [Zephyr] <inf> Legacy card detected, no CMD8 support
+ 0000042  06-09#11:01:19.822  017  0003516.514  [Zephyr] <inf> Card does not support CMD8, assuming legacy card
+ 0000043  06-09#11:01:19.822  020  0003534.027  [Zephyr] <inf> sdio ready
+ 0000044  06-09#11:01:19.822  021  0003535.167  [Zephyr] <inf> connecting z2plus wifi ssid=triton
+ 0000045  06-09#11:01:25.265  032  0008981.289  [Zephyr] <inf> uart rsp: [ATPN] OK
+ 0000046  06-09#11:01:25.265  033  0008981.594  [Zephyr] <inf> z2plus wifi connected
+ 0000047  06-09#11:01:25.265  034  0008981.892  [Zephyr] <inf> starting z2plus tcp listener on 5001
+ 0000048  06-09#11:01:25.265  035  0008993.368  [Zephyr] <inf> uart rsp: [ATTF] OK:tcp,5001
+ 0000049  06-09#11:01:54.977  113  0038705.695  [Zephyr] <inf> transfer start: name=test.bin bytes=583360 crc32=3f772e1b
+ 0000050  06-09#11:01:58.084  125  0041810.668  [Zephyr] <inf> transfer done: name=test.bin bytes=583360 crc32=3f772e1b expected=3f772e1b packets=400 status=ok
+ 0000051  06-09#11:02:07.047  150  0050771.625  [Zephyr] <inf> transfer start: name=test.bin bytes=583360 crc32=3f772e1b
+ 0000052  06-09#11:02:10.955  159  0054673.930  [Zephyr] <inf> transfer done: name=test.bin bytes=583360 crc32=3f772e1b expected=3f772e1b packets=400 status=ok
+ 0000053  06-09#11:02:31.740  213  0075460.172  [Zephyr] <inf> transfer start: name=test.bin bytes=583360 crc32=3f772e1b
+ 0000054  06-09#11:02:34.658  220  0078385.759  [Zephyr] <inf> transfer done: name=test.bin bytes=583360 crc32=3f772e1b expected=3f772e1b packets=400 status=ok
+ 0000055  06-09#11:02:37.041  230  0080769.339  [Zephyr] <inf> transfer start: name=test.bin bytes=583360 crc32=3f772e1b
+ 0000056  06-09#11:02:39.574  237  0083291.990  [Zephyr] <inf> transfer done: name=test.bin bytes=583360 crc32=3f772e1b expected=3f772e1b packets=400 status=ok

@@ -1,0 +1,69 @@
+#include <zephyr/dt-bindings/gpio/realtek-rtl87x3g-gpio.h>
+#include <dt-bindings/pinctrl/rtl87x3g-pinctrl.h>
+
+&uart3 {
+	pinctrl-0 = <&uart3_default>;
+	pinctrl-1 = <&uart3_sleep>;
+	pinctrl-names = "default", "sleep";
+	status = "okay";
+	current-speed = <115200>;
+	parity = "none";
+	stop-bits = "1";
+	data-bits = <8>;
+	dmas = <&dma0 2 49 0xa>, <&dma0 3 48 0x10021>;
+	dma-names = "rx", "tx";
+};
+
+&pinctrl {
+	uart3_default: uart3_default {
+		group1 {
+			psels = <RTL87X3G_PSEL(UART3_TX, UART3_TX_PIN, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(UART3_RX, UART3_RX_PIN, DIR_IN, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(SW_MODE, UART3_MP_TX_PIN, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(SW_MODE, UART3_MP_RX_PIN, DIR_IN, DRV_HIGH, PULL_UP)>;
+		};
+	};
+
+	uart3_mp: uart3_mp {
+		group1 {
+			psels = <RTL87X3G_PSEL(SW_MODE, UART3_TX_PIN, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(SW_MODE, UART3_RX_PIN, DIR_IN, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(UART3_TX, UART3_MP_TX_PIN, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(UART3_RX, UART3_MP_RX_PIN, DIR_IN, DRV_HIGH, PULL_UP)>;
+		};
+	};
+
+	uart3_sleep: uart3_sleep {
+		group1 {
+			psels = <RTL87X3G_PSEL(SW_MODE, UART3_TX_PIN, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(SW_MODE, UART3_MP_TX_PIN, DIR_OUT, DRV_HIGH, PULL_UP)>;
+		};
+
+		group2 {
+			psels = <RTL87X3G_PSEL(SW_MODE, UART3_RX_PIN, DIR_IN, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(SW_MODE, UART3_MP_RX_PIN, DIR_IN, DRV_HIGH, PULL_UP)>;
+			wakeup-low;
+		};
+	};
+};
+
+/ {
+	aliases {
+		sdhc0 = &sdhc0;
+		uart3 = &uart3;
+		wifi-int = &wifi_int;
+	};
+
+	zephyr,user {
+		uart3_mp_pin = <&uart3_mp>;
+	};
+
+	gpio_devs {
+		compatible = "gpio-keys";
+
+		wifi_int: wifi_int {
+			gpios = <WIFI_INT_GPIO_PIN GPIO_ACTIVE_LOW>;
+			label = "wifi int";
+		};
+	};
+};
