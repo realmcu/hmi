@@ -148,6 +148,17 @@ target_sources(dashboard PRIVATE ${APP_SOURCES})
 target_include_directories(dashboard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/application)
 
 #==============================================================================
+# OTA Sources
+#==============================================================================
+file(GLOB OTA_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../src/ota/*.c)
+target_sources(dashboard PRIVATE ${OTA_SOURCES})
+target_sources(dashboard PRIVATE
+    ${REALTEK_SDK_BASE_PATH}/src/sample/common/app_ble_service/ota_service.c)
+target_include_directories(dashboard PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ota
+    ${REALTEK_SDK_BASE_PATH}/src/sample/common/app_ble_service)
+
+#==============================================================================
 # BT Module and Protocol (West project submodules)
 #==============================================================================
 set(APP_TARGET_NAME dashboard)

@@ -12,6 +12,8 @@
 #include "hmi_bt_task.h"
 #include "hmi_ble_gap_init.h"
 #include "hmi_ble_gap_msg.h"
+#include "os_queue.h"
+#include "app_link_util.h"
 
 static T_GAP_DEV_STATE gap_dev_state = {0, 0, 0, 0};                 /**< GAP device state */
 static T_GAP_CONN_STATE gap_conn_state = GAP_CONN_STATE_DISCONNECTED; /**< GAP connection state */
@@ -109,12 +111,29 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
             {
                 APP_PRINT_ERROR1("app_handle_conn_state_evt: connection lost cause 0x%x", disc_cause);
             }
+
+            T_APP_LE_LINK *p_link = app_link_find_le_link_by_conn_id(conn_id);
+            if (p_link != NULL)
+            {
+                for (uint8_t i = 0; i < p_link->disc_cb_list.count; i++)
+                {
+                    T_LE_DISC_CB_ENTRY *p_entry = os_queue_peek(&p_link->disc_cb_list, i);
+                    if (p_entry && p_entry->disc_callback)
+                    {
+                        p_entry->disc_callback(conn_id, p_link->local_disc_cause, disc_cause);
+                    }
+                }
+                app_link_free_le_link(p_link);
+            }
+
             le_adv_start();
         }
         break;
 
     case GAP_CONN_STATE_CONNECTED:
         {
+            app_link_alloc_le_link_by_conn_id(conn_id);
+
             uint16_t conn_interval;
             uint16_t conn_latency;
             uint16_t conn_supervision_timeout;

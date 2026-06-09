@@ -464,7 +464,7 @@
             <RunUserProg1>0</RunUserProg1>
             <RunUserProg2>1</RunUserProg2>
             <UserProg1Name>after_build_script.bat $J #L @L $P $L</UserProg1Name>
-            <UserProg2Name>cmd.exe /c dual_bank_after_build.bat "$J\..\bin\fromelf.exe"   "#L"  @L  bank0  flash_16M_dualbank rtl87x3ep</UserProg2Name>
+            <UserProg2Name>cmd.exe /c dual_bank_after_build.bat "$J\..\bin\fromelf.exe"   "#L"  @L  bank1  flash_16M_dualbank rtl87x3ep</UserProg2Name>
             <UserProg1Dos16Mode>0</UserProg1Dos16Mode>
             <UserProg2Dos16Mode>0</UserProg2Dos16Mode>
             <nStopA1X>0</nStopA1X>

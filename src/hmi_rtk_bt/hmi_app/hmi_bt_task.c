@@ -27,6 +27,8 @@
 #include "hmi_ble_gap_init.h"
 #include "hmi_ble_gap_msg.h"
 #include "hmi_ble_profile_init.h"
+#include "app_timer.h"
+#include "app_ota.h"
 
 
 #ifdef CONFIG_RTK_BT_BREDR
@@ -152,6 +154,8 @@ void bt_task_entry(void *p_param)
     os_msg_queue_create(&io_queue_handle, "ioQ", MAX_NUMBER_OF_IO_MESSAGE, sizeof(T_IO_MSG));
     os_msg_queue_create(&evt_queue_handle, "evtQ", MAX_NUMBER_OF_EVENT_MESSAGE, sizeof(uint8_t));
 
+    app_init_timer(evt_queue_handle, MAX_NUMBER_OF_APP_TIMER);
+
     le_gap_init(1);
 #ifndef CONFIG_RTK_BT_BREDR
     /* When BREDR is enabled, gap_lib_init() is called inside hmi_br_edr_gap_init() */
@@ -159,6 +163,7 @@ void bt_task_entry(void *p_param)
 #endif
     hmi_ble_gap_init();
     hmi_ble_profile_init();
+    app_ota_init();
 
 #ifdef CONFIG_RTK_BT_BREDR
     framework_init();
@@ -198,6 +203,10 @@ void bt_task_entry(void *p_param)
             else if (EVENT_GROUP(event) == EVENT_GROUP_STACK)
             {
                 gap_handle_msg(event);
+            }
+            else if (EVENT_GROUP(event) == EVENT_GROUP_APP)
+            {
+                app_timer_handle_msg(event);
             }
 #ifdef CONFIG_RTK_BT_BREDR
             else if (EVENT_GROUP(event) == EVENT_GROUP_FRAMEWORK)

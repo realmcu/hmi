@@ -338,9 +338,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>  --include pre_define.h  --include stdbool.h --include app_flags.h</MiscControls>
-              <Define>RTK_HAL_DRIVER, ENABLE_HONEYGUI, TARGET_RTL8773E, CONFIG_SOC_SERIES_RTL8773E=1, SUPPORT_ACCESS_SHM = 1, RTK_HAL_LCD</Define>
+              <Define>TARGET_RTL8773E, CONFIG_SOC_SERIES_RTL8773E=1, RTK_HAL_DRIVER, ENABLE_HONEYGUI, RTK_HAL_LCD, SUPPORT_ACCESS_SHM = 1</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\..\..\..\inc\hal\io;..\src\hmi_rtk_bt\hmi_app;..\src\hmi_rtk_bt\hmi_ble;..\src\hmi_rtk_bt\hmi_ble\private_service;..\src\hmi_rtk_bt\hmi_br_edr;..\src\ports\realgui_port;..\src\protocol;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\..\..\..\src\mcu\display;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\mipi\inc;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\segcom\inc;..\..\..\..\src\mcu\display\hardware\jpu\inc;..\..\..\..\src\mcu\display\hardware\jpu\src\device\rtl8773e</IncludePath>
+              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\..\..\..\inc\hal\io;..\src\hmi_rtk_bt\hmi_app;..\src\hmi_rtk_bt\hmi_ble;..\src\hmi_rtk_bt\hmi_ble\private_service;..\src\hmi_rtk_bt\hmi_br_edr;..\src\ota;..\..\..\..\src\sample\common\app_ble_service;..\src\ports\realgui_port;..\src\protocol;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\..\..\..\src\mcu\display;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\mipi\inc;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\segcom\inc;..\..\..\..\src\mcu\display\hardware\jpu\inc;..\..\..\..\src\mcu\display\hardware\jpu\src\device\rtl8773e</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -612,6 +612,41 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>ota</GroupName>
+          <Files>
+            <File>
+              <FileName>app_ble_gap.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\ota\app_ble_gap.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_link_util.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\ota\app_link_util.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_main.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\ota\app_main.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_ota.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\ota\app_ota.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_report.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\ota\app_report.c</FilePath>
+            </File>
+            <File>
+              <FileName>ota_service.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\sample\common\app_ble_service\ota_service.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>realgui/port</GroupName>
           <Files>
             <File>
@@ -839,7 +874,7 @@
             <RunUserProg1>0</RunUserProg1>
             <RunUserProg2>1</RunUserProg2>
             <UserProg1Name>after_build_script.bat $J #L @L $P $L</UserProg1Name>
-            <UserProg2Name>cmd.exe /c dual_bank_after_build.bat "$J\..\bin\fromelf.exe"   "#L"  @L  bank0  flash_16M_dualbank rtl87x3ep</UserProg2Name>
+            <UserProg2Name>cmd.exe /c dual_bank_after_build.bat "$J\..\bin\fromelf.exe"   "#L"  @L  bank1  flash_16M_dualbank rtl87x3ep</UserProg2Name>
             <UserProg1Dos16Mode>0</UserProg1Dos16Mode>
             <UserProg2Dos16Mode>0</UserProg2Dos16Mode>
             <nStopA1X>0</nStopA1X>
@@ -1093,9 +1128,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>  --include pre_define.h  --include stdbool.h --include app_flags.h</MiscControls>
-              <Define>RTK_HAL_DRIVER, ENABLE_HONEYGUI, TARGET_RTL8773E, CONFIG_SOC_SERIES_RTL8773E=1, SUPPORT_ACCESS_SHM = 1, RTK_HAL_LCD</Define>
+              <Define>TARGET_RTL8773E, CONFIG_SOC_SERIES_RTL8773E=1, RTK_HAL_DRIVER, ENABLE_HONEYGUI, RTK_HAL_LCD, SUPPORT_ACCESS_SHM = 1</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\..\..\..\inc\hal\io;..\src\hmi_rtk_bt\hmi_app;..\src\hmi_rtk_bt\hmi_ble;..\src\hmi_rtk_bt\hmi_ble\private_service;..\src\hmi_rtk_bt\hmi_br_edr;..\src\ports\realgui_port;..\src\protocol;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\..\..\..\src\mcu\display;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\mipi\inc;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\segcom\inc;..\..\..\..\src\mcu\display\hardware\jpu\inc;..\..\..\..\src\mcu\display\hardware\jpu\src\device\rtl8773e</IncludePath>
+              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\..\..\..\inc\hal\io;..\src\hmi_rtk_bt\hmi_app;..\src\hmi_rtk_bt\hmi_ble;..\src\hmi_rtk_bt\hmi_ble\private_service;..\src\hmi_rtk_bt\hmi_br_edr;..\src\ota;..\..\..\..\src\sample\common\app_ble_service;..\src\ports\realgui_port;..\src\protocol;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\..\..\..\src\mcu\display;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\mipi\inc;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\segcom\inc;..\..\..\..\src\mcu\display\hardware\jpu\inc;..\..\..\..\src\mcu\display\hardware\jpu\src\device\rtl8773e</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1363,6 +1398,41 @@
               <FileName>hmi_br_edr_link.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\src\hmi_rtk_bt\hmi_br_edr\hmi_br_edr_link.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>ota</GroupName>
+          <Files>
+            <File>
+              <FileName>app_ble_gap.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\ota\app_ble_gap.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_link_util.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\ota\app_link_util.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_main.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\ota\app_main.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_ota.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\ota\app_ota.c</FilePath>
+            </File>
+            <File>
+              <FileName>app_report.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\ota\app_report.c</FilePath>
+            </File>
+            <File>
+              <FileName>ota_service.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\sample\common\app_ble_service\ota_service.c</FilePath>
             </File>
           </Files>
         </Group>

@@ -1,0 +1,21 @@
+#
+# Copyright (c) 2026, Realtek Semiconductor Corporation
+#
+# SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+#
+
+Import('SDK_ROOT')
+from building import *
+
+cwd = GetCurrentDir()
+
+src = Glob('*.c')
+src += [SDK_ROOT + '/src/sample/common/app_ble_service/ota_service.c']
+
+CPPPATH = [
+    cwd,
+    SDK_ROOT + '/src/sample/common/app_ble_service',
+]
+
+group = DefineGroup('ota', src, depend=[''], CPPPATH=CPPPATH)
+Return('group')
