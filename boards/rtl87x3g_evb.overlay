@@ -24,6 +24,33 @@
 };
 
 &pinctrl {
+	sdhc0_default: sdhc0_default {
+		group1 {
+			psels =
+				<RTL87X3G_PSEL(HS_P5_0_SDH0_CLK,   P5_0, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(HS_P5_1_SDH0_CMD,   P5_1, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(HS_P5_2_SDH0_DATA0, P5_2, DIR_OUT, DRV_HIGH, PULL_UP)>;
+			bias-pull-strong;
+		};
+	};
+
+	uart3_default: uart3_default {
+		group1 {
+			psels =
+				<RTL87X3G_PSEL(UART3_TX, P5_4, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(UART3_RX, P5_5, DIR_IN,  DRV_HIGH, PULL_UP)>;
+		};
+	};
+	uart3_sleep: uart3_sleep {
+		group1 {
+			psels = <RTL87X3G_PSEL(SW_MODE, P5_4, DIR_OUT, DRV_HIGH, PULL_UP)>;
+		};
+		group2 {
+			psels = <RTL87X3G_PSEL(SW_MODE, P5_5, DIR_IN, DRV_HIGH, PULL_UP)>;
+			wakeup-low;
+		};
+	};
+
 	i2c1_default: i2c1_default {
 		group1 {
 			psels =
@@ -42,6 +69,48 @@
 
 &gpioa {
 	status = "okay";
+};
+
+&gpiob {
+	status = "okay";
+};
+
+&uart3 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&uart3_default>;
+	pinctrl-1 = <&uart3_sleep>;
+	pinctrl-names = "default", "sleep";
+	dmas = <&dma0 2 49 0xa>, <&dma0 3 48 0x10021>;
+	dma-names = "rx", "tx";
+};
+
+&dma0 {
+	status = "okay";
+};
+
+&sdhc0 {
+	pin-group = <0>;
+	bus-width = <1>;
+	max-bus-freq = <50000000>;
+	pinctrl-0 = <&sdhc0_default>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+/ {
+	aliases {
+		sdhc0 = &sdhc0;
+		wifi-int = &wifi_int;
+		uart3 = &uart3;
+	};
+	gpio_devs {
+		compatible = "gpio-keys";
+		wifi_int: wifi_int {
+			gpios = <&gpiob 18 GPIO_ACTIVE_LOW>;  /* P5_3 */
+			label = "wifi int";
+		};
+	};
 };
 
 &i2c1 {

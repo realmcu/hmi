@@ -5,7 +5,11 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include <zephyr/kernel.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/uart.h>
+#include <zephyr/devicetree.h>
 #include "trace.h"
 #include "hmi_bt_task.h"
 #include "hmi_protocal_task.h"
@@ -15,6 +19,7 @@
 
 int main(void)
 {
+
 #ifndef CONFIG_UART_CONSOLE
     DBG_DIRECT("!!!!! remap log pin!!!");
     Pinmux_Config(P2_0, IDLE_MODE);
@@ -34,7 +39,7 @@ int main(void)
     extern void hmi_l2_handlers_register(void);
     hmi_l2_handlers_register();
 
-    gui_server_init();
+    // gui_server_init();
 
     return 0;
 }

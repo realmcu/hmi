@@ -19,10 +19,10 @@
     {
       "label": "West Flash",
       "type": "process",
-      "command": "/mnt/d/mpcli_exe_v4.0.0.5/mpcli.exe",
+      "command": "/mnt/d/mpcli_meta_tool_v4.0.0.6_win/mpcli.exe",
       "args": [
         "-c",
-        "com3",
+        "com7",
         "-p",
         "-A",
         "0x7009E000",
@@ -39,7 +39,7 @@
         "RTL87X3G"
       ],
       "options": {
-        "cwd": "/mnt/d/mpcli_exe_v4.0.0.5"
+        "cwd": "/mnt/d/mpcli_meta_tool_v4.0.0.6_win"
       },
       "problemMatcher": []
     },
