@@ -263,6 +263,16 @@ cmdbuf_read:
                 }
             }
 
+            /* 命令执行期间收到的不匹配行（如扫描 AP 信息行）作为中间数据处理 */
+            if (!prefix_matched && s_atcmd.cur_cmd != ATCMD_NUM)
+            {
+                T_ATCMD_QUEUE_NODE *node = os_queue_peek(&s_atcmd_queue, 0);
+                if (node && node->cb)
+                {
+                    node->cb(s_atcmd.cur_cmd, line);
+                }
+            }
+
             parser_ofs = end_ofs;
             os_mem_free(line);
         }
