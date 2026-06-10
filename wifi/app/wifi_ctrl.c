@@ -8,10 +8,10 @@
 #include <string.h>
 #include <stdio.h>
 #include "wifi_ctrl.h"
-#include "../protocol/wifi_atcmd.h"
-#include "../transport/wifi_uart.h"
-#include "../core/wifi_types.h"
-#include "../core/wifi_task.h"
+#include "wifi_atcmd.h"
+#include "wifi_uart.h"
+#include "wifi_types.h"
+#include "wifi_task.h"
 
 #define PARAM_BUF_SIZE  64
 
@@ -83,7 +83,11 @@ bool wifi_ctrl_connect(const char *ssid, const char *passwd, T_ATCMD_RSP_CB cb)
 
 bool wifi_ctrl_disconnect(T_ATCMD_RSP_CB cb)
 {
-    return ctrl_send(ATCMD_ATW1, NULL, cb);
+    /* 测试文档未提供断开命令；原实现误用 ATW1(=录入密码)，会清空已设密码，已移除。
+     * 待查模组 AT 手册补正确的断开指令后再启用。*/
+    (void)cb;
+    printf("[ctrl] disconnect: no AT cmd confirmed in doc, skip\n");
+    return false;
 }
 
 
@@ -118,4 +122,23 @@ bool wifi_ctrl_info(T_ATCMD_RSP_CB cb)
 bool wifi_ctrl_sleep(T_ATCMD_RSP_CB cb)
 {
     return ctrl_send(ATCMD_ATSL, "r[0]", cb);
+}
+
+bool wifi_ctrl_ping(const char *ip, T_ATCMD_RSP_CB cb)
+{
+    if (!ip)
+    {
+        return false;
+    }
+    return ctrl_send(ATCMD_ATWI, ip, cb);
+}
+
+bool wifi_ctrl_iperf_udp(const char *args, T_ATCMD_RSP_CB cb)
+{
+    return ctrl_send(ATCMD_ATWU, args, cb);
+}
+
+bool wifi_ctrl_iperf_tcp(const char *args, T_ATCMD_RSP_CB cb)
+{
+    return ctrl_send(ATCMD_ATWT, args, cb);
 }

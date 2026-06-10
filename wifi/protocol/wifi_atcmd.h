@@ -17,11 +17,13 @@ extern "C" {
 typedef enum
 {
     ATCMD_ATWS,  /* WiFi scan */
-    ATCMD_ATW0,  /* WiFi connect (open) */
-    ATCMD_ATW1,  /* WiFi disconnect */
-    ATCMD_ATWC,  /* WiFi connect */
-    ATCMD_ATWT,  /* WiFi TCP transfer */
-    ATCMD_ATPN,  /* Ping */
+    ATCMD_ATW0,  /* 录入待连接 AP 的 SSID:   ATW0=ssid */
+    ATCMD_ATW1,  /* 录入连接 AP 的密码:      ATW1=password */
+    ATCMD_ATWC,  /* 在 ATW0/ATW1 之后连接 AP: ATWC */
+    ATCMD_ATWI,  /* Ping:            ATWI=ip */
+    ATCMD_ATWU,  /* UDP iperf 吞吐:  ATWU=-s/-c,host,... */
+    ATCMD_ATWT,  /* TCP iperf 吞吐:  ATWT=-s/-c,host,... */
+    ATCMD_ATPN,  /* Connect AP: ATPN=ssid,password */
     ATCMD_ATSL,  /* Sleep mode */
     ATCMD_ATWO,  /* WiFi OTA */
     ATCMD_ATSD,  /* SD card */

@@ -6,15 +6,16 @@
 
 #include <string.h>
 #include <errno.h>
+#include <stddef.h>
 #include <stdio.h>
 #include "wifi_data.h"
 #include "os_mem.h"
 #include "os_queue.h"
 #include "os_sched.h"
-#include "../transport/wifi_sdio.h"
-#include "../core/wifi_types.h"
-#include "../core/wifi_task.h"
-#include "../wifi_desc.h"
+#include "wifi_sdio.h"
+#include "wifi_types.h"
+#include "wifi_task.h"
+#include "wifi_desc.h"
 
 #define WIFI_DATA_MAX_HANDLERS  4
 #define TX_RETRY_DELAY_MS       10
@@ -122,8 +123,10 @@ bool wifi_data_tx(uint32_t ip_addr, uint16_t port, const uint8_t *data, uint16_t
 {
     lazy_init();
 
-    /* Bug 1 修复：正确计算分配大小（括号保证 & 先于 +）*/
-    uint32_t alloc_size = sizeof(((T_WIFI_SDIO_WRITE_QUEUE *)0)->p_next)
+    /* 整帧从 tx_desc 起按 512 对齐写入 SDIO，故缓冲需容纳
+     * [p_next | 对齐后的(TXDESC + payload)]。用 offsetof 表达 p_next 占位，
+     * 避免依赖“p_next 与 tx_desc 之间无 padding”的隐含假设。*/
+    uint32_t alloc_size = offsetof(T_WIFI_SDIO_WRITE_QUEUE, tx_desc)
                           + ((sizeof(TXDESC) + len + 511u) & ~511u);
 
     T_WIFI_SDIO_WRITE_QUEUE *pkt = os_mem_aligned_alloc(OS_MEM_TYPE_DATA, alloc_size, 4);

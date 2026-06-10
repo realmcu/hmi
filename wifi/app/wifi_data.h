@@ -18,7 +18,10 @@ extern "C" {
 typedef uint16_t (*T_WIFI_DATA_RX_CB)(uint32_t ip_addr, uint16_t port,
                                       const void *data, uint16_t len);
 
-/* 注册 IP:Port 的 RX 回调（Bug 3 修复：恢复 IP/Port 路由匹配）*/
+/* 注册 RX 回调。
+ * 注意：当前 RX 帧不携带 ip/port，wifi_data_sdio_rx_handler 统一以通配
+ * (ip=0,port=0) 查找回调；以非通配地址注册的 handler 不会被 RX 命中，
+ * 该参数仅为将来支持带地址路由预留。需要接收数据时请用 (0,0) 注册。*/
 bool wifi_data_rx_register(uint32_t ip_addr, uint16_t port, T_WIFI_DATA_RX_CB cb);
 bool wifi_data_rx_unregister(uint32_t ip_addr, uint16_t port);
 

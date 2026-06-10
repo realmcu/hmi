@@ -145,7 +145,9 @@ T_XMODEM_STATUS wifi_xmodem_finish(void)
     uint16_t recv = s_rx(&ack, 1, XMODEM_RECV_TIMEOUT);
     if (recv == 0 || ack != ACK_XMODEM)
     {
-        printf("[xmodem] finish: ack=0x%x\n", ack);
+        /* EOT 未被确认说明整包传输未被接收端确认，必须如实上报失败 */
+        printf("[xmodem] finish: no ACK, recv=%d ack=0x%x\n", recv, ack);
+        return XMODEM_ERR_TIMEOUT;
     }
 
     printf("[xmodem] finish ok\n");

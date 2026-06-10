@@ -18,10 +18,10 @@
 #include <os_task.h>
 #include <os_sched.h>
 
-#include "../protocol/wifi_atcmd.h"
-#include "../app/wifi_data.h"
-#include "../app/wifi_ctrl.h"
-#include "../transport/wifi_sdio.h"
+#include "wifi_atcmd.h"
+#include "wifi_data.h"
+#include "wifi_ctrl.h"
+#include "wifi_sdio.h"
 
 #define WIFI_EN_PIN     P6_4
 #define RF_SWITCH_V2    P6_2
@@ -159,7 +159,7 @@ static int cmd_wifi_info(const struct shell *sh, size_t argc, char **argv)
 
 static bool on_connect_rsp(T_ATCMD_TYPE cmd, const char *rsp)
 {
-    printk("[wifi] ATPN rsp: %s\n", rsp);
+    printk("[wifi] ATWC rsp: %s\n", rsp);
     return true;
 }
 
@@ -248,6 +248,61 @@ static int cmd_wifi_tx(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
+static bool on_ping_rsp(T_ATCMD_TYPE cmd, const char *rsp)
+{
+    printk("[wifi] ping: %s\n", rsp);
+    return true;
+}
+
+static int cmd_wifi_ping(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc < 2)
+    {
+        shell_print(sh, "Usage: wifi ping <ip>");
+        return -EINVAL;
+    }
+    shell_print(sh, "[wifi] ping %s ...", argv[1]);
+    wifi_ctrl_ping(argv[1], on_ping_rsp);
+    return 0;
+}
+
+static bool on_iperf_rsp(T_ATCMD_TYPE cmd, const char *rsp)
+{
+    printk("[wifi] iperf: %s\n", rsp);
+    return true;
+}
+
+static int cmd_wifi_iperf(const struct shell *sh, size_t argc, char **argv)
+{
+    /* Usage:
+     *   wifi iperf udp <args>   例: wifi iperf udp -s,-i,1
+     *   wifi iperf tcp <args>   例: wifi iperf tcp -c,192.168.3.98,-n,10m,-i,1
+     */
+    if (argc < 3)
+    {
+        shell_print(sh, "Usage: wifi iperf <udp|tcp> <args>");
+        shell_print(sh, "  e.g. wifi iperf udp -s,-i,1");
+        shell_print(sh, "       wifi iperf tcp -c,192.168.3.98,-n,10m,-i,1");
+        return -EINVAL;
+    }
+
+    if (strcmp(argv[1], "udp") == 0)
+    {
+        wifi_ctrl_iperf_udp(argv[2], on_iperf_rsp);
+    }
+    else if (strcmp(argv[1], "tcp") == 0)
+    {
+        wifi_ctrl_iperf_tcp(argv[2], on_iperf_rsp);
+    }
+    else
+    {
+        shell_print(sh, "unknown proto: %s (use udp|tcp)", argv[1]);
+        return -EINVAL;
+    }
+    shell_print(sh, "[wifi] iperf %s %s", argv[1], argv[2]);
+    return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(wifi_cmds,
                                SHELL_CMD(start,          NULL, "Enable WiFi and send first ATWS scan", cmd_wifi_start),
                                SHELL_CMD(info,           NULL, "Show device IP/MAC/GW",                cmd_wifi_info),
@@ -257,6 +312,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(wifi_cmds,
                                SHELL_CMD(disconnect,     NULL, "Disconnect from AP",                   cmd_wifi_disconnect),
                                SHELL_CMD_ARG(tcp_open,   NULL, "Open TCP to server: <ip> <port>",      cmd_wifi_tcp_open,   3, 0),
                                SHELL_CMD_ARG(tx,         NULL, "Send data: <message>",                 cmd_wifi_tx,         2, 0),
+                               SHELL_CMD_ARG(ping,       NULL, "Ping IP: <ip>",                        cmd_wifi_ping,       2, 0),
+                               SHELL_CMD_ARG(iperf,      NULL, "iperf throughput: <udp|tcp> <args>",   cmd_wifi_iperf,      3, 0),
                                SHELL_SUBCMD_SET_END
                               );
 SHELL_CMD_REGISTER(wifi, &wifi_cmds, "WiFi commands", NULL);

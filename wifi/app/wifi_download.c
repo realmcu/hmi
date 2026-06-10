@@ -14,8 +14,8 @@
 #include "fmc_api.h"
 #include "flash_map.h"
 #include "patch_header_check.h"
-#include "../protocol/wifi_xmodem.h"
-#include "../transport/wifi_uart.h"
+#include "wifi_xmodem.h"
+#include "wifi_uart.h"
 
 #define DUT_POWER_PIN     P2_7
 #define Z2_DOWNLOAD_CTRL0 P2_6
@@ -59,7 +59,9 @@ static bool z2_handshake(void)
 
     wifi_uart_tx((const uint8_t *)ping_cmd, strlen(ping_cmd));
     recv_len = wifi_uart_mp_recv(rev, sizeof(rev), HANDSHAKE_RECV_MS);
-    if (strcmp((char *)rev, "ping") != 0)
+    rev[sizeof(rev) - 1] = '\0'; /* 防止响应填满 buffer 时 strstr 越界 */
+    /* 用子串匹配：模组回显可能带 CR/LF 或前缀，strcmp 精确比较过于脆弱 */
+    if (strstr((char *)rev, "ping") == NULL)
     {
         printf("[dl] ping fail recv=%d rsp=%s\n", recv_len, rev);
         return false;
@@ -73,7 +75,8 @@ static bool z2_handshake(void)
     os_delay(400);
     wifi_uart_set_baudrate(1000000);
     recv_len = wifi_uart_mp_recv(rev, sizeof(rev), HANDSHAKE_RECV_MS);
-    if (strcmp((char *)rev, "OK") != 0)
+    rev[sizeof(rev) - 1] = '\0'; /* 防止响应填满 buffer 时 strstr 越界 */
+    if (strstr((char *)rev, "OK") == NULL)
     {
         printf("[dl] 1M baud fail recv=%d rsp=%s\n", recv_len, rev);
         return false;

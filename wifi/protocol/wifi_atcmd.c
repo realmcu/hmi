@@ -11,13 +11,12 @@
 #include "os_mem.h"
 #include "os_queue.h"
 #include "app_timer.h"
-#include "../transport/wifi_uart.h"
-#include "../core/wifi_types.h"
-#include "../core/wifi_task.h"
+#include "wifi_uart.h"
+#include "wifi_types.h"
+#include "wifi_task.h"
 
 #define MIN_RSP_LEN         5
 #define ATCMD_RX_BUF_SIZE   100
-#define ATCMD_RESEND_CNT    0
 #define ATCMD_TIMEOUT_MS    20000
 
 /* ---- AT CMD 队列节点 ---- */
@@ -33,7 +32,6 @@ typedef struct t_atcmd_queue_node
 typedef struct
 {
     T_ATCMD_TYPE cur_cmd;
-    uint8_t      resend_cnt;
     uint8_t      rx_buf[ATCMD_RX_BUF_SIZE];
     uint16_t     rx_cnt;
 } T_ATCMD_STATE;
@@ -56,6 +54,8 @@ static const T_ATCMD_ENTRY at_cmd_table[ATCMD_NUM] =
     [ATCMD_ATW0] = {"ATW0=", "[ATW0]", NULL},
     [ATCMD_ATW1] = {"ATW1=", "[ATW1]", NULL},
     [ATCMD_ATWC] = {"ATWC",  "[ATWC]", NULL},
+    [ATCMD_ATWI] = {"ATWI=", "[ATWI]", rsp_default},
+    [ATCMD_ATWU] = {"ATWU=", "[ATWU]", rsp_default},
     [ATCMD_ATWT] = {"ATWT=", "[ATWT]", rsp_default},
     [ATCMD_ATPN] = {"ATPN=", "[ATPN]", rsp_default},
     [ATCMD_ATSL] = {"ATSL=", "[ATSL]", NULL},
@@ -118,21 +118,17 @@ static void atcmd_timeout_cb(uint8_t timer_evt, uint16_t param)
 {
     app_stop_timer(&s_timer_handle);
 
-    if (s_atcmd.resend_cnt >= ATCMD_RESEND_CNT)
+    /* 超时即丢弃当前命令并推进队列。
+     * 注：原 resend 机制无法工作——flow_ctrl 见 cur_cmd 非空会拒发，
+     * 重发分支既不重发也不推进，反而使命令永久卡死，故彻底移除。*/
+    printf("[atcmd] timeout, drop cmd %d\n", s_atcmd.cur_cmd);
+    s_atcmd.cur_cmd = ATCMD_NUM;
+    s_atcmd.rx_cnt  = 0;
+
+    T_ATCMD_QUEUE_NODE *done = os_queue_out(&s_atcmd_queue);
+    if (done)
     {
-        printf("[atcmd] timeout, drop cmd %d\n", s_atcmd.cur_cmd);
-        s_atcmd.cur_cmd    = ATCMD_NUM;
-        s_atcmd.resend_cnt = 0;
-        s_atcmd.rx_cnt     = 0;
-        T_ATCMD_QUEUE_NODE *done = os_queue_out(&s_atcmd_queue);
-        if (done)
-        {
-            os_mem_free(done);
-        }
-    }
-    else
-    {
-        s_atcmd.resend_cnt++;
+        os_mem_free(done);
     }
     atcmd_trigger_next();
 }
@@ -239,9 +235,8 @@ cmdbuf_read:
                             T_ATCMD_RSP_CB cb = (node != NULL) ? node->cb : NULL;
                             at_cmd_table[i].rsp_func(line, cb);
                         }
-                        s_atcmd.cur_cmd    = ATCMD_NUM;
-                        s_atcmd.rx_cnt     = 0;
-                        s_atcmd.resend_cnt = 0;
+                        s_atcmd.cur_cmd = ATCMD_NUM;
+                        s_atcmd.rx_cnt  = 0;
 
                         T_ATCMD_QUEUE_NODE *done = os_queue_out(&s_atcmd_queue);
                         if (done)
@@ -324,9 +319,8 @@ void wifi_atcmd_flow_ctrl_handler(void)
 
     if (at_cmd_table[node->cmd].rsp_func)
     {
-        s_atcmd.cur_cmd    = node->cmd;
-        s_atcmd.rx_cnt     = 0;
-        s_atcmd.resend_cnt = 0;
+        s_atcmd.cur_cmd = node->cmd;
+        s_atcmd.rx_cnt  = 0;
         app_start_timer(&s_timer_handle, "atcmd_t",
                         s_timer_module_id, 0, 0, false, ATCMD_TIMEOUT_MS);
     }

@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #include <stdbool.h>
-#include "../protocol/wifi_xmodem.h"
+#include "wifi_xmodem.h"
 
 /* 一键式固件烧录（阻塞）:
  * GPIO 复位 → MP 模式 → 握手 → Flash 分块读取 → xmodem_send → xmodem_finish */
