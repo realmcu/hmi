@@ -223,11 +223,13 @@ cmdbuf_read:
             }
             memcpy(line, &s_atcmd.rx_buf[start_ofs], line_len);
             line[line_len] = '\0';
+            bool prefix_matched = false;
             for (uint16_t i = 0; i < ATCMD_NUM; i++)
             {
                 if (!memcmp(line, at_cmd_table[i].rsp_prefix,
                             strlen(at_cmd_table[i].rsp_prefix)))
                 {
+                    prefix_matched = true;
                     if (s_atcmd.cur_cmd == i)
                     {
                         app_stop_timer(&s_timer_handle);
@@ -254,6 +256,15 @@ cmdbuf_read:
                     {
                         at_cmd_table[i].rsp_func(line, NULL);
                     }
+                }
+            }
+            /* 命令执行期间收到的不匹配行（如扫描 AP 信息行）作为中间数据处理 */
+            if (!prefix_matched && s_atcmd.cur_cmd != ATCMD_NUM)
+            {
+                T_ATCMD_QUEUE_NODE *node = os_queue_peek(&s_atcmd_queue, 0);
+                if (node && node->cb)
+                {
+                    node->cb(s_atcmd.cur_cmd, line);
                 }
             }
 
