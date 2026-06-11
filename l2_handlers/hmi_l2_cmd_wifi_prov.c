@@ -1,8 +1,8 @@
 #include "hmi_l2_cmd_wifi_prov.h"
-#include "protocol/hmi_l2.h"
-#include "protocol/hmi_proto.h"
-#include "protocol/hmi_protocal_task.h"
-#include "protocol/proto_log.h"
+#include "hmi_l2.h"
+#include "hmi_proto.h"
+#include "hmi_protocal_task.h"
+#include "proto_log.h"
 #include "wifi_ctrl.h"
 #include "app_timer.h"
 #include <stdbool.h>

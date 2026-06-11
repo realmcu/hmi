@@ -1,6 +1,6 @@
 #include "hmi_l2_cmd_factory.h"
-#include "protocol/hmi_l2.h"
-#include "protocol/proto_log.h"
+#include "hmi_l2.h"
+#include "proto_log.h"
 
 static void on_cmd_factory(const hmi_l2_kv_t *kvs, uint8_t n)
 {

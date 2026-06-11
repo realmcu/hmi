@@ -1,7 +1,7 @@
 #include "hmi_l2_cmd_xfer.h"
-#include "protocol/hmi_l2.h"
-#include "protocol/hmi_proto.h"
-#include "protocol/proto_log.h"
+#include "hmi_l2.h"
+#include "hmi_proto.h"
+#include "proto_log.h"
 #include <stdbool.h>
 
 static bool     s_xfer_active   = false;
