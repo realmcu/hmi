@@ -13,19 +13,19 @@
 #include "gui_server.h"
 #endif
 
-#include "wdg.h"
-#include "file_db.h"
 #include "string.h"
-#include "file_db_port_nor_flash.h"
-#include "fmc_api.h"
 
-#if 0  // streaming
+
+
+#define ENABLE_FLASHDB
+// #define ENABLE_STREAM
+
+#ifdef ENABLE_STREAM  // streaming
 #include "gui_stream.h"
 #define STREAM_DB  (void *)(0x4000000 + 0x300000)
 #define STREAM_SIZE  0x100000u
 #define MAX_FRAME       (50u * 1024u)   /* per-buffer cap (>> any real frame) */
 #define POOL_BUFS       6u              /* FIFO depth per stream              */
-// static uint8_t       s_pool_duck[MAX_FRAME * POOL_BUFS + 64u];
 typedef struct
 {
     // avi_info_t       info;
@@ -39,121 +39,97 @@ typedef struct
 #endif
 
 
+#ifdef ENABLE_FLASHDB
+#include "flashdb.h"
+#include "os_sync.h"
 
-// #define MOUNT_DB  (void *)(0x4000000 + 0x300000)
-#define MOUNT_DB  (void *)(0x240F400 + 0x700000u)
-static uint8_t s_dir_cache[4096];   /* >= align_up(dir_bytes, sector_size) */
+static struct fdb_kvdb s_kvdb = {0};
+static struct fdb_bf   s_bf   = {0};
+fdb_kvdb_t app_get_kvdb(void) { return &s_kvdb; }
+fdb_bf_t   app_get_bf(void)   { return &s_bf;   }
 
-int fdb_flash_nor_read(uint32_t addr, void *data, uint32_t len)
+static void *s_db_mutex = NULL;
+static void db_lock(fdb_db_t db)
 {
-    memcpy(data, (void *)addr, len);
-    return 0;
-}
-int fdb_flash_nor_prog_sector(uint32_t abs_addr, const void *buf, uint32_t len)
-{
-    int rc = fmc_flash_nor_write(abs_addr, buf, len);
-    if (!rc)
-    {
-        APP_PRINT_INFO4("fdb fmc_flash_nor_write  0x%x 0x%x %d %d", abs_addr, buf, len, rc);
-    }
-    return  rc == 1 ? 0 : -1;
-}
-int fdb_flash_nor_erase_sector(uint32_t abs_addr_sector_aligned)
-{
-    int rc = fmc_flash_nor_erase(abs_addr_sector_aligned, FMC_FLASH_NOR_ERASE_SECTOR);
-    if (!rc)
-    {
-        APP_PRINT_INFO2("fdb fmc_flash_nor_erase  0x%x %d", abs_addr_sector_aligned, rc);
-    }
-    return  rc == 1 ? 0 : -1;
+    (void)db;
+    os_mutex_take(s_db_mutex, 0xFFFFFFFF);
 }
 
-int main(void)
+static void db_unlock(fdb_db_t db)
 {
-    APP_PRINT_INFO1("main function line = %d!", __LINE__);
-
-    system_lower_init();
-
-    extern void rtk_lcd_hal_init(void);
-    rtk_lcd_hal_init();
-
-
-    wdg_kick();
-
-#if 1  // flash file store
-//    fdb_flash_nor_erase_sector((uint32_t)MOUNT_DB);
-    int fmc_rc = fmc_flash_nor_read((uint32_t)MOUNT_DB, s_dir_cache, sizeof(s_dir_cache));
-    APP_PRINT_INFO1("fdb fmc_flash_nor_read rc=%d", fmc_rc);
-    fdb_nor_cfg_t s_cfg =
-    {
-        .read = (fdb_nor_hal_read_t)fdb_flash_nor_read,
-        .program = (fdb_nor_hal_write_t)fdb_flash_nor_prog_sector,     /* page-program；len 受 page_size 限制 */
-        .erase_sector = (fdb_nor_hal_erase_t)fdb_flash_nor_erase_sector,/* 擦一个扇区，参数必须扇区对齐       */
-        .base_addr = (uint32_t)MOUNT_DB,   /* file_db 区域在芯片上的起始地址      */
-        .region_size = 0x200000, /* file_db 区域大小                    */
-        .sector_size = 4096, /* 例如 4096                           */
-        .page_size = 256,   /* 例如 256；< sector_size             */
-        .dir_bytes            = 4096,                 /* == data_offset(FDB_DATA_ALIGN=4096 时) */
-        .dir_cache            = s_dir_cache,
-        .dir_cache_capacity   = sizeof(s_dir_cache),
-    };
-
-    fdb_port_nor_setup(&s_cfg);
-    int fdb_rc = fdb_init(fdb_port_nor_get_ops());
-    APP_PRINT_INFO1("fdb_init rc=%d", fdb_rc);
-
-    fdb_rc = fdb_mount();
-    APP_PRINT_INFO1("fdb_mount rc=%d", fdb_rc);
-    if (fdb_rc != FDB_OK)
-    {
-        fdb_rc = fdb_format();
-        APP_PRINT_INFO1("fdb_format rc=%d", fdb_rc);
-        if (fdb_rc != FDB_OK)
-        {
-            APP_PRINT_ERROR1("fdb format failed, rc=%d", fdb_rc);
-            // 错误处理
-        }
-        else
-        {
-            fdb_rc = fdb_mount();   // 重新挂载,载入 dir[]
-            APP_PRINT_INFO1("fdb_mount after format rc=%d", fdb_rc);
-            if (fdb_rc != FDB_OK)
-            {
-                APP_PRINT_ERROR1("fdb remount after format failed, rc=%d", fdb_rc);
-            }
-        }
-    }
-    APP_PRINT_INFO2("fdb init done, rc=%d mounted=%d", fdb_rc, fdb_is_mounted());
-
-    fdb_dump_super();
-    fdb_dump_usage();
-
-    // read dir
-    uint32_t file_num = 0;
-    void **file_array = NULL;
-    fdb_get_file_count(&file_num);
-    if (file_num)
-    {
-        file_array = malloc(sizeof(void *) * file_num);
-        for (uint32_t i = 0; i < file_num; ++i)
-        {
-            uintptr_t addr;
-            uint32_t  size, id;
-            if (fdb_get_file_addr(i, &addr, &size, &id) != FDB_OK) { break; }
-
-            APP_PRINT_INFO4("[%u] id=0x%08X  addr=0x%08lX  size=%u\n",
-                            i, id, (unsigned long)addr, size);
-            file_array[i] = (void *)addr;
-        }
-        free(file_array);
-    }
-    // construct resouce list
-    extern uint8_t mainface_list_init(void **data_list, uint32_t n);
-    mainface_list_init(file_array, file_num);
+    (void)db;
+    os_mutex_give(s_db_mutex);
+}
+static bool bf_boot_enum_cb(const char *key, const struct fdb_bf_dirent *ent,
+                            uint32_t xip_addr, void *arg)
+{
+    (void)arg;
+    void **array = (void **)(arg);
+    uint32_t n = (uint32_t)array[0];
+    array[n + 1] = (void *)xip_addr;
+    array[0] = (void *)(n + 1);
+    DBG_DIRECT("[bf] n=%d   '%-24s'  size=%-8u  xip=0x%08X  flags=0x%08X",
+               n, key, ent->size, xip_addr, ent->flags);
+    return false;   /* return true to stop early */
+}
 #endif
 
-#if 0  // streaming
 
+static int flashdb_prepare(void)
+{
+#ifdef ENABLE_FLASHDB
+    fdb_err_t rc;
+
+    /* 1. FAL is initialised inside fdb_kvdb_init when FDB_USING_FAL_MODE is set.
+     *    If you call fal_init() explicitly elsewhere, that is fine too. */
+    if (os_mutex_create(&s_db_mutex) == true)
+    {
+        DBG_DIRECT("os_mutex_create");
+    }
+    /* 2. KVDB — "env" is the logical name, "fdb_kvdb1" is the FAL partition */
+    fdb_kvdb_control(&s_kvdb, FDB_KVDB_CTRL_SET_LOCK, (void *)db_lock);
+    fdb_kvdb_control(&s_kvdb, FDB_KVDB_CTRL_SET_UNLOCK, (void *)db_unlock);
+
+    rc = fdb_kvdb_init(&s_kvdb, "env", "fdb_kvdb1", NULL, NULL);
+    APP_PRINT_INFO1("[db] kvdb init rc=%d", (int)rc);
+    if (rc != FDB_NO_ERR)
+    {
+        APP_PRINT_ERROR1("[db] kvdb init failed (%d)", (int)rc);
+        return -1;
+    }
+
+    /* 3. BF extension — "bf_data" is the FAL data partition */
+    rc = fdb_bf_init(&s_bf, &s_kvdb, "bf_data", NULL);
+    APP_PRINT_INFO1("[db] bf init rc=%d", (int)rc);
+    if (rc != FDB_NO_ERR)
+    {
+        APP_PRINT_ERROR1("[db] bf init failed (%d)", (int)rc);
+        return -1;
+    }
+
+    /* 4. Enumerate all big files present at boot (equivalent to fdb_get_file_addr loop) */
+    APP_PRINT_INFO0("[db] big file directory:");
+
+    // construct resouce list
+    uint32_t file_num = 20;
+    void **file_array = NULL;
+
+    file_array = malloc(sizeof(void *) * file_num);
+    memset((void *)file_array, 0, file_num * 4);
+    fdb_bf_foreach(&s_bf, bf_boot_enum_cb, (void *)file_array);
+    file_num = (uint32_t)file_array[0];
+
+    extern uint8_t mainface_list_init(void **data_list, uint32_t n);
+    mainface_list_init(&file_array[1], file_num);
+
+    free(file_array);
+    return 0;
+#endif
+}
+
+static void stream_prepare(void)
+{
+#ifdef ENABLE_STREAM  // streaming
     extern demo_stream_t s_stream_bt;
     s_stream_bt.tp          = NULL;
     s_stream_bt.pool        = STREAM_DB;
@@ -180,12 +156,21 @@ int main(void)
         DBG_DIRECT("stream demo: stp_create failed\n");
         return NULL;
     }
-
-
 #endif
+}
 
+int main(void)
+{
+    APP_PRINT_INFO1("main function line = %d!", __LINE__);
 
+    system_lower_init();
 
+    extern void rtk_lcd_hal_init(void);
+    rtk_lcd_hal_init();
+
+    stream_prepare();
+
+    flashdb_prepare();
 
 
 #ifdef ENABLE_HONEYGUI

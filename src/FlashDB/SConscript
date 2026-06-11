@@ -1,0 +1,43 @@
+#
+# Copyright (c) 2026, Realtek Semiconductor Corporation
+#
+# SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+#
+
+Import('SDK_ROOT')
+from building import *
+
+# get current directory
+cwd = GetCurrentDir()
+
+src = []
+
+CPPDEFINES = []
+LINKFLAGS = []
+
+path = ['../../app/FlashDB/inc',
+        '../../app/FlashDB/port/fal/inc',
+        '../ports/flashdb_port']
+
+
+src += ['../../app/FlashDB/src/fdb.c']
+src += ['../../app/FlashDB/src/fdb_file.c']
+src += ['../../app/FlashDB/src/fdb_kvdb.c']
+src += ['../../app/FlashDB/src/fdb_tsdb.c']
+src += ['../../app/FlashDB/src/fdb_utils.c']
+src += ['../../app/FlashDB/src/bf/fdb_bf.c']
+src += ['../../app/FlashDB/port/fal/src/fal.c']
+src += ['../../app/FlashDB/port/fal/src/fal_flash.c']
+src += ['../../app/FlashDB/port/fal/src/fal_partition.c']
+src += ['../../app/FlashDB/port/fal/src/fal_rtt.c']
+
+src += ['../ports/flashdb_port/fal_flash_nor_port.c']
+
+
+#SrcRemove(src,SDK_ROOT + '/src/mcu/driver/imdc/src/rtl_common/rtl_lcdc_dphy.c')
+
+
+group = DefineGroup('FlashDB', src, depend = [''], CPPPATH = path, CPPDEFINES = CPPDEFINES, LINKFLAGS = LINKFLAGS)
+
+
+Return('group')

@@ -341,7 +341,7 @@
               <MiscControls>  --include pre_define.h  --include stdbool.h --include app_flags.h</MiscControls>
               <Define>TARGET_RTL8773E, RTK_HAL_LCD, RTK_HAL_DRIVER, SUPPORT_ACCESS_SHM = 1, CONFIG_SOC_SERIES_RTL8773E=1, ENABLE_HONEYGUI</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\src\mcu\display\hardware;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\bluetooth\profile\client;..\..\..\..\inc\bluetooth\profile\server;..\..\..\..\inc\bluetooth\leaudio;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\audio;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\src\driver;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\src\ports\realgui_port;..\src\transport;..\src\transport\bluetooth;..\src\transport\bluetooth\hmi_app;..\src\transport\bluetooth\hmi_ble;..\src\transport\bluetooth\hmi_ble\private_service;..\src\transport\bluetooth\hmi_br_edr;..\src\transport\l2_handlers;..\src\transport\protocol;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\designer\src\callbacks;..\designer\src\ui;..\designer\src\user;..\src\file_db;..\src\file_db\port\nor_flash</IncludePath>
+              <IncludePath>..;..;..\src\application;..\src\application;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\src\mcu\display\hardware;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\bluetooth\profile\client;..\..\..\..\inc\bluetooth\profile\server;..\..\..\..\inc\bluetooth\leaudio;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\audio;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\src\driver;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\src\ports\realgui_port;..\src\transport;..\src\transport\bluetooth;..\src\transport\bluetooth\hmi_app;..\src\transport\bluetooth\hmi_ble;..\src\transport\bluetooth\hmi_ble\private_service;..\src\transport\bluetooth\hmi_br_edr;..\src\transport\l2_handlers;..\src\transport\protocol;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\app\designer\src\callbacks;..\app\designer\src\ui;..\app\designer\src\user;..\app\FlashDB\inc;..\app\FlashDB\port\fal\inc;..\src\ports\flashdb_port</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -789,169 +789,73 @@
             <File>
               <FileName>easy_demoEntry.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\designer\src\easy_demoEntry.c</FilePath>
+              <FilePath>..\app\designer\src\easy_demoEntry.c</FilePath>
             </File>
             <File>
               <FileName>bt_callbacks.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\designer\src\callbacks\bt_callbacks.c</FilePath>
+              <FilePath>..\app\designer\src\callbacks\bt_callbacks.c</FilePath>
             </File>
             <File>
               <FileName>easy_demoMain_callbacks.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\designer\src\callbacks\easy_demoMain_callbacks.c</FilePath>
+              <FilePath>..\app\designer\src\callbacks\easy_demoMain_callbacks.c</FilePath>
             </File>
             <File>
               <FileName>menu_callbacks.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\designer\src\callbacks\menu_callbacks.c</FilePath>
+              <FilePath>..\app\designer\src\callbacks\menu_callbacks.c</FilePath>
             </File>
             <File>
               <FileName>share_callbacks.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\designer\src\callbacks\share_callbacks.c</FilePath>
+              <FilePath>..\app\designer\src\callbacks\share_callbacks.c</FilePath>
             </File>
             <File>
               <FileName>bt_user.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\designer\src\user\bt_user.c</FilePath>
+              <FilePath>..\app\designer\src\user\bt_user.c</FilePath>
             </File>
             <File>
               <FileName>easy_demoMain_user.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\designer\src\user\easy_demoMain_user.c</FilePath>
+              <FilePath>..\app\designer\src\user\easy_demoMain_user.c</FilePath>
             </File>
             <File>
               <FileName>menu_user.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\designer\src\user\menu_user.c</FilePath>
+              <FilePath>..\app\designer\src\user\menu_user.c</FilePath>
             </File>
             <File>
               <FileName>share_user.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\designer\src\user\share_user.c</FilePath>
+              <FilePath>..\app\designer\src\user\share_user.c</FilePath>
             </File>
             <File>
               <FileName>bt_ui.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\designer\src\ui\bt_ui.c</FilePath>
+              <FilePath>..\app\designer\src\ui\bt_ui.c</FilePath>
             </File>
             <File>
               <FileName>easy_demoMain_ui.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\designer\src\ui\easy_demoMain_ui.c</FilePath>
+              <FilePath>..\app\designer\src\ui\easy_demoMain_ui.c</FilePath>
             </File>
             <File>
               <FileName>menu_ui.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\designer\src\ui\menu_ui.c</FilePath>
+              <FilePath>..\app\designer\src\ui\menu_ui.c</FilePath>
             </File>
             <File>
               <FileName>share_ui.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\designer\src\ui\share_ui.c</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>file_db</GroupName>
-          <Files>
-            <File>
-              <FileName>file_db.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\src\file_db\file_db.c</FilePath>
-            </File>
-            <File>
-              <FileName>file_db_alloc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\src\file_db\file_db_alloc.c</FilePath>
-            </File>
-            <File>
-              <FileName>file_db_crc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\src\file_db\file_db_crc.c</FilePath>
-            </File>
-            <File>
-              <FileName>file_db_dir.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\src\file_db\file_db_dir.c</FilePath>
-            </File>
-            <File>
-              <FileName>file_db_log.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\src\file_db\file_db_log.c</FilePath>
-            </File>
-            <File>
-              <FileName>file_db_port_ram.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\src\file_db\port\ram\file_db_port_ram.c</FilePath>
-              <FileOption>
-                <CommonProperty>
-                  <UseCPPCompiler>2</UseCPPCompiler>
-                  <RVCTCodeConst>0</RVCTCodeConst>
-                  <RVCTZI>0</RVCTZI>
-                  <RVCTOtherData>0</RVCTOtherData>
-                  <ModuleSelection>0</ModuleSelection>
-                  <IncludeInBuild>0</IncludeInBuild>
-                  <AlwaysBuild>0</AlwaysBuild>
-                  <GenerateAssemblyFile>0</GenerateAssemblyFile>
-                  <AssembleAssemblyFile>2</AssembleAssemblyFile>
-                  <PublicsOnly>2</PublicsOnly>
-                  <StopOnExitCode>11</StopOnExitCode>
-                  <CustomArgument></CustomArgument>
-                  <IncludeLibraryModules></IncludeLibraryModules>
-                  <ComprImg>1</ComprImg>
-                </CommonProperty>
-                <FileArmAds>
-                  <Cads>
-                    <interw>2</interw>
-                    <Optim>0</Optim>
-                    <oTime>2</oTime>
-                    <SplitLS>2</SplitLS>
-                    <OneElfS>2</OneElfS>
-                    <Strict>2</Strict>
-                    <EnumInt>2</EnumInt>
-                    <PlainCh>2</PlainCh>
-                    <Ropi>2</Ropi>
-                    <Rwpi>2</Rwpi>
-                    <wLevel>0</wLevel>
-                    <uThumb>2</uThumb>
-                    <uSurpInc>2</uSurpInc>
-                    <uC99>2</uC99>
-                    <uGnu>2</uGnu>
-                    <useXO>2</useXO>
-                    <v6Lang>0</v6Lang>
-                    <v6LangP>0</v6LangP>
-                    <vShortEn>2</vShortEn>
-                    <vShortWch>2</vShortWch>
-                    <v6Lto>2</v6Lto>
-                    <v6WtE>2</v6WtE>
-                    <v6Rtti>2</v6Rtti>
-                    <VariousControls>
-                      <MiscControls></MiscControls>
-                      <Define></Define>
-                      <Undefine></Undefine>
-                      <IncludePath></IncludePath>
-                    </VariousControls>
-                  </Cads>
-                </FileArmAds>
-              </FileOption>
-            </File>
-            <File>
-              <FileName>file_db_port_nor_flash.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\src\file_db\port\nor_flash\file_db_port_nor_flash.c</FilePath>
+              <FilePath>..\app\designer\src\ui\share_ui.c</FilePath>
             </File>
           </Files>
         </Group>
         <Group>
           <GroupName>stream</GroupName>
           <Files>
-            <File>
-              <FileName>stream_transport_port.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\..\..\..\..\..\..\HoneyComb_bb2u\sdk\src\sample\gui\realgui\widget\gui_stream\port\stream_transport_port.c</FilePath>
-            </File>
             <File>
               <FileName>example_gui_stream.c</FileName>
               <FileType>1</FileType>
@@ -1007,6 +911,71 @@
                   </Cads>
                 </FileArmAds>
               </FileOption>
+            </File>
+            <File>
+              <FileName>stream_transport_port.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\ports\stream_transport_port\stream_transport_port.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>FlashDB</GroupName>
+          <Files>
+            <File>
+              <FileName>fdb.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\FlashDB\src\fdb.c</FilePath>
+            </File>
+            <File>
+              <FileName>fdb_file.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\FlashDB\src\fdb_file.c</FilePath>
+            </File>
+            <File>
+              <FileName>fdb_kvdb.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\FlashDB\src\fdb_kvdb.c</FilePath>
+            </File>
+            <File>
+              <FileName>fdb_tsdb.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\FlashDB\src\fdb_tsdb.c</FilePath>
+            </File>
+            <File>
+              <FileName>fdb_utils.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\FlashDB\src\fdb_utils.c</FilePath>
+            </File>
+            <File>
+              <FileName>fdb_bf.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\FlashDB\src\bf\fdb_bf.c</FilePath>
+            </File>
+            <File>
+              <FileName>fal.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\FlashDB\port\fal\src\fal.c</FilePath>
+            </File>
+            <File>
+              <FileName>fal_flash.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\FlashDB\port\fal\src\fal_flash.c</FilePath>
+            </File>
+            <File>
+              <FileName>fal_partition.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\FlashDB\port\fal\src\fal_partition.c</FilePath>
+            </File>
+            <File>
+              <FileName>fal_rtt.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\FlashDB\port\fal\src\fal_rtt.c</FilePath>
+            </File>
+            <File>
+              <FileName>fal_flash_rtk_nor_port.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\ports\flashdb_port\fal_flash_rtk_nor_port.c</FilePath>
             </File>
           </Files>
         </Group>

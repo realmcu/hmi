@@ -1,0 +1,31 @@
+#
+# Copyright (c) 2026, Realtek Semiconductor Corporation
+#
+# SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+#
+
+Import('SDK_ROOT')
+from building import *
+
+# get current directory
+cwd = GetCurrentDir()
+
+src = []
+
+CPPDEFINES = []
+LINKFLAGS = []
+
+path = []
+
+
+src += Glob('*.c')
+
+
+
+#SrcRemove(src,SDK_ROOT + '/src/mcu/driver/imdc/src/rtl_common/rtl_lcdc_dphy.c')
+
+
+group = DefineGroup('stream', src, depend = [''], CPPPATH = path, CPPDEFINES = CPPDEFINES, LINKFLAGS = LINKFLAGS)
+
+
+Return('group')
