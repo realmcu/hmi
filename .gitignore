@@ -2,6 +2,7 @@
 
 # Keil MDK build directories
 **/mdk/Objects/
+**/mdk/objects/
 **/mdk/Listings/
 **/mdk/RTE/
 **/mdk/RTE/**/
