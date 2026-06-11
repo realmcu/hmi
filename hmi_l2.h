@@ -94,6 +94,56 @@ extern "C" {
 #define HMI_L2_LOG_SEND         0x03u
 
 /*============================================================================*
+ *                              Keys — BLE connection parameters (0x0c)
+ *============================================================================*/
+
+#define HMI_L2_CMD_CONN_PARAM       0x0cu   /* BLE connection parameters */
+
+#define HMI_L2_CONN_PARAM_REQ       0x01u   /* query request  (phone → device) */
+#define HMI_L2_CONN_PARAM_RSP       0x02u   /* query response (device → phone) */
+
+/*============================================================================*
+ *                              Keys — WiFi provisioning (0x0d)
+ *============================================================================*/
+
+#define HMI_L2_CMD_WIFI_PROV        0x0du   /* WiFi provisioning */
+
+#define HMI_L2_WIFI_CONFIG_SET      0x01u   /* push SSID/password      (phone → device) */
+#define HMI_L2_WIFI_CONFIG_ACK      0x02u   /* accept / reject         (device → phone) */
+#define HMI_L2_WIFI_STATUS_REQ      0x03u   /* poll current state      (phone → device) */
+#define HMI_L2_WIFI_STATUS          0x04u   /* state report / IP:port  (device → phone) */
+
+/* WIFI_CONFIG_ACK result */
+#define HMI_L2_WIFI_ACK_ACCEPTED    0x00u
+#define HMI_L2_WIFI_ACK_REJECTED    0x01u
+
+/* WIFI_CONFIG_ACK error codes */
+#define HMI_L2_WIFI_ERR_NONE        0x00u
+#define HMI_L2_WIFI_ERR_MALFORMED   0x01u
+#define HMI_L2_WIFI_ERR_UNSUPPORTED 0x02u
+#define HMI_L2_WIFI_ERR_INVALID_SSID 0x03u
+#define HMI_L2_WIFI_ERR_INVALID_PWD 0x04u
+#define HMI_L2_WIFI_ERR_BUSY        0x05u
+
+/* WIFI_STATUS state codes */
+#define HMI_L2_WIFI_STATE_IDLE      0x00u
+#define HMI_L2_WIFI_STATE_CONNECTING 0x01u
+#define HMI_L2_WIFI_STATE_CONNECTED 0x02u
+#define HMI_L2_WIFI_STATE_FAILED    0x03u
+
+/* WIFI_STATUS error codes (state = FAILED) */
+#define HMI_L2_WIFI_STATUS_ERR_NONE    0x00u
+#define HMI_L2_WIFI_STATUS_ERR_AUTH    0x01u   /* wrong SSID / password */
+#define HMI_L2_WIFI_STATUS_ERR_NO_AP   0x02u   /* AP not found */
+#define HMI_L2_WIFI_STATUS_ERR_DHCP    0x03u
+#define HMI_L2_WIFI_STATUS_ERR_TIMEOUT 0x04u
+#define HMI_L2_WIFI_STATUS_ERR_TCP     0x05u   /* TCP server start failed */
+#define HMI_L2_WIFI_STATUS_ERR_UNKNOWN 0x06u
+
+/* WIFI_CONFIG_SET flag bits */
+#define HMI_L2_WIFI_FLAG_SAVE_CRED  0x01u   /* persist credentials on device */
+
+/*============================================================================*
  *                              Keys — file transfer (0x0b)
  *============================================================================*/
 
@@ -136,11 +186,30 @@ extern "C" {
 #define HMI_L2_XFER_CHUNK_MAX       2048u
 
 /*============================================================================*
+ *                              KV entry (exposed for handlers)
+ *============================================================================*/
+
+typedef struct
+{
+    uint8_t        key;
+    uint16_t       val_len;
+    const uint8_t *val;
+} hmi_l2_kv_t;
+
+/*============================================================================*
  *                              API
  *============================================================================*/
 
+typedef void (*hmi_l2_cmd_handler_t)(const hmi_l2_kv_t *kvs, uint8_t n);
+
 /**
- * @brief  Parse an L2 packet and dispatch to the appropriate command handler.
+ * @brief  Register a handler for a given L2 command ID.
+ *         Call before the first packet arrives (e.g. during system init).
+ */
+void hmi_l2_register(uint8_t cmd_id, hmi_l2_cmd_handler_t handler);
+
+/**
+ * @brief  Parse an L2 packet and dispatch to the registered command handler.
  *
  * @param data  Pointer to the L1 payload (i.e. the full L2 packet: L2 header + L2 payload).
  * @param len   Data length; must be at least 2 bytes (L2 header).
