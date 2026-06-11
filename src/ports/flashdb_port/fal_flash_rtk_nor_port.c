@@ -53,17 +53,17 @@ static int rtk_nor_init(void)
 static int rtk_nor_read(long offset, uint8_t *buf, size_t size)
 {
     uint32_t abs_addr = RTK_NOR_FLASH_XIP_BASE + (uint32_t)offset;
-    /* 不能用裸 memcpy:XIP 区经 D-Cache/flash read-cache,写后读会拿到 stale 值。
-    * fmc_flash_nor_read 经 SPIC 直读物理 flash,保证读到最新数据。 */
+    /* no memcpy:XIP go D-Cache/flash read-cache, read after write will get stale value。
+    * fmc_flash_nor_read through SPIC directly read flash, ensure data is newest */
     int rc = fmc_flash_nor_read(abs_addr, buf, (uint32_t)size);
-    return (rc == 1) ? (int)size : -1;   /* ← 返回值语义见下,按你平台实际调整 */
+    return (rc == 1) ? (int)size : -1;
 }
 
 static int rtk_nor_write(long offset, const uint8_t *buf, size_t size)
 {
     uint32_t abs_addr = RTK_NOR_FLASH_XIP_BASE + (uint32_t)offset;
     /* fmc_flash_nor_write: returns 1 on success, 0 on failure */
-    int rc = fmc_flash_nor_write(abs_addr, buf, (uint32_t)size);
+    int rc = fmc_flash_nor_write(abs_addr, (void *)buf, (uint32_t)size);
     return rc == 1 ? (int)size : -1;
 }
 
