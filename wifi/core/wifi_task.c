@@ -31,6 +31,7 @@ static void *wifi_msg_queue_handle;
 static void *wifi_task_handle;
 
 static void wifi_task_loop(void *param);
+static bool on_scan_rsp(T_ATCMD_TYPE cmd, const char *rsp);
 static uint16_t on_sdio_rx(uint32_t ip, uint16_t port, const void *data, uint16_t len);
 
 bool wifi_task_send_msg(T_WIFI_MSG *p_msg)
@@ -71,6 +72,11 @@ void wifi_enable(bool enable)
 static void wifi_task_loop(void *param)
 {
     T_WIFI_MSG wifi_msg;
+
+    wifi_enable(true);
+    wifi_sdio_init();
+    wifi_ctrl_init();
+    wifi_ctrl_scan(on_scan_rsp);
 
     while (1)
     {
@@ -115,20 +121,6 @@ static bool on_scan_rsp(T_ATCMD_TYPE cmd, const char *rsp)
     return true;
 }
 
-static int cmd_wifi_start(const struct shell *sh, size_t argc, char **argv)
-{
-    shell_print(sh, "[wifi] enable...");
-    wifi_enable(true);
-    shell_print(sh, "[wifi] sdio_init...");
-    int ret = wifi_sdio_init();
-    shell_print(sh, "[wifi] sdio_init ret=%d", ret);
-    shell_print(sh, "[wifi] ctrl_init...");
-    wifi_ctrl_init();
-    shell_print(sh, "[wifi] scan...");
-    wifi_ctrl_scan(on_scan_rsp);
-    shell_print(sh, "[wifi] start done, waiting ATWS response");
-    return 0;
-}
 
 static int cmd_wifi_scan(const struct shell *sh, size_t argc, char **argv)
 {
@@ -304,7 +296,6 @@ static int cmd_wifi_iperf(const struct shell *sh, size_t argc, char **argv)
 }
 
 SHELL_STATIC_SUBCMD_SET_CREATE(wifi_cmds,
-                               SHELL_CMD(start,          NULL, "Enable WiFi and send first ATWS scan", cmd_wifi_start),
                                SHELL_CMD(info,           NULL, "Show device IP/MAC/GW",                cmd_wifi_info),
                                SHELL_CMD(scan,           NULL, "Send ATWS scan command",               cmd_wifi_scan),
                                SHELL_CMD(stop,           NULL, "Disable WiFi",                         cmd_wifi_stop),
