@@ -183,6 +183,7 @@ Key Header 固定占用 **2 个字节**，v-length = 0 时这 2 个字节仍须�
 | `0x0a` | 日志命令 |
 | `0x0b` | 文件传输命令 |
 | `0x0c` | BLE 连接参数命令 |
+| `0x0d` | WiFi 配网命令 |
 
 ---
 
@@ -756,6 +757,132 @@ L2 版本号：**0**
 ---
 
 
+
+### 3.14 WiFi 配网命令 (command id 0x0d)
+
+L2 版本号：**0**
+
+#### 概述
+
+WiFi 配网命令允许 App 通过已建立的 BLE 连接将 WiFi 凭据（SSID/密码）下发给设备，监听配网状态，配网成功后获取设备 TCP 服务的 IP 和端口，用于后续切换至 WiFi 传输通道。
+
+#### 配网交互流程
+
+```
+App                                     Device
+ │                                        │
+ │──── WIFI_CONFIG_SET (0x01) ──────────▶│  下发 SSID / 密码
+ │◀─── WIFI_CONFIG_ACK (0x02) ──────────│  接受或拒绝（5s 超时）
+ │                                        │
+ │      （设备在后台发起 WiFi 连接）       │
+ │                                        │
+ │◀─── WIFI_STATUS     (0x04) ──────────│  主动上报状态变更（connecting / connected / failed）
+ │                                        │
+ │  [可选：30s 后超时未收到最终状态]       │
+ │──── WIFI_STATUS_REQ (0x03) ──────────▶│  主动查询当前状态
+ │◀─── WIFI_STATUS     (0x04) ──────────│  返回当前状态
+```
+
+- App 收到 `WIFI_CONFIG_ACK` 后启动 30s 状态超时定时器；
+- 超时后发送一次 `WIFI_STATUS_REQ` 主动查询，再等 10s；仍无响应则判定配网失败；
+- 设备连接成功后在 `WIFI_STATUS` 中携带 IP 和 TCP 端口，App 可随即发起 TCP 连接。
+
+#### Key 列表
+
+| Key | 定义 | 方向 |
+|-----|------|------|
+| `0x01` | WIFI_CONFIG_SET — 下发 SSID/密码 | App → Device |
+| `0x02` | WIFI_CONFIG_ACK — 确认是否接受请求 | Device → App |
+| `0x03` | WIFI_STATUS_REQ — 主动查询配网状态 | App → Device |
+| `0x04` | WIFI_STATUS — 上报配网状态 / IP | Device → App |
+
+---
+
+#### 0x01 — WIFI_CONFIG_SET
+
+**方向**：App → Device | **Value（5 + ssid_len + pwd_len bytes）**：
+
+| 字段 | 大小 | 说明 |
+|------|------|------|
+| request_id | 2 bytes | 请求序号（Big-Endian），用于与 ACK 匹配；每次配网递增 |
+| flags | 1 byte | 位标志：bit0 = `FLAG_SAVE_CREDENTIALS`（1 = 保存凭据到设备，下次自动连接） |
+| ssid_len | 1 byte | SSID UTF-8 编码后字节数（1~32） |
+| ssid | ssid_len bytes | SSID，UTF-8 编码，不含 null 终止符 |
+| pwd_len | 1 byte | 密码 UTF-8 编码后字节数（0~64）；0 表示开放网络，无密码 |
+| password | pwd_len bytes | 密码，UTF-8 编码，不含 null 终止符 |
+
+---
+
+#### 0x02 — WIFI_CONFIG_ACK
+
+**方向**：Device → App | **Value（4 bytes）**：
+
+| 字段 | 大小 | 说明 |
+|------|------|------|
+| request_id | 2 bytes | 对应的请求序号（Big-Endian） |
+| result | 1 byte | `0x00`=接受；`0x01`=拒绝 |
+| error | 1 byte | 错误码（仅 result=`0x01` 时有效；接受时置 `0x00`） |
+
+**error 错误码**：
+
+| 错误码 | 说明 |
+|--------|------|
+| `0x00` | 无错误 |
+| `0x01` | Payload 格式错误 |
+| `0x02` | 不支持的配网模式 |
+| `0x03` | 无效的 SSID |
+| `0x04` | 无效的密码 |
+| `0x05` | 设备繁忙（已有配网会话进行中）|
+
+---
+
+#### 0x03 — WIFI_STATUS_REQ
+
+**方向**：App → Device | **Value（2 bytes）**：
+
+| 字段 | 大小 | 说明 |
+|------|------|------|
+| request_id | 2 bytes | 对应的请求序号（Big-Endian）|
+
+> 设备收到此命令后应立即回复当前配网状态（`WIFI_STATUS`），即使状态仍为 idle。
+
+---
+
+#### 0x04 — WIFI_STATUS
+
+**方向**：Device → App | **Value（6 + ip_len bytes）**：
+
+| 字段 | 大小 | 说明 |
+|------|------|------|
+| request_id | 2 bytes | 对应的请求序号（Big-Endian）|
+| state | 1 byte | 配网状态码（见下表）|
+| error | 1 byte | 错误码（仅 state=`0x03` 时有效；其余状态置 `0x00`）|
+| ip_len | 1 byte | IP 字符串 ASCII 编码字节数；未连接时为 `0x00` |
+| ip | ip_len bytes | 点分十进制 IP 地址字符串（如 `"192.168.1.100"`），ASCII 编码，不含 null 终止符 |
+| port | 2 bytes | TCP 服务端口号（Big-Endian；默认 8783）|
+
+**state 状态码**：
+
+| 状态码 | 说明 |
+|--------|------|
+| `0x00` | Idle（空闲，未发起连接）|
+| `0x01` | Connecting（正在连接 WiFi）|
+| `0x02` | Connected（已连接，ip/port 字段有效）|
+| `0x03` | Failed（连接失败，error 字段有效）|
+
+**error 错误码**（state=`0x03` 时）：
+
+| 错误码 | 说明 |
+|--------|------|
+| `0x00` | 无错误 |
+| `0x01` | WiFi 认证失败（SSID/密码错误）|
+| `0x02` | 未找到该 WiFi（AP 不在范围内）|
+| `0x03` | DHCP 失败 |
+| `0x04` | 连接超时 |
+| `0x05` | TCP 服务启动失败 |
+| `0x06` | 未知错误 |
+
+---
 
 ## 附录：关键数据结构速查
 
