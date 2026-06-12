@@ -8,10 +8,8 @@ applications with display and wireless connectivity.
 | Feature | Status |
 |---|---|
 | HoneyGUI display engine | ✅ Available |
-| LVGL display engine | 🚧 In Development |
-| Bluetooth (BLE + BR/EDR) | 🚧 In Development |
-| BLE private protocol | 🚧 In Development |
-| OTA firmware update | 🚧 In Development |
+| Bluetooth (BLE + BR/EDR) | ✅ Available |
+| OTA firmware update | ✅ Available |
 | 4-mode build matrix (src/lib × bank0/bank1) | ✅ Available |
 | Dual toolchain support (GCC / Keil MDK) | ✅ Available |
 
