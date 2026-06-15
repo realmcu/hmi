@@ -140,7 +140,7 @@ static struct gui_os_api os_api =
     .mem_size = GUI_HEAP_SIZE,
 
     .lower_mem_addr = (void *)(SPIC1_MEM_BASE + DSP_RSV_SIZE),
-    .lower_mem_size = 0x300000,
+    .lower_mem_size = 0x200000,
     .mem_threshold_size = 10 * 1024,
 
     /*enable this if use printf*/
