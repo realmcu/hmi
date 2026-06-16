@@ -4,6 +4,16 @@
 #include "proto_log.h"
 #include <stdbool.h>
 
+/* flash db */
+#include "string.h"
+#include "gui_message.h"
+#include "flashdb.h"
+#include "trace.h"
+extern fdb_bf_t   app_get_bf(void);
+extern bool      fdb_bf_exists(fdb_bf_t db, const char *key);
+
+
+
 static bool     s_xfer_active   = false;
 static uint8_t  s_xfer_type     = 0;
 static uint32_t s_xfer_total    = 0;
@@ -38,6 +48,14 @@ static void xfer_reset(void)
 
 static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
 {
+    /* flash db file */
+    static uint32_t id = 0;
+    static fdb_err_t    rc = 0;
+    static fdb_bf_file_t file = NULL;
+    static uint32_t     crc = 0;
+    static char name[64];
+
+
     for (uint8_t i = 0; i < n; i++)
     {
         uint8_t        key = kvs[i].key;
@@ -80,6 +98,23 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                 rsp[1] = (uint8_t)(s_xfer_chunk >> 8);
                 rsp[2] = (uint8_t)(s_xfer_chunk & 0xFFu);
                 xfer_send(HMI_L2_XFER_BEGIN_RSP, rsp, sizeof(rsp));
+
+                /****  Prepare for file rec ********/
+                do
+                {
+                    memset((void *)name, 0, sizeof(name));
+                    sprintf(name, "bf_%u", id);
+                    id++;
+                }
+                while (fdb_bf_exists(app_get_bf(), name));
+
+                // DBG_DIRECT("[bf] create '%s' ", name);
+                rc = fdb_bf_create(app_get_bf(), name, s_xfer_total, &file);
+                if (rc != FDB_NO_ERR)
+                {
+                    APP_PRINT_ERROR2("[bf] create '%s' failed (%d)", name, (int)rc);
+                }
+
                 break;
             }
 
@@ -107,6 +142,18 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                 PROTO_LOG("L2 XFER DATA seq=%d data_len=%d", seq, vl - 2);
                 /* TODO: write (val + 2, vl - 2) to storage */
                 s_xfer_next_seq++;
+
+
+                /****  file write into storage ********/
+                if (rc == 0)
+                {
+                    rc = fdb_bf_append(file, val + 2, vl - 2);
+                    if (rc != FDB_NO_ERR)
+                    {
+                        APP_PRINT_ERROR1("[bf] append failed (%d)", (int)rc);
+                        fdb_bf_abort(file);
+                    }
+                }
                 break;
             }
 
@@ -121,6 +168,29 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                 PROTO_LOG("L2 XFER END crc32=0x%08lx total_chunks=%d",
                           (unsigned long)crc32, s_xfer_next_seq);
                 /* TODO: verify crc32 against received data */
+
+                /****  file write done, send msg ********/
+                if (rc == 0)
+                {
+                    rc = fdb_bf_commit(file, 0);         /* atomic: KVDB entry written here */
+                    if (rc != FDB_NO_ERR)
+                    {
+                        APP_PRINT_ERROR2("[bf] commit '%s' failed (%d)", name, (int)rc);
+                        // return -1;
+                    }
+                    else
+                    {
+                        // send msg to gui
+                        extern void ui_process_msg(void *arg);
+                        gui_msg_t msg = {.event = GUI_EVENT_USER_DEFINE, .sub_event = 0, .cb = (gui_msg_cb)ui_process_msg};
+                        uint32_t sz = 0;
+                        int grc = fdb_bf_get_addr(app_get_bf(), name, (uint32_t *) & (msg.payload), &sz);
+                        DBG_DIRECT("[bf]  rc %d grc %d file %s 0x%x %d", rc, grc, name, msg.payload, sz);
+                        gui_send_msg_to_server(&msg);
+                    }
+                }
+
+                // l2 rsp send
                 xfer_reset();
                 uint8_t rsp[2] = { HMI_L2_XFER_END_OK, HMI_L2_XFER_ERR_NONE };
                 xfer_send(HMI_L2_XFER_END_RSP, rsp, sizeof(rsp));
@@ -132,6 +202,13 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                 uint8_t reason = (vl > 0) ? val[0] : 0;
                 PROTO_LOG("L2 XFER ABORT reason=%d", reason);
                 xfer_reset();
+
+                /****  file write ABORT ********/
+                if (rc == 0)
+                {
+                    fdb_bf_abort(file);
+                    file = NULL;
+                }
                 break;
             }
 
