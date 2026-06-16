@@ -11,7 +11,7 @@
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
       <pArmCC>6220000::V6.22::.\ArmCompilerforEmbedded6.22</pArmCC>
-      <pCCUsed>6220000::V6.22::.\ArmCompilerforEmbedded6.22</pCCUsed>
+      <pCCUsed>6220000::V6.22::..\..\AC\622</pCCUsed>
       <uAC6>1</uAC6>
       <TargetOption>
         <TargetCommonOption>
@@ -187,6 +187,7 @@
             <RvdsVP>2</RvdsVP>
             <RvdsMve>2</RvdsMve>
             <RvdsCdeCp>0</RvdsCdeCp>
+            <nBranchProt>0</nBranchProt>
             <hadIRAM2>1</hadIRAM2>
             <hadIROM2>1</hadIROM2>
             <StupSel>8</StupSel>
@@ -338,9 +339,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>  --include pre_define.h  --include stdbool.h --include app_flags.h</MiscControls>
-              <Define>RTK_HAL_LCD, ENABLE_HONEYGUI, SUPPORT_ACCESS_SHM = 1, TARGET_RTL8773E, RTK_HAL_DRIVER</Define>
+              <Define>RTK_HAL_LCD, TARGET_RTL8773E, SUPPORT_ACCESS_SHM = 1, ENABLE_HONEYGUI, RTK_HAL_DRIVER</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..;..\ports;..\app;..\app\bluetooth\hmi_app;..\app\bluetooth\hmi_ble;..\app\bluetooth\hmi_ble\private_service;..\app\bluetooth\hmi_br_edr;..\app\driver;..\app\gui_lib;..\app\gui_lib\armclang;..\app\gui_lib\gcc;..\app\gui_lib\include;..\app\l2_handlers;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\src\mcu\display\hardware;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\bluetooth\profile\client;..\..\..\..\inc\bluetooth\profile\server;..\..\..\..\inc\bluetooth\leaudio;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\audio;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\component;..\component\protocol;..\ports\realgui_port;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs</IncludePath>
+              <IncludePath>..;..;..\ports;..\app;..\app\bluetooth\hmi_app;..\app\bluetooth\hmi_ble;..\app\bluetooth\hmi_ble\private_service;..\app\bluetooth\hmi_br_edr;..\app\designer\src\callbacks;..\app\designer\src\ui;..\app\designer\src\user;..\app\driver;..\app\gui_lib;..\app\gui_lib\armclang;..\app\gui_lib\gcc;..\app\gui_lib\include;..\app\l2_handlers;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\src\mcu\display\hardware;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\bluetooth\profile\client;..\..\..\..\inc\bluetooth\profile\server;..\..\..\..\inc\bluetooth\leaudio;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\audio;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\ports\flashdb_port;..\component\FlashDB\inc;..\component\FlashDB\port\fal\inc;..\ports\realgui_port;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\component\protocol</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -395,9 +396,9 @@
               <FilePath>..\app\app_panel_init.c</FilePath>
             </File>
             <File>
-              <FileName>example_gui_stream.c</FileName>
+              <FileName>example_gui_flashdb.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\app\example_gui_stream.c</FilePath>
+              <FilePath>..\app\example_gui_flashdb.c</FilePath>
             </File>
             <File>
               <FileName>main.c</FileName>
@@ -508,6 +509,76 @@
               <FileName>hmi_br_edr_link.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\app\bluetooth\hmi_br_edr\hmi_br_edr_link.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>ui</GroupName>
+          <Files>
+            <File>
+              <FileName>easy_demoEntry.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\designer\src\easy_demoEntry.c</FilePath>
+            </File>
+            <File>
+              <FileName>bt_callbacks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\designer\src\callbacks\bt_callbacks.c</FilePath>
+            </File>
+            <File>
+              <FileName>easy_demoMain_callbacks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\designer\src\callbacks\easy_demoMain_callbacks.c</FilePath>
+            </File>
+            <File>
+              <FileName>menu_callbacks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\designer\src\callbacks\menu_callbacks.c</FilePath>
+            </File>
+            <File>
+              <FileName>share_callbacks.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\designer\src\callbacks\share_callbacks.c</FilePath>
+            </File>
+            <File>
+              <FileName>bt_user.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\designer\src\user\bt_user.c</FilePath>
+            </File>
+            <File>
+              <FileName>easy_demoMain_user.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\designer\src\user\easy_demoMain_user.c</FilePath>
+            </File>
+            <File>
+              <FileName>menu_user.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\designer\src\user\menu_user.c</FilePath>
+            </File>
+            <File>
+              <FileName>share_user.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\designer\src\user\share_user.c</FilePath>
+            </File>
+            <File>
+              <FileName>bt_ui.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\designer\src\ui\bt_ui.c</FilePath>
+            </File>
+            <File>
+              <FileName>easy_demoMain_ui.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\designer\src\ui\easy_demoMain_ui.c</FilePath>
+            </File>
+            <File>
+              <FileName>menu_ui.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\designer\src\ui\menu_ui.c</FilePath>
+            </File>
+            <File>
+              <FileName>share_ui.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\designer\src\ui\share_ui.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -702,22 +773,62 @@
           </Files>
         </Group>
         <Group>
-          <GroupName>hmi_protocol</GroupName>
+          <GroupName>FlashDB</GroupName>
           <Files>
             <File>
-              <FileName>hmi_l2.c</FileName>
+              <FileName>fal_flash_rtk_nor_port.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\component\protocol\hmi_l2.c</FilePath>
+              <FilePath>..\ports\flashdb_port\fal_flash_rtk_nor_port.c</FilePath>
             </File>
             <File>
-              <FileName>hmi_proto.c</FileName>
+              <FileName>fdb.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\component\protocol\hmi_proto.c</FilePath>
+              <FilePath>..\component\FlashDB\src\fdb.c</FilePath>
             </File>
             <File>
-              <FileName>hmi_protocal_task.c</FileName>
+              <FileName>fdb_file.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\component\protocol\hmi_protocal_task.c</FilePath>
+              <FilePath>..\component\FlashDB\src\fdb_file.c</FilePath>
+            </File>
+            <File>
+              <FileName>fdb_kvdb.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\component\FlashDB\src\fdb_kvdb.c</FilePath>
+            </File>
+            <File>
+              <FileName>fdb_tsdb.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\component\FlashDB\src\fdb_tsdb.c</FilePath>
+            </File>
+            <File>
+              <FileName>fdb_utils.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\component\FlashDB\src\fdb_utils.c</FilePath>
+            </File>
+            <File>
+              <FileName>fdb_bf.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\component\FlashDB\src\bf\fdb_bf.c</FilePath>
+            </File>
+            <File>
+              <FileName>fal.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\component\FlashDB\port\fal\src\fal.c</FilePath>
+            </File>
+            <File>
+              <FileName>fal_flash.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\component\FlashDB\port\fal\src\fal_flash.c</FilePath>
+            </File>
+            <File>
+              <FileName>fal_partition.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\component\FlashDB\port\fal\src\fal_partition.c</FilePath>
+            </File>
+            <File>
+              <FileName>fal_rtt.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\component\FlashDB\port\fal\src\fal_rtt.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -793,6 +904,26 @@
               <FileName>romfs.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\src\app\Wearable\system\dfs\romfs\romfs.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>hmi_protocol</GroupName>
+          <Files>
+            <File>
+              <FileName>hmi_l2.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\component\protocol\hmi_l2.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_proto.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\component\protocol\hmi_proto.c</FilePath>
+            </File>
+            <File>
+              <FileName>hmi_protocal_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\component\protocol\hmi_protocal_task.c</FilePath>
             </File>
           </Files>
         </Group>

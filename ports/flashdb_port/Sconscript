@@ -1,0 +1,26 @@
+#
+# Copyright (c) 2026, Realtek Semiconductor Corporation
+#
+# SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+#
+
+Import('SDK_ROOT')
+from building import *
+
+# get current directory
+cwd = GetCurrentDir()
+
+
+CPPDEFINES = []
+LINKFLAGS = []
+
+
+src = Glob('*.c')
+path = [cwd]
+
+
+
+group = DefineGroup('FlashDB', src, depend = [''], CPPPATH = path, CPPDEFINES = CPPDEFINES, LINKFLAGS = LINKFLAGS)
+
+
+Return('group')

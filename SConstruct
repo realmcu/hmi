@@ -46,6 +46,8 @@ RTK_IC_TYPE = 'rtl8773e'
 WEARABLE_ROOT = os.path.abspath('./../../../src/app/Wearable')
 HONEYGUI_ROOT = os.path.abspath('./../../../src/sample/gui')
 PLATFORM = menu_config.PLATFORM
+FLASHDB_ROOT = os.path.abspath('./component/FlashDB')
+PROTOCOL_ROOT = os.path.abspath('./component/protocol')
 
 Export('PLATFORM')
 Export('TOOL_ROOT')
@@ -63,6 +65,8 @@ objs = PrepareBuilding(env, TOOL_ROOT, has_libcpu=False)
 
 # include app
 objs.extend(SConscript(os.path.join(WEARABLE_ROOT, 'SConscript')))
+objs.extend(SConscript(os.path.join(FLASHDB_ROOT, 'SConscript')))
+objs.extend(SConscript(os.path.join(PROTOCOL_ROOT, 'SConscript')))
 
 # bsp_vdir = 'build'
 
