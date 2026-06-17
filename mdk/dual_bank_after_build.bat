@@ -36,7 +36,7 @@ rem generate bin and disasm from axf
 %FROMELF_EXE%  -acd --interleave=source -o "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%.disasm" %AXF_FILE%
 copy "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%.bin" "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%.bin"
 copy "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%.trace" "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%.trace"
-del "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%.bin"
+REM del "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%.bin"
 del "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%.trace"
 
 rem generate MP bin for bank0
