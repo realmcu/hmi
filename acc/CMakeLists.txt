@@ -2,6 +2,7 @@
 
 set(private_sources)
 ameba_list_append(private_sources
+    acc_jpeg.c
     acc_ppe.c
     rtl_ppe.c
 )
@@ -16,6 +17,7 @@ set(private_includes)
 ameba_list_append(private_includes
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${honeygui_includes}
+    ${c_CMPT_FWLIB_DIR}/jpeg_decoder/inc
 )
 
 ameba_add_internal_library(honeygui_acc

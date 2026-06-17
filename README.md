@@ -6,58 +6,69 @@
 
 ```
 hmi/
-├── acc/                                # 硬件加速
+├── acc/                                # 硬件加速模块
 │   ├── CMakeLists.txt
-│   ├── acc_ppe.c
-│   ├── rtl_ppe.c
-│   └── rtl_ppe.h
+│   ├── acc_jpeg.c                      # JPEG 硬件加速
+│   ├── acc_ppe.c                       # PPE 硬件加速
+│   ├── rtl_ppe.c                       # RTL PPE 驱动
+│   ├── rtl_ppe.h
+│   └── rtl_ppe_reg.h                   # RTL PPE 寄存器定义
 ├── port/                               # GUI 移植层
+│   ├── CMakeLists.txt
 │   ├── gui_port.h
 │   ├── gui_port_acc.c                  # 硬件加速移植
 │   ├── gui_port_dc.c                   # 显示控制器移植
 │   ├── gui_port_indev.c                # 输入设备移植
-│   ├── gui_port_init.c                 # 初始化移植
+│   ├── gui_port_init.c                 # 初始化 & 组件注册
+│   ├── gui_port_init.h
 │   ├── gui_port_os.c                   # 操作系统移植
-│   └── CMakeLists.txt
+│   └── readme.md
 ├── app/                                # 应用程序
-│   ├── dashboard/                      # Dashboard 模板应用
 │   ├── CMakeLists.txt
-│   └── Kconfig
-├── demos/                              # HoneyGUI 入口程序
+│   ├── Kconfig
+│   └── dashboard/                      # Dashboard 应用
+│       ├── CMakeLists.txt
+│       ├── ble/                        # BLE 通信
+│       │   ├── dashboard_ble.c
+│       │   ├── dashboard_ble.h
+│       │   └── dashboard_hid_service/
+│       │       ├── dashboard_hids_cc.c
+│       │       └── dashboard_hids_cc.h
+│       ├── bt_ext/                     # BT EXT 通信
+│       │   ├── bt_ext_hids_cc.c
+│       │   ├── bt_ext_hids_cc.h
+│       │   ├── dashboard_bt_ext.c
+│       │   └── dashboard_bt_ext.h
+│       ├── io_peripheral/              # 按键输入
+│       │   ├── dashboard_key.c
+│       │   └── dashboard_key.h
+│       ├── src/
+│       │   └── dashboard_main.c        # 主入口
+│       ├── ui_design/                  # UI 设计（由 HoneyGUI Designer 生成）
+│       │   ├── callbacks/
+│       │   │   ├── DashboardMain_callbacks.c
+│       │   │   └── DashboardMain_callbacks.h
+│       │   ├── ui/
+│       │   │   ├── DashboardMain_ui.c
+│       │   │   └── DashboardMain_ui.h
+│       │   ├── user/
+│       │   │   ├── DashboardMain_user.c
+│       │   │   └── DashboardMain_user.h
+│       │   ├── app_romfs.bin
+│       │   └── dashboardEntry.c
+│       └── wifi/                       # Wi-Fi & OTA
+│           ├── dashboard_ota_http.c
+│           ├── dashboard_ota_http.h
+│           ├── dashboard_wifi.c
+│           └── dashboard_wifi.h
+├── demos/                              # HoneyGUI 入口 & 版本信息
+│   ├── CMakeLists.txt
 │   ├── honeygui_demos.c
-│   ├── honeygui_demos.h
-│   └── CMakeLists.txt
-├── west/                               # West 配置
-│   └── manifest/
-│       └── rtl8721f.yml               # 项目 manifest 文件
+│   └── honeygui_demos.h
 ├── CMakeLists.txt                      # 顶层构建文件
 ├── Kconfig                             # HoneyGUI Kconfig 配置
 └── README.md                           # 本文件
 ```
-
-## 获取代码
-
-使用 West 工具拉取完整项目：
-
-```bash
-# 初始化 West 工作区
-west init -m ssh://cn4soc.rtkbf.com:29418/HoneyRepo/hmi --mf manifest/rtl8721f.yml --mr rtl8721f-manifest directory
-
-# 进入工作目录
-cd ~/workspace/hmi-project
-
-# 更新所有依赖项目
-west update
-```
-
-### 参数说明
-
-| 参数 | 值 | 作用 |
-|------|-----|------|
-| `-m` | `ssh://cn4soc.rtkbf.com:29418/HoneyRepo/hmi` | manifest 仓库地址 |
-| `--mf` | `manifest/rtl8721f.yml` | manifest 文件路径 |
-| `--mr` | `rtl8721f-manifest` | manifest 仓库分支 |
-| 最后一个参数 | `directory` | 工作区目录（省略则使用当前目录） |
 
 ### 工作区目录结构
 
@@ -82,18 +93,6 @@ west update
     │   └── tflite_micro/              # TensorFlow Lite Micro (git submodule)
     └── ...
 ```
-
-## 依赖项目
-
-| 项目 | 仓库 | 说明 |
-|------|------|------|
-| ameba-rtos | gitee.com/ameba-aiot/ameba-rtos | Ameba RTOS SDK (master) |
-| honeygui | gitee.com/realmcu/HoneyGUI | HoneyGUI 图形库 |
-| component/audio | GitHub (git submodule) | 音频模块 |
-| component/ui | gitee.com/realmcu/ameba-ui (git submodule) | UI 基础模块 |
-| component/aivoice | GitHub (git submodule) | AI 语音模块 |
-| component/tflite_micro | GitHub (git submodule) | TensorFlow Lite Micro |
-
 ## 构建
 
 ### 方式一：使用 VS Code 扩展插件（推荐）

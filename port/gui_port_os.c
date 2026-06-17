@@ -120,11 +120,11 @@ static void port_log(const char *format, ...)
 
 // Memory heap configuration
 // Note: Reduce these values if you encounter RAM overflow during linking
-#define PORT_GUI_MEMHEAP_SIZE (1024 * 128)  // 128KB for GUI memory
-#define PORT_GUI_LOWER_MEMHEAP_SIZE (1024 * 64)  // 64KB for lower priority GUI memory
+#define PORT_GUI_MEMHEAP_SIZE (1024 * 192)  // 128KB for GUI memory
+#define PORT_GUI_LOWER_MEMHEAP_SIZE (1024 * 1024 * 4)  // 4MB for lower priority GUI memory
 
 static uint8_t gui_memheap[PORT_GUI_MEMHEAP_SIZE] __attribute__((aligned(32)));
-static uint8_t gui_lower_memheap[PORT_GUI_LOWER_MEMHEAP_SIZE] __attribute__((aligned(32)));
+//static uint8_t gui_lower_memheap[PORT_GUI_LOWER_MEMHEAP_SIZE] __attribute__((aligned(32)));
 
 static struct gui_os_api os_api =
 {
@@ -143,9 +143,9 @@ static struct gui_os_api os_api =
     .mem_addr = gui_memheap,
     .mem_size = PORT_GUI_MEMHEAP_SIZE,
 
-    .lower_mem_addr = gui_lower_memheap,
-    .lower_mem_size = PORT_GUI_LOWER_MEMHEAP_SIZE,
-    .mem_threshold_size = 10 * 1024,  // 10KB threshold
+    // .lower_mem_addr = gui_lower_memheap,
+    // .lower_mem_size = PORT_GUI_LOWER_MEMHEAP_SIZE,
+    .mem_threshold_size = 50 * 1024,  // 10KB threshold
 
     .log = (void *)port_log,
 };
@@ -168,7 +168,10 @@ void gui_port_os_init(void)
                           TRUE, gui_timer_callback) == RTK_SUCCESS) {
         rtos_timer_start(timer_handle, 0);
     }
+    os_api.lower_mem_addr = malloc(PORT_GUI_LOWER_MEMHEAP_SIZE);
+    os_api.lower_mem_size = PORT_GUI_LOWER_MEMHEAP_SIZE;
 
+    printf("lower_mem_addr: %p, lower_mem_size: %lu\n", os_api.lower_mem_addr, (unsigned long)os_api.lower_mem_size);
     // Register OS API with HoneyGUI
     gui_os_api_register(&os_api);
 }

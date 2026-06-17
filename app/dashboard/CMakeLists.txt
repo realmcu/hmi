@@ -12,7 +12,37 @@ ameba_list_append(private_sources
     ui_design/callbacks/DashboardMain_callbacks.c
     ui_design/ui/DashboardMain_ui.c
     ui_design/user/DashboardMain_user.c
+    src/dashboard_main.c
 )
+
+if(CONFIG_BT)
+    ameba_list_append(private_sources
+        ble/dashboard_ble.c
+        ble/dashboard_hid_service/dashboard_hids_cc.c
+    )
+endif()
+
+if(CONFIG_BT_EXT)
+    ameba_list_append(private_sources
+        bt_ext/dashboard_bt_ext.c
+        bt_ext/bt_ext_hids_cc.c
+    )
+endif()
+
+# Key input (GPIO buttons + CLI) feeds both BLE stacks; compile it once when
+# either stack is enabled.
+if(CONFIG_BT OR CONFIG_BT_EXT)
+    ameba_list_append(private_sources
+        io_peripheral/dashboard_key.c
+    )
+endif()
+
+if(CONFIG_WLAN)
+    ameba_list_append(private_sources
+        wifi/dashboard_wifi.c
+        wifi/dashboard_ota_http.c
+    )
+endif()
 
 set(private_includes)
 ameba_list_append(private_includes
@@ -21,6 +51,13 @@ ameba_list_append(private_includes
     ${CMAKE_CURRENT_SOURCE_DIR}/ui_design/callbacks
     ${CMAKE_CURRENT_SOURCE_DIR}/ui_design/ui
     ${CMAKE_CURRENT_SOURCE_DIR}/ui_design/user
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/ble
+    ${CMAKE_CURRENT_SOURCE_DIR}/ble/dashboard_hid_service
+    ${CMAKE_CURRENT_SOURCE_DIR}/io_peripheral
+    ${CMAKE_CURRENT_SOURCE_DIR}/wifi
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt_ext
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../bluetooth/example/gatt_service/server
     ${honeygui_includes}
 )
 

@@ -3,7 +3,7 @@
 #include "gui_port.h"
 #include "gui_api.h"
 #include "string.h"
-#include "st7262.h"
+#include "dbl070.h"
 #include "ameba_gdma.h"
 #include "ameba_soc.h"
 #include "os_wrapper.h"
@@ -32,7 +32,7 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
 #if USE_PFB
     dc->frame_buf = g_buffer_lcd;
 #endif
-	st7262_clean_invalidate_buffer(dc->frame_buf);
+	dbl070_clean_invalidate_buffer(dc->frame_buf);
 	wait_for_vsync = 1;
 	rtos_sema_take(g_vsync_sem, RTOS_MAX_TIMEOUT);
 	wait_for_vsync = 0;
@@ -208,7 +208,7 @@ u32 memcpy_by_gdma_int(void* param)
 
 void gui_port_dc_init(void)
 {
-    printf("gui_port_dc_init with st7262 driver\n");
+    printf("gui_port_dc_init with dbl070 driver\n");
     dc.frame_buf = NULL;
 #if USE_PFB
     dc.fb_height = LCD_SECTION_HEIGHT;
@@ -224,8 +224,8 @@ void gui_port_dc_init(void)
 
     gui_dc_info_register(&dc);
     
-	st7262_init(RGB565);
-	st7262_get_info(&g_width, &g_height);
+	dbl070_init(RGB565);
+	dbl070_get_info(&g_width, &g_height);
     g_buffer_0 = (uint8_t *)malloc(g_width * g_height * DRV_LCD_BITS / 8 + 100);
     memset(g_buffer_0, 0xFF, g_width * g_height * DRV_LCD_BITS / 8 + 100);
     // g_buffer_0 = g_buffer_0 + 64 - ((uintptr_t)g_buffer_0 % 64);
@@ -247,10 +247,10 @@ void gui_port_dc_init(void)
     dma_memcpy_init(&dma_obj, memcpy_by_gdma_int, 0);
 	spic1_psram_speed_report(g_buffer_0);
     spic_nor_flash_speed_report();
-    ST7262VBlankCallback *callback =    (ST7262VBlankCallback *)malloc(sizeof(ST7262VBlankCallback));
+    DBL070VBlankCallback *callback =    (DBL070VBlankCallback *)malloc(sizeof(DBL070VBlankCallback));
 	rtos_sema_create(&g_vsync_sem, 0, RTOS_SEMA_MAX_COUNT);
     callback->VBlank = display_vsync_handle;
-    st7262_register_callback(callback, NULL);
+    dbl070_register_callback(callback, NULL);
     
-	st7262_clean_invalidate_buffer(g_buffer_0);
+	dbl070_clean_invalidate_buffer(g_buffer_0);
 }
