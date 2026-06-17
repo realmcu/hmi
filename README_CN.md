@@ -22,25 +22,43 @@
 
 ## 工具链依赖
 
-| 工具 | 用途 |
+| 工具 | 版本要求 | 用途 |
+|---|---|---|
+| `python3` | ≥ 3.8 | west 运行环境 |
+| `west` | ≥ 1.2 | Workspace 管理器及自定义命令 |
+| `git` | ≥ 2.20 | 版本控制 |
+| `arm-none-eabi-gcc` | ≥ 10.3 | 交叉编译器（GCC 构建） |
+| `cmake` | ≥ 3.20 | 构建系统（GCC 构建） |
+| `ninja` | ≥ 1.10 | 并行构建（GCC 构建） |
+| `mpcli` | — | 固件下载工具 |
+
+> Keil MDK 用户无需安装 ARM GCC / CMake / Ninja，直接在 IDE 中打开 MDK 工程编译即可。
+
+## 组件仓库
+
+| 仓库 | 说明 |
 |---|---|
-| `arm-none-eabi-gcc` | 交叉编译器 |
-| `cmake` + `ninja` | 构建系统 |
-| `west` | Workspace 管理器及自定义命令 |
-| `python3` | menuconfig 脚本及 west 扩展 |
-| `mpcli` | 固件下载工具 |
+| [rtl87x3ep-hmi-sdk](https://gitee.com/realmcu/rtl87x3ep-hmi-sdk) | 核心 SDK：HAL 驱动、蓝牙协议栈、系统服务、工具链等 |
+| [hmi-dashboard](https://gitee.com/realmcu/hmi/tree/rtl8773e-dashboard/) | HMI 应用层、BSP、GUI 移植、构建配置 |
+| [HoneyGUI](https://gitee.com/realmcu/HoneyGUI) | GUI 引擎：控件库、字体引擎、动画 |
+| [wearable](https://gitee.com/realmcu/wearable) | Wearable 应用层代码 |
+| [display](https://gitee.com/realmcu/display) | LCD 显示驱动库 |
 
 ## 快速上手
 
 ### 1. 初始化 workspace
 
 ```bash
-west init -l .manifest
+# 1. 创建工作目录（名称可自定义）
+mkdir hmi-dashboard
+cd hmi-dashboard
+
+# 2. 初始化 west 工作空间
+west init -m https://gitee.com/realmcu/hmi-manifest.git --mr master --mf rtl8773e-dashboard-gitee.yml .
+
+# 3. 同步所有子项目
 west update
 ```
-
-初始化完成后，日常同步请用 `west sync` 代替 `west update`。
-它会先强制更新 manifest 仓库，再执行 `west update` 和 submodule 更新。
 
 ### 2. 构建固件
 
@@ -99,6 +117,12 @@ cmake --build build
 ### Keil MDK
 
 用 Keil MDK 5 打开 `mdk/project.uvprojx`，在 IDE 内直接构建。
+
+若需要重新生成工程文件（如配置发生变动）：
+
+```bash
+scons --target=mdk5
+```
 
 ## 目录结构
 

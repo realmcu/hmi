@@ -23,25 +23,43 @@ applications with display and wireless connectivity.
 
 ## Prerequisites
 
-| Tool | Purpose |
+| Tool | Min Version | Purpose |
+|---|---|---|
+| `python3` | ≥ 3.8 | west runtime |
+| `west` | ≥ 1.2 | Workspace manager and custom commands |
+| `git` | ≥ 2.20 | Version control |
+| `arm-none-eabi-gcc` | ≥ 10.3 | Cross compiler (GCC builds) |
+| `cmake` | ≥ 3.20 | Build system (GCC builds) |
+| `ninja` | ≥ 1.10 | Parallel build (GCC builds) |
+| `mpcli` | — | Firmware download tool |
+
+> Keil MDK users do not need ARM GCC / CMake / Ninja — open the MDK project directly in the IDE.
+
+## Component Repositories
+
+| Repository | Description |
 |---|---|
-| `arm-none-eabi-gcc` | Cross compiler |
-| `cmake` + `ninja` | Build system |
-| `west` | Workspace manager and custom commands |
-| `python3` | menuconfig scripts and west extensions |
-| `mpcli` | Firmware download tool |
+| [rtl87x3ep-hmi-sdk](https://gitee.com/realmcu/rtl87x3ep-hmi-sdk) | Core SDK: HAL drivers, Bluetooth stack, system services, toolchain |
+| [hmi-dashboard](https://gitee.com/realmcu/hmi/tree/rtl8773e-dashboard/) | HMI application layer, BSP, GUI porting, build configuration |
+| [HoneyGUI](https://gitee.com/realmcu/HoneyGUI) | GUI engine: widget library, font engine, animations |
+| [wearable](https://gitee.com/realmcu/wearable) | Wearable application layer code |
+| [display](https://gitee.com/realmcu/display) | LCD display driver library |
 
 ## Getting Started
 
 ### 1. Initialize the workspace
 
 ```bash
-west init -l .manifest
+# 1. Create a working directory (name is customizable)
+mkdir hmi-dashboard
+cd hmi-dashboard
+
+# 2. Initialize the west workspace
+west init -m https://gitee.com/realmcu/hmi-manifest.git --mr master --mf rtl8773e-dashboard-gitee.yml .
+
+# 3. Sync all sub-projects
 west update
 ```
-
-After the initial setup, use `west sync` instead of `west update` for day-to-day syncing.
-It force-updates the manifest repo first, then runs `west update` and submodule updates.
 
 ### 2. Build the firmware
 
@@ -100,6 +118,12 @@ For other modes, replace the suffix: `src_bank0` → `src_bank1` / `lib_bank0` /
 ### Keil MDK
 
 Open `mdk/project.uvprojx` in Keil MDK 5 and build directly from the IDE.
+
+If the project file needs to be regenerated (e.g. after configuration changes):
+
+```bash
+scons --target=mdk5
+```
 
 ## Directory Structure
 
