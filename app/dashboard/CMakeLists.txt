@@ -25,7 +25,16 @@ endif()
 if(CONFIG_BT_EXT)
     ameba_list_append(private_sources
         bt_ext/dashboard_bt_ext.c
-        bt_ext/bt_ext_hids_cc.c
+        bt_ext/ble/dashboard_ble.c
+        bt_ext/ble/bt_ext_hids_cc.c
+        bt_ext/bt_classic/dashboard_bt_classic.c
+        bt_ext/bt_classic/bt_classic_link.c
+        bt_ext/bt_classic/bt_classic_a2dp.c
+        bt_ext/bt_classic/bt_classic_avrcp.c
+        bt_ext/bt_classic/bt_classic_hfp.c
+        bt_ext/bt_classic/bt_classic_sdp.c
+        bt_ext/bt_classic/bt_classic_spp.c
+        bt_ext/bt_classic/bt_classic_hid.c
     )
 endif()
 
@@ -57,6 +66,8 @@ ameba_list_append(private_includes
     ${CMAKE_CURRENT_SOURCE_DIR}/io_peripheral
     ${CMAKE_CURRENT_SOURCE_DIR}/wifi
     ${CMAKE_CURRENT_SOURCE_DIR}/bt_ext
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt_ext/ble
+    ${CMAKE_CURRENT_SOURCE_DIR}/bt_ext/bt_classic
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../../bluetooth/example/gatt_service/server
     ${honeygui_includes}
 )

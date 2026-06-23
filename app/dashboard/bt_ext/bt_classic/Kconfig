@@ -1,0 +1,35 @@
+menu "BT Classic Profile Configuration"
+    depends on HONEYGUI_APP_DASHBOARD
+
+config BT_CLASSIC_ENABLE_A2DP
+    bool "A2DP (Advanced Audio Distribution Profile)"
+    default y
+    help
+        Enable A2DP Sink for high-quality audio streaming.
+
+config BT_CLASSIC_ENABLE_AVRCP
+    bool "AVRCP (Audio/Video Remote Control Profile)"
+    default y if BT_CLASSIC_ENABLE_A2DP
+    default n
+    help
+        Enable AVRCP Controller/Target for remote control of audio playback.
+        Typically used together with A2DP.
+
+config BT_CLASSIC_ENABLE_HFP
+    bool "HFP (Hands-Free Profile)"
+    default n
+    help
+        Enable HFP for hands-free call relay (phone-to-headphone bridge).
+
+config BT_CLASSIC_ENABLE_SPP
+    bool "SPP (Serial Port Profile)"
+    default n
+    help
+        Enable SPP for serial port emulation over Bluetooth.
+
+config BT_CLASSIC_ENABLE_HID
+    bool "HID (Human Interface Device)"
+    default n
+    help
+        Enable HID for keyboard/mouse/input device support.
+endmenu

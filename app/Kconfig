@@ -11,3 +11,7 @@ config HONEYGUI_APP_DASHBOARD
       Enable HoneyGUI Dashboard application
 
 endchoice
+
+if HONEYGUI_APP_DASHBOARD
+rsource "dashboard/bt_ext/bt_classic/Kconfig"
+endif
