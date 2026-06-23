@@ -8,8 +8,6 @@ cwd = GetCurrentDir()
 inc = [cwd]
 src = Glob('*.c') + Glob('*.cpp')
 
-SrcRemove(src, './example_gui_stream.c')
-
 if GetDepend(['']):
     objs = DefineGroup('app', src, depend = [''], CPPPATH = inc, CPPDEFINES = ['ENABLE_HONEYGUI'])
     list = os.listdir(cwd)

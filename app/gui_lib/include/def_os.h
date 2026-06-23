@@ -53,6 +53,8 @@ typedef struct gui_os_api
 
     log_func_t log;
     void (*gui_tick_hook)(void);
+
+    const void *stream_transport_cfg;
 } gui_os_api_t;
 /* gui_os_api struct define end */
 

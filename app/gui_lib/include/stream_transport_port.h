@@ -15,9 +15,10 @@
  * A ready-made implementation lives in stream_transport_port.c, which selects
  * its backend automatically at compile time:
  *
- *   - PC simulator (_HONEYGUI_SIMULATOR_ defined): forwards to HoneyGUI's OS
- *     abstraction (gui_malloc / gui_mq_* / gui_log).  Already ported for the
- *     simulator, so the demo runs as-is.
+ *   - PC simulator (_HONEYGUI_SIMULATOR_ defined): self-contained POSIX /
+ *     pthread (per-queue mutex + condvar ring buffer, libc malloc, printf log).
+ *     It does NOT depend on HoneyGUI's OS abstraction, so the shared gui port
+ *     stays untouched.
  *
  *   - ARM / RTOS target (default): forwards straight to the RTK OS primitives
  *     (malloc / os_msg_* / DBG_DIRECT), mirroring the board port in

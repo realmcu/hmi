@@ -137,14 +137,16 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
             update_conn_info(conn_id);
 
             /* update connection interval to 30ms */
-            uint16_t interval_min = 24;   /* 24 * 1.25ms = 30ms */
-            uint16_t interval_max = 24;   /* 24 * 1.25ms = 30ms */
+            uint16_t interval_min = 6;   /* 24 * 1.25ms = 30ms */
+            uint16_t interval_max = 6;   /* 24 * 1.25ms = 30ms */
             uint16_t latency = 0;
             uint16_t supervision_timeout = 500; /* 500 * 10ms = 5000ms */
             uint16_t min_ce_len = 2 * (interval_min - 1);
             uint16_t max_ce_len = 2 * (interval_max - 1);
             le_update_conn_param(conn_id, interval_min, interval_max, latency,
                                  supervision_timeout, min_ce_len, max_ce_len);
+            le_set_data_len(conn_id, 251, 2120);
+
         }
         break;
 

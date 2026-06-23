@@ -18,6 +18,7 @@
 #include "trace.h"
 #include "wdg.h"
 #include "gui_server.h"
+#include "stream_transport.h"
 
 extern bool gui_port_dc_lcd_is_work(void);
 
@@ -197,9 +198,50 @@ static bool port_mq_recv(void *handle, void *buffer, uint32_t size, uint32_t tim
     return os_msg_recv(handle, buffer, timeout);
 }
 
+static uint32_t port_mq_count(void *handle)
+{
+    uint32_t msg_num = 0;
+    os_msg_queue_peek(handle, &msg_num);
+    return msg_num;
+}
+
 #define GUI_HEAP_SIZE                                           (50 * 1024)
 
 static uint8_t port_mem_heap[GUI_HEAP_SIZE] = {0};
+
+/*============================================================================*
+ *                   Stream-transport default config
+ *
+ * The gui_stream widget renders frames delivered by a transport (stp_*).  The
+ * platform registers one config here; gui_os_api_register() then creates the
+ * transport once via stp_create().  Both the producer (BLE rx) and the
+ * consumer (gui_stream widget) borrow it through gui_stream_transport_get().
+ *
+ * Pool / size values mirror app/example_gui_stream.c:
+ *   pool = 0x4000000 + 0x300000, 1 MB, 50 KB/frame, 20 frames in-flight.
+ * Codec is MSV1 (continuously inter-coded) -> STP_DROP_NONE (oldest-first).
+ *============================================================================*/
+#define STP_FRAME_BYTES   (50u * 1024u)                 /* max bytes/frame    */
+#define STP_FRAME_COUNT   20u                           /* frames in-flight   */
+#define STP_POOL_ADDR     ((void *)(0x4000000u + 0x300000u))
+#define STP_POOL_SIZE     0x100000u                     /* 1 MB external pool */
+
+static const stp_class_cfg_t s_stp_classes[] =
+{
+    { .buf_size = STP_FRAME_BYTES, .buf_count = STP_FRAME_COUNT },
+};
+
+static const stp_config_t s_stp_cfg =
+{
+    .pool               = STP_POOL_ADDR,
+    .pool_size          = STP_POOL_SIZE,
+    .align              = 8,
+    .classes            = s_stp_classes,
+    .class_count        = 1,
+    .drop_mode          = STP_DROP_NONE,
+    .allow_oversize_fit = true,
+};
+
 static struct gui_os_api os_api =
 {
     .name = "rtk_osif",
@@ -213,6 +255,7 @@ static struct gui_os_api os_api =
     .mq_create = port_mq_create,
     .mq_send = port_mq_send,
     .mq_recv = port_mq_recv,
+    .mq_count = port_mq_count,
     .f_malloc = port_malloc,
     .f_free = port_free,
     .f_realloc = port_realloc,
@@ -229,6 +272,8 @@ static struct gui_os_api os_api =
 #endif
 
     .log = port_log,
+
+    .stream_transport_cfg = &s_stp_cfg,
 };
 
 void gui_port_os_add_exe_to_gui_task()

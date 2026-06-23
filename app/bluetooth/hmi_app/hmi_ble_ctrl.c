@@ -17,7 +17,7 @@
 
 #define HMI_CTRL_TASK_STACK_SIZE    (4096)
 #define HMI_CTRL_TASK_PRIORITY      (3)
-#define HMI_CTRL_QUEUE_SIZE         (8)
+#define HMI_CTRL_QUEUE_SIZE         (64)
 #define HMI_CTRL_SEND_TIMEOUT_MS    (3000)
 
 typedef struct

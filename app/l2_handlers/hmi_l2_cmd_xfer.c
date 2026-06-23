@@ -13,7 +13,6 @@ extern fdb_bf_t   app_get_bf(void);
 extern bool      fdb_bf_exists(fdb_bf_t db, const char *key);
 
 
-
 static bool     s_xfer_active   = false;
 static uint8_t  s_xfer_type     = 0;
 static uint32_t s_xfer_total    = 0;
@@ -48,8 +47,9 @@ static void xfer_reset(void)
 
 static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
 {
-    /* flash db file */
     static uint32_t id = 0;
+    /* flash db file */
+
     static fdb_err_t    rc = 0;
     static fdb_bf_file_t file = NULL;
     static uint32_t     crc = 0;
@@ -99,7 +99,6 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                 rsp[2] = (uint8_t)(s_xfer_chunk & 0xFFu);
                 xfer_send(HMI_L2_XFER_BEGIN_RSP, rsp, sizeof(rsp));
 
-                /****  Prepare for file rec ********/
                 do
                 {
                     memset((void *)name, 0, sizeof(name));
@@ -108,13 +107,11 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                 }
                 while (fdb_bf_exists(app_get_bf(), name));
 
-                // DBG_DIRECT("[bf] create '%s' ", name);
                 rc = fdb_bf_create(app_get_bf(), name, s_xfer_total, &file);
                 if (rc != FDB_NO_ERR)
                 {
                     APP_PRINT_ERROR2("[bf] create '%s' failed (%d)", name, (int)rc);
                 }
-
                 break;
             }
 
@@ -143,8 +140,6 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                 /* TODO: write (val + 2, vl - 2) to storage */
                 s_xfer_next_seq++;
 
-
-                /****  file write into storage ********/
                 if (rc == 0)
                 {
                     rc = fdb_bf_append(file, val + 2, vl - 2);
@@ -169,18 +164,15 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                           (unsigned long)crc32, s_xfer_next_seq);
                 /* TODO: verify crc32 against received data */
 
-                /****  file write done, send msg ********/
                 if (rc == 0)
                 {
-                    rc = fdb_bf_commit(file, 0);         /* atomic: KVDB entry written here */
+                    rc = fdb_bf_commit(file, 0);
                     if (rc != FDB_NO_ERR)
                     {
                         APP_PRINT_ERROR2("[bf] commit '%s' failed (%d)", name, (int)rc);
-                        // return -1;
                     }
                     else
                     {
-                        // send msg to gui
                         extern void ui_process_msg(void *arg);
                         gui_msg_t msg = {.event = GUI_EVENT_USER_DEFINE, .sub_event = 0, .cb = (gui_msg_cb)ui_process_msg};
                         uint32_t sz = 0;
@@ -203,7 +195,6 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                 PROTO_LOG("L2 XFER ABORT reason=%d", reason);
                 xfer_reset();
 
-                /****  file write ABORT ********/
                 if (rc == 0)
                 {
                     fdb_bf_abort(file);

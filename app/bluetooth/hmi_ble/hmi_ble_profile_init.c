@@ -6,6 +6,7 @@
 #include "trace.h"
 #include "hmi_ble_ctrl.h"
 #include "hmi_ble_nus.h"
+#include "hmi_stream_ctrl.h"
 
 static void app_gatt_svc_general_cb(uint8_t type, void *p_data)
 {
@@ -26,8 +27,9 @@ static void app_gatt_svc_general_cb(uint8_t type, void *p_data)
 
 void hmi_ble_profile_init(void)
 {
-    gatt_svc_init(GATT_SVC_USE_EXT_SERVER, 2);
+    gatt_svc_init(GATT_SVC_USE_EXT_SERVER, 3);
     gatt_svc_register_general_cb(app_gatt_svc_general_cb);
     hmi_ble_ctrl_init();
     hmi_ble_nus_init();
+    hmi_stream_ctrl_init();
 }
