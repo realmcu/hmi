@@ -1,0 +1,40 @@
+# Copyright (c) 2024, Realtek Semiconductor Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+menu "DeskMate Application"
+
+config RTK_BT_BREDR
+	bool "Enable Classic Bluetooth (BR/EDR) support"
+	default n
+	select REALTEK_SUBSYS_BTM
+	select REALTEK_SUBSYS_SYSM
+	select REALTEK_SUBSYS_REMOTE
+	help
+	  Enable Realtek Classic Bluetooth BR/EDR stack.
+	  Activates BTM, SYSM, and Remote subsystems.
+
+config RTK_BR_PROFILE_A2DP
+	bool "Enable A2DP profile (Sink + Source)"
+	depends on RTK_BT_BREDR
+	default n
+
+config RTK_BR_PROFILE_AVRCP
+	bool "Enable AVRCP profile (CT + TG)"
+	depends on RTK_BT_BREDR
+	default n
+
+config RTK_BR_PROFILE_HFP
+	bool "Enable HFP profile (HF + AG)"
+	depends on RTK_BT_BREDR
+	default n
+
+config RTK_BR_PROFILE_PAN
+	bool "Enable PAN profile (PANU + NAP)"
+	depends on RTK_BT_BREDR
+	default n
+
+endmenu
+
+menu "Zephyr Kernel"
+source "Kconfig.zephyr"
+endmenu

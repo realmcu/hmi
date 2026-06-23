@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Build and Flash using West",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "west",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "Run west flash",
+          "text": "shell-command or script for west flash",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "g++.exe build active file",
+      // "postDebugTask": "Run West Flash"
+    }
+  ]
+}
