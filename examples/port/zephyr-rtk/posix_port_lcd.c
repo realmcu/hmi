@@ -181,11 +181,8 @@ static int lcd_ioctl(void *drv_data, void *file_priv,
         {
             if (!arg) { return POSIX_ERR_INVAL; }
             file->cfg = *(posix_lcd_config_t *)arg;
-            /* Update driver's cached geometry to match new config */
-            file->drv->w   = file->cfg.width;
-            file->drv->h   = file->cfg.height;
-            file->drv->bpp = file->cfg.bpp;
-            /* Reset window to full screen on reconfigure */
+            /* drv->w/h/bpp 是共享驱动数据，不能在 per-open 的 ioctl 中修改；
+             * 窗口和像素格式只更新此 fd 自己的 cfg 和 window。 */
             file->window.x = 0;
             file->window.y = 0;
             file->window.w = file->cfg.width;

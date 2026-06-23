@@ -1,43 +1,56 @@
 /* ================================================================
- * 平台初始化 — 用户根据实际 RTOS 实现
+ * 平台初始化 — 移植到你的 RTOS 时只需修改此文件
  *
- * 移植时只需要：
- *   1. 实现 posix_lock/unlock/posix_port_in_isr
- *   2. 在每个驱动 .c 文件尾部加 POSIX_INIT_DEVICE_EXPORT(fn)
- *   3. 链接脚本保留 .posix$init* 段
+ * 步骤（详见 PORTING.md 第一步）：
+ *   1. 包含你的 RTOS 同步原语头文件
+ *   2. 实现 posix_lock / posix_unlock（全局互斥锁，保护框架元数据）
+ *   3. 实现 posix_port_in_isr（ISR 上下文判断，返回非 0 = 在 ISR 中）
+ *   4. 在 posix_port_lock_init 中创建互斥锁
+ *
+ * 单线程/裸机场景：posix_lock/unlock 留空即可，posix_port_in_isr 恒返回 0。
  * ================================================================ */
 
 #include "posix_port.h"
 
-/* 互斥锁 */
-/* #include "your_rtos.h" */
-/* static your_mutex_t s_posix_mutex; */
+/* --- 包含你的 RTOS 同步原语头文件 ---
+ * #include "your_rtos.h"
+ */
+
+/* --- 互斥锁句柄（由 posix_port_lock_init 创建）---
+ * static your_mutex_t s_posix_mutex;
+ */
 
 void posix_lock(void)
 {
-    /* your_rtos_mutex_lock(&s_posix_mutex); */
+    /* 多线程 RTOS：
+     * your_rtos_mutex_lock(&s_posix_mutex); */
 }
 
 void posix_unlock(void)
 {
-    /* your_rtos_mutex_unlock(&s_posix_mutex); */
+    /* 多线程 RTOS：
+     * your_rtos_mutex_unlock(&s_posix_mutex); */
 }
 
 int posix_port_in_isr(void)
 {
-    /* return your_rtos_in_isr(); */
+    /* 大多数 RTOS 有现成接口：
+     * return your_rtos_in_isr();
+     *
+     * 如果没有，可在进入/退出 ISR 时维护全局标志：
+     * extern volatile int g_in_isr;
+     * return g_in_isr; */
     return 0;
 }
 
 void posix_port_lock_init(void)
 {
-    /* your_rtos_mutex_create(&s_posix_mutex); */
+    /* 多线程 RTOS：
+     * your_rtos_mutex_create(&s_posix_mutex); */
 }
 
 int posix_port_init_all(void)
 {
     posix_port_lock_init();
-
-    /* 自动遍历所有 POSIX_INIT_DEVICE_EXPORT 注册的设备 */
     return posix_auto_init();
 }

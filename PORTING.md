@@ -88,14 +88,14 @@ int posix_port_in_isr(void)
 
 **总计：约 490 行 C 代码。**
 
-具体实现模板见 `port/custom-rtos/posix_port_*.c`。
+具体实现模板见 `examples/port/custom-rtos/posix_port_*.c`。
 
 ### 第三步：驱动注册（自动）
 
 每个驱动通过 `POSIX_INIT_DEVICE_EXPORT` 自动注册，无需在 port 层手动调用：
 
 ```c
-// port/custom-rtos/posix_port_uart.c 末尾
+// examples/port/custom-rtos/posix_port_uart.c 末尾
 static int uart_init(void)
 {
     return posix_device_register_group("/dev/uart%d", 2, &g_uart_ops, privs);
@@ -107,15 +107,20 @@ POSIX_INIT_DEVICE_EXPORT(uart_init);
 
 ### 第四步：链接脚本
 
-在链接脚本中保留 `.posix$init*` 段：
+在链接脚本中**按优先级顺序逐段列出**（不能用通配符 `*`，否则优先级顺序不保证）：
 
 ```ld
 .posix_init : {
-    __posix_init_start = .;
-    KEEP(*(.posix$init*))
-    __posix_init_end = .;
+    KEEP(*(.posix$initS))   /* 起始哨兵（由 posix_init.c 提供，勿在此定义符号） */
+    KEEP(*(.posix$init0))   /* 优先级 0：板级初始化（时钟/pinmux） */
+    KEEP(*(.posix$init1))   /* 优先级 1：设备驱动注册 */
+    KEEP(*(.posix$init2))   /* 优先级 2：应用初始化 */
+    KEEP(*(.posix$initE))   /* 结束哨兵（由 posix_init.c 提供，勿在此定义符号） */
 } > FLASH
 ```
+
+> ⚠️ 链接脚本中**不要**自行定义 `__posix_init_start` / `__posix_init_end` 符号；
+> 它们由 `posix_init.c` 中的 C 数组哨兵提供。重复定义会导致遍历边界错误。
 
 ---
 
@@ -232,7 +237,7 @@ static void *uart_open(void *drv_data, const char *path)
    POSIX_INIT_DEVICE_EXPORT(lcd_init);
 ```
 
-📝 参考模板: `examples/10_new_device_template.c`
+📝 参考模板: `examples/port/custom-rtos/` 下任意驱动文件（如 `posix_port_uart.c`）
 核心框架一行不改，port 初始化一行不改，链接器自动收集。
 
 ### Q: 未来换到真正的 Linux 怎么办？

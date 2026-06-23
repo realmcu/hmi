@@ -76,7 +76,7 @@ static int uart_close(void *drv_data, void *file_priv)
     (void)drv_data;
 
     uart_file_t *f   = (uart_file_t *)file_priv;
-    int          idx = (int)(f - s_uart_files);
+    ptrdiff_t    idx = f - s_uart_files;
     if (idx >= 0 && idx < MAX_UART_FILES)
     {
         s_uart_file_used[idx] = 0;
@@ -129,6 +129,7 @@ static posix_ssize_t uart_write(void *drv_data, void *file_priv,
 
     uart_drv_data_t *d = (uart_drv_data_t *)drv_data;
 
+    if (count > 0xFFFFU) { return POSIX_ERR_INVAL; }
     UART_SendData(((UART_TypeDef *)d->uart_dev), (const uint8_t *)buf, (uint16_t)count);
     return (posix_ssize_t)count;
 }

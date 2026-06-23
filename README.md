@@ -68,31 +68,43 @@ posix-io-abstraction/
 ├── core/
 │   ├── posix_device.c                    ← 核心实现（不改）
 │   └── posix_init.c                      ← auto_init 遍历实现
-├── port/
-│   └── custom-rtos/                      ← 移植示例（仿照此目录）
-│       ├── posix_port.h                  ← port 入口
-│       ├── posix_port_init.c             ← 锁 + ISR 检测
-│       ├── posix_port_uart.c
-│       ├── posix_port_gpio.c
-│       ├── posix_port_spi.c
-│       ├── posix_port_pwm.c
-│       ├── posix_port_adc.c
-│       ├── posix_port_sdio.c
-│       ├── posix_port_lcd.c
-│       ├── posix_port_touch.c
-│       └── posix_port_gsensor.c
 └── examples/
-    ├── README.md                         ← 示例索引
-    ├── 01_uart_example.c                 ← UART 收发 + 中断回调
-    ├── 02_gpio_example.c                 ← GPIO 引脚级 fd
-    ├── 03_spi_example.c                  ← SPI 全双工传输
-    ├── 04_pwm_example.c                  ← PWM 舵机控制
-    ├── 05_adc_example.c                  ← ADC 单次/连续采样
-    ├── 06_sdio_example.c                 ← SDIO 块读写
-    ├── 07_lcd_example.c                  ← LCD 刷屏
-    ├── 08_touch_example.c                ← Touch 触摸点读取
-    ├── 09_gsensor_example.c              ← G-sensor 三轴加速度
-    └── 10_new_device_template.c          ← 添加新设备的 4 步模板
+    ├── demo/                             ← 应用层用法示例
+    │   ├── 01_uart_example.c             ← UART 收发 + 中断回调
+    │   ├── 02_gpio_example.c             ← GPIO 引脚级 fd
+    │   ├── 03_spi_example.c              ← SPI 全双工传输
+    │   ├── 04_pwm_example.c              ← PWM 舵机控制
+    │   ├── 05_adc_example.c              ← ADC 单次/连续采样
+    │   ├── 06_sdio_example.c             ← SDIO 块读写
+    │   ├── 07_lcd_example.c              ← LCD 刷屏
+    │   ├── 08_touch_example.c            ← Touch 触摸点读取
+    │   ├── 09_gsensor_example.c          ← G-sensor 三轴加速度
+    │   ├── 11_fdb_kv_example.c           ← FlashDB KVDB
+    │   ├── 12_fdb_ts_example.c           ← FlashDB TSDB
+    │   └── 13_fdb_bf_example.c           ← FlashDB BigFile
+    └── port/                             ← 平台移植实现
+        ├── posix_init_zephyr.ld          ← Zephyr 链接脚本参考
+        ├── custom-rtos/                  ← 移植模板（新 RTOS 参照此目录）
+        │   ├── posix_port.h
+        │   ├── posix_port_init.c         ← 锁 + ISR 检测
+        │   ├── posix_port_uart.c
+        │   ├── posix_port_gpio.c
+        │   ├── posix_port_spi.c
+        │   ├── posix_port_pwm.c
+        │   ├── posix_port_adc.c
+        │   ├── posix_port_sdio.c
+        │   ├── posix_port_lcd.c
+        │   ├── posix_port_touch.c
+        │   └── posix_port_gsensor.c
+        └── zephyr-rtk/                   ← RTK8773G + Zephyr 实现
+            ├── posix_port.h
+            ├── posix_port_init.c
+            ├── posix_port_uart.c
+            ├── posix_port_gpio.c
+            ├── posix_port_spi.c
+            ├── posix_port_lcd.c
+            ├── posix_port_touch.c
+            └── posix_port_gsensor.c
 ```
 
 ## 极速开始
@@ -167,7 +179,7 @@ void main(void)
 核心框架（include/*, core/*）和 port 层不需要改一行。
 ```
 
-📝 参考模板: `examples/10_new_device_template.c`
+📝 参考模板: `examples/port/custom-rtos/` 下任意驱动文件（如 `posix_port_uart.c`）
 
 ## 线程安全
 

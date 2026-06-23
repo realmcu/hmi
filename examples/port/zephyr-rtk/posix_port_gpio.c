@@ -50,9 +50,10 @@ static void *gpio_open(void *drv_data, const char *path)
     p++;                     /* 跳过 '/' */
     if (*p == 'p') { p++; }
 
+    const char *digit_start = p;
     char *end;
     long pin = strtol(p, &end, 10);
-    if (*end != '\0' || pin < 0 || pin > 255) { return POSIX_OPEN_ERR; }
+    if (end == digit_start || *end != '\0' || pin < 0 || pin > 255) { return POSIX_OPEN_ERR; }
 
     /* 从静态池分配 */
     gpio_file_t *f = NULL;
@@ -79,7 +80,7 @@ static int gpio_close(void *drv_data, void *file_priv)
 {
     (void)drv_data;
     gpio_file_t *f = (gpio_file_t *)file_priv;
-    int idx = (int)(f - s_gpio_files);
+    ptrdiff_t    idx = f - s_gpio_files;
     if (idx >= 0 && idx < MAX_GPIO_FILES)
     {
         s_gpio_file_used[idx] = 0;

@@ -42,7 +42,8 @@
 #define POSIX_FD_MAGIC  0x70786664u
 
 /* 设备表条目 */
-typedef struct {
+typedef struct
+{
     char                     path[32];
     const posix_driver_ops_t *ops;
     void                     *drv_data;       /* 驱动私有数据 */
@@ -51,7 +52,8 @@ typedef struct {
 } posix_device_entry_t;
 
 /* fd 结构体 — open 时从池中分配 */
-struct posix_device {
+struct posix_device
+{
     uint32_t              magic;      /* == POSIX_FD_MAGIC 表示有效 */
     posix_device_entry_t *entry;      /* 指向设备表 */
     void                 *file_priv;  /* per-open 私有数据（ops->open 返回值）*/
@@ -81,9 +83,11 @@ int posix_port_in_isr(void) { return 0; }
 /* ---- 设备表操作 ---- */
 static posix_device_entry_t *entry_by_path(const char *path)
 {
-    for (int i = 0; i < POSIX_DEVICE_TABLE_SIZE; i++) {
+    for (int i = 0; i < POSIX_DEVICE_TABLE_SIZE; i++)
+    {
         if (s_dev_table[i].in_use &&
-            strcmp(s_dev_table[i].path, path) == 0) {
+            strcmp(s_dev_table[i].path, path) == 0)
+        {
             return &s_dev_table[i];
         }
     }
@@ -101,12 +105,14 @@ static posix_device_entry_t *entry_for_open(const char *path)
 
     posix_device_entry_t *best = NULL;
     size_t best_len = 0;
-    for (int i = 0; i < POSIX_DEVICE_TABLE_SIZE; i++) {
+    for (int i = 0; i < POSIX_DEVICE_TABLE_SIZE; i++)
+    {
         if (!s_dev_table[i].in_use) { continue; }
         size_t plen = strlen(s_dev_table[i].path);
         if (plen > best_len &&
             strncmp(s_dev_table[i].path, path, plen) == 0 &&
-            path[plen] == '/') {
+            path[plen] == '/')
+        {
             best     = &s_dev_table[i];
             best_len = plen;
         }
@@ -116,8 +122,9 @@ static posix_device_entry_t *entry_for_open(const char *path)
 
 static posix_device_entry_t *free_entry(void)
 {
-    for (int i = 0; i < POSIX_DEVICE_TABLE_SIZE; i++) {
-        if (!s_dev_table[i].in_use) return &s_dev_table[i];
+    for (int i = 0; i < POSIX_DEVICE_TABLE_SIZE; i++)
+    {
+        if (!s_dev_table[i].in_use) { return &s_dev_table[i]; }
     }
     return NULL;
 }
@@ -125,8 +132,10 @@ static posix_device_entry_t *free_entry(void)
 /* ---- fd 池操作 ---- */
 static struct posix_device *alloc_fd(void)
 {
-    for (int i = 0; i < POSIX_FD_POOL_SIZE; i++) {
-        if (!s_fd_pool[i].in_use) {
+    for (int i = 0; i < POSIX_FD_POOL_SIZE; i++)
+    {
+        if (!s_fd_pool[i].in_use)
+        {
             s_fd_pool[i].magic     = POSIX_FD_MAGIC;
             s_fd_pool[i].in_use    = 1;
             s_fd_pool[i].entry     = NULL;
@@ -150,14 +159,17 @@ static void free_fd(struct posix_device *fd)
  * 调用者需自行决定是否在持锁状态下调用。 */
 static int fd_is_valid(const struct posix_device *f)
 {
-    if (f < &s_fd_pool[0] || f >= &s_fd_pool[POSIX_FD_POOL_SIZE]) {
+    if (f < &s_fd_pool[0] || f >= &s_fd_pool[POSIX_FD_POOL_SIZE])
+    {
         return 0;
     }
     if ((size_t)((const char *)f - (const char *)&s_fd_pool[0])
-            % sizeof(s_fd_pool[0]) != 0) {
+        % sizeof(s_fd_pool[0]) != 0)
+    {
         return 0;
     }
-    if (f->magic != POSIX_FD_MAGIC || !f->in_use) {
+    if (f->magic != POSIX_FD_MAGIC || !f->in_use)
+    {
         return 0;
     }
     return 1;
@@ -171,11 +183,12 @@ int posix_device_register(const char *path,
                           const posix_driver_ops_t *ops,
                           void *drv_data)
 {
-    if (!path || !ops) return POSIX_ERR_INVAL;
+    if (!path || !ops) { return POSIX_ERR_INVAL; }
 
     posix_lock();
 
-    if (entry_by_path(path)) {
+    if (entry_by_path(path))
+    {
         posix_unlock();
         return POSIX_ERR_BUSY;
     }
@@ -201,30 +214,33 @@ int posix_device_register_group(const char *fmt, int count,
                                 void **privs)
 {
     int done = 0;   /* 已成功注册的项数，回滚时只撤销这些 */
+    int err  = POSIX_ERR_NOMEM;
 
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < count; i++)
+    {
         char path[32];
         int n = snprintf(path, sizeof(path), fmt, i);
-        if (n < 0 || (size_t)n >= sizeof(path)) goto rollback;
+        if (n < 0 || (size_t)n >= sizeof(path)) { err = POSIX_ERR_INVAL; goto rollback; }
         int ret = posix_device_register(path, ops,
                                         privs ? privs[i] : NULL);
-        if (ret != POSIX_OK) goto rollback;
+        if (ret != POSIX_OK) { err = ret; goto rollback; }
         done++;
     }
     return POSIX_OK;
 
 rollback:
-    for (int i = 0; i < done; i++) {
+    for (int i = 0; i < done; i++)
+    {
         char path[32];
         snprintf(path, sizeof(path), fmt, i);
         posix_device_unregister(path);
     }
-    return POSIX_ERR_NOMEM;
+    return err;
 }
 
 int posix_device_unregister(const char *path)
 {
-    if (!path) return POSIX_ERR_INVAL;
+    if (!path) { return POSIX_ERR_INVAL; }
 
     posix_lock();
     posix_device_entry_t *e = entry_by_path(path);
@@ -243,7 +259,7 @@ int posix_device_unregister(const char *path)
 
 posix_fd_t posix_open(const char *path)
 {
-    if (!path) return POSIX_FD_NULL;
+    if (!path) { return POSIX_FD_NULL; }
 
     posix_lock();
 
@@ -262,16 +278,20 @@ posix_fd_t posix_open(const char *path)
 
     /* 锁外调用驱动 open（可阻塞） */
     void *fp;
-    if (ops && ops->open) {
+    if (ops && ops->open)
+    {
         fp = ops->open(drv, path);
-    } else {
+    }
+    else
+    {
         fp = drv;   /* 没 open 回调时复用 drv_data */
     }
 
-    if (fp == POSIX_OPEN_ERR) {
+    if (fp == POSIX_OPEN_ERR)
+    {
         /* 驱动 open 失败：回滚引用与 fd */
         posix_lock();
-        if (e->ref_count > 0) e->ref_count--;
+        if (e->ref_count > 0) { e->ref_count--; }
         free_fd(fd);
         posix_unlock();
         return POSIX_FD_NULL;
@@ -285,7 +305,7 @@ posix_fd_t posix_open(const char *path)
 
 int posix_close(posix_fd_t fd)
 {
-    if (!fd) return POSIX_ERR_INVAL;
+    if (!fd) { return POSIX_ERR_INVAL; }
     struct posix_device *f = (struct posix_device *)fd;
 
     posix_lock();
@@ -298,12 +318,13 @@ int posix_close(posix_fd_t fd)
 
     /* 立即让 fd 失效，杜绝并发/重复 close 命中同一句柄 */
     free_fd(f);
-    if (e && e->ref_count > 0) e->ref_count--;
+    if (e && e->ref_count > 0) { e->ref_count--; }
     posix_unlock();
 
     /* 锁外调用驱动 close（可阻塞）；ops 指向静态表、drv/fp 为快照，均安全 */
     int ret = POSIX_OK;
-    if (ops && ops->close) {
+    if (ops && ops->close)
+    {
         ret = ops->close(drv, fp);
     }
     return ret;
@@ -311,13 +332,14 @@ int posix_close(posix_fd_t fd)
 
 posix_ssize_t posix_read(posix_fd_t fd, void *buf, size_t count)
 {
-    if (!fd || !buf || !count) return POSIX_ERR_INVAL;
+    if (!fd || !buf || !count) { return POSIX_ERR_INVAL; }
     struct posix_device *f = (struct posix_device *)fd;
 
     posix_lock();
     if (!fd_is_valid(f)) { posix_unlock(); return POSIX_ERR_INVAL; }
     posix_device_entry_t *e = f->entry;
-    if (!e || !e->in_use || !e->ops || !e->ops->read) {
+    if (!e || !e->in_use || !e->ops || !e->ops->read)
+    {
         posix_unlock();
         return POSIX_ERR_NODEV;
     }
@@ -331,13 +353,14 @@ posix_ssize_t posix_read(posix_fd_t fd, void *buf, size_t count)
 
 posix_ssize_t posix_write(posix_fd_t fd, const void *buf, size_t count)
 {
-    if (!fd || !buf || !count) return POSIX_ERR_INVAL;
+    if (!fd || !buf || !count) { return POSIX_ERR_INVAL; }
     struct posix_device *f = (struct posix_device *)fd;
 
     posix_lock();
     if (!fd_is_valid(f)) { posix_unlock(); return POSIX_ERR_INVAL; }
     posix_device_entry_t *e = f->entry;
-    if (!e || !e->in_use || !e->ops || !e->ops->write) {
+    if (!e || !e->in_use || !e->ops || !e->ops->write)
+    {
         posix_unlock();
         return POSIX_ERR_NODEV;
     }
@@ -351,13 +374,14 @@ posix_ssize_t posix_write(posix_fd_t fd, const void *buf, size_t count)
 
 int posix_ioctl(posix_fd_t fd, unsigned long cmd, void *arg)
 {
-    if (!fd) return POSIX_ERR_INVAL;
+    if (!fd) { return POSIX_ERR_INVAL; }
     struct posix_device *f = (struct posix_device *)fd;
 
     posix_lock();
     if (!fd_is_valid(f)) { posix_unlock(); return POSIX_ERR_INVAL; }
     posix_device_entry_t *e = f->entry;
-    if (!e || !e->in_use || !e->ops || !e->ops->ioctl) {
+    if (!e || !e->in_use || !e->ops || !e->ops->ioctl)
+    {
         posix_unlock();
         return POSIX_ERR_NODEV;
     }
@@ -380,30 +404,30 @@ int posix_ioctl(posix_fd_t fd, unsigned long cmd, void *arg)
 
 posix_ssize_t posix_read_isr(posix_fd_t fd, void *buf, size_t count)
 {
-    if (!fd || !buf || !count) return POSIX_ERR_INVAL;
+    if (!fd || !buf || !count) { return POSIX_ERR_INVAL; }
     struct posix_device *f = (struct posix_device *)fd;
-    if (!fd_is_valid(f)) return POSIX_ERR_INVAL;
+    if (!fd_is_valid(f)) { return POSIX_ERR_INVAL; }
     posix_device_entry_t *e = f->entry;
-    if (!e || !e->in_use || !e->ops || !e->ops->read) return POSIX_ERR_NODEV;
+    if (!e || !e->in_use || !e->ops || !e->ops->read) { return POSIX_ERR_NODEV; }
     return e->ops->read(e->drv_data, f->file_priv, buf, count);
 }
 
 posix_ssize_t posix_write_isr(posix_fd_t fd, const void *buf, size_t count)
 {
-    if (!fd || !buf || !count) return POSIX_ERR_INVAL;
+    if (!fd || !buf || !count) { return POSIX_ERR_INVAL; }
     struct posix_device *f = (struct posix_device *)fd;
-    if (!fd_is_valid(f)) return POSIX_ERR_INVAL;
+    if (!fd_is_valid(f)) { return POSIX_ERR_INVAL; }
     posix_device_entry_t *e = f->entry;
-    if (!e || !e->in_use || !e->ops || !e->ops->write) return POSIX_ERR_NODEV;
+    if (!e || !e->in_use || !e->ops || !e->ops->write) { return POSIX_ERR_NODEV; }
     return e->ops->write(e->drv_data, f->file_priv, buf, count);
 }
 
 int posix_ioctl_isr(posix_fd_t fd, unsigned long cmd, void *arg)
 {
-    if (!fd) return POSIX_ERR_INVAL;
+    if (!fd) { return POSIX_ERR_INVAL; }
     struct posix_device *f = (struct posix_device *)fd;
-    if (!fd_is_valid(f)) return POSIX_ERR_INVAL;
+    if (!fd_is_valid(f)) { return POSIX_ERR_INVAL; }
     posix_device_entry_t *e = f->entry;
-    if (!e || !e->in_use || !e->ops || !e->ops->ioctl) return POSIX_ERR_NODEV;
+    if (!e || !e->in_use || !e->ops || !e->ops->ioctl) { return POSIX_ERR_NODEV; }
     return e->ops->ioctl(e->drv_data, f->file_priv, cmd, arg);
 }

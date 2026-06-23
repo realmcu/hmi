@@ -36,7 +36,7 @@
  *  - 段名带 '$' 仅是 MSVC/IAR 风格的普通字符，GNU ld 不会按 0/1/2
  *    自动排序，因此必须像上面那样【逐段显式列出】init0/init1/init2，
  *    不能用通配 KEEP(*(.posix$init*))（顺序不保证，优先级会失效）。
- *  - 参考实现：port/zephyr-rtk/posix_init.ld。
+ *  - 参考实现：examples/port/posix_init_zephyr.ld。
  * ================================================================ */
 
 #include <stdint.h>
