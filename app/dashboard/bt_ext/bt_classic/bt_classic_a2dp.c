@@ -314,9 +314,44 @@ void bt_classic_a2dp_handle_event(T_BT_EVENT event_type, void *event_buf,
 				param->a2dp_config_cmpl.codec_info.sbc.sampling_frequency;
 			p_link->a2dp_codec_info.sbc.channel_mode =
 				param->a2dp_config_cmpl.codec_info.sbc.channel_mode;
+			p_link->a2dp_codec_info.sbc.block_length =
+				param->a2dp_config_cmpl.codec_info.sbc.block_length;
+			p_link->a2dp_codec_info.sbc.subbands =
+				param->a2dp_config_cmpl.codec_info.sbc.subbands;
+			p_link->a2dp_codec_info.sbc.allocation_method =
+				param->a2dp_config_cmpl.codec_info.sbc.allocation_method;
+			p_link->a2dp_codec_info.sbc.min_bitpool =
+				param->a2dp_config_cmpl.codec_info.sbc.min_bitpool;
+			p_link->a2dp_codec_info.sbc.max_bitpool =
+				param->a2dp_config_cmpl.codec_info.sbc.max_bitpool;
 		}
-		RTK_LOGS(TAG, RTK_LOG_INFO, "A2DP config %s: SBC\r\n",
-				 relay_is_headphone(param->a2dp_config_cmpl.bd_addr) ? "[headphone]" : "[phone]");
+		{
+			const char *tag = relay_is_headphone(param->a2dp_config_cmpl.bd_addr)
+						? "[headphone]" : "[phone]";
+			static const char *freq_str[] = {"16k","32k","44.1k","48k"};
+			static const uint8_t freq_bits[] = {7,6,5,4};
+			uint8_t f = param->a2dp_config_cmpl.codec_info.sbc.sampling_frequency;
+			const char *sf = "?";
+			for (int i = 0; i < 4; i++) {
+				if (f & (1 << freq_bits[i])) { sf = freq_str[i]; break; }
+			}
+			static const char *chan_str[] = {"MONO","DUAL","STEREO","JOINT"};
+			uint8_t cm = param->a2dp_config_cmpl.codec_info.sbc.channel_mode;
+			const char *ch = "?";
+			for (int i = 0; i < 4; i++) {
+				if (cm & (1 << (3 - i))) { ch = chan_str[i]; break; }
+			}
+			RTK_LOGS(TAG, RTK_LOG_INFO,
+				">>> A2DP config %s: SBC %s/%s/blk%d/sub%d/%s "
+				"bitpool=%d..%d <<<\r\n",
+				tag, sf, ch,
+				(param->a2dp_config_cmpl.codec_info.sbc.block_length & 0xF0) ? 16 :
+				(param->a2dp_config_cmpl.codec_info.sbc.block_length & 0x20) ? 12 : 8,
+				(param->a2dp_config_cmpl.codec_info.sbc.subbands & 4) ? 8 : 4,
+				(param->a2dp_config_cmpl.codec_info.sbc.allocation_method & 2) ? "SNR" : "LOUD",
+				param->a2dp_config_cmpl.codec_info.sbc.min_bitpool,
+				param->a2dp_config_cmpl.codec_info.sbc.max_bitpool);
+		}
 		break;
 
 	case BT_EVENT_A2DP_STREAM_OPEN:

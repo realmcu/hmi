@@ -24,8 +24,15 @@
 #define BIT4    0x0010
 #endif
 #include "ameba_soc.h"
+#include "dma_api.h"
 
 #define PPE_DISP_ACC_MIN_OPA 0
+static gdma_t dma_obj;
+volatile bool dma_memcpy_done = false;
+static void gdma_wait_transfer_done(void)
+{
+    while(!dma_memcpy_done);
+}
 
 static void decode_RLE_16bit(imdc_file_t* file, gui_rect_t* range, uint8_t* output)
 {
@@ -587,7 +594,6 @@ void hw_acc_blit_decode(draw_img_t *image, struct gui_dispdev *dc, struct gui_re
             mode = PPE_DISP_BYPASS_MODE;
         }
     }
-    PPE_DISP_Finish();
     PPE_DISP_err err = PPE_DISP_Blit_Inverse(&target, &source, &pre_trans, &constraint,
                                    mode);
     if(err != PPE_DISP_SUCCESS)
@@ -743,9 +749,7 @@ void hw_acc_blit_direct(draw_img_t *image, struct gui_dispdev *dc, struct gui_re
             mode = PPE_DISP_BYPASS_MODE;
         }
     }
-    PPE_DISP_Finish();
     DCache_CleanInvalidate(0xFFFFFFFF, 0xFFFFFFFF);
-    //uint32_t time1 = rtos_time_get_current_system_time_us();
     PPE_DISP_err err = PPE_DISP_Blit_Inverse(&target, &source, &inverse, &constraint,
                                    mode);
     PPE_DISP_Finish();
@@ -758,11 +762,11 @@ void hw_acc_blit_direct(draw_img_t *image, struct gui_dispdev *dc, struct gui_re
         PPE_DISP_Finish();
     }
     //uint32_t time2 = rtos_time_get_current_system_time_us();
-    //gui_log("PPE blend src %x tgt %x time = %d us \n", source.address, target.address, time2 - time1);
     return;
 }
 void hw_acc_blit_cover(draw_img_t *image, struct gui_dispdev *dc, struct gui_rect *rect)
 {
+    gui_rgb_data_head_t *head = (gui_rgb_data_head_t*)image->data;
     gui_rect_t draw_area = { .x2 = (image->img_target_w + image->img_target_x - 1),
      .y2 = (image->img_target_h + image->img_target_y - 1),
      .x1 = image->img_target_x,
@@ -789,26 +793,37 @@ void hw_acc_blit_cover(draw_img_t *image, struct gui_dispdev *dc, struct gui_rec
     uint32_t x_offset = image_source_area.x1 + image->img_target_x - dc->section.x1;
     uint32_t y_offset = image_source_area.y1 + image->img_target_y - dc->section.y1;
     uint8_t* p_target_offset = dc->frame_buf + (y_offset * dc->fb_width + x_offset) * dc_byte_depth;
-    if(dc_byte_depth == 2)
+    if(head->compress)
     {
-        decode_RLE_16bit_rect((imdc_file_t*)((uintptr_t)image->data + 8), &image_source_area, p_target_offset, dc->fb_width * 2);
-    }
-    else if(dc_byte_depth == 3)
-    {
-        decode_RLE_24bit_rect((imdc_file_t*)((uintptr_t)image->data + 8), &image_source_area, p_target_offset, dc->fb_width * 2);
-    }
-    else if(dc_byte_depth == 4)
-    {
-        decode_RLE_32bit_rect((imdc_file_t*)((uintptr_t)image->data + 8), &image_source_area, p_target_offset, dc->fb_width * 2);
-    }
-    uint32_t fb_size = dc->fb_width * dc->fb_height * dc_byte_depth;
-    if(fb_size > 16384)
-    {
-        DCache_CleanInvalidate(0xFFFFFFFF, 0xFFFFFFFF);
+        if(dc_byte_depth == 2)
+        {
+            decode_RLE_16bit_rect((imdc_file_t*)((uintptr_t)image->data + 8), &image_source_area, p_target_offset, dc->fb_width * 2);
+        }
+        else if(dc_byte_depth == 3)
+        {
+            decode_RLE_24bit_rect((imdc_file_t*)((uintptr_t)image->data + 8), &image_source_area, p_target_offset, dc->fb_width * 2);
+        }
+        else if(dc_byte_depth == 4)
+        {
+            decode_RLE_32bit_rect((imdc_file_t*)((uintptr_t)image->data + 8), &image_source_area, p_target_offset, dc->fb_width * 2);
+        }
+        uint32_t fb_size = dc->fb_width * dc->fb_height * dc_byte_depth;
+        if(fb_size > 16384)
+        {
+            DCache_CleanInvalidate(0xFFFFFFFF, 0xFFFFFFFF);
+        }
+        else
+        {
+            DCache_CleanInvalidate((uint32_t)dc->frame_buf, fb_size);
+        }
     }
     else
     {
-        DCache_CleanInvalidate((uint32_t)dc->frame_buf, fb_size);
+        uint8_t* p_source_offset = (uint8_t*)image->data + sizeof(gui_rgb_data_head_t) + (image_source_area.y1 * image->img_w + image_source_area.x1) * dc_byte_depth;
+        uint32_t copy_size = (image_source_area.x2 - image_source_area.x1 + 1) * (image_source_area.y2 - image_source_area.y1 + 1) * dc_byte_depth;
+        dma_memcpy_done = false;
+        dma_memcpy(&dma_obj, p_target_offset, p_source_offset, copy_size);
+        gdma_wait_transfer_done();
     }
 }
 
@@ -833,7 +848,7 @@ void hw_acc_blit(draw_img_t *image, struct gui_dispdev *dc, struct gui_rect *rec
         ((dc->bit_depth == 16 && head->type == RGB565) || \
          (dc->bit_depth == 24 && head->type == RGB888) || \
          (dc->bit_depth == 32 && head->type == ARGB8888 && image->blend_mode == PPE_DISP_BYPASS_MODE)) && \
-        image->opacity_value == 0xFF && head->compress)
+        image->opacity_value == 0xFF && (head->compress || (image->img_target_w == dc->fb_width && image->img_target_x == 0)))
     {
         hw_acc_blit_cover(image, dc, rect);
     }
@@ -914,7 +929,15 @@ void *hw_acc_idu_decode(void *input)
     return decode_img_data;
 }
 
+static u32 memcpy_by_gdma_int(void* param)
+{
+    (void)param;
+    dma_memcpy_done = true;
+    return 0;
+}
+
 void hw_acc_init(void)
 {
     //PPE_DISP clock init
+    dma_memcpy_init(&dma_obj, memcpy_by_gdma_int, 0);
 }

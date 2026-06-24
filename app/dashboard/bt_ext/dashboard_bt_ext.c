@@ -174,9 +174,28 @@ void dash_board_bt_ext_task(void *param)
 					   MAX_NUMBER_OF_GAP_MSG);
 	RTK_LOGS(TAG, RTK_LOG_INFO, ">>> STACK STARTED <<<\r\n");
 
+	{
+		extern void hci_get_baudrate(uint8_t *baudrate, bool use_default_rate);
+		uint8_t baud[4];
+		uint32_t rate = 0;
+		
+		hci_get_baudrate(baud, false);
+		do {
+			if (baud[0]==0x02 && baud[1]==0x80 && baud[2]==0x92 && baud[3]==0x04) { rate = 1500000; break; }
+			if (baud[0]==0x1d && baud[1]==0x70 && baud[2]==0x00 && baud[3]==0x00) { rate = 115200; break; }
+			if (baud[0]==0x0a && baud[1]==0xc0 && baud[2]==0x52 && baud[3]==0x02) { rate = 230400; break; }
+			if (baud[0]==0x04 && baud[1]==0x50 && baud[2]==0x00 && baud[3]==0x00) { rate = 1000000; break; }
+			if (baud[0]==0x01 && baud[1]==0x80 && baud[2]==0x92 && baud[3]==0x04) { rate = 3000000; break; }
+		} while(0);
+		RTK_LOGS(TAG, RTK_LOG_INFO, ">>> HCI work baudrate %u bps (%02x %02x %02x %02x) <<<\r\n",
+			(unsigned int)rate, baud[0], baud[1], baud[2], baud[3]);
+	}
 #if ENABLE_BLE_EXT
 	dashboard_ble_start();
 	RTK_LOGS(TAG, RTK_LOG_INFO, "BLE advertising started\r\n");
+#endif
+#if !ENABLE_BLE_EXT
+	RTK_LOGS(TAG, RTK_LOG_INFO, "BLE disabled, skip advertising\r\n");
 #endif
 
 	key_set_send_hook(bt_ext_key_hook);

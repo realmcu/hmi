@@ -44,7 +44,7 @@ static acc_engine_t acc =
 
 void gui_port_acc_init(void)
 {
-    //hw_acc_init();
+    hw_acc_init();
     RCC_PeriphClockCmd(APBPeriph_PPE, APBPeriph_PPE_CLOCK, ENABLE);
     RCC_PeriphClockCmd(APBPeriph_MJPEG, APBPeriph_MJPEG_CLOCK, ENABLE);
     hx170dec_init();
