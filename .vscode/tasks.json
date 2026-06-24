@@ -27,7 +27,7 @@
         "-A",
         "0x7009E000",
         "-F",
-        "Z:\\home\\howie_wang\\workspace\\eBadge\\zephyrproject\\realtek-app\\applications\\eBadge\\bin\\app.bin",
+        "Z:\\home\\howie_wang\\workspace\\/rtl8773g\\eBadge\\zephyrproject\\realtek-app\\applications\\simple-test\\bin\\app.bin",
         "-b",
         "3000000",
         "-M",
