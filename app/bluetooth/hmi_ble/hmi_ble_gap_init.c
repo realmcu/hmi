@@ -65,9 +65,9 @@ uint8_t adv_data[] =
     GAP_ADTYPE_FLAGS_GENERAL | GAP_ADTYPE_FLAGS_BREDR_NOT_SUPPORTED,
 
     /* Local name */
-    0x08,           /* length     */
+    0x09,           /* length     */
     GAP_ADTYPE_LOCAL_NAME_COMPLETE, /* type="Complete local name" */
-    'e', 'B', 'a', 'd', 'g', 'e', 'x',/* eBadge */
+    'e', 'B', 'a', 'd', 'g', 'e', 'x', 'x', /* eBadge */
 
     /* Service */
     0x03,           /* length     */
@@ -93,7 +93,7 @@ uint8_t adv_data[] =
 void hmi_ble_gap_init(void)
 {
     /* Device name and device appearance */
-    uint8_t  device_name[GAP_DEVICE_NAME_LEN] = "eBadgex";
+    uint8_t  device_name[GAP_DEVICE_NAME_LEN] = "eBadgexx";
     uint16_t appearance = GAP_GATT_APPEARANCE_WRIST_WORN;
     uint8_t  slave_init_mtu_req = true;
 

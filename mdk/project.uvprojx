@@ -405,11 +405,6 @@
               <FileType>1</FileType>
               <FilePath>..\app\main.c</FilePath>
             </File>
-            <File>
-              <FileName>example_gui_stream.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\app\example_gui_stream.c</FilePath>
-            </File>
           </Files>
         </Group>
         <Group>

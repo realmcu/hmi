@@ -36,7 +36,6 @@ typedef struct gui_os_api
     bool (*mq_send)(void *handle, void *buffer, uint32_t size, uint32_t timeout);
     bool (*mq_send_urgent)(void *handle, void *buffer, uint32_t size, uint32_t timeout);
     bool (*mq_recv)(void *handle, void *buffer, uint32_t size, uint32_t timeout);
-    uint32_t (*mq_count)(void *handle);
 
     void *(*f_malloc)(uint32_t);
     void *(*f_realloc)(void *ptr, uint32_t);
@@ -53,8 +52,6 @@ typedef struct gui_os_api
 
     log_func_t log;
     void (*gui_tick_hook)(void);
-
-    const void *stream_transport_cfg;
 } gui_os_api_t;
 /* gui_os_api struct define end */
 

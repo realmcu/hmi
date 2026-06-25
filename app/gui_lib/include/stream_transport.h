@@ -19,7 +19,7 @@
  * (see stream_transport_port.h, so the core carries no GUI dependency of its
  * own).  It never copies frame payloads: only a small
  * fixed-size descriptor (::stp_frame_t) travels through the queues while the
- * encoded bytes stay inside a user-supplied memory pool.
+ * encoded bytes stay inside a transport-owned memory pool.
  *
  * Lifecycle of one buffer (exactly one frame per buffer):
  *
@@ -28,10 +28,12 @@
  *
  * Memory model
  * ------------
- * The caller owns the pool.  At creation the pool is sliced into buffers
- * grouped by *size class*; each class has its own free queue so acquiring a
- * buffer for a known frame size yields a best-fit match.  Unequal class sizes
- * are fully supported (use a single class for the common equal-size case).
+ * The transport owns the pool: ::stp_instance_create allocates it through the
+ * porting allocator (stp_port_malloc -> gui_malloc), sizing it from the size
+ * classes, then slices it into buffers grouped by *size class*; each class has
+ * its own free queue so acquiring a buffer for a known frame size yields a
+ * best-fit match.  Unequal class sizes are fully supported (use a single class
+ * for the common equal-size case).
  *
  * Threading model
  * ---------------
@@ -121,8 +123,6 @@ typedef struct stp_class_cfg
 /** Creation parameters for a transport instance. */
 typedef struct stp_config
 {
-    void                  *pool;        /*!< User memory pool start.            */
-    uint32_t               pool_size;   /*!< User memory pool size in bytes.    */
     uint32_t               align;       /*!< Buffer start alignment (0/1 = none).*/
 
     const stp_class_cfg_t *classes;     /*!< Size classes, ascending @c buf_size.*/
@@ -138,7 +138,7 @@ typedef struct stp_config
 /** Snapshot of pool / buffer occupancy, filled by ::stp_get_usage. */
 typedef struct stp_usage
 {
-    uint32_t pool_size;       /*!< Total pool bytes provided by the caller.     */
+    uint32_t pool_size;       /*!< Total pool bytes allocated by the transport. */
     uint32_t bytes_used;      /*!< Bytes carved into buffers (incl. alignment). */
     uint32_t bytes_overhead;  /*!< Bytes lost to alignment padding only.        */
     uint32_t bytes_free;      /*!< Trailing pool bytes left unused.             */
@@ -157,23 +157,27 @@ typedef struct stp_transport stp_transport_t;
  * @brief Fill @p cfg with recommended defaults.
  *
  * Sets @c drop_mode = ::STP_DROP_UNCONDITIONAL and @c allow_oversize_fit = true.
- * The caller must still supply @c pool, @c pool_size, @c classes and
- * @c class_count before calling ::stp_create.
+ * The caller must still supply @c classes and @c class_count before calling
+ * ::stp_instance_create.
  */
 void stp_config_default(stp_config_t *cfg);
 
 /**
- * @brief Create a transport and carve the user pool into buffers.
+ * @brief Create a transport instance and its frame pool.
+ *
+ * The frame pool is allocated internally through the porting allocator
+ * (stp_port_malloc -> gui_malloc); its size is derived from @c classes (sum of
+ * buf_size * buf_count plus per-buffer alignment slack).
  *
  * @param cfg  Configuration (copied internally; @c classes is duplicated).
- * @return A handle, or NULL on invalid arguments / insufficient pool / OOM.
+ * @return A handle, or NULL on invalid arguments / OOM.
  *         On NULL the failure reason is logged via the port (stp_port_log).
  */
-stp_transport_t *stp_create(const stp_config_t *cfg);
+stp_transport_t *stp_instance_create(const stp_config_t *cfg);
 
-/** @brief Destroy a transport and release all transport-owned metadata.
- *  The user pool itself is left untouched. */
-void stp_destroy(stp_transport_t *t);
+/** @brief Destroy a transport instance and release everything it owns,
+ *  including the internally allocated frame pool. */
+void stp_instance_destroy(stp_transport_t *t);
 
 /* ---- Producer side --------------------------------------------------------*/
 

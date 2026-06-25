@@ -73,9 +73,6 @@ bool stp_port_mq_send(void *handle, const void *msg, uint32_t size, uint32_t tim
 /** Copy one message out into @p msg (@p size bytes).  Returns false on timeout/empty. */
 bool stp_port_mq_recv(void *handle, void *msg, uint32_t size, uint32_t timeout_ms);
 
-/** Number of messages currently pending in the queue. */
-uint32_t stp_port_mq_count(void *handle);
-
 /* ---- logging ------------------------------------------------------------ */
 
 /** printf-style diagnostic log line. */

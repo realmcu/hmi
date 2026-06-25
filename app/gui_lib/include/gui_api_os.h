@@ -91,10 +91,6 @@ bool gui_mq_send_urgent(void *handle, void *buffer, uint32_t size, uint32_t time
 
 bool gui_mq_recv(void *handle, void *buffer, uint32_t size, uint32_t timeout);
 
-uint32_t gui_mq_count(void *handle);
-
-void *gui_stream_transport_get(void);
-
 void *gui_malloc(size_t n);
 void *gui_calloc(size_t num, size_t size);
 void *gui_realloc(void *ptr_old, size_t n);

@@ -22,11 +22,12 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-/* The video-frame pool and its STP transport are created and owned by the GUI
- * OS port (gui_port_os.c: s_stp_cfg -> gui_os_api_register() -> stp_create()).
- * Forward-declared here (instead of including gui_api_os.h) so the BLE side
- * does not pull in the whole GUI header chain (guidef.h / tlsf.h). */
-extern void *gui_stream_transport_get(void);
+/* The video-frame pool and its STP transport are created and owned by the app
+ * at GUI init (easy_demoMain_user.c: stp_instance_create()).  This BLE
+ * producer only borrows that single shared instance through the getter below.
+ * Declared here (instead of including the GUI header chain) so the BLE side
+ * stays free of guidef.h / tlsf.h. */
+extern stp_transport_t *gui_stream_transport_get(void);
 
 /* ---- Task / queue config ------------------------------------------------- */
 
@@ -75,13 +76,14 @@ static uint16_t s_conn_handle  = 0xFFFFu;  /* updated from RX / CCCD callbacks *
 /* ---- STP transport (borrowed, not owned) --------------------------------- */
 
 /* The stream service does NOT create its own transport -- it borrows the
- * single shared instance created by the GUI OS port via
- * gui_stream_transport_get(), so the producer (this file) and the consumer
- * (gui_stream widget) feed/drain the very same transport.
+ * single shared instance created by the app at GUI init
+ * (easy_demoMain_user.c) via gui_stream_transport_get(), so the producer
+ * (this file) and the consumer (gui_stream widget) feed/drain the very same
+ * transport.
  *
- * Resolved lazily and cached: the GUI port may initialise after this BLE
- * service, so the handle is fetched on first use.  NULL until the port has
- * registered a non-NULL stream_transport_cfg. */
+ * Resolved lazily and cached: this BLE service may run before the GUI init
+ * that creates the transport, so the handle is fetched on first use.  NULL
+ * until the app has created it. */
 static stp_transport_t *s_tp = NULL;
 
 static stp_transport_t *stream_tp(void)
@@ -657,10 +659,9 @@ static void stream_on_kv(uint8_t key, const uint8_t *val, uint16_t vl)
                 break;
             }
 
-            /* Borrow the shared transport from the GUI port.  NULL means the
-             * GUI port has not registered its stream_transport_cfg yet -- tell
-             * the App we are busy so it retries instead of streaming into a
-             * NULL pool. */
+            /* Borrow the shared transport.  NULL means the app has not created
+             * it yet (GUI init not done) -- tell the App we are busy so it
+             * retries instead of streaming into a NULL pool. */
             if (stream_tp() == NULL)
             {
                 uint8_t ack[2] = { sid, HMI_L2_KS_ACK_BUSY };
