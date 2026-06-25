@@ -71,15 +71,16 @@
  *
  * read/write 返回 posix_ssize_t：>=0 为传输字节数，<0 为错误码。
  */
-typedef struct posix_driver_ops {
-    void*         (*open)  (void *drv_data, const char *path);
-    int           (*close) (void *drv_data, void *file_priv);
-    posix_ssize_t (*read)  (void *drv_data, void *file_priv,
-                            void *buf, size_t count);
-    posix_ssize_t (*write) (void *drv_data, void *file_priv,
-                            const void *buf, size_t count);
-    int           (*ioctl) (void *drv_data, void *file_priv,
-                            unsigned long cmd, void *arg);
+typedef struct posix_driver_ops
+{
+    void         *(*open)(void *drv_data, const char *path);
+    int (*close)(void *drv_data, void *file_priv);
+    posix_ssize_t (*read)(void *drv_data, void *file_priv,
+                          void *buf, size_t count);
+    posix_ssize_t (*write)(void *drv_data, void *file_priv,
+                           const void *buf, size_t count);
+    int (*ioctl)(void *drv_data, void *file_priv,
+                 unsigned long cmd, void *arg);
 } posix_driver_ops_t;
 
 /* ---------- 驱动注册 API ---------- */
@@ -114,5 +115,14 @@ int           posix_ioctl_isr(posix_fd_t fd, unsigned long cmd, void *arg);
 void posix_lock(void);
 void posix_unlock(void);
 int  posix_port_in_isr(void);
+
+/* 信号量 --- 供中断驱动型驱动使用（ISR-safe give）
+ * timeout_ms: 等待毫秒数，0xFFFFFFFF 表示永久阻塞，0 表示非阻塞
+ * 返回值: 0 成功，-1 失败/超时
+ */
+void *posix_sem_create(const char *name, uint32_t init_count, uint32_t max_count);
+void  posix_sem_delete(void *sem);
+int   posix_sem_give(void *sem);
+int   posix_sem_take(void *sem, uint32_t timeout_ms);
 
 #endif /* POSIX_DEVICE_H */

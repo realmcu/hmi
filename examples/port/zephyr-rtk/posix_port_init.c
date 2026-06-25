@@ -41,6 +41,33 @@ void posix_port_lock_init(void)
     os_mutex_create(&s_posix_mutex);
 }
 
+void *posix_sem_create(const char *name, uint32_t init_count, uint32_t max_count)
+{
+    void *sem = NULL;
+    os_sem_create(&sem, name, init_count, max_count);
+    return sem;
+}
+
+void posix_sem_delete(void *sem)
+{
+    if (sem)
+    {
+        os_sem_delete(sem);
+    }
+}
+
+int posix_sem_give(void *sem)
+{
+    if (!sem) { return -1; }
+    return os_sem_give(sem) ? 0 : -1;
+}
+
+int posix_sem_take(void *sem, uint32_t timeout_ms)
+{
+    if (!sem) { return -1; }
+    return os_sem_take(sem, timeout_ms) ? 0 : -1;
+}
+
 int posix_port_init_all(void)
 {
     posix_port_lock_init();

@@ -49,6 +49,36 @@ void posix_port_lock_init(void)
      * your_rtos_mutex_create(&s_posix_mutex); */
 }
 
+void *posix_sem_create(const char *name, uint32_t init_count, uint32_t max_count)
+{
+    /* 替换为你的 RTOS 实现，例如：
+     * your_sem_t *sem = your_rtos_sem_create(init_count, max_count);
+     * return sem;
+     */
+    (void)name; (void)init_count; (void)max_count;
+    return NULL;
+}
+
+void posix_sem_delete(void *sem)
+{
+    /* your_rtos_sem_delete(sem); */
+    (void)sem;
+}
+
+int posix_sem_give(void *sem)
+{
+    /* return your_rtos_sem_give(sem) ? 0 : -1; */
+    (void)sem;
+    return -1;
+}
+
+int posix_sem_take(void *sem, uint32_t timeout_ms)
+{
+    /* return your_rtos_sem_take(sem, timeout_ms) ? 0 : -1; */
+    (void)sem; (void)timeout_ms;
+    return -1;
+}
+
 int posix_port_init_all(void)
 {
     posix_port_lock_init();

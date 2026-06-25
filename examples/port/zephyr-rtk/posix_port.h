@@ -14,9 +14,9 @@
  *     - posix_lock / posix_unlock → 单个 os_mutex（Zephyr k_mutex，递归）
  *     - posix_port_in_isr         → k_is_in_isr()
  *
- *   本 port【不】提供 semaphore / message-queue / thread / timer 等
- *   POSIX 对象，也没有这类对象的静态池；各驱动的 per-open 数据由
- *   驱动自身的静态文件池管理（见各 posix_port_*.c）。
+ *   本 port 提供 posix_sem_* 信号量接口（posix_port_init.c），
+ *   供中断驱动型驱动（如 gsensor）在 ISR 与任务间同步；
+ *   各驱动的 per-open 数据由驱动自身的静态文件池管理（见各 posix_port_*.c）。
  *
  *   posix_lock / posix_unlock / posix_port_in_isr 的原型由
  *   posix_device.h 统一声明（框架与 port 共用同一原型），此处不再重复。
