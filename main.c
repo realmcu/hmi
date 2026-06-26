@@ -13,6 +13,7 @@
 #include "trace.h"
 #include "rtl876x_pinmux.h"
 #include "app_lower_init.h"
+#include "gui_server.h"
 
 
 
@@ -33,8 +34,7 @@ int main(void)
            k_current_get(),
            k_thread_name_get(k_current_get()),
            k_thread_priority_get(k_current_get()));
-
-
+    gui_server_init();
 
     return 0;
 }

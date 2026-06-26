@@ -21,7 +21,7 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(deskmate)
 
 target_link_libraries(app PRIVATE realtek_display_driver_library)
-# target_link_libraries(app PRIVATE guiLib)
+target_link_libraries(app PRIVATE guiLib)
 
 zephyr_compile_options(
     -Wno-unused-variable

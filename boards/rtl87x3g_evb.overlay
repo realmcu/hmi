@@ -24,6 +24,24 @@
 };
 
 &pinctrl {
+	/* Override board default (P3_1/P3_0): route console UART2 to P1_1(TX)/P1_0(RX) */
+	uart2_default: uart2_default {
+		group1 {
+			psels =
+				<RTL87X3G_PSEL(UART2_TX, P1_1, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(UART2_RX, P1_0, DIR_IN,  DRV_HIGH, PULL_UP)>;
+		};
+	};
+	uart2_sleep: uart2_sleep {
+		group1 {
+			psels = <RTL87X3G_PSEL(SW_MODE, P1_1, DIR_OUT, DRV_HIGH, PULL_UP)>;
+		};
+		group2 {
+			psels = <RTL87X3G_PSEL(SW_MODE, P1_0, DIR_IN, DRV_HIGH, PULL_UP)>;
+			wakeup-low;
+		};
+	};
+
 	sdhc0_default: sdhc0_default {
 		group1 {
 			psels =
