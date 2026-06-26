@@ -20,9 +20,13 @@ set -euo pipefail
 PORT="${1:-${PORT:-COM9}}"
 BAUD="${2:-${BAUD:-2000000}}"
 SECS="${3:-0}"   # 0 = 一直读到 Ctrl-C
-WIN_PY="${WIN_PY:-/mnt/c/Users/howie_wang.RSDOMAIN/AppData/Local/Programs/Python/Python311/python.exe}"
-
-[ -f "$WIN_PY" ] || { echo "[monitor] Windows python 不存在: $WIN_PY" >&2; exit 1; }
+if [ -z "${WIN_PY:-}" ]; then
+  WIN_PY="$(where.exe python 2>/dev/null | head -1 | tr -d '\r')" || true
+fi
+[ -n "$WIN_PY" ] && [ -f "$WIN_PY" ] || {
+  echo "[monitor] 找不到 Windows python.exe，请手动设置: WIN_PY=/mnt/c/...python.exe" >&2
+  exit 1
+}
 
 echo "[monitor] $PORT @ $BAUD  (secs=$SECS, 0=until Ctrl-C)" >&2
 
