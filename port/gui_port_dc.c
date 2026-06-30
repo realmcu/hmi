@@ -13,13 +13,15 @@
 #define DRV_LCD_WIDTH   800
 #define DRV_LCD_HIGHT   480
 #define DRV_LCD_BITS   16
-#define USE_PFB         1
+#define USE_PFB         0
 #if USE_PFB
 #define LCD_SECTION_HEIGHT  30
 static uint8_t *g_buffer_lcd = NULL;
-#endif
-gdma_t dma_obj;
+static gdma_t dma_obj;
 volatile bool dma_memcpy_done = false;
+#endif
+
+
 static int g_width = 0;
 static int g_height = 0;
 static uint8_t *g_buffer_0 = NULL;
@@ -89,11 +91,11 @@ void port_gui_lcd_update_nofb(struct gui_dispdev *dc)
 
         if ((uint32_t)g_buffer_lcd == (uint32_t)g_buffer_0)
         {
-            g_buffer_lcd = g_buffer_0;
+            g_buffer_lcd = g_buffer_1;
         }
         else
         {
-            g_buffer_lcd = g_buffer_1;
+            g_buffer_lcd = g_buffer_0;
         }
     }
     else
@@ -102,6 +104,13 @@ void port_gui_lcd_update_nofb(struct gui_dispdev *dc)
         gdma_start_transfer(dc->frame_buf, dc->fb_width * dc->fb_height);
         psram_offset += dc->fb_width * dc->fb_height;
     }
+}
+
+static u32 memcpy_by_gdma_int(void* param)
+{
+    (void)param;
+    dma_memcpy_done = true;
+    return 0;
 }
 #endif
 
@@ -199,12 +208,6 @@ static void spic_nor_flash_speed_report(void)
                1000000 / total_time);
 }
 
-u32 memcpy_by_gdma_int(void* param)
-{
-    (void)param;
-    dma_memcpy_done = true;
-    return 0;
-}
 
 void gui_port_dc_init(void)
 {
@@ -228,11 +231,11 @@ void gui_port_dc_init(void)
 	dbl070_get_info(&g_width, &g_height);
     g_buffer_0 = (uint8_t *)malloc(g_width * g_height * DRV_LCD_BITS / 8 + 100);
     memset(g_buffer_0, 0xFF, g_width * g_height * DRV_LCD_BITS / 8 + 100);
-    // g_buffer_0 = g_buffer_0 + 64 - ((uintptr_t)g_buffer_0 % 64);
     g_buffer_1 = (uint8_t *)malloc(g_width * g_height * DRV_LCD_BITS / 8 + 100);
-    // g_buffer_1 = g_buffer_1 + 64 - ((uintptr_t)g_buffer_1 % 64);
+    memset(g_buffer_1, 0x00, g_width * g_height * DRV_LCD_BITS / 8 + 100);
     dc.frame_buf = g_buffer_0;
 #if USE_PFB
+    dma_memcpy_init(&dma_obj, memcpy_by_gdma_int, 0);
     g_buffer_lcd = g_buffer_0;
     dc.disp_buf_1 = section1;
     dc.disp_buf_2 = section2;
@@ -244,7 +247,7 @@ void gui_port_dc_init(void)
 #endif
 	gui_log("gui_port_dc_init, g_buffer_0 = 0x%x g_buffer_0 = 0x%x\n", g_buffer_0, g_buffer_1);
 
-    dma_memcpy_init(&dma_obj, memcpy_by_gdma_int, 0);
+    
 	spic1_psram_speed_report(g_buffer_0);
     spic_nor_flash_speed_report();
     DBL070VBlankCallback *callback =    (DBL070VBlankCallback *)malloc(sizeof(DBL070VBlankCallback));
