@@ -170,85 +170,28 @@ static void decode_RLE_16bit_rect(imdc_file_t* file, gui_rect_t* range, uint8_t*
 
 static void decode_RLE_24bit_rect(imdc_file_t* file, gui_rect_t* range, uint8_t* output, uint32_t stride)
 {
-    // uint32_t stride = (range->x2 - range->x1 + 1) * 3;
+    uint32_t width = (range->x2 - range->x1 + 1) * 3;
+    uint8_t* middle = gui_malloc(file->header.raw_pic_width * 3);
     for(int i = range->y1; i <= range->y2; i++)
     {
-        uint32_t start = (uint32_t)(uintptr_t)file + file->compressed_addr[i];
-        uint32_t end = (uint32_t)(uintptr_t)file + file->compressed_addr[i + 1];
-        uint16_t *linebuf = (uint16_t *)output;
-        int16_t pixel_cnt = 0;
-        // gui_log("file->compressed_addr[%d] %d\n", line, file->compressed_addr[line]);
-        for (uint32_t addr = start; addr < end;)
-        {
-            imdc_rgb565_node_t *node = (imdc_rgb565_node_t *)(uintptr_t)addr;
-            uint8_t node_len = node->len;
-            int16_t pixel_cnt_end = pixel_cnt + node_len - 1;
-            if(range->x1 <= pixel_cnt && range->x2 >= pixel_cnt_end)
-            {
-                ;
-            }    
-            else if (range->x1 >= pixel_cnt && range->x1 <= pixel_cnt_end)
-            {
-                uint8_t skip_pixel = range->x1 - pixel_cnt;
-                node_len -= skip_pixel;
-                linebuf += skip_pixel;
-            }
-            else if (range->x2 >= pixel_cnt && range->x2 <= pixel_cnt_end)
-            {
-                uint8_t skip_pixel = pixel_cnt_end;
-                node_len -= skip_pixel;
-
-            }
-            // gui_log("%d 0x%x\n", node->len, node->pixel16);
-            gui_memset16(linebuf, node->pixel16, node->len);
-
-            addr = addr + sizeof(imdc_rgb565_node_t);
-            linebuf = linebuf + node->len;
-            pixel_cnt = pixel_cnt_end + 1;
-        }
+        uncompressed_rle_rgb888(file, i, middle);
+        memcpy(output, middle + range->x1 * 3, width);
         output += stride;
     }
+    gui_free(middle);
 }
 
 static void decode_RLE_32bit_rect(imdc_file_t* file, gui_rect_t* range, uint8_t* output, uint32_t stride)
 {
-    // uint32_t stride = (range->x2 - range->x1 + 1) * 4;
+    uint32_t width = (range->x2 - range->x1 + 1) * 4;
+    uint8_t* middle = gui_malloc(file->header.raw_pic_width * 4);
     for(int i = range->y1; i <= range->y2; i++)
     {
-        uint32_t start = (uint32_t)(uintptr_t)file + file->compressed_addr[i];
-        uint32_t end = (uint32_t)(uintptr_t)file + file->compressed_addr[i + 1];
-        uint16_t *linebuf = (uint16_t *)output;
-        int16_t pixel_cnt = 0;
-        // gui_log("file->compressed_addr[%d] %d\n", line, file->compressed_addr[line]);
-        for (uint32_t addr = start; addr < end;)
-        {
-            imdc_rgb565_node_t *node = (imdc_rgb565_node_t *)(uintptr_t)addr;
-            uint8_t node_len = node->len;
-            int16_t pixel_cnt_end = pixel_cnt + node_len - 1;
-            if(range->x1 <= pixel_cnt && range->x2 >= pixel_cnt_end)
-            {
-                ;
-            }    
-            else if (range->x1 >= pixel_cnt && range->x1 <= pixel_cnt_end)
-            {
-                uint8_t skip_pixel = range->x1 - pixel_cnt;
-                node_len -= skip_pixel;
-                linebuf += skip_pixel;
-            }
-            else if (range->x2 >= pixel_cnt && range->x2 <= pixel_cnt_end)
-            {
-                uint8_t skip_pixel = pixel_cnt_end;
-                node_len -= skip_pixel;
-
-            }
-            // gui_log("%d 0x%x\n", node->len, node->pixel16);
-            gui_memset16(linebuf, node->pixel16, node->len);
-
-            addr = addr + sizeof(imdc_rgb565_node_t);
-            linebuf = linebuf + node->len;
-        }
+        uncompressed_rle_argb8888(file, i, middle);
+        memcpy(output, middle + range->x1 * 4, width);
         output += stride;
     }
+    gui_free(middle);
 }
 
 static void get_area(gui_matrix_t *mat, gui_rect_t *rect, gui_rect_t *result)
@@ -801,11 +744,11 @@ void hw_acc_blit_cover(draw_img_t *image, struct gui_dispdev *dc, struct gui_rec
         }
         else if(dc_byte_depth == 3)
         {
-            decode_RLE_24bit_rect((imdc_file_t*)((uintptr_t)image->data + 8), &image_source_area, p_target_offset, dc->fb_width * 2);
+            decode_RLE_24bit_rect((imdc_file_t*)((uintptr_t)image->data + 8), &image_source_area, p_target_offset, dc->fb_width * 3);
         }
         else if(dc_byte_depth == 4)
         {
-            decode_RLE_32bit_rect((imdc_file_t*)((uintptr_t)image->data + 8), &image_source_area, p_target_offset, dc->fb_width * 2);
+            decode_RLE_32bit_rect((imdc_file_t*)((uintptr_t)image->data + 8), &image_source_area, p_target_offset, dc->fb_width * 4);
         }
         uint32_t fb_size = dc->fb_width * dc->fb_height * dc_byte_depth;
         if(fb_size > 16384)
