@@ -405,6 +405,11 @@
               <FileType>1</FileType>
               <FilePath>..\app\main.c</FilePath>
             </File>
+            <File>
+              <FileName>spatial_wallpaper.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\spatial_wallpaper.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -604,6 +609,11 @@
               <FileName>touch_cst816d_rd.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\app\driver\touch_cst816d_rd.c</FilePath>
+            </File>
+            <File>
+              <FileName>gsensor_sc7a20.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\app\driver\gsensor_sc7a20.c</FilePath>
             </File>
           </Files>
         </Group>
