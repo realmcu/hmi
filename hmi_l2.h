@@ -148,6 +148,7 @@ extern "C" {
  *============================================================================*/
 
 #define HMI_L2_CMD_FILE_XFER        0x0bu   /* file transfer */
+// #define HMI_L2_CMD_FILE_XFER        0x10u   /* file transfer */
 
 #define HMI_L2_XFER_BEGIN_REQ       0x01u   /* session open request  (phone → device) */
 #define HMI_L2_XFER_BEGIN_RSP       0x02u   /* session open response (device → phone) */
@@ -184,6 +185,32 @@ extern "C" {
 
 /* Maximum chunk size (bytes); constrained by L2 payload limit */
 #define HMI_L2_XFER_CHUNK_MAX       2048u
+
+/*============================================================================*
+ *                              Keys — stream (0x0e)
+ *============================================================================*/
+
+#define HMI_L2_CMD_STREAM           0x0eu   /* live video stream */
+
+#define HMI_L2_KS_OPEN              0x01u   /* App → Dev: open stream session        */
+#define HMI_L2_KS_ACK               0x02u   /* Dev → App: confirm open / error       */
+#define HMI_L2_KS_FRAME             0x03u   /* App → Dev: frame data chunk           */
+#define HMI_L2_KS_CLOSE             0x04u   /* App → Dev: close stream session       */
+#define HMI_L2_KS_CREDIT            0x05u   /* Dev → App: credit grant (flow ctrl)   */
+#define HMI_L2_KS_REPORT            0x06u   /* Dev → App: frame reception status     */
+
+/* KS_OPEN codec field */
+#define HMI_L2_KS_CODEC_MSV1        0x00u   /* RGB555 16bpp, MSV1 compatible    */
+#define HMI_L2_KS_CODEC_JPEG        0x01u   /* standard JPEG byte stream        */
+
+/* KS_ACK result field */
+#define HMI_L2_KS_ACK_OK            0x00u
+#define HMI_L2_KS_ACK_BAD_CODEC     0x01u
+#define HMI_L2_KS_ACK_BUSY          0x02u   /* device busy, retry later         */
+
+/* KS_ACK init_credits: device RX buffer depth in KS_FRAME packets;
+ * 0xFFFF = no flow control (fire-and-forget fallback) */
+#define HMI_L2_KS_CREDITS_UNLIMITED 0xFFFFu
 
 /*============================================================================*
  *                              KV entry (exposed for handlers)
