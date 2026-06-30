@@ -153,26 +153,41 @@ bool wifi_data_tx(uint32_t ip_addr, uint16_t port, const uint8_t *data, uint16_t
     return true;
 }
 
-#include "gui_stream.h"
+#include "gui_stream.h"   /* stp_* transport API (stp_transport_t, stp_acquire_free, ...) */
+
+/* The transport is owned by the app and created on the consumer side
+ * (example_gui_stream.c).  The wifi RX path is the producer; fetch the shared
+ * handle here.  Returns NULL until the stream app has initialised. */
+extern stp_transport_t *app_stream_transport_get(void);
+
+#pragma pack(push,1)
 typedef struct
 {
-    stp_transport_t *tp;
-    uint8_t         *pool;
-    uint32_t         pool_size;
-    uint32_t         interval_ms;
-    const char      *label;
-    volatile bool    running;
-} demo_stream_t;
-extern demo_stream_t s_stream_bt;
+    uint16_t        mark;
+    uint8_t         seq;
+    uint16_t        len;
+    uint8_t         check_sum;
+} str_frame_t;
+#pragma pack(pop)
+
 void wifi_stream_cb(uint8_t *payload, uint16_t pkt_len)
 {
-    static uint32_t id = 0;
+    /* The transport is owned by the app (created in example_gui_stream.c). */
+    stp_transport_t *tp = app_stream_transport_get();
+    if (!tp)
+    {
+        return;   /* transport not ready yet -> drop */
+    }
+
+    // static uint32_t id = 0;
     static stp_frame_t f = {0};
     static uint8_t get_buff = false;
     static uint32_t cur_addr = 0;
     static uint32_t cur_len = 0;
     static uint32_t s_xfer_total = 0;
     static uint8_t skip = 0;
+    static str_frame_t hdr;
+    static uint8_t cur_hdr = 0;
 
 
 
@@ -182,30 +197,75 @@ void wifi_stream_cb(uint8_t *payload, uint16_t pkt_len)
     while (remain_len)
     {
         uint8_t *prec = payload + pkt_len - remain_len;
-        if (!get_buff && !skip && prec[0] != 0xA5 && prec[1] != 0xA9)
+        uint8_t *pdata = NULL;
+
+        if (!get_buff && !skip)
         {
-            printf("not stream frame %d 0x%x 0x%x\n", get_buff, prec[0], prec[1]);
-            return;
+            uint32_t remain_hdr = sizeof(str_frame_t) - cur_hdr;
+            if (!cur_hdr)
+            {
+                // printf("clear hdr\n");
+                memset((void *)&hdr, 0, sizeof(str_frame_t));
+            }
+            if (remain_hdr)
+            {
+                // extract header first
+                // if(remain_hdr != sizeof(str_frame_t))
+                // {
+                //     printf("remain_len %d, remain_hdr %d\n", remain_len, remain_hdr);
+                // }
+                if (remain_len <= remain_hdr)
+                {
+                    // printf("remain_len %d, remain_hdr %d\n", remain_len, remain_hdr);
+                    memcpy((void *)((uint8_t *)&hdr + cur_hdr), prec, remain_len);
+                    cur_hdr += remain_len;
+                    break;
+                }
+                else
+                {
+                    memcpy((void *)((uint8_t *)&hdr + cur_hdr), prec, remain_hdr);
+                    remain_len -= remain_hdr;
+                }
+            }
+
+
+            // header check
+            if (hdr.mark != 0xA9A5)
+            {
+                printf("not stream frame 0x%x\n", hdr.mark);
+                cur_hdr = 0;
+                break;
+            }
+
+            uint8_t cnt = hdr.seq;
+            uint8_t ck = hdr.check_sum;
+            uint8_t ck_cal = hdr.seq + (hdr.len & 0xff) + (hdr.len >> 8);
+            if (ck != ck_cal)
+            {
+                printf("0x%x 0x%x 0x%x  \n", cnt, ck_cal, ck);
+            }
         }
+
+
+        pdata = payload + pkt_len - remain_len;
 
         if (!get_buff && !s_xfer_total && !skip)
         {
-            s_xfer_total = *(uint32_t *)(&prec[2]);
+            s_xfer_total = hdr.len;
             // printf("s_xfer_total %d\n", s_xfer_total);
-            if (stp_acquire_free(s_stream_bt.tp, s_xfer_total, &f))
+
+            if (stp_acquire_free(tp, s_xfer_total, &f))
             {
                 cur_addr = (uint32_t)f.addr;
                 get_buff = true;
-                id++;
+                // id++;
                 // printf("buffer get: 0x%x, s_xfer_total %d\n", cur_addr, s_xfer_total);
-                prec += 6;
-                remain_len -= 6;
             }
             else
             {
-                printf("no transf buff avi\n");
+                printf("no transf buff avi %u\n", s_xfer_total);
+                // printf("[data] 0x%x, 0x%x, 0x%x, 0x%x, 0x%x,0x%x,0x%x,0x%x,\n", prec[0], prec[1], prec[2], prec[3], prec[4], prec[5], prec[6], prec[7]);
                 skip = 1;
-                remain_len -= 6;
             }
         }
 
@@ -214,9 +274,10 @@ void wifi_stream_cb(uint8_t *payload, uint16_t pkt_len)
             cp_len = ((s_xfer_total - cur_len) <= remain_len) ? (s_xfer_total - cur_len) : remain_len;
             if (!skip)
             {
-                memcpy((void *)cur_addr, prec, cp_len);
+                memcpy((void *)cur_addr, pdata, cp_len);
+                cur_addr += cp_len;
             }
-            cur_addr += cp_len;
+
             cur_len += cp_len;
             remain_len -= cp_len;
             // printf("buffer memcpy: 0x%x %d\n", prec, cp_len);
@@ -227,15 +288,16 @@ void wifi_stream_cb(uint8_t *payload, uint16_t pkt_len)
             if (!skip)
             {
                 int rc = 0;
-                rc = stp_commit(s_stream_bt.tp, &f, s_xfer_total, false);
-                printf("buffer commit %u %d \n", s_xfer_total, rc);
+                rc = stp_commit(tp, &f, s_xfer_total, false);
+                printf("commit %u %d \n", s_xfer_total, rc);
+
                 extern int cache_flush_by_addr(uint32_t *addr, uint32_t length);
                 cache_flush_by_addr((uint32_t *)(cur_addr - s_xfer_total), s_xfer_total);
                 // printf("buffer flush 0x%x-0x%x\n", cur_addr - s_xfer_total, cur_addr);
             }
             else
             {
-                printf("skip\n");
+                printf("skip %u\n", s_xfer_total);
             }
 
             skip = 0;
@@ -243,6 +305,7 @@ void wifi_stream_cb(uint8_t *payload, uint16_t pkt_len)
             cur_addr = 0;
             s_xfer_total = 0;
             cur_len = 0;
+            cur_hdr = 0;
         }
     }
 
@@ -280,7 +343,9 @@ void wifi_data_sdio_rx_handler(void)
     }
     else
     {
-        printf("[data] no handler, pkt_len=%d\n", pkt_len);
+        // return;
+        printf("[data] pkt_len=%d\n", pkt_len);
+        // printf("[data] no handler, pkt_len=%d\n", pkt_len);
         // printf("[data] 0x%x, 0x%x, 0x%x, 0x%x, 0x%x,\n", payload[0], payload[1], payload[2], payload[3], payload[4]);
         wifi_stream_cb(payload, pkt_len);
     }

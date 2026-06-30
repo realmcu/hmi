@@ -18,62 +18,6 @@
 #include "app_lower_init.h"
 
 
-#define ENABLE_STREAM
-
-#ifdef ENABLE_STREAM  // streaming
-#include "gui_stream.h"
-#define DSP_RSV_SIZE (512 * 1024)
-#define STREAM_DB  (void *)(0x22000000 + DSP_RSV_SIZE + 0x200000)
-#define STREAM_SIZE  0x100000u
-#define MAX_FRAME       (25 * 1024u)   /* per-buffer cap (>> any real frame) */
-#define POOL_BUFS       30              /* FIFO depth per stream              */
-typedef struct
-{
-    // avi_info_t       info;
-    stp_transport_t *tp;
-    uint8_t         *pool;
-    uint32_t         pool_size;
-    uint32_t         interval_ms;
-    const char      *label;
-    volatile bool    running;
-} demo_stream_t;
-#endif
-
-
-
-static void stream_prepare(void)
-{
-#ifdef ENABLE_STREAM  // streaming
-    extern demo_stream_t s_stream_bt;
-    s_stream_bt.tp          = NULL;
-    s_stream_bt.pool        = STREAM_DB;
-    s_stream_bt.pool_size   = STREAM_SIZE;
-    s_stream_bt.label       = NULL;
-    s_stream_bt.interval_ms = 46;
-
-    static const stp_class_cfg_t classes[] =
-    {
-        { .buf_size = MAX_FRAME, .buf_count = POOL_BUFS },
-    };
-    stp_config_t cfg;
-    stp_config_default(&cfg);
-    cfg.pool        = s_stream_bt.pool;
-    cfg.pool_size   = s_stream_bt.pool_size;
-    cfg.align       = 8;
-    cfg.classes     = classes;
-    cfg.class_count = 1;
-    cfg.drop_mode   = STP_DROP_NONE;
-
-    s_stream_bt.tp = stp_create(&cfg);
-    if (!s_stream_bt.tp)
-    {
-        printf("stream demo: stp_create failed\n");
-        return ;
-    }
-    printf("stream demo: stp_create done\n");
-#endif
-}
-
 int main(void)
 {
 
@@ -99,11 +43,6 @@ int main(void)
 
     extern void rtk_lcd_hal_init(void);
     rtk_lcd_hal_init();
-
-
-
-
-    stream_prepare();
 
 
 
