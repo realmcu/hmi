@@ -36,13 +36,13 @@
 
 ## 组件仓库
 
-| 仓库 | 说明 |
-|---|---|
-| [rtl87x3ep-hmi-sdk](https://gitee.com/realmcu/rtl87x3ep-hmi-sdk) | 核心 SDK：HAL 驱动、蓝牙协议栈、系统服务、工具链等 |
-| [hmi-dashboard](https://gitee.com/realmcu/hmi/tree/rtl8773e-dashboard/) | HMI 应用层、BSP、GUI 移植、构建配置 |
-| [HoneyGUI](https://gitee.com/realmcu/HoneyGUI) | GUI 引擎：控件库、字体引擎、动画 |
-| [wearable](https://gitee.com/realmcu/wearable) | Wearable 应用层代码 |
-| [display](https://gitee.com/realmcu/display) | LCD 显示驱动库 |
+| 仓库 | 本地路径 | 说明 |
+|---|---|---|
+| [rtl87x3ep-hmi-sdk](https://gitee.com/realmcu/rtl87x3ep-hmi-sdk) | `sdk/` | 核心 SDK：HAL 驱动、蓝牙协议栈、系统服务、工具链等 |
+| [hmi-dashboard](https://gitee.com/realmcu/hmi/tree/rtl8773e-dashboard/) | `sdk/board/evb/hmi_dashboard/` | HMI 应用层、BSP、GUI 移植、构建配置 |
+| [HoneyGUI](https://gitee.com/realmcu/HoneyGUI) | `sdk/src/sample/gui/` | GUI 引擎：控件库、字体引擎、动画 |
+| [wearable](https://gitee.com/realmcu/wearable) | `sdk/src/app/Wearable/` | Wearable 应用层代码 |
+| [display](https://gitee.com/realmcu/display) | `sdk/src/mcu/display/` | LCD 显示驱动库 |
 
 ## 快速上手
 
@@ -50,8 +50,8 @@
 
 ```bash
 # 1. 创建工作目录（名称可自定义）
-mkdir hmi-dashboard
-cd hmi-dashboard
+mkdir hmi
+cd hmi
 
 # 2. 初始化 west 工作空间
 west init -m https://gitee.com/realmcu/hmi-manifest.git --mr master --mf rtl8773e-dashboard-gitee.yml .
@@ -62,22 +62,27 @@ west update
 
 ### 2. 构建固件
 
+| 模式 | 命令 | 编译速度 | 适用场景 |
+| --- | --- | --- | --- |
+| 源码模式 | `west build` 或 `west build -m src_bank0` | 慢（首次 5–10 分钟） | 需调试 GUI 源码 |
+| 库模式 | `west build -m lib_bank0` | 快（约 1 分钟） | 日常迭代（推荐） |
+
+OTA B 槽将 `bank0` 替换为 `bank1`（`src_bank1` / `lib_bank1`）。
+
 ```bash
-# 默认：源码模式，bank0（OTA A 槽）
-west build
-
-# 库模式，bank0——链接预编译 libgui.a（迭代更快）
-west build -m lib_bank0
+west build              # 默认：源码模式，bank0（OTA A 槽）
+west build -m lib_bank0 # 库模式，bank0（链接预编译 libgui.a，迭代更快）
 ```
-
-其他 mode：`src_bank1` / `lib_bank1`（OTA B 槽），用法同上替换 `-m` 参数。
 
 ### 3. 烧录固件
 
 ```bash
-west flash            # 默认串口 COM3
-west flash -p COM5    # 指定串口
+west flash                  # 默认串口 COM3，烧录 src_bank0 镜像
+west flash -p COM5          # 指定串口
+west flash -m src_bank1     # 烧录 bank1 镜像（须与 west build -m 保持一致）
 ```
+
+> `-m` 须与构建时的 mode 保持一致，否则将烧录错误槽位的固件。
 
 ## 构建命令参考
 
@@ -98,21 +103,7 @@ west flash -p COM5    # 指定串口
 | `west sync` | 强制更新 manifest 仓库 + `west update` + submodule 更新 |
 | `west info` | 显示 workspace 及构建状态 |
 
-### CMake 直接调用（备用方式）
-
-在 `honeycomb/sdk/` 目录下执行：
-
-```bash
-# 默认：源码模式，bank0
-cmake -G Ninja \
-  -Dkconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src_bank0 \
-  -DIS_CHECK_FLOW=off \
-  -Dcompile_lib_only=OFF \
-  -B build
-cmake --build build
-```
-
-其他 mode 将末尾替换：`src_bank0` → `src_bank1` / `lib_bank0` / `lib_bank1`。
+如需直接调用 CMake 构建，参见 [`gcc/README_CN.md`](gcc/README_CN.md)。
 
 ### Keil MDK
 
@@ -126,6 +117,8 @@ scons --target=mdk5
 
 ## 目录结构
 
+> 以下路径相对于 `sdk/board/evb/hmi_dashboard/`（West workspace 内的主应用仓库根目录）。
+
 ```
 hmi_dashboard/
 ├── src/
@@ -133,8 +126,7 @@ hmi_dashboard/
 │   ├── bsp/                 # 启动代码、系统级初始化
 │   ├── gui_lib/             # HoneyGUI 预编译库及头文件
 │   ├── ports/
-│   │   ├── realgui_port/    # HoneyGUI 平台适配层
-│   │   └── lvgl_port/       # LVGL 平台适配层（开发中）
+│   │   └── realgui_port/    # HoneyGUI 平台适配层
 │   ├── hmi_rtk_bt/          # 蓝牙协议栈集成（开发中）
 │   └── protocol/            # BLE 私有协议实现（开发中）
 ├── gcc/                     # 链接脚本、defconfig、构建输出
@@ -169,10 +161,6 @@ HoneyGUI 预编译库（GCC 对应 `libgui.a`，Keil 对应 `gui.lib`）及配�
 
 HoneyGUI 与硬件之间的平台适配层，涵盖显示控制器、输入设备、文件系统、
 操作系统接口及 Flash 转换层。
-
-### `src/ports/lvgl_port/` *（开发中）*
-
-LVGL 平台适配层，包含显示、输入设备和文件系统适配。
 
 ### `src/hmi_rtk_bt/` *（开发中）*
 

@@ -37,13 +37,13 @@ applications with display and wireless connectivity.
 
 ## Component Repositories
 
-| Repository | Description |
-|---|---|
-| [rtl87x3ep-hmi-sdk](https://gitee.com/realmcu/rtl87x3ep-hmi-sdk) | Core SDK: HAL drivers, Bluetooth stack, system services, toolchain |
-| [hmi-dashboard](https://gitee.com/realmcu/hmi/tree/rtl8773e-dashboard/) | HMI application layer, BSP, GUI porting, build configuration |
-| [HoneyGUI](https://gitee.com/realmcu/HoneyGUI) | GUI engine: widget library, font engine, animations |
-| [wearable](https://gitee.com/realmcu/wearable) | Wearable application layer code |
-| [display](https://gitee.com/realmcu/display) | LCD display driver library |
+| Repository | Local Path | Description |
+| --- | --- | --- |
+| [rtl87x3ep-hmi-sdk](https://gitee.com/realmcu/rtl87x3ep-hmi-sdk) | `honeycomb/` | Core SDK: HAL drivers, Bluetooth stack, system services, toolchain |
+| [hmi-dashboard](https://gitee.com/realmcu/hmi/tree/rtl8773e-dashboard/) | `honeycomb/sdk/board/evb/hmi_dashboard/` | HMI application layer, BSP, GUI porting, build configuration |
+| [HoneyGUI](https://gitee.com/realmcu/HoneyGUI) | `honeycomb/sdk/src/sample/gui/` | GUI engine: widget library, font engine, animations |
+| [wearable](https://gitee.com/realmcu/wearable) | `honeycomb/sdk/src/app/Wearable/` | Wearable application layer code |
+| [display](https://gitee.com/realmcu/display) | `honeycomb/sdk/src/mcu/display/` | LCD display driver library |
 
 ## Getting Started
 
@@ -51,8 +51,8 @@ applications with display and wireless connectivity.
 
 ```bash
 # 1. Create a working directory (name is customizable)
-mkdir hmi-dashboard
-cd hmi-dashboard
+mkdir hmi
+cd hmi
 
 # 2. Initialize the west workspace
 west init -m https://gitee.com/realmcu/hmi-manifest.git --mr master --mf rtl8773e-dashboard-gitee.yml .
@@ -63,22 +63,27 @@ west update
 
 ### 2. Build the firmware
 
+| Mode | Command | Build Time | Use Case |
+| --- | --- | --- | --- |
+| Source mode | `west build` or `west build -m src_bank0` | Slow (5–10 min first build) | When GUI source debugging is needed |
+| Library mode | `west build -m lib_bank0` | Fast (~1 min) | Daily iteration (recommended) |
+
+For OTA slot B, replace `bank0` with `bank1` (`src_bank1` / `lib_bank1`).
+
 ```bash
-# Default: source mode, bank0 (OTA slot A)
-west build
-
-# Library mode, bank0 — links precompiled libgui.a (faster iteration)
-west build -m lib_bank0
+west build              # Default: source mode, bank0 (OTA slot A)
+west build -m lib_bank0 # Library mode, bank0 (links precompiled libgui.a, faster)
 ```
-
-Other modes: `src_bank1` / `lib_bank1` (OTA slot B) — replace the `-m` value accordingly.
 
 ### 3. Flash the firmware
 
 ```bash
-west flash            # default port COM3
-west flash -p COM5    # specify a different port
+west flash                  # default port COM3, flashes src_bank0 image
+west flash -p COM5          # specify a different port
+west flash -m src_bank1     # flash bank1 image (must match west build -m)
 ```
+
+> `-m` must match the mode used at build time; a mismatch flashes the wrong OTA slot.
 
 ## Build Command Reference
 
@@ -99,21 +104,7 @@ west flash -p COM5    # specify a different port
 | `west sync` | Force-update manifest repo, then `west update`, then submodule update |
 | `west info` | Show workspace and build status |
 
-### CMake direct invocation (alternative)
-
-Run from the `honeycomb/sdk/` directory:
-
-```bash
-# Default: source mode, bank0
-cmake -G Ninja \
-  -Dkconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src_bank0 \
-  -DIS_CHECK_FLOW=off \
-  -Dcompile_lib_only=OFF \
-  -B build
-cmake --build build
-```
-
-For other modes, replace the suffix: `src_bank0` → `src_bank1` / `lib_bank0` / `lib_bank1`.
+To invoke CMake directly, see [`gcc/README.md`](gcc/README.md).
 
 ### Keil MDK
 
@@ -127,6 +118,8 @@ scons --target=mdk5
 
 ## Directory Structure
 
+> Paths below are relative to `honeycomb/sdk/board/evb/hmi_dashboard/` (the main application repository root within the West workspace).
+
 ```
 hmi_dashboard/
 ├── src/
@@ -134,8 +127,7 @@ hmi_dashboard/
 │   ├── bsp/                 # Startup code, system-level initialization
 │   ├── gui_lib/             # HoneyGUI precompiled library and headers
 │   ├── ports/
-│   │   ├── realgui_port/    # HoneyGUI platform adaptation layer
-│   │   └── lvgl_port/       # LVGL platform adaptation layer (in dev)
+│   │   └── realgui_port/    # HoneyGUI platform adaptation layer
 │   ├── hmi_rtk_bt/          # Bluetooth stack integration (in dev)
 │   └── protocol/            # BLE private protocol implementation (in dev)
 ├── gcc/                     # Linker scripts, defconfigs, build output
@@ -172,10 +164,6 @@ compilation.
 
 Platform adaptation layer connecting HoneyGUI to the hardware: display controller,
 input device, filesystem, OS interface, and flash translation layer.
-
-### `src/ports/lvgl_port/` *(In Development)*
-
-LVGL platform adaptation layer for display, input device, and filesystem.
 
 ### `src/hmi_rtk_bt/` *(In Development)*
 
