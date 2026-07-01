@@ -68,6 +68,11 @@ int posix_sem_take(void *sem, uint32_t timeout_ms)
     return os_sem_take(sem, timeout_ms) ? 0 : -1;
 }
 
+void posix_port_delay_ms(uint32_t ms)
+{
+    k_msleep((int32_t)ms);
+}
+
 int posix_port_init_all(void)
 {
     posix_port_lock_init();

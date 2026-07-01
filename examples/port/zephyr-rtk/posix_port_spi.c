@@ -1,179 +1,133 @@
-/**
- * @file posix_port_spi.c
- * @brief RTL8773G SPI driver for POSIX abstraction layer.
+/* ================================================================
+ * SPI 驱动 — 基于 Zephyr SPI API 的 posix-device 适配层
  *
- * Uses RTK HAL directly (same pattern as spi_rtl87x3g.c).
- * Polling mode — no interrupt, no DMA.
- */
+ * 路径格式: /dev/spi0, /dev/spi1
+ *   /dev/spi0  → spi0 节点
+ *   /dev/spi1  → spi1 节点
+ *
+ * 依赖：DTS 中 spi0 / spi1 节点已 enabled，且 CONFIG_SPI=y。
+ * ================================================================ */
 
 #include "posix.h"
 #include "posix_init.h"
 #include "ioctls/posix_ioctl_spi.h"
-#include "rtl876x_spi.h"
 
-#include <stdbool.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/spi.h>
+#include <string.h>
 
-/* ---------- tunables ---------------------------------------------------- */
-
-#define SPI_BUS_FREQ_HZ   40000000U  /* RTL87x3G SPI source clock: 40 MHz   */
-#define MAX_SPI_FILES     4
-#define SPI_NUM_UNITS     2
-
-/* ---------- private types ------------------------------------------------ */
-
+/* ---------- 控制器私有数据（每个 posix 设备一份） ---------- */
 typedef struct
 {
-    int          unit;
-    SPI_TypeDef *spi;   /* RTK peripheral pointer (SPI0 / SPI1)              */
-} spi_drv_t;
+    const struct device *dev;   /* Zephyr SPI device */
+} spi_drv_data_t;
 
+/* ---------- per-open 文件私有数据 ---------- */
 typedef struct
 {
-    spi_drv_t         *drv;
+    bool              in_use;
+    spi_drv_data_t   *drv;
     posix_spi_config_t cfg;
-    bool               used;
+    struct spi_config  zephyr_cfg;
 } spi_file_t;
 
-/* ---------- static instances & pool ------------------------------------- */
+#define MAX_SPI_FILES  4
+static spi_file_t s_spi_files[MAX_SPI_FILES];
 
-static spi_drv_t s_spi0 = { .unit = 0, .spi = (SPI_TypeDef *)0x40020000UL };
-static spi_drv_t s_spi1 = { .unit = 1, .spi = (SPI_TypeDef *)0x40021000UL };
-
-static spi_file_t s_file_pool[MAX_SPI_FILES];
-
-/* ---------- pool helpers ------------------------------------------------- */
-
-static spi_file_t *spi_alloc_file(void)
+/* ---------- 将 posix_spi_config_t 转换为 spi_config ---------- */
+static void spi_build_zephyr_cfg(const posix_spi_config_t *cfg,
+                                 struct spi_config *zcfg)
 {
-    for (int i = 0; i < MAX_SPI_FILES; i++)
-    {
-        if (!s_file_pool[i].used)
-        {
-            s_file_pool[i].used = true;
-            return &s_file_pool[i];
-        }
-    }
-    return NULL;
+    uint16_t operation = SPI_OP_MODE_MASTER
+                         | SPI_TRANSFER_MSB
+                         | SPI_WORD_SET(cfg->bits_per_word);
+
+    if (cfg->mode & 0x02U) { operation |= SPI_MODE_CPOL; }
+    if (cfg->mode & 0x01U) { operation |= SPI_MODE_CPHA; }
+
+    zcfg->frequency = cfg->freq_hz;
+    zcfg->operation = operation;
+    zcfg->slave     = 0;
+    zcfg->cs        = (struct spi_cs_control) { 0 };
 }
 
-static void spi_free_file(spi_file_t *f)
-{
-    if (f) { f->used = false; f->drv = NULL; }
-}
-
-/* ---------- hardware helpers -------------------------------------------- */
-
-/* Apply posix_spi_config_t to hardware.
- * Pattern mirrors spi_rtl87x3g_configure() in spi_rtl87x3g.c. */
-static void spi_apply_config(SPI_TypeDef *spi, const posix_spi_config_t *cfg)
-{
-    SPI_Cmd(spi, DISABLE);
-
-    SPI_InitTypeDef init;
-    SPI_StructInit(&init);
-
-    /* Bus clock / target frequency — same calculation as spi_rtl87x3g.c:
-     *   SPI_BaudRatePrescaler = bus_freq / frequency                        */
-    uint32_t prescaler = (cfg->freq_hz > 0U) ? (SPI_BUS_FREQ_HZ / cfg->freq_hz) : 40U;
-    if (prescaler < 1U) { prescaler = 1U; }
-    init.SPI_BaudRatePrescaler = (uint16_t)prescaler;
-
-    /* SPI_DataSize = word_size - 1  (RTK uses N-1 encoding)
-     * mirrors: spi_init_struct.SPI_DataSize = SPI_WORD_SIZE_GET(op) - 1    */
-    init.SPI_DataSize = (uint16_t)(cfg->bits_per_word - 1U);
-
-    /* CPOL / CPHA from POSIX mode (bit1=CPOL, bit0=CPHA)
-     * mirrors: SPI_CPOL = op & SPI_MODE_CPOL ? High : Low                  */
-    init.SPI_CPOL = (cfg->mode & 0x02U) ? SPI_CPOL_High : SPI_CPOL_Low;
-    init.SPI_CPHA = (cfg->mode & 0x01U) ? SPI_CPHA_2Edge : SPI_CPHA_1Edge;
-
-    init.SPI_TxThresholdLevel = 0;
-    init.SPI_RxThresholdLevel = 0;
-
-    SPI_Init(spi, &init);
-    SPI_Cmd(spi, ENABLE);
-}
-
-/* Polling full-duplex transfer (byte-by-byte).
- * Pattern from spi_rtl87x3g_frame_exchange():
- *   - SPI_SendData()    to push TX frame into FIFO
- *   - SPI_ReceiveData() to drain RX frame from FIFO
- *   - Wait SPI_FLAG_TFE + !SPI_FLAG_BUSY for completion               */
-static int spi_do_transfer(SPI_TypeDef *spi,
-                           const uint8_t *tx, uint8_t *rx, size_t len)
-{
-    for (size_t i = 0; i < len; i++)
-    {
-        /* Wait for TX FIFO to have room (TxFIFOLen > 0 means occupied) */
-        while (SPI_GetTxFIFOLen(spi) != 0 ||
-               SPI_GetFlagState(spi, SPI_FLAG_BUSY)) {}
-
-        SPI_SendData(spi, tx ? (uint16_t)tx[i] : 0x00U);
-
-        /* Wait for RX FIFO to have the echoed frame */
-        while (SPI_GetRxFIFOLen(spi) == 0) {}
-
-        uint16_t frame = SPI_ReceiveData(spi);
-        if (rx) { rx[i] = (uint8_t)frame; }
-    }
-
-    /* Wait until TX FIFO empty and hardware not busy */
-    while (!SPI_GetFlagState(spi, SPI_FLAG_TFE) ||
-           SPI_GetFlagState(spi, SPI_FLAG_BUSY)) {}
-
-    return (int)len;
-}
-
-/* ---------- driver ops --------------------------------------------------- */
-
-static void *spi_open(void *d, const char *path)
+/* ---------- open ---------- */
+static void *spi_open(void *drv_data, const char *path)
 {
     (void)path;
+    spi_drv_data_t *d = (spi_drv_data_t *)drv_data;
 
-    spi_drv_t  *drv = (spi_drv_t *)d;
-    spi_file_t *f   = spi_alloc_file();
+    if (!device_is_ready(d->dev)) { return POSIX_OPEN_ERR; }
+
+    spi_file_t *f = NULL;
+    for (int i = 0; i < MAX_SPI_FILES; i++)
+    {
+        if (!s_spi_files[i].in_use)
+        {
+            f = &s_spi_files[i];
+            memset(f, 0, sizeof(*f));
+            f->in_use = true;
+            break;
+        }
+    }
     if (!f) { return POSIX_OPEN_ERR; }
 
-    f->drv               = drv;
+    f->drv               = d;
     f->cfg.freq_hz       = 1000000U;
     f->cfg.mode          = POSIX_SPI_MODE_0;
     f->cfg.bits_per_word = 8U;
     f->cfg.cs_pin        = -1;
 
-    spi_apply_config(drv->spi, &f->cfg);
-    return (void *)f;
+    spi_build_zephyr_cfg(&f->cfg, &f->zephyr_cfg);
+    return f;
 }
 
-static int spi_close(void *d, void *fh)
+/* ---------- close ---------- */
+static int spi_close(void *drv_data, void *file_priv)
 {
-    (void)d;
-    spi_file_t *f = (spi_file_t *)fh;
-
-    SPI_Cmd(f->drv->spi, DISABLE);
-    spi_free_file(f);
-    return 0;
+    (void)drv_data;
+    spi_file_t *f = (spi_file_t *)file_priv;
+    if (!f || !f->in_use) { return POSIX_OK; }
+    f->in_use = false;
+    return POSIX_OK;
 }
 
-/* Read-only: send 0x00 dummy bytes, capture MISO */
-static posix_ssize_t spi_read_fn(void *d, void *fh, void *buf, size_t len)
+/* ---------- read：发 dummy 字节，接收 MISO ---------- */
+static posix_ssize_t spi_read_fn(void *drv_data, void *file_priv,
+                                 void *buf, size_t len)
 {
-    (void)d;
-    spi_file_t *f = (spi_file_t *)fh;
-    return (posix_ssize_t)spi_do_transfer(f->drv->spi, NULL, (uint8_t *)buf, len);
+    (void)drv_data;
+    spi_file_t *f = (spi_file_t *)file_priv;
+
+    struct spi_buf rx_buf = { .buf = buf, .len = len };
+    struct spi_buf_set rx_bufs = { .buffers = &rx_buf, .count = 1 };
+
+    int ret = spi_transceive(f->drv->dev, &f->zephyr_cfg, NULL, &rx_bufs);
+    if (ret < 0) { return POSIX_ERR_IO; }
+    return (posix_ssize_t)len;
 }
 
-/* Write-only: send TX bytes, discard MISO */
-static posix_ssize_t spi_write_fn(void *d, void *fh, const void *buf, size_t len)
+/* ---------- write：发送 TX 字节，丢弃 MISO ---------- */
+static posix_ssize_t spi_write_fn(void *drv_data, void *file_priv,
+                                  const void *buf, size_t len)
 {
-    (void)d;
-    spi_file_t *f = (spi_file_t *)fh;
-    return (posix_ssize_t)spi_do_transfer(f->drv->spi, (const uint8_t *)buf, NULL, len);
+    (void)drv_data;
+    spi_file_t *f = (spi_file_t *)file_priv;
+
+    struct spi_buf tx_buf = { .buf = (void *)buf, .len = len };
+    struct spi_buf_set tx_bufs = { .buffers = &tx_buf, .count = 1 };
+
+    int ret = spi_transceive(f->drv->dev, &f->zephyr_cfg, &tx_bufs, NULL);
+    if (ret < 0) { return POSIX_ERR_IO; }
+    return (posix_ssize_t)len;
 }
 
-static int spi_ioctl(void *d, void *fh, unsigned long cmd, void *arg)
+/* ---------- ioctl ---------- */
+static int spi_ioctl(void *drv_data, void *file_priv,
+                     unsigned long cmd, void *arg)
 {
-    (void)d;
-    spi_file_t *f = (spi_file_t *)fh;
+    (void)drv_data;
+    spi_file_t *f = (spi_file_t *)file_priv;
 
     switch (cmd)
     {
@@ -181,42 +135,61 @@ static int spi_ioctl(void *d, void *fh, unsigned long cmd, void *arg)
         {
             if (!arg) { return POSIX_ERR_INVAL; }
             f->cfg = *(posix_spi_config_t *)arg;
-            spi_apply_config(f->drv->spi, &f->cfg);
-            return 0;
+            spi_build_zephyr_cfg(&f->cfg, &f->zephyr_cfg);
+            return POSIX_OK;
         }
 
     case POSIX_SPI_IOCTL_GET_CONFIG:
         {
             if (!arg) { return POSIX_ERR_INVAL; }
             *(posix_spi_config_t *)arg = f->cfg;
-            return 0;
+            return POSIX_OK;
         }
 
     case POSIX_SPI_IOCTL_TRANSFER:
         {
             if (!arg) { return POSIX_ERR_INVAL; }
             posix_spi_transfer_t *t = (posix_spi_transfer_t *)arg;
-            return spi_do_transfer(f->drv->spi,
-                                   (const uint8_t *)t->tx_buf,
-                                   (uint8_t *)t->rx_buf,
-                                   t->len);
+
+            struct spi_buf_set *p_tx = NULL;
+            struct spi_buf_set *p_rx = NULL;
+            struct spi_buf      tx_buf;
+            struct spi_buf      rx_buf;
+            struct spi_buf_set  tx_bufs;
+            struct spi_buf_set  rx_bufs;
+
+            if (t->tx_buf)
+            {
+                tx_buf  = (struct spi_buf) { .buf = (void *)t->tx_buf, .len = t->len };
+                tx_bufs = (struct spi_buf_set) { .buffers = &tx_buf, .count = 1 };
+                p_tx    = &tx_bufs;
+            }
+            if (t->rx_buf)
+            {
+                rx_buf  = (struct spi_buf) { .buf = t->rx_buf, .len = t->len };
+                rx_bufs = (struct spi_buf_set) { .buffers = &rx_buf, .count = 1 };
+                p_rx    = &rx_bufs;
+            }
+
+            int ret = spi_transceive(f->drv->dev, &f->zephyr_cfg, p_tx, p_rx);
+            return (ret < 0) ? POSIX_ERR_IO : POSIX_OK;
         }
 
     case POSIX_SPI_IOCTL_CS_TAKE:
-        /* CS managed externally by application (cs_pin = -1 convention) */
-        return 0;
+        /* CS 由应用层控制（cs_pin = -1），直接返回成功 */
+        return POSIX_OK;
 
     case POSIX_SPI_IOCTL_CS_RELEASE:
-        return 0;
+        /* CS 由应用层控制（cs_pin = -1），直接返回成功 */
+        return POSIX_OK;
 
     default:
         return POSIX_ERR_NOSUPP;
     }
 }
 
-/* ---------- driver ops table --------------------------------------------- */
-
-const posix_driver_ops_t g_spi_ops =
+/* ---------- 驱动函数表 ---------- */
+static const posix_driver_ops_t g_spi_ops =
 {
     .open  = spi_open,
     .close = spi_close,
@@ -225,13 +198,25 @@ const posix_driver_ops_t g_spi_ops =
     .ioctl = spi_ioctl,
 };
 
-/* ---------- auto-registration -------------------------------------------- */
+/* ---------- 设备实例 ---------- */
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(spi0), okay)
+static spi_drv_data_t s_spi0 = { .dev = DEVICE_DT_GET(DT_NODELABEL(spi0)) };
+#endif
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(spi1), okay)
+static spi_drv_data_t s_spi1 = { .dev = DEVICE_DT_GET(DT_NODELABEL(spi1)) };
+#endif
 
+/* ---------- 自动注册 ---------- */
 static int spi_init(void)
 {
-    void *privs[SPI_NUM_UNITS] = { &s_spi0, &s_spi1 };
-    return posix_device_register_group("/dev/spi%d", SPI_NUM_UNITS,
-                                       &g_spi_ops, privs);
+    int ret = POSIX_OK;
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(spi0), okay)
+    ret = posix_device_register("/dev/spi0", &g_spi_ops, &s_spi0);
+    if (ret) { return ret; }
+#endif
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(spi1), okay)
+    ret = posix_device_register("/dev/spi1", &g_spi_ops, &s_spi1);
+#endif
+    return ret;
 }
-
 POSIX_INIT_DEVICE_EXPORT(spi_init);
