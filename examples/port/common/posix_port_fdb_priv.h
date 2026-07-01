@@ -20,11 +20,13 @@
 #define CONFIG_POSIX_FDB_BF_FOREACH_CACHE_MAX  32
 #endif
 
-typedef struct {
+typedef struct
+{
     uint8_t      subtype;
     const char  *path;
     const char  *name;
-    union {
+    union
+    {
         fdb_kvdb_t  kv;
         fdb_tsdb_t  ts;
 #ifdef FDB_USING_BF
@@ -33,7 +35,8 @@ typedef struct {
     } u;
 } fdb_inst_t;
 
-typedef struct {
+typedef struct
+{
     bool            in_use;
     fdb_inst_t     *inst;
 

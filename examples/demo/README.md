@@ -11,6 +11,6 @@
 | [07_lcd_example.c](07_lcd_example.c) | LCD | 配置 → 窗口 → 刷屏 |
 | [08_touch_example.c](08_touch_example.c) | Touch | 配置 → 校准 → 读触摸点 |
 | [09_gsensor_example.c](09_gsensor_example.c) | G-sensor | 配置量程 → 读三轴 → 温度 |
-| [10_new_device_template.c](10_new_device_template.c) | 模板 | 添加新设备的 4 步模板 |
+| [10_i2c_example.c](10_i2c_example.c) | I²C | 总线扫描 → 探测 → 寄存器读写 → burst |
 
 所有 example 中 `posix_` API 跨平台通用，换芯片/换 OS 时**零修改**。

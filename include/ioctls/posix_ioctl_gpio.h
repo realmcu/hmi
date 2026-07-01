@@ -22,30 +22,40 @@
 #define POSIX_GPIO_INT_LOW_LEVEL    4
 #define POSIX_GPIO_INT_HIGH_LEVEL   5
 
-/* 引脚级 fd → 配置方向 */
-typedef struct {
-    int     pin;         /* GPIO 控制器内的引脚号 */
+/* 引脚级 fd → 配置方向
+ *
+ * pin 字段语义（跨平台）：
+ *   0  = fd 已绑定 pin_index，仅在软件层配置方向/上拉/初值，不动 pinmux/pad
+ *   >0 = 芯片全局 pin 号（如 rtl87x3g 上 P3_5=27），端口层据此做完整
+ *        Pinmux/Pad 配置。同 pin_index 对应的全局 pin 号由板级布线决定，
+ *        因此需要应用告知一次。 */
+typedef struct
+{
+    int     pin;         /* 0 或芯片全局 pin 号 */
     uint8_t direction;
     uint8_t pull;
     int     initial_value;   /* output 时有效 */
 } posix_gpio_config_t;
 
 /* 引脚值 */
-typedef struct {
+typedef struct
+{
     int pin;
     int value;
 } posix_gpio_value_t;
 
 /* 中断配置 */
-typedef struct {
+typedef struct
+{
     int     pin;
     uint8_t trigger;       /* POSIX_GPIO_INT_XXX */
-    void  (*callback)(void *arg);
+    void (*callback)(void *arg);
     void   *arg;
 } posix_gpio_irq_t;
 
 /* 批量操作 */
-typedef struct {
+typedef struct
+{
     uint32_t pin_mask;
     uint32_t values;
 } posix_gpio_multi_t;

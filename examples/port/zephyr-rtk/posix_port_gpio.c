@@ -1,90 +1,116 @@
 /* ================================================================
- * GPIO 驱动 — 引脚级 fd 风格 (RTK8773G RTK SDK)
+ * GPIO 驱动 — 基于 Zephyr GPIO API 的 posix-device 适配层
  *
  * 路径格式: /dev/gpio<N>/p<Pin>
- *   例如:   /dev/gpio0/p12  → GPIOA pin 12
- *           /dev/gpio1/p0   → GPIOB pin 0
+ *   /dev/gpio0/pXX  → gpioa，pin XX
+ *   /dev/gpio1/pXX  → gpiob，pin XX
  *
- * 每个 open 返回一个 fd，该 fd 绑定到特定引脚。
- * read  = 读引脚电平
- * write = 写引脚电平
- * ioctl = 配置方向/上拉/中断
+ * 依赖：DTS 中 gpioa / gpiob 节点已 enabled，且 CONFIG_GPIO=y。
  * ================================================================ */
 
 #include "posix.h"
 #include "posix_init.h"
 #include "ioctls/posix_ioctl_gpio.h"
-#include "rtl876x_gpio.h"
+
+#include <zephyr/device.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/kernel.h>
 #include <string.h>
 #include <stdlib.h>
 
-/* ---------- GPIO 控制器私有数据 ---------- */
+/* ---------- 控制器私有数据（每个 posix 设备一份） ---------- */
 typedef struct
 {
-    int           unit;
-    GPIO_TypeDef *port;   /* GPIOA / GPIOB */
+    const struct device *dev;   /* Zephyr GPIO device */
 } gpio_drv_data_t;
 
-/* ---------- per-open 私有数据（每个 fd 一个） ---------- */
+/* ---------- per-open 文件私有数据 ---------- */
 typedef struct
 {
-    gpio_drv_data_t *drv;        /* 指向控制器 */
-    int              pin;         /* 绑定的引脚号 */
-    uint8_t          direction;   /* 缓存方向 */
-    uint8_t          pull;        /* 缓存上拉 */
+    bool              in_use;
+    gpio_drv_data_t  *drv;
+    gpio_pin_t        pin;
+    uint8_t           direction;
+    uint8_t           pull;
+
+    /* 中断相关 */
+    struct gpio_callback zephyr_cb;          /* Zephyr callback 节点 */
+    void (*user_cb)(void *arg);
+    void             *user_arg;
+    gpio_flags_t      int_flags;             /* SET_IRQ 时存的触发模式 */
 } gpio_file_t;
 
-/* ---------- 静态文件池 ---------- */
-#define MAX_GPIO_FILES   16
+#define MAX_GPIO_FILES  16
 static gpio_file_t s_gpio_files[MAX_GPIO_FILES];
-static int         s_gpio_file_used[MAX_GPIO_FILES];
+
+/* ---------- Zephyr 中断 dispatcher ---------- */
+static void gpio_zephyr_isr(const struct device *port,
+                            struct gpio_callback *cb,
+                            gpio_port_pins_t pins)
+{
+    (void)port;
+    (void)pins;
+    gpio_file_t *f = CONTAINER_OF(cb, gpio_file_t, zephyr_cb);
+    if (f->user_cb)
+    {
+        f->user_cb(f->user_arg);
+    }
+}
 
 /* ---------- open：解析路径，绑定 pin ---------- */
 static void *gpio_open(void *drv_data, const char *path)
 {
     gpio_drv_data_t *d = (gpio_drv_data_t *)drv_data;
 
-    /* 解析 pin 号：找 "/p" 后的数字 */
+    /* 解析 pin 号：找 "/p" 后面的数字，兼容 /pN 和 /pinN */
     const char *p = strstr(path, "/p");
     if (!p) { return POSIX_OPEN_ERR; }
-    p++;                     /* 跳过 '/' */
-    if (*p == 'p') { p++; }
+    p += 2;                             /* 跳过 "/p" */
+    if (p[0] == 'i' && p[1] == 'n') { p += 2; }  /* 跳过 "in" */
 
-    const char *digit_start = p;
     char *end;
     long pin = strtol(p, &end, 10);
-    if (end == digit_start || *end != '\0' || pin < 0 || pin > 255) { return POSIX_OPEN_ERR; }
+    if (end == p || *end != '\0' || pin < 0 || pin > 31)
+    {
+        return POSIX_OPEN_ERR;
+    }
 
-    /* 从静态池分配 */
+    if (!device_is_ready(d->dev)) { return POSIX_OPEN_ERR; }
+
     gpio_file_t *f = NULL;
     for (int i = 0; i < MAX_GPIO_FILES; i++)
     {
-        if (!s_gpio_file_used[i])
+        if (!s_gpio_files[i].in_use)
         {
-            s_gpio_file_used[i] = 1;
             f = &s_gpio_files[i];
+            memset(f, 0, sizeof(*f));
+            f->in_use = true;
             break;
         }
     }
     if (!f) { return POSIX_OPEN_ERR; }
 
     f->drv       = d;
-    f->pin       = (int)pin;
+    f->pin       = (gpio_pin_t)pin;
     f->direction = POSIX_GPIO_DIR_INPUT;
     f->pull      = POSIX_GPIO_PULL_NONE;
     return f;
 }
 
-/* ---------- close：归还到静态池 ---------- */
+/* ---------- close ---------- */
 static int gpio_close(void *drv_data, void *file_priv)
 {
     (void)drv_data;
     gpio_file_t *f = (gpio_file_t *)file_priv;
-    ptrdiff_t    idx = f - s_gpio_files;
-    if (idx >= 0 && idx < MAX_GPIO_FILES)
+    if (!f || !f->in_use) { return POSIX_OK; }
+
+    /* 摘除中断回调（如果注册过） */
+    if (f->user_cb)
     {
-        s_gpio_file_used[idx] = 0;
+        gpio_pin_interrupt_configure(f->drv->dev, f->pin, GPIO_INT_DISABLE);
+        gpio_remove_callback(f->drv->dev, &f->zephyr_cb);
     }
+    f->in_use = false;
     return POSIX_OK;
 }
 
@@ -96,8 +122,9 @@ static posix_ssize_t gpio_read(void *drv_data, void *file_priv,
     if (count < sizeof(int)) { return POSIX_ERR_INVAL; }
     gpio_file_t *f = (gpio_file_t *)file_priv;
 
-    uint8_t level = GPIO_ReadInputDataBit(f->drv->port, (uint32_t)(1u << f->pin));
-    *(int *)buf = (int)level;
+    int ret = gpio_pin_get_raw(f->drv->dev, f->pin);
+    if (ret < 0) { return POSIX_ERR_IO; }
+    *(int *)buf = ret;
     return (posix_ssize_t)sizeof(int);
 }
 
@@ -107,133 +134,131 @@ static posix_ssize_t gpio_write(void *drv_data, void *file_priv,
 {
     (void)drv_data;
     if (count < sizeof(int)) { return POSIX_ERR_INVAL; }
-    gpio_file_t *f = (gpio_file_t *)file_priv;
-    int val = *(const int *)buf;
+    gpio_file_t *f   = (gpio_file_t *)file_priv;
+    int          val = *(const int *)buf;
 
-    GPIO_WriteBit(f->drv->port,
-                  (uint32_t)(1u << f->pin),
-                  val ? Bit_SET : Bit_RESET);
-    return (posix_ssize_t)sizeof(int);
+    int ret = gpio_pin_set_raw(f->drv->dev, f->pin, val ? 1 : 0);
+    return (ret < 0) ? POSIX_ERR_IO : (posix_ssize_t)sizeof(int);
 }
 
 /* ---------- ioctl ---------- */
 static int gpio_ioctl(void *drv_data, void *file_priv,
                       unsigned long cmd, void *arg)
 {
-    gpio_file_t     *f = (gpio_file_t *)file_priv;
-    gpio_drv_data_t *d = (gpio_drv_data_t *)drv_data;
+    (void)drv_data;
+    gpio_file_t *f = (gpio_file_t *)file_priv;
 
     switch (cmd)
     {
-
     case POSIX_GPIO_IOCTL_SET_DIR:
         {
             if (posix_port_in_isr()) { return POSIX_ERR_ISR; }
+            if (!arg) { return POSIX_ERR_INVAL; }
             posix_gpio_config_t *cfg = (posix_gpio_config_t *)arg;
-            f->direction = cfg->direction;
-            f->pull      = cfg->pull;
 
-            GPIO_InitTypeDef init;
-            init.GPIO_PinBit  = (uint32_t)(1u << f->pin);
-            init.GPIO_Mode = (cfg->direction == POSIX_GPIO_DIR_OUTPUT)
-                             ? GPIO_Mode_OUT
-                             : GPIO_Mode_IN;
-            GPIOx_Init(d->port, &init);
+            gpio_flags_t flags = 0;
 
+            /* 方向 */
             if (cfg->direction == POSIX_GPIO_DIR_OUTPUT)
             {
-                GPIO_WriteBit(d->port,
-                              (uint32_t)(1u << f->pin),
-                              cfg->initial_value ? Bit_SET : Bit_RESET);
+                flags |= cfg->initial_value ? GPIO_OUTPUT_HIGH : GPIO_OUTPUT_LOW;
             }
-            return POSIX_OK;
-        }
+            else if (cfg->direction == POSIX_GPIO_DIR_OPEN_DRAIN)
+            {
+                flags |= GPIO_OUTPUT | GPIO_OPEN_DRAIN;
+                flags |= cfg->initial_value ? GPIO_OUTPUT_INIT_HIGH : GPIO_OUTPUT_INIT_LOW;
+            }
+            else
+            {
+                flags |= GPIO_INPUT;
+            }
 
-    case POSIX_GPIO_IOCTL_SET_PULL:
-        {
-            if (posix_port_in_isr()) { return POSIX_ERR_ISR; }
-            posix_gpio_config_t *cfg = (posix_gpio_config_t *)arg;
-            f->pull = cfg->pull;
-            /* RTK SDK does not expose a standalone pull API;
-             * pull is configured together with GPIO_Init.
-             * Re-init preserving current direction. */
-            GPIO_InitTypeDef init;
-            init.GPIO_PinBit  = (uint32_t)(1u << f->pin);
-            init.GPIO_Mode = (f->direction == POSIX_GPIO_DIR_OUTPUT)
-                             ? GPIO_Mode_OUT
-                             : GPIO_Mode_IN;
-            GPIOx_Init(d->port, &init);
+            /* 上下拉 */
+            if (cfg->pull == POSIX_GPIO_PULL_UP)        { flags |= GPIO_PULL_UP; }
+            else if (cfg->pull == POSIX_GPIO_PULL_DOWN) { flags |= GPIO_PULL_DOWN; }
+
+            int ret = gpio_pin_configure(f->drv->dev, f->pin, flags);
+            if (ret < 0) { return POSIX_ERR_IO; }
+
+            f->direction = cfg->direction;
+            f->pull      = cfg->pull;
             return POSIX_OK;
         }
 
     case POSIX_GPIO_IOCTL_GET_VALUE:
         {
+            if (!arg) { return POSIX_ERR_INVAL; }
             posix_gpio_value_t *v = (posix_gpio_value_t *)arg;
-            v->value = (int)GPIO_ReadInputDataBit(f->drv->port,
-                                                  (uint32_t)(1u << f->pin));
+            int ret = gpio_pin_get_raw(f->drv->dev, f->pin);
+            if (ret < 0) { return POSIX_ERR_IO; }
+            v->value = ret;
             return POSIX_OK;
         }
 
     case POSIX_GPIO_IOCTL_SET_VALUE:
         {
+            if (!arg) { return POSIX_ERR_INVAL; }
             posix_gpio_value_t *v = (posix_gpio_value_t *)arg;
-            GPIO_WriteBit(d->port,
-                          (uint32_t)(1u << f->pin),
-                          v->value ? Bit_SET : Bit_RESET);
-            return POSIX_OK;
-        }
-
-    case POSIX_GPIO_IOCTL_SET_MULTI:
-        {
-            posix_gpio_multi_t *m = (posix_gpio_multi_t *)arg;
-            /* Iterate over all set bits in pin_mask */
-            uint32_t mask = m->pin_mask;
-            while (mask)
-            {
-                int bit = __builtin_ctz(mask);
-                BitAction val = ((m->values >> bit) & 1u) ? Bit_SET : Bit_RESET;
-                GPIO_WriteBit(d->port, (uint32_t)(1u << bit), val);
-                mask &= mask - 1u;
-            }
-            return POSIX_OK;
-        }
-
-    case POSIX_GPIO_IOCTL_GET_MULTI:
-        {
-            posix_gpio_multi_t *m = (posix_gpio_multi_t *)arg;
-            m->values = 0;
-            uint32_t mask = m->pin_mask;
-            while (mask)
-            {
-                int bit = __builtin_ctz(mask);
-                uint8_t level = GPIO_ReadInputDataBit(d->port,
-                                                      (uint32_t)(1u << bit));
-                if (level)
-                {
-                    m->values |= (uint32_t)(1u << bit);
-                }
-                mask &= mask - 1u;
-            }
-            return POSIX_OK;
+            int ret = gpio_pin_set_raw(f->drv->dev, f->pin, v->value ? 1 : 0);
+            return (ret < 0) ? POSIX_ERR_IO : POSIX_OK;
         }
 
     case POSIX_GPIO_IOCTL_SET_IRQ:
         {
             if (posix_port_in_isr()) { return POSIX_ERR_ISR; }
-            /* posix_gpio_irq_t *irq = (posix_gpio_irq_t *)arg;
-             * RTK interrupt registration is board-specific; hook up via
-             * platform interrupt manager (not exposed in rtl_gpio.h). */
-            (void)arg;
+            if (!arg) { return POSIX_ERR_INVAL; }
+            posix_gpio_irq_t *irq = (posix_gpio_irq_t *)arg;
+
+            /* 触发模式映射 */
+            gpio_flags_t int_flags;
+            switch (irq->trigger)
+            {
+            case POSIX_GPIO_INT_RISING:     int_flags = GPIO_INT_EDGE_RISING;  break;
+            case POSIX_GPIO_INT_FALLING:    int_flags = GPIO_INT_EDGE_FALLING; break;
+            case POSIX_GPIO_INT_BOTH:       int_flags = GPIO_INT_EDGE_BOTH;    break;
+            case POSIX_GPIO_INT_LOW_LEVEL:  int_flags = GPIO_INT_LEVEL_LOW;    break;
+            case POSIX_GPIO_INT_HIGH_LEVEL: int_flags = GPIO_INT_LEVEL_HIGH;   break;
+            case POSIX_GPIO_INT_DISABLE:
+                gpio_pin_interrupt_configure(f->drv->dev, f->pin, GPIO_INT_DISABLE);
+                gpio_remove_callback(f->drv->dev, &f->zephyr_cb);
+                f->user_cb  = NULL;
+                f->user_arg = NULL;
+                return POSIX_OK;
+            default:
+                return POSIX_ERR_INVAL;
+            }
+
+            /* 摘除旧回调（如果有） */
+            if (f->user_cb)
+            {
+                gpio_remove_callback(f->drv->dev, &f->zephyr_cb);
+            }
+
+            f->user_cb  = irq->callback;
+            f->user_arg = irq->arg;
+            f->int_flags = int_flags;
+
+            gpio_init_callback(&f->zephyr_cb, gpio_zephyr_isr, BIT(f->pin));
+            gpio_add_callback(f->drv->dev, &f->zephyr_cb);
+
+            /* 先不使能，等 ENABLE_IRQ 时才打开 */
+            gpio_pin_interrupt_configure(f->drv->dev, f->pin, GPIO_INT_DISABLE);
             return POSIX_OK;
         }
 
     case POSIX_GPIO_IOCTL_ENABLE_IRQ:
-        /* Platform-specific interrupt enable — not exposed in rtl_gpio.h */
-        return POSIX_OK;
+        {
+            if (!f->user_cb) { return POSIX_ERR_INVAL; }
+            int ret = gpio_pin_interrupt_configure(f->drv->dev, f->pin, f->int_flags);
+            return (ret < 0) ? POSIX_ERR_IO : POSIX_OK;
+        }
 
     case POSIX_GPIO_IOCTL_DISABLE_IRQ:
-        /* Platform-specific interrupt disable — not exposed in rtl_gpio.h */
-        return POSIX_OK;
+        {
+            int ret = gpio_pin_interrupt_configure(f->drv->dev, f->pin,
+                                                   GPIO_INT_MODE_DISABLE_ONLY);
+            return (ret < 0) ? POSIX_ERR_IO : POSIX_OK;
+        }
 
     default:
         return POSIX_ERR_NOSUPP;
@@ -251,8 +276,8 @@ static const posix_driver_ops_t g_gpio_ops =
 };
 
 /* ---------- 设备实例 ---------- */
-static gpio_drv_data_t s_gpio0 = { .unit = 0, .port = GPIOA };
-static gpio_drv_data_t s_gpio1 = { .unit = 1, .port = GPIOB };
+static gpio_drv_data_t s_gpio0 = { .dev = DEVICE_DT_GET(DT_NODELABEL(gpioa)) };
+static gpio_drv_data_t s_gpio1 = { .dev = DEVICE_DT_GET(DT_NODELABEL(gpiob)) };
 
 /* ---------- 自动注册 ---------- */
 static int gpio_init(void)
