@@ -35,6 +35,7 @@ int main(void)
            k_thread_name_get(k_current_get()),
            k_thread_priority_get(k_current_get()));
     gui_server_init();
+    gui_set_keep_active_time(10000000);
 
     return 0;
 }
