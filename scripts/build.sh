@@ -29,7 +29,7 @@ done
 
 echo "[build] board = $BOARD${PRISTINE:+   mode = pristine}"
 
-cd "$REPO_ROOT"
+cd "$(realpath "$REPO_ROOT")"
 
 set -- west build -b "$BOARD" $PRISTINE
 

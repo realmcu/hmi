@@ -4,17 +4,19 @@
     {
       "label": "West Build",
       "type": "shell",
-      "command": "west build -b rtl87x3g_evb",
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [
-        "$gcc"
-      ],
+      "command": "cd $(realpath ${workspaceFolder}) && west build -b rtl87x3g_evb",
+      "problemMatcher": ["$gcc"],
       "group": {
         "kind": "build",
         "isDefault": true
       }
+    },
+    {
+      "label": "West Rebuild",
+      "type": "shell",
+      "command": "cd $(realpath ${workspaceFolder}) && west build -b rtl87x3g_evb -p",
+      "problemMatcher": ["$gcc"],
+      "group": "build"
     },
     {
       "label": "West Flash",
@@ -34,18 +36,6 @@
         "cwd": "/mnt/d/mpcli_meta_tool_v4.0.0.6_win"
       },
       "problemMatcher": []
-    },
-    {
-      "label": "West Rebuild",
-      "type": "shell",
-      "command": "west build -b rtl87x3g_evb -p",
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [
-        "$gcc"
-      ],
-      "group": "build"
     }
   ]
 }
