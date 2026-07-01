@@ -22,6 +22,7 @@
 
 #include "posix.h"
 #include "posix_init.h"
+#include "posix_port.h"
 #include "ioctls/posix_ioctl_gsensor.h"
 #include "ioctls/posix_ioctl_i2c.h"
 #include "ioctls/posix_ioctl_gpio.h"

@@ -1,41 +1,44 @@
 /* ================================================================
  * Touch 驱动 POSIX 端口（platform-independent）
  *
- * 参考芯片：CHSC6417（与 CST816S/CST826 寄存器布局兼容）
+ * 参考芯片：CHSC6417
  *
  * 完全通过 posix 框架上游设备操作硬件：
- *   /dev/i2cN       — I²C 总线（posix_ioctl_i2c.h）
+ *   /dev/i2cN       — I2C 总线（posix_ioctl_i2c.h）
  *   /dev/gpioX/pYY  — INT 中断引脚（posix_ioctl_gpio.h，可选）
  *   /dev/gpioX/pZZ  — RST 复位引脚（posix_ioctl_gpio.h，可选）
  *
- * 中断模式（drv.int_pin_path != NULL）：
- *   posix_read 先 posix_sem_take() 等中断，再发 I²C 读
+ * 读取协议（来自 Zephyr chsc6417 驱动）：
+ *   先写 4 字节地址 0x2c000020，再读 8 字节：
+ *     output[1]   = 触摸点数
+ *     output[2..] = 点数据，每点 5 字节
+ *       x = (x_h4 << 8) | x_l8
+ *       y = (y_h4 << 8) | y_l8
+ *       event == 0 = pressing（CHSC6417 按下时 event=0，抬起时 event=1）
+ *
+ * 中断模式（int_pin_path != NULL）：
+ *   INT 下降沿 -> ISR posix_sem_give -> posix_read 等信号量后读 I2C
  * 轮询模式（int_pin_path == NULL）：
- *   posix_read 直接发 I²C 读
+ *   posix_read 直接发 I2C 读
  * ================================================================ */
 
 #include "posix.h"
 #include "posix_init.h"
+#include "posix_port.h"
 #include "ioctls/posix_ioctl_touch.h"
 #include "ioctls/posix_ioctl_i2c.h"
 #include "ioctls/posix_ioctl_gpio.h"
 #include <stdbool.h>
 #include <string.h>
 
-/* ---------- CHSC6417 寄存器 ---------- */
-#define CHSC6417_REG_TOUCH_NUM   0x02   /* 触摸点数 */
-#define CHSC6417_REG_POINT0      0x03   /* 第一点起始寄存器（4字节/点） */
-#define CHSC6417_REG_GESTURE     0x01   /* 手势 */
-#define CHSC6417_REG_CHIP_ID     0xA7   /* Chip ID */
-#define CHSC6417_REG_POWER       0xA5   /* 电源控制 */
+/* ---------- CHSC6417 I2C 读取协议常量 ---------- */
+#define CHSC6X_WRITE_ADDR    0x2c000020u
+#define CHSC6X_WRITE_LEN     4
+#define CHSC6X_READ_LEN      8
+#define CHSC6X_EVENT_PRESS   0    /* CHSC6417 按下时 event=0，抬起时 event=1 */
 
-#define CHSC6417_CHIP_ID         0x17
-#define CHSC6417_I2C_ADDR        0x2E
-#define CHSC6417_MAX_POINTS      5
-
-/* 触摸状态字节高 2 位 */
-#define CHSC6417_TOUCH_DOWN      0x00
-#define CHSC6417_TOUCH_UP        0x01
+#define CHSC6417_I2C_ADDR    0x2E
+#define CHSC6417_REG_POWER   0xA5   /* 0x00=normal, 0x03=sleep */
 
 /* ---------- 驱动私有数据 ---------- */
 typedef struct
@@ -62,20 +65,32 @@ typedef struct
 #define MAX_TOUCH_FILES  2
 static touch_file_t s_touch_files[MAX_TOUCH_FILES];
 
-/* ---------- I²C 助手 ---------- */
-static int touch_read_regs(touch_file_t *f, uint8_t reg, uint8_t *buf, size_t len)
+/* ---------- I2C 读取：先写 4 字节地址，再读 8 字节 ---------- */
+static int touch_read_raw(touch_file_t *f, uint8_t out[CHSC6X_READ_LEN])
 {
+    uint32_t addr = CHSC6X_WRITE_ADDR;
     posix_i2c_msg_t m =
     {
         .addr    = f->drv->i2c_addr,
-        .reg     = reg,
-        .reg_len = 1,
-        .buf     = buf,
-        .len     = len,
+        .reg     = 0,
+        .reg_len = 0,
+        .buf     = (uint8_t *) &addr,
+        .len     = CHSC6X_WRITE_LEN,
     };
-    return posix_ioctl(f->i2c_fd, POSIX_I2C_IOCTL_READ_REG, &m);
+    if (posix_ioctl(f->i2c_fd, POSIX_I2C_IOCTL_RAW_WRITE, &m) != POSIX_OK)
+    {
+        return POSIX_ERR_IO;
+    }
+    m.buf = out;
+    m.len = CHSC6X_READ_LEN;
+    if (posix_ioctl(f->i2c_fd, POSIX_I2C_IOCTL_RAW_READ, &m) != POSIX_OK)
+    {
+        return POSIX_ERR_IO;
+    }
+    return POSIX_OK;
 }
 
+/* ---------- I2C 寄存器写（电源控制等） ---------- */
 static int touch_write_reg(touch_file_t *f, uint8_t reg, uint8_t val)
 {
     posix_i2c_msg_t m =
@@ -96,18 +111,20 @@ static void touch_int_isr(void *arg)
     if (f && f->int_sem) { (void)posix_sem_give(f->int_sem); }
 }
 
-/* ---------- 复位芯片 ---------- */
+/* ---------- 复位芯片（参考 Zephyr 驱动时序） ---------- */
 static void touch_hw_reset(touch_file_t *f)
 {
     if (f->rst_fd == POSIX_FD_NULL) { return; }
 
-    posix_gpio_value_t v = { .value = 0 };
+    posix_gpio_value_t v = { .value = 1 };
     posix_ioctl(f->rst_fd, POSIX_GPIO_IOCTL_SET_VALUE, &v);
-    /* 保持低电平 ≥5ms（CHSC6417 datasheet 要求） */
+    posix_port_delay_ms(10);
+    v.value = 0;
+    posix_ioctl(f->rst_fd, POSIX_GPIO_IOCTL_SET_VALUE, &v);
     posix_port_delay_ms(10);
     v.value = 1;
     posix_ioctl(f->rst_fd, POSIX_GPIO_IOCTL_SET_VALUE, &v);
-    posix_port_delay_ms(50);    /* 等待芯片启动 */
+    posix_port_delay_ms(50);
 }
 
 /* ---------- 建立 / 拆除 INT 中断 ---------- */
@@ -139,7 +156,7 @@ static int touch_setup_irq(touch_file_t *f)
 
     posix_gpio_irq_t irq =
     {
-        .trigger  = POSIX_GPIO_INT_FALLING,   /* CHSC6417 INT 低有效 */
+        .trigger  = POSIX_GPIO_INT_FALLING,
         .callback = touch_int_isr,
         .arg      = f,
     };
@@ -187,7 +204,6 @@ static void *touch_open(void *d, const char *p)
     f->rst_fd = POSIX_FD_NULL;
     f->cfg.i2c_addr = drv->i2c_addr;
 
-    /* 打开 I²C 总线 */
     f->i2c_fd = posix_open(drv->i2c_path);
     if (f->i2c_fd == POSIX_FD_NULL) { f->in_use = false; return POSIX_OPEN_ERR; }
 
@@ -198,7 +214,6 @@ static void *touch_open(void *d, const char *p)
     };
     posix_ioctl(f->i2c_fd, POSIX_I2C_IOCTL_SET_CONFIG, &bus_cfg);
 
-    /* 打开 RST 引脚（如果有） */
     if (drv->rst_pin_path)
     {
         f->rst_fd = posix_open(drv->rst_pin_path);
@@ -215,10 +230,7 @@ static void *touch_open(void *d, const char *p)
     }
 
     touch_hw_reset(f);
-
-    /* 注册中断（有 int_pin_path 时）；失败降级为轮询 */
     (void)touch_setup_irq(f);
-
     return f;
 }
 
@@ -236,7 +248,7 @@ static int touch_close(void *d, void *fv)
     return POSIX_OK;
 }
 
-/* ---------- read：读触摸数据 ---------- */
+/* ---------- read：读一次触摸快照 ---------- */
 static posix_ssize_t touch_read(void *d, void *fv, void *buf, size_t count)
 {
     (void)d;
@@ -244,46 +256,45 @@ static posix_ssize_t touch_read(void *d, void *fv, void *buf, size_t count)
 
     if (count < sizeof(posix_touch_data_t)) { return POSIX_ERR_INVAL; }
 
-    /* 中断模式：等信号量（最多 100ms） */
+    /* 中断模式：等信号量（100ms 超时） */
     if (f->int_sem)
     {
         if (posix_sem_take(f->int_sem, 100) != 0) { return POSIX_ERR_TIMEOUT; }
     }
 
+    uint8_t raw[CHSC6X_READ_LEN];
+    if (touch_read_raw(f, raw) != POSIX_OK) { return POSIX_ERR_IO; }
+
     posix_touch_data_t *data = (posix_touch_data_t *)buf;
     memset(data, 0, sizeof(*data));
 
-    /* 读触摸点数 */
-    uint8_t num = 0;
-    if (touch_read_regs(f, CHSC6417_REG_TOUCH_NUM, &num, 1) != POSIX_OK)
-    {
-        return POSIX_ERR_IO;
-    }
-    num &= 0x0F;
-    if (num > CHSC6417_MAX_POINTS) { num = CHSC6417_MAX_POINTS; }
+    /* 有效帧的 header 应为 0xff；否则视为无数据（可能是总线竞争污染） */
+    if (raw[0] != 0xff) { return (posix_ssize_t)sizeof(posix_touch_data_t); }
 
-    data->point_count = num;
+    uint8_t point_num = raw[1];
+    if (point_num == 0) { return (posix_ssize_t)sizeof(posix_touch_data_t); }
+    if (point_num > 1)  { point_num = 1; }   /* CHSC6417 单点 */
 
-    /* 每点 4 字节：[status_x_hi, x_lo, y_hi, y_lo] */
-    for (uint8_t i = 0; i < num; i++)
-    {
-        uint8_t raw[4];
-        uint8_t reg = CHSC6417_REG_POINT0 + i * 6;   /* CHSC6417 每点偏移 6 字节 */
-        if (touch_read_regs(f, reg, raw, 4) != POSIX_OK) { break; }
+    /* 解析点数据（从 output[2] 开始，每点 5 字节） */
+    uint8_t *p    = &raw[2];
+    uint8_t  x_l8 = p[0];
+    uint8_t  y_l8 = p[1];
+    uint8_t  x_h4 = p[3] & 0x0F;
+    uint8_t  y_h4 = (p[3] >> 4) & 0x0F;
+    uint8_t  event = p[4] & 0x0F;
 
-        uint8_t  event = (raw[0] >> 6) & 0x03;
-        uint16_t x     = ((uint16_t)(raw[0] & 0x0F) << 8) | raw[1];
-        uint16_t y     = ((uint16_t)(raw[2] & 0x0F) << 8) | raw[3];
+    uint16_t x = ((uint16_t)x_h4 << 8) | x_l8;
+    uint16_t y = ((uint16_t)y_h4 << 8) | y_l8;
 
-        if (f->cfg.swap_xy) { uint16_t tmp = x; x = y; y = tmp; }
+    if (f->cfg.swap_xy) { uint16_t tmp = x; x = y; y = tmp; }
 
-        data->points[i].touch_id = i;
-        data->points[i].x        = x;
-        data->points[i].y        = y;
-        data->points[i].pressure = (event == CHSC6417_TOUCH_DOWN) ? 1 : 0;
-        data->points[i].status   = (event == CHSC6417_TOUCH_DOWN)
-                                   ? POSIX_TOUCH_PRESS : POSIX_TOUCH_RELEASE;
-    }
+    data->point_count        = point_num;
+    data->points[0].touch_id = 0;
+    data->points[0].x        = x;
+    data->points[0].y        = y;
+    data->points[0].pressure = (event == CHSC6X_EVENT_PRESS) ? 1 : 0;
+    data->points[0].status   = (event == CHSC6X_EVENT_PRESS)
+                               ? POSIX_TOUCH_PRESS : POSIX_TOUCH_RELEASE;
 
     return (posix_ssize_t)sizeof(posix_touch_data_t);
 }
@@ -303,12 +314,10 @@ static int touch_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
     switch (cmd)
     {
     case POSIX_TOUCH_IOCTL_SET_CONFIG:
-        {
-            if (!arg) { return POSIX_ERR_INVAL; }
-            f->cfg = *(posix_touch_config_t *)arg;
-            f->drv->i2c_addr = f->cfg.i2c_addr;
-            return POSIX_OK;
-        }
+        if (!arg) { return POSIX_ERR_INVAL; }
+        f->cfg = *(posix_touch_config_t *)arg;
+        f->drv->i2c_addr = f->cfg.i2c_addr;
+        return POSIX_OK;
 
     case POSIX_TOUCH_IOCTL_GET_CONFIG:
         if (!arg) { return POSIX_ERR_INVAL; }
@@ -316,16 +325,12 @@ static int touch_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
         return POSIX_OK;
 
     case POSIX_TOUCH_IOCTL_CALIBRATE:
-        /* CHSC6417 无需校准 */
         return POSIX_OK;
 
     case POSIX_TOUCH_IOCTL_SET_POWER:
-        {
-            if (!arg) { return POSIX_ERR_INVAL; }
-            int on = *(int *)arg;
-            /* 0x00 = normal，0x03 = sleep */
-            return touch_write_reg(f, CHSC6417_REG_POWER, on ? 0x00 : 0x03);
-        }
+        if (!arg) { return POSIX_ERR_INVAL; }
+        return touch_write_reg(f, CHSC6417_REG_POWER,
+                               *(int *)arg ? 0x00 : 0x03);
 
     default:
         return POSIX_ERR_NOSUPP;
@@ -342,14 +347,18 @@ const posix_driver_ops_t g_touch_ops =
     .ioctl = touch_ioctl,
 };
 
-/* ---------- 设备实例（移植时修改 i2c_path / int_pin_path / rst_pin_path） ---------- */
+/* ---------- 设备实例
+ * i2c1  已在 overlay enabled（touch_device 挂在 i2c1 上）
+ * INT   -> GPIOA2 -> /dev/gpio0/p2
+ * RST   -> GPIOA3 -> /dev/gpio0/p3
+ * ---------------------------------------------------------------- */
 static touch_drv_t s_touch0 =
 {
     .unit         = 0,
     .i2c_addr     = CHSC6417_I2C_ADDR,
-    .i2c_path     = "/dev/i2c0",
-    .int_pin_path = "/dev/gpio0/p5",    /* INT 引脚；NULL = 轮询模式 */
-    .rst_pin_path = "/dev/gpio0/p6",    /* RST 引脚；NULL = 不控制复位 */
+    .i2c_path     = "/dev/i2c1",
+    .int_pin_path = "/dev/gpio0/p2",
+    .rst_pin_path = "/dev/gpio0/p3",
 };
 
 static int touch_init(void)
