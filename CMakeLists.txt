@@ -22,6 +22,7 @@ project(deskmate)
 
 target_link_libraries(app PRIVATE realtek_display_driver_library)
 target_link_libraries(app PRIVATE guiLib)
+target_include_directories(guiLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 zephyr_compile_options(
     -Wno-unused-variable
