@@ -17,7 +17,7 @@
 #define L2_HDR_LEN      2u
 #define L2_KV_PREFIX    3u   /* 1 (key) + 2 (key header) */
 #define L2_MAX_KVS      16u
-#define L2_MAX_CMD      0x10u
+#define L2_MAX_CMD      0x1Fu
 
 /*============================================================================*
  *                              Handler table

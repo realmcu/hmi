@@ -147,8 +147,8 @@ extern "C" {
  *                              Keys — file transfer (0x0b)
  *============================================================================*/
 
-#define HMI_L2_CMD_FILE_XFER        0x0bu   /* file transfer */
-// #define HMI_L2_CMD_FILE_XFER        0x10u   /* file transfer */
+// #define HMI_L2_CMD_FILE_XFER        0x0bu   /* file transfer */
+#define HMI_L2_CMD_FILE_XFER        0x10u   /* file transfer */
 
 #define HMI_L2_XFER_BEGIN_REQ       0x01u   /* session open request  (phone → device) */
 #define HMI_L2_XFER_BEGIN_RSP       0x02u   /* session open response (device → phone) */
