@@ -202,6 +202,7 @@ extern "C" {
 /* KS_OPEN codec field */
 #define HMI_L2_KS_CODEC_MSV1        0x00u   /* RGB555 16bpp, MSV1 compatible    */
 #define HMI_L2_KS_CODEC_JPEG        0x01u   /* standard JPEG byte stream        */
+#define HMI_L2_KS_CODEC_H264        0x02u   /* baselined H264 byte stream       */
 
 /* KS_ACK result field */
 #define HMI_L2_KS_ACK_OK            0x00u
