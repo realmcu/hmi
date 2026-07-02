@@ -32,8 +32,12 @@ static const char *const TAG = "BTEXT_A2DP";
 #define RELAY_SBC_SUB_MASK     BT_A2DP_SBC_SUBBANDS_8
 #define RELAY_SBC_ALLOC_MASK   BT_A2DP_SBC_ALLOCATION_METHOD_LOUDNESS
 #define RELAY_SBC_MIN_BITPOOL  2
-/* max_bitpool caps SBC bitrate; lower it (e.g. 35) if double-hop relay drops frames. */
-#define RELAY_SBC_MAX_BITPOOL  53
+/* max_bitpool caps SBC bitrate. NOTE: lowering it shrinks each SBC frame but the phone
+ * then packs MORE frames per media packet, so packet size (len) can rise while bitrate
+ * falls (frame rate is fixed at ~344/s). Reverted to 35 (~228 kbps) = last-known-good:
+ * bitpool 32 tested worse, and the len=616 was a red herring (bitrate actually dropped).
+ * The real lever is keeping the headphone link active (relay_hp_link_lock). */
+#define RELAY_SBC_MAX_BITPOOL  28
 
 #define RELAY_A2DP_LINK_NUM    2
 #define RELAY_A2DP_LATENCY     180
@@ -53,6 +57,8 @@ static struct {
 static uint32_t s_rx_count;
 static uint32_t s_fwd_ok;
 static uint32_t s_fwd_drop;
+static uint32_t s_fwd_busy;    /* diagnostic: forward send returned busy (link can't keep up) */
+static uint32_t s_datarsp_cnt; /* diagnostic: headphone TX completions (forward capacity) */
 
 static bool relay_is_headphone(uint8_t *addr)
 {
@@ -71,6 +77,35 @@ bool bt_classic_relay_get_headphone(uint8_t out[6])
 		return true;
 	}
 	return false;
+}
+
+/* Keep the dongle->headphone ACL link in active mode while forwarding audio.
+ * The default link policy enables sniff + role switch (see dashboard_bt_classic.c);
+ * on the forward (Source) hop that lets the controller park the link into sniff or
+ * renegotiate the role mid-stream, stealing airtime from the already-tight forward
+ * path. Lock it to DISABLE_ALL during streaming and force-exit sniff if parked;
+ * restore the default (sniff allowed, for power saving) when streaming stops.
+ * Idempotent and no-op when the headphone is not connected. */
+static void relay_hp_link_lock(void)
+{
+	if (!s_hp.connected) {
+		return;
+	}
+	gap_br_cfg_acl_link_policy(s_hp.addr, GAP_LINK_POLICY_DISABLE_ALL);
+	gap_br_exit_sniff_mode(s_hp.addr);
+	RTK_LOGS(TAG, RTK_LOG_INFO,
+		"relay: headphone link locked active (sniff+role-switch off)\r\n");
+}
+
+static void relay_hp_link_unlock(void)
+{
+	if (!s_hp.connected) {
+		return;
+	}
+	gap_br_cfg_acl_link_policy(s_hp.addr,
+		GAP_LINK_POLICY_ROLE_SWITCH | GAP_LINK_POLICY_SNIFF_MODE);
+	RTK_LOGS(TAG, RTK_LOG_INFO,
+		"relay: headphone link policy restored (sniff allowed)\r\n");
 }
 
 /* Forward FIFO: absorbs transient TX congestion. RX/RSP events drive draining;
@@ -106,6 +141,7 @@ static void relay_fifo_drain(void)
 		if (!bt_a2dp_stream_data_send(s_hp.addr, p->seq_num, p->timestamp,
 									  p->frame_num, p->data, p->len,
 									  true /* flushable */)) {
+			s_fwd_busy++;   /* headphone TX queue full: wait for next DATA_RSP */
 			break;
 		}
 		s_fwd_ok++;
@@ -154,6 +190,7 @@ void bt_classic_relay_set_play_state(bool playing)
 	} else if (s_hp.streaming) {
 		bt_a2dp_stream_suspend_req(s_hp.addr);
 		s_hp.streaming = false;
+		relay_hp_link_unlock();
 		relay_fifo_reset();
 	}
 }
@@ -382,7 +419,7 @@ void bt_classic_a2dp_handle_event(T_BT_EVENT event_type, void *event_buf,
 			p_link->streaming_fg = true;
 		}
 		bt_a2dp_stream_start_cfm(addr, true);
-		s_rx_count = s_fwd_ok = s_fwd_drop = 0;
+		s_rx_count = s_fwd_ok = s_fwd_drop = s_fwd_busy = s_datarsp_cnt = 0;
 		relay_fifo_reset();
 
 		/* Phone resumed: restart the headphone source stream so forwarding works. */
@@ -400,6 +437,7 @@ void bt_classic_a2dp_handle_event(T_BT_EVENT event_type, void *event_buf,
 	case BT_EVENT_A2DP_STREAM_START_RSP:
 		if (relay_is_headphone(param->a2dp_stream_start_rsp.bd_addr)) {
 			s_hp.streaming = true;
+			relay_hp_link_lock();
 			RTK_LOGS(TAG, RTK_LOG_INFO,
 				">>> A2DP src stream STARTED [headphone], forwarding enabled <<<\r\n");
 		}
@@ -412,11 +450,12 @@ void bt_classic_a2dp_handle_event(T_BT_EVENT event_type, void *event_buf,
 		if (s_rx_count == 1 || (s_rx_count % RELAY_A2DP_RX_LOG_PERIOD) == 0) {
 			RTK_LOGS(TAG, RTK_LOG_INFO,
 				"A2DP RX [phone] #%u: len=%u seq=%u frames=%u "
-				"(hp_streaming=%d fwd ok=%u drop=%u fifo=%u/%u peak=%u)\r\n",
+				"(hp_streaming=%d fwd ok=%u drop=%u busy=%u rsp=%u fifo=%u/%u peak=%u)\r\n",
 				(unsigned int)s_rx_count, (unsigned int)len,
 				(unsigned int)param->a2dp_stream_data_ind.seq_num,
 				(unsigned int)param->a2dp_stream_data_ind.frame_num,
 				s_hp.streaming, (unsigned int)s_fwd_ok, (unsigned int)s_fwd_drop,
+				(unsigned int)s_fwd_busy, (unsigned int)s_datarsp_cnt,
 				(unsigned int)(uint16_t)(s_fifo_head - s_fifo_tail),
 				(unsigned int)RELAY_FIFO_DEPTH, (unsigned int)s_fifo_peak);
 		}
@@ -445,11 +484,15 @@ void bt_classic_a2dp_handle_event(T_BT_EVENT event_type, void *event_buf,
 			if (s_hp.streaming) {
 				bt_a2dp_stream_suspend_req(s_hp.addr);
 				s_hp.streaming = false;
+				relay_hp_link_unlock();
 			}
 			relay_fifo_reset();
 		} else {
 			/* CLOSE needs a fresh OPEN, so clear stream_open to avoid starting a closed stream. */
-			s_hp.streaming = false;
+			if (s_hp.streaming) {
+				s_hp.streaming = false;
+				relay_hp_link_unlock();
+			}
 			if (event_type == BT_EVENT_A2DP_STREAM_CLOSE) {
 				s_hp.stream_open = false;
 			}
@@ -462,7 +505,9 @@ void bt_classic_a2dp_handle_event(T_BT_EVENT event_type, void *event_buf,
 	}
 
 	case BT_EVENT_A2DP_STREAM_DATA_RSP:
-		/* Each DATA_RSP frees TX-queue space; use it to drain the FIFO (no logging: ~tens/sec). */
+		/* Each DATA_RSP frees TX-queue space; use it to drain the FIFO (no logging: ~tens/sec).
+		 * Its rate == the headphone forward-link throughput; compare to RX rate. */
+		s_datarsp_cnt++;
 		relay_fifo_drain();
 		break;
 
@@ -477,7 +522,7 @@ void bt_classic_a2dp_handle_event(T_BT_EVENT event_type, void *event_buf,
 void bt_classic_a2dp_init(void)
 {
 	memset(&s_hp, 0, sizeof(s_hp));
-	s_rx_count = s_fwd_ok = s_fwd_drop = 0;
+	s_rx_count = s_fwd_ok = s_fwd_drop = s_fwd_busy = s_datarsp_cnt = 0;
 	relay_fifo_reset();
 
 	bt_a2dp_init(RELAY_A2DP_LINK_NUM, RELAY_A2DP_LATENCY,

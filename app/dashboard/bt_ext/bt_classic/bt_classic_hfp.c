@@ -151,14 +151,44 @@ static void hfp_relay_phone_call_to_hp(uint8_t prev, uint8_t curr)
 #define HFP_SCO_LOG_PERIOD    200
 #define HFP_SCO_PKT_MAX_LEN   255
 
-/* Controller "active SCO": 8761BTV only routes the first SCO of the boot session
- * to HCI. gap_br_vendor_set_active_sco issues HCI vendor opcode 0xFC42 with
- * 4-byte payload [handle LE 2B][activate 1B][policy 1B]. */
+/* gap_br_vendor_set_active_sco = HCI vendor opcode 0xFC42, payload
+ * [handle LE 2B][activate 1B][policy 1B]. */
 #define HFP_SCO_POLICY         0
-#define HFP_SCO_RELEASE_ON_DOWN 0
+/* Release the active-SCO binding when a SCO drops so the next call's SCO can be
+ * re-selected. */
+#define HFP_SCO_RELEASE_ON_DOWN 1
 #ifndef HFP_SCO_ACTIVATE_HEADPHONE
 #define HFP_SCO_ACTIVATE_HEADPHONE   0
 #endif
+
+/* H5-layer SCO uplink relay: mirror the headphone-mic SCO RX back out on the
+ * phone SCO handle (see hci_transport_sco_relay_set). The app forwards the phone
+ * downlink itself, so only this leg is mirrored. Set to 0 for app-only forwarding. */
+#ifndef HFP_SCO_H5_UPLINK_RELAY
+#define HFP_SCO_H5_UPLINK_RELAY   1
+#endif
+
+#if HFP_SCO_H5_UPLINK_RELAY
+/* Implemented in component/bluetooth_ext/driver/hci/hci_transport/hci_h5.c.
+ * Declared locally to avoid pulling the driver include path into the app. */
+extern void hci_transport_sco_relay_set(uint16_t from_handle, uint16_t to_handle);
+extern void hci_transport_sco_relay_clear(void);
+#endif
+
+/* Decode common SCO/eSCO setup failure causes for logging. */
+static const char *hfp_sco_cause_str(uint16_t cause)
+{
+	switch (cause) {
+	case HCI_ERR_MAX_NUM_SCO_CONN:      return "MAX_NUM_SCO_CONN(0x0A)";
+	case HCI_ERR_MAX_NUM_CONN:          return "MAX_NUM_CONN(0x09)";
+	case HCI_ERR_REJECT_LIMITED_RESOURCE: return "REJECT_LIMITED_RESOURCE(0x0D)";
+	case HCI_ERR_SCO_OFFSET_REJECTED:   return "SCO_OFFSET_REJECTED(0x1B)";
+	case HCI_ERR_SCO_INTERVAL_REJECTED: return "SCO_INTERVAL_REJECTED(0x1C)";
+	case HCI_ERR_SCO_AIR_MODE_REJECTED: return "SCO_AIR_MODE_REJECTED(0x1D)";
+	case HCI_ERR_UNSPECIFIED_ERROR:     return "UNSPECIFIED(0x1F)";
+	default:                            return "other";
+	}
+}
 
 static void hfp_set_active_sco(uint16_t handle, uint8_t activate, const char *leg)
 {
@@ -178,6 +208,8 @@ static void hfp_sco_reset_counters(void)
 	s_sco_rx_phone = s_sco_rx_hp = 0;
 	s_sco_to_hp_ok = s_sco_to_hp_drop = 0;
 	s_sco_to_phone_ok = s_sco_to_phone_drop = 0;
+	/* Fresh per-call SCO tx sequence. */
+	s_sco_seq_hp = s_sco_seq_phone = 0;
 }
 
 static void hfp_sco_forward(uint8_t *src, uint8_t *data, uint16_t len)
@@ -297,8 +329,19 @@ void bt_classic_hfp_handle_event(T_BT_EVENT event_type, void *event_buf,
 		break;
 
 	case BT_EVENT_HFP_AG_INDICATORS_STATUS_REQ:
+		/* Reply +CIND: values, THEN the mandatory OK. Without the OK the headphone
+		 * HF never sends AT+CMER, so SLC never completes (no HFP_AG_CONN_CMPL,
+		 * hp_valid stays 0) and its SLC guard timer eventually drops the link. */
 		hfp_send_ag_indicators(param->hfp_ag_indicators_status_req.bd_addr);
-		RTK_LOGS(TAG, RTK_LOG_INFO, "HFP AG indicators status req [headphone]: replied\r\n");
+		bt_hfp_ag_ok_send(param->hfp_ag_indicators_status_req.bd_addr);
+		RTK_LOGS(TAG, RTK_LOG_INFO, "HFP AG indicators status req [headphone]: replied +OK\r\n");
+		break;
+
+	case BT_EVENT_HFP_AG_CURR_CALLS_LIST_QUERY:
+		/* AT+CLCC during/after answer: we keep no call list, just ack so the
+		 * headphone HF isn't left waiting (can otherwise stall the call setup). */
+		bt_hfp_ag_ok_send(param->hfp_ag_curr_calls_list_query.bd_addr);
+		RTK_LOGS(TAG, RTK_LOG_INFO, "HFP AG current-calls query [headphone]: +OK\r\n");
 		break;
 
 	case BT_EVENT_HFP_AG_CALL_ANSWER_REQ:
@@ -365,19 +408,29 @@ void bt_classic_hfp_handle_event(T_BT_EVENT event_type, void *event_buf,
 		uint8_t *addr = param->sco_conn_cmpl.bd_addr;
 
 		if (param->sco_conn_cmpl.cause != 0) {
-			RTK_LOGS(TAG, RTK_LOG_ERROR, "SCO conn FAIL " BD_FMT ", cause 0x%04x\r\n",
-					 BD_ARG(addr), param->sco_conn_cmpl.cause);
+			RTK_LOGS(TAG, RTK_LOG_ERROR, "SCO conn FAIL %s " BD_FMT ", cause 0x%04x (%s)\r\n",
+					 bt_classic_relay_is_headphone(addr) ? "[headphone]" : "[phone]",
+					 BD_ARG(addr), param->sco_conn_cmpl.cause,
+					 hfp_sco_cause_str(param->sco_conn_cmpl.cause));
 			break;
 		}
 		if (bt_classic_relay_is_headphone(addr)) {
 			s_hfp.hp_sco = true;
 			s_hfp.hp_sco_handle = param->sco_conn_cmpl.handle;
+			s_sco_seq_hp = 0;   /* fresh tx sequence for this headphone SCO */
 			RTK_LOGS(TAG, RTK_LOG_INFO,
 				">>> SCO up [headphone] (handle 0x%04x, air %u, rx %u tx %u) -- voice relay both-way ON <<<\r\n",
 				param->sco_conn_cmpl.handle, param->sco_conn_cmpl.air_mode,
 				param->sco_conn_cmpl.rx_pkt_len, param->sco_conn_cmpl.tx_pkt_len);
 #if HFP_SCO_ACTIVATE_HEADPHONE
 			hfp_set_active_sco(s_hfp.hp_sco_handle, 1, "[headphone]");
+#endif
+#if HFP_SCO_H5_UPLINK_RELAY
+			/* Mirror headphone-mic RX to the phone handle (uplink). Both handles
+			 * known now: the phone SCO always comes up before the headphone SCO. */
+			if (s_hfp.phone_sco) {
+				hci_transport_sco_relay_set(s_hfp.hp_sco_handle, s_hfp.phone_sco_handle);
+			}
 #endif
 		} else {
 			s_hfp.phone_sco = true;
@@ -407,6 +460,11 @@ void bt_classic_hfp_handle_event(T_BT_EVENT event_type, void *event_buf,
 		uint8_t *addr  = param->sco_disconnected.bd_addr;
 		bool     is_hp = bt_classic_relay_is_headphone(addr);
 
+#if HFP_SCO_H5_UPLINK_RELAY
+		/* Either leg going down ends this call's uplink mirror. */
+		hci_transport_sco_relay_clear();
+#endif
+
 #if HFP_SCO_RELEASE_ON_DOWN
 		hfp_set_active_sco(is_hp ? s_hfp.hp_sco_handle : s_hfp.phone_sco_handle, 0,
 						   is_hp ? "[headphone]" : "[phone]");
@@ -422,9 +480,10 @@ void bt_classic_hfp_handle_event(T_BT_EVENT event_type, void *event_buf,
 			}
 		}
 		RTK_LOGS(TAG, RTK_LOG_INFO,
-			"SCO down %s " BD_FMT ", cause 0x%04x (to_hp ok=%u drop=%u | to_phone ok=%u drop=%u)\r\n",
+			"SCO down %s " BD_FMT ", cause 0x%04x (%s) (to_hp ok=%u drop=%u | to_phone ok=%u drop=%u)\r\n",
 			is_hp ? "[headphone]" : "[phone]", BD_ARG(addr),
 			param->sco_disconnected.cause,
+			hfp_sco_cause_str(param->sco_disconnected.cause),
 			(unsigned int)s_sco_to_hp_ok, (unsigned int)s_sco_to_hp_drop,
 			(unsigned int)s_sco_to_phone_ok, (unsigned int)s_sco_to_phone_drop);
 		break;

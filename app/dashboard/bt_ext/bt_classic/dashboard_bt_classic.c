@@ -172,6 +172,37 @@ static void bt_classic_gap_handle_event(T_BT_EVENT event_type, void *event_buf,
 			BD_ARG(param->acl_conn_encrypted.bd_addr));
 		break;
 
+	case BT_EVENT_ACL_CONN_SNIFF:
+		/* Diagnostic (problem 1): a phone that parks the ACL in sniff during
+		 * A2DP streaming starves the relay and shows up as stutter/glitch. */
+		RTK_LOGS(TAG, RTK_LOG_WARN,
+			"ACL SNIFF %s " BD_FMT ", interval %u slots\r\n",
+			bt_classic_relay_is_headphone(param->acl_conn_sniff.bd_addr) ? "[headphone]" : "[phone]",
+			BD_ARG(param->acl_conn_sniff.bd_addr),
+			param->acl_conn_sniff.interval);
+		break;
+
+	case BT_EVENT_ACL_CONN_ACTIVE:
+		RTK_LOGS(TAG, RTK_LOG_INFO,
+			"ACL ACTIVE %s " BD_FMT "\r\n",
+			bt_classic_relay_is_headphone(param->acl_conn_active.bd_addr) ? "[headphone]" : "[phone]",
+			BD_ARG(param->acl_conn_active.bd_addr));
+		break;
+
+	case BT_EVENT_LINK_QOS_SET_CMPL:
+		/* Diagnostic (problem 3): QoS renegotiation mid-stream reconfigures the
+		 * link poll interval and briefly starves ACL data. tpoll is the negotiated
+		 * poll interval in slots (x0.625ms); a large tpoll on the [headphone] link
+		 * explains the A2DP forward stall / FIFO overflow. */
+		RTK_LOGS(TAG, RTK_LOG_WARN,
+			"LINK QOS SET %s " BD_FMT ", cause 0x%04x, tpoll %u slots (%u ms)\r\n",
+			bt_classic_relay_is_headphone(param->link_qos_set_cmpl.bd_addr) ? "[headphone]" : "[phone]",
+			BD_ARG(param->link_qos_set_cmpl.bd_addr),
+			param->link_qos_set_cmpl.cause,
+			param->link_qos_set_cmpl.tpoll,
+			(unsigned)((param->link_qos_set_cmpl.tpoll * 625u) / 1000u));
+		break;
+
 	case BT_EVENT_ACL_CONN_DISCONN:
 		p_link = bt_classic_find_br_link(param->acl_conn_disconn.bd_addr);
 		bt_classic_free_br_link(p_link);
