@@ -16,7 +16,7 @@
 #include "wifi_task.h"
 
 #define MIN_RSP_LEN         5
-#define ATCMD_RX_BUF_SIZE   100
+#define ATCMD_RX_BUF_SIZE   256
 #define ATCMD_TIMEOUT_MS    20000
 
 /* ---- AT CMD 队列节点 ---- */
