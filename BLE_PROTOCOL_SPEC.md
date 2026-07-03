@@ -108,7 +108,7 @@ Key Header 固定占用 **2 个字节**，v-length = 0 时这 2 个字节仍须�
 | 1 [4] | ACK flag | 1 bit | 1 = 这是 ACK 包 |
 | 1 [3:0] | Version | 4 bits | 当前版本 = 0 |
 | 2~3 | Payload length | 16 bits | Big-Endian，高字节在前 |
-| 4~5 | CRC16 | 16 bits | 覆盖 Header[0..3] + Payload，Big-Endian |
+| 4~5 | CRC16 | 16 bits | **CRC-16/ARC**，仅覆盖 Payload（不含 Header），Big-Endian |
 | 6~7 | Sequence ID | 16 bits | 包序号，Big-Endian |
 
 #### ACK 包格式
@@ -904,7 +904,7 @@ Byte 7:  [7:0]  Sequence ID 低字节
 
 ### CRC16 计算范围
 
-覆盖 **Header[0..3]**（Magic + Byte1 + Payload Length）+ **完整 Payload**。
+算法 **CRC-16/ARC**：多项式 `0x8005`（反射 `0xA001`），初值 `0x0000`，输入/输出均反射（refin=refout=true），无末异或（xorout=0）。**仅覆盖 Payload**，不含 Header。空 payload（ACK 包）的 CRC 为初值 `0x0000`。自检：ASCII `"123456789"` → `0xBB3D`。
 
 ### L2 Header 字节布局（Big-Endian）
 

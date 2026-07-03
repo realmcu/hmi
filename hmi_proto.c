@@ -9,7 +9,7 @@
  *  0       1     Magic  (0xAB)
  *  1       1     Version/Flags  [7:6]=reserve  [5]=err_flag  [4]=ack_flag  [3:0]=ver
  *  2       2     Payload length (BE, MSB first)
- *  4       2     CRC16 over [0..3] + payload (BE, MSB first)
+ *  4       2     CRC16/ARC over payload only (BE, MSB first)
  *  6       2     Sequence ID (BE, MSB first)
  *  8       N     Payload
  *============================================================================*/
@@ -57,7 +57,8 @@ static bool     s_rx_active    = false;
  *                              Helpers
  *============================================================================*/
 
-/* CRC-16/KERMIT: poly=0x1021 reflected, init=0x0000 — same as btxfcs */
+/* CRC-16/ARC: poly=0x8005 (reflected 0xA001), init=0x0000,
+ * refin=refout=true, xorout=0 — matches the host tool (上位机) parameters. */
 static uint16_t crc16_update(uint16_t crc, const uint8_t *data, uint16_t len)
 {
     while (len--)
@@ -65,20 +66,22 @@ static uint16_t crc16_update(uint16_t crc, const uint8_t *data, uint16_t len)
         crc ^= *data++;
         for (int i = 0; i < 8; i++)
         {
-            crc = (crc & 1) ? (crc >> 1) ^ 0x8408 : (crc >> 1);
+            crc = (crc & 0x0001) ? (uint16_t)((crc >> 1) ^ 0xA001)
+                  : (uint16_t)(crc >> 1);
         }
     }
     return crc;
 }
 
+/* CRC covers the PAYLOAD ONLY (header bytes excluded) to match the host tool.
+ * An empty payload yields 0x0000 (the ARC init value). */
 static uint16_t frame_crc(const uint8_t *frame, uint16_t payload_len)
 {
-    uint16_t crc = crc16_update(0x0000, frame, 4);
-    if (payload_len > 0)
+    if (payload_len == 0)
     {
-        crc = crc16_update(crc, frame + PROTO_HDR_LEN, payload_len);
+        return 0x0000;
     }
-    return crc;
+    return crc16_update(0x0000, frame + PROTO_HDR_LEN, payload_len);
 }
 
 static uint16_t build_frame(uint8_t *buf, uint8_t flags,
