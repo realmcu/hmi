@@ -15,6 +15,8 @@ extern "C" {
 void hmi_bt_spp_init(void);
 bool hmi_bt_spp_send(uint8_t *bd_addr, uint8_t *data, uint16_t len);
 void hmi_bt_spp_set_rx_cb(void (*cb)(uint8_t *bd_addr, uint8_t *data, uint16_t len));
+void hmi_bt_spp_set_connect_cb(void (*cb)(uint8_t *bd_addr));
+void hmi_bt_spp_set_disconnect_cb(void (*cb)(uint8_t *bd_addr));
 
 #ifdef __cplusplus
 }

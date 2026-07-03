@@ -75,6 +75,57 @@ bool app_link_free_le_link(T_APP_LE_LINK *p_link)
     return true;
 }
 
+T_APP_BR_LINK *app_link_find_br_link(uint8_t *bd_addr)
+{
+    for (uint8_t i = 0; i < MAX_BR_LINK_NUM; i++)
+    {
+        if (app_db.br_link[i].used &&
+            memcmp(app_db.br_link[i].bd_addr, bd_addr, 6) == 0)
+        {
+            return &app_db.br_link[i];
+        }
+    }
+    return NULL;
+}
+
+T_APP_BR_LINK *app_link_alloc_br_link(uint8_t *bd_addr)
+{
+    T_APP_BR_LINK *p_link = app_link_find_br_link(bd_addr);
+    if (p_link != NULL)
+    {
+        return p_link;
+    }
+
+    for (uint8_t i = 0; i < MAX_BR_LINK_NUM; i++)
+    {
+        if (!app_db.br_link[i].used)
+        {
+            memset(&app_db.br_link[i], 0, sizeof(T_APP_BR_LINK));
+            memcpy(app_db.br_link[i].bd_addr, bd_addr, 6);
+            app_db.br_link[i].used = true;
+            app_db.br_link[i].id  = i;
+            return &app_db.br_link[i];
+        }
+    }
+
+    APP_PRINT_ERROR0("app_link_alloc_br_link: no free slot");
+    return NULL;
+}
+
+bool app_link_free_br_link(T_APP_BR_LINK *p_link)
+{
+    if (p_link == NULL || !p_link->used)
+    {
+        return false;
+    }
+    if (p_link->p_embedded_cmd != NULL)
+    {
+        free(p_link->p_embedded_cmd);
+    }
+    memset(p_link, 0, sizeof(T_APP_BR_LINK));
+    return true;
+}
+
 bool app_link_reg_le_link_disc_cb(uint8_t conn_id, P_FUN_LE_LINK_DISC_CB p_fun_cb)
 {
     T_APP_LE_LINK *p_link = app_link_find_le_link_by_conn_id(conn_id);

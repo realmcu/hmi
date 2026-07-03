@@ -108,6 +108,8 @@ typedef struct
 static T_HMI_SPP_CHAN spp_chan[MAX_BR_LINK_NUM];
 
 static void (*spp_rx_cb)(uint8_t *bd_addr, uint8_t *data, uint16_t len);
+static void (*spp_connect_cb)(uint8_t *bd_addr);
+static void (*spp_disconnect_cb)(uint8_t *bd_addr);
 
 static T_HMI_SPP_CHAN *find_spp_chan(uint8_t *bd_addr, uint8_t local_server_chann)
 {
@@ -153,6 +155,10 @@ static void hmi_spp_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t bu
             p_chan->credit             = param->spp_conn_cmpl.link_credit;
             p_chan->frame_size         = param->spp_conn_cmpl.frame_size;
             APP_PRINT_INFO1("hmi_spp: connected, chann 0x%02x", p_chan->local_server_chann);
+            if (spp_connect_cb != NULL)
+            {
+                spp_connect_cb(param->spp_conn_cmpl.bd_addr);
+            }
         }
         break;
 
@@ -186,6 +192,10 @@ static void hmi_spp_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t bu
                                param->spp_disconn_cmpl.local_server_chann);
         if (p_chan != NULL)
         {
+            if (spp_disconnect_cb != NULL)
+            {
+                spp_disconnect_cb(param->spp_disconn_cmpl.bd_addr);
+            }
             memset(p_chan, 0, sizeof(T_HMI_SPP_CHAN));
             APP_PRINT_INFO0("hmi_spp: disconnected");
         }
@@ -199,6 +209,16 @@ static void hmi_spp_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t bu
 void hmi_bt_spp_set_rx_cb(void (*cb)(uint8_t *bd_addr, uint8_t *data, uint16_t len))
 {
     spp_rx_cb = cb;
+}
+
+void hmi_bt_spp_set_connect_cb(void (*cb)(uint8_t *bd_addr))
+{
+    spp_connect_cb = cb;
+}
+
+void hmi_bt_spp_set_disconnect_cb(void (*cb)(uint8_t *bd_addr))
+{
+    spp_disconnect_cb = cb;
 }
 
 bool hmi_bt_spp_send(uint8_t *bd_addr, uint8_t *data, uint16_t len)

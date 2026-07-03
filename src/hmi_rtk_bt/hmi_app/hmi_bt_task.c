@@ -29,6 +29,7 @@
 #include "hmi_ble_profile_init.h"
 #include "app_timer.h"
 #include "app_ota.h"
+#include "app_spp_ota.h"
 
 
 #ifdef CONFIG_RTK_BT_BREDR
@@ -169,6 +170,7 @@ void bt_task_entry(void *p_param)
     framework_init();
     hmi_br_edr_gap_init();
     hmi_bt_spp_init();
+    app_spp_ota_init();
 #ifdef CONFIG_RTK_BR_PROFILE_A2DP
     hmi_bt_a2dp_init();
 #endif

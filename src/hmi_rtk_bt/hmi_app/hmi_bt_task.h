@@ -17,22 +17,26 @@
 #include "app_msg.h"
 #include "stdbool.h"
 
-/** @defgroup PERIPH_BT_TASK Peripheral BT Task
-  * @brief Peripheral BT Task
-  * @{
-  */
+/* BT feature switches. Comment out to disable. */
+#define CONFIG_RTK_BT_BREDR             /* BR/EDR + SPP + SPP OTA */
+
+#define CONFIG_RTK_BR_PROFILE_A2DP
+#define CONFIG_RTK_BR_PROFILE_AVRCP
+#define CONFIG_RTK_BR_PROFILE_HFP
+#define CONFIG_RTK_BR_PROFILE_PAN
 
 /**
- * @brief  Initialize BT task
- * @return void
+ * @brief  Create the BT task.
  */
 void hmi_bt_task_init(void);
 
+/**
+ * @brief  Post an IO message to the BT task queue.
+ * @param  p_msg  Pointer to the IO message to enqueue.
+ * @return true   Message enqueued successfully.
+ * @return false  Failed to enqueue (queue full or send error).
+ */
 bool hmi_send_msg_to_bt_task(T_IO_MSG *p_msg);
-/** End of PERIPH_BT_TASK
-* @}
-*/
-
 
 #endif
 

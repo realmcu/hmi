@@ -6,10 +6,7 @@
 
 file(GLOB_RECURSE  honeygui_app_srcs  "*.c" "*.cpp")
 # HEADER_DIRECTORIES(honeygui_app_headers ./)
-file(GLOB_RECURSE honeygui_app_remove_srcs 
-    "${CMAKE_CURRENT_SOURCE_DIR}/ports/lvgl_port/lv_port_disp.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ports/lvgl_port/lv_port_fs.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ports/lvgl_port/lv_port_indev.c"
+file(GLOB_RECURSE honeygui_app_remove_srcs
     "${CMAKE_CURRENT_SOURCE_DIR}/bsp/startup_rtl.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/bsp/system_rtl87x3.c"
 )

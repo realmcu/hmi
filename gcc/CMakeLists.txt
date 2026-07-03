@@ -232,6 +232,14 @@ set_property(SOURCE ${arm_start_up_boot_file} PROPERTY LANGUAGE C)
 set(version_path ${CMAKE_CURRENT_SOURCE_DIR}/../version.h)
 generate_version("dashboard_app" ${version_path})
 
+# Workaround: framework sources are compiled via INTERFACE even when their
+# Kconfig is not set, so generate_version() in their board cmake never runs.
+# Remove once SDK fix is merged.
+generate_version("btm"     "${REALTEK_SDK_BASE_PATH}/src/framework/btm/btm_ver.h")
+generate_version("audio"   "${REALTEK_SDK_BASE_PATH}/src/framework/audio/core/audio_ver.h")
+generate_version("console" "${REALTEK_SDK_BASE_PATH}/src/framework/console/console_ver.h")
+generate_version("remote"  "${REALTEK_SDK_BASE_PATH}/src/framework/remote/remote_ver.h")
+
 #==============================================================================
 # Link Script
 #==============================================================================
