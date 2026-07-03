@@ -1,5 +1,7 @@
 /*
- * Copyright (c) 2018, Realsil Semiconductor Corporation. All rights reserved.
+ * Copyright (c) 2026, Realtek Semiconductor Corporation
+ *
+ * SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
  */
 
 #ifndef _HMI_BR_EDR_GAP_INIT_H_

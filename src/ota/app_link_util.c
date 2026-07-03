@@ -1,5 +1,11 @@
 /*
- * app_link_util.c — BLE link table management.
+ * Copyright (c) 2026, Realtek Semiconductor Corporation
+ *
+ * SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+ */
+
+/*
+ * BLE link table management.
  *
  * Mirrors sdk/src/sample/ota_demo/app_link_util.c LE-link API; BR/EDR slot
  * management lives in src/hmi_rtk_bt/hmi_br_edr/hmi_br_edr_link.c and is not

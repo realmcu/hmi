@@ -1,5 +1,11 @@
 /*
- * app_report.c — OTA event reporting.
+ * Copyright (c) 2026, Realtek Semiconductor Corporation
+ *
+ * SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+ */
+
+/*
+ * OTA event reporting.
  *
  * BLE OTA responses are sent via ota_service_send_notification() called
  * inside app_ota_ble_handle_cp_req().

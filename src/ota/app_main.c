@@ -1,5 +1,11 @@
 /*
- * app_main.c — global app data definitions expected by ota_demo modules.
+ * Copyright (c) 2026, Realtek Semiconductor Corporation
+ *
+ * SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+ */
+
+/*
+ * Global app data definitions expected by ota_demo modules.
  *
  * The real application entry point for hmi_dashboard is src/application/main.c.
  * This file only owns the global data structures (`app_db`, `app_cfg_nv`) that

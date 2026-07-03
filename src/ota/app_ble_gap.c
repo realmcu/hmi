@@ -1,5 +1,11 @@
 /*
- * app_ble_gap.c — BLE GAP wrappers expected by ota_demo modules.
+ * Copyright (c) 2026, Realtek Semiconductor Corporation
+ *
+ * SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+ */
+
+/*
+ * BLE GAP wrappers expected by ota_demo modules.
  *
  * Only the symbols actually referenced from app_ota.c are implemented.
  */

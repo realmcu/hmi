@@ -5,7 +5,7 @@
  */
 
 /*
- * app_spp_ota.c — Bridge between the SPP transport and the OTA command handler.
+ * Bridge between the SPP transport and the OTA command handler.
  *
  * Incoming SPP frame format (Realtek standard, no trailing checksum):
  *   [0xAA][seqn:1][len_lo:1][len_hi:1][cmd_id_lo:1][cmd_id_hi:1][data:N]
