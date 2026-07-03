@@ -34,9 +34,20 @@ def _cmake_src(manifest) -> str:
     return os.path.normpath(os.path.join(own_abspath, '..', '..', '..'))
 
 
-def _build_dir(manifest) -> str:
-    # Place build/ alongside the cmake source root (one level up)
+def _build_root(manifest) -> str:
+    # Parent directory holding per-mode build subdirectories,
+    # placed alongside the cmake source root (one level up).
     return os.path.join(os.path.dirname(_cmake_src(manifest)), 'build')
+
+
+def _build_dir(manifest, mode: str) -> str:
+    """Per-mode build directory, e.g. build/lib_bank1.
+
+    Each mode gets its own CMake build tree so switching modes never reuses
+    a stale CMakeCache configured for a different defconfig (which used to
+    silently skip re-configure and leave ninja with 'no work to do').
+    """
+    return os.path.join(_build_root(manifest), mode)
 
 
 DEFCONFIGS = {
@@ -70,15 +81,22 @@ class ProjectInfo(WestCommand):
     def do_run(self, args, unknown_args):
         topdir = self.manifest.topdir
         cmake_src = _cmake_src(self.manifest)
-        build_dir = _build_dir(self.manifest)
-        built = os.path.exists(build_dir)
+        build_root = _build_root(self.manifest)
+
+        built_modes = []
+        if os.path.isdir(build_root):
+            for name in sorted(os.listdir(build_root)):
+                if name in DEFCONFIGS and os.path.exists(
+                        os.path.join(build_root, name, 'CMakeCache.txt')):
+                    built_modes.append(name)
+        built = bool(built_modes)
 
         log.inf('RTL8773E Dashboard Project')
         log.inf('=' * 54)
         log.inf(f'  Workspace : {topdir}')
         log.inf(f'  SDK root  : {cmake_src}')
-        log.inf(f'  Build dir : {build_dir}')
-        log.inf(f'  Built     : {"yes" if built else "no — run: west build"}')
+        log.inf(f'  Build root: {build_root}')
+        log.inf(f'  Built     : {", ".join(built_modes) if built else "no — run: west build"}')
 
         if built:
             bin_root = os.path.join(cmake_src, 'board', 'evb', 'hmi_dashboard', 'gcc', 'bin')
@@ -129,8 +147,8 @@ class BuildCommand(WestCommand):
 
     def do_run(self, args, unknown_args):
         cmake_src = _cmake_src(self.manifest)
-        build_dir = _build_dir(self.manifest)
         mode = _resolve_mode(args.mode)
+        build_dir = _build_dir(self.manifest, mode)
         defconfig = DEFCONFIGS[mode]
 
         if args.clean and os.path.exists(build_dir):
@@ -175,6 +193,10 @@ class CleanCommand(WestCommand):
         parser = parser_adder.add_parser(self.name, help=self.help,
                                          description=self.description)
         parser.add_argument(
+            '-m', '--mode', choices=_MODE_CHOICES, default=None,
+            help='only remove this mode\'s build dir (default: remove all modes)'
+        )
+        parser.add_argument(
             '--all', action='store_true',
             help='also remove bin/ output directories under board/evb/hmi_dashboard/'
         )
@@ -182,11 +204,15 @@ class CleanCommand(WestCommand):
 
     def do_run(self, args, unknown_args):
         cmake_src = _cmake_src(self.manifest)
-        build_dir = _build_dir(self.manifest)
 
-        if os.path.exists(build_dir):
-            log.inf(f'Removing {build_dir}')
-            shutil.rmtree(build_dir)
+        if args.mode:
+            target = _build_dir(self.manifest, _resolve_mode(args.mode))
+        else:
+            target = _build_root(self.manifest)
+
+        if os.path.exists(target):
+            log.inf(f'Removing {target}')
+            shutil.rmtree(target)
             log.inf('Done.')
         else:
             log.inf('Nothing to clean (build directory does not exist).')

@@ -52,9 +52,15 @@ cmake --build build
 
 删除 cmake build 目录。
 
+> 每个 mode 使用独立的 build 子目录（`build/<mode>/`，如 `build/lib_bank1/`），
+> 因此切换 mode 无需重新全量编译，各自保留增量缓存，也不会互相串味。
+
 ```bash
-# 只删除 build/
+# 删除所有 mode 的 build 目录（整个 build/）
 west clean
+
+# 只删除某个 mode 的 build 目录
+west clean -m lib_bank1
 
 # 同时删除 board/evb/hmi_dashboard/bin/ 输出目录
 west clean --all

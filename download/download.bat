@@ -30,18 +30,34 @@ set FLASH_MAP=%SCRIPT_DIR%..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_1
 
 if not exist "%FLASH_MAP%" ( echo [ERROR] flash_map.h not found: %FLASH_MAP% & set EXITCODE=1 & goto :end )
 
-rem --- Parse BANK0_APP_ADDR from flash_map.h ---
-set APP_ADDR=
-for /f "tokens=3" %%A in ('findstr /C:"BANK0_APP_ADDR" "%FLASH_MAP%"') do set APP_ADDR=%%A
-if not defined APP_ADDR ( echo [ERROR] Cannot parse BANK0_APP_ADDR from flash_map.h & set EXITCODE=1 & goto :end )
+rem --- Parse BANK0/BANK1 APP addresses from flash_map.h ---
+set BANK0_APP_ADDR=
+set BANK1_APP_ADDR=
+for /f "tokens=3" %%A in ('findstr /C:"BANK0_APP_ADDR" "%FLASH_MAP%"') do set BANK0_APP_ADDR=%%A
+for /f "tokens=3" %%A in ('findstr /C:"BANK1_APP_ADDR" "%FLASH_MAP%"') do set BANK1_APP_ADDR=%%A
+if not defined BANK0_APP_ADDR ( echo [ERROR] Cannot parse BANK0_APP_ADDR from flash_map.h & set EXITCODE=1 & goto :end )
+if not defined BANK1_APP_ADDR ( echo [ERROR] Cannot parse BANK1_APP_ADDR from flash_map.h & set EXITCODE=1 & goto :end )
 
 rem --- Resolve app bin path ---
 set APP_BIN=%2
 if not defined APP_BIN ( echo [ERROR] App bin path required as %%2. & set EXITCODE=1 & goto :end )
 if not exist "%APP_BIN%" ( echo [ERROR] App bin not found: %APP_BIN% & set EXITCODE=1 & goto :end )
 
+rem --- Select flash address by bank, inferred from the bin filename ---
+rem     A bank1 image is LINKED at BANK1_APP_ADDR and MUST be flashed there;
+rem     flashing it to the bank0 address (or vice versa) leaves every absolute
+rem     address in the image pointing at the wrong bank -> boots into garbage.
+echo "%APP_BIN%" | findstr /I "bank1" >nul
+if not errorlevel 1 (
+    set APP_ADDR=%BANK1_APP_ADDR%
+    set BANK_NAME=bank1
+) else (
+    set APP_ADDR=%BANK0_APP_ADDR%
+    set BANK_NAME=bank0
+)
+
 echo [APP]      %APP_BIN%
-echo            -^> Flash %APP_ADDR%  Port: %COM%
+echo            -^> Bank %BANK_NAME%  Flash %APP_ADDR%  Port: %COM%
 
 pushd "%MPCLI_DIR%"
 "%MPCLI_DIR%\mpcli.exe" -c %COM% -p -A %APP_ADDR% -F "%APP_BIN%" -b %BAUD% -M 5 -r -u -d -T RTL87X3EP
