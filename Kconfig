@@ -33,6 +33,10 @@ config RTK_BR_PROFILE_PAN
 	depends on RTK_BT_BREDR
 	default n
 
+config REALTEK_BUILD_EXAMPLE_EBADGE
+    bool "Ebadge Widget Demo"
+	default n
+
 endmenu
 
 menu "Zephyr Kernel"

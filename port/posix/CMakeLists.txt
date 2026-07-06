@@ -1,6 +1,6 @@
 set(POSIX_DEVICE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../posix-device)
 
-
+if(0)
 target_sources(app PRIVATE
     ${POSIX_DEVICE_ROOT}/core/posix_device.c
     ${POSIX_DEVICE_ROOT}/core/posix_init.c
@@ -23,3 +23,4 @@ add_subdirectory(custom-rtos)
 
 
 add_subdirectory(examples)
+endif()

@@ -10,7 +10,7 @@
 #include "trace.h"
 #include "gui_message.h"
 
-#include "touch_CHSC6417_zephyr.h"
+#include "touch_cst816d_zephyr.h"
 #include "key_button_8773g_zephyr.h"
 
 #define TOUCH_DEV_NODE  DT_NODELABEL(touch_device)
@@ -82,7 +82,7 @@ static struct gui_indev indev =
     .touch_timeout_ms = DT_PROP(TOUCH_DEV_NODE, gesture_release_timeout_ms),
     .long_button_time_ms = 800,
     .short_button_time_ms = 300,
-    .quick_slide_time_ms = 50,
+    .quick_slide_time_ms = 500,
 
     .kb_long_button_time_ms = 2000,
     .kb_short_button_time_ms = 60,

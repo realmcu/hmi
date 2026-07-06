@@ -36,10 +36,17 @@ int main(void)
 
     hmi_bt_task_init();
     hmi_proto_task_init();
-    extern void hmi_l2_handlers_register(void);
-    hmi_l2_handlers_register();
+    // extern void hmi_l2_handlers_register(void);
+    // hmi_l2_handlers_register();
 
-    // gui_server_init();
+
+    extern void rtk_lcd_hal_init(void);
+    rtk_lcd_hal_init();
+
+
+
+    gui_server_init();
+    gui_set_keep_active_time(0xFFFFFFFF);
 
     return 0;
 }

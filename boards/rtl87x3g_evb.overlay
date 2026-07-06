@@ -8,8 +8,8 @@
 
 / {
 	chosen {
-		zephyr,console = &uart2;
-		zephyr,shell-uart = &uart2;
+		zephyr,console = &uart3;
+		zephyr,shell-uart = &uart3;
 		zephyr,display = &display_lcd;
 	};
 };
@@ -18,22 +18,7 @@
 	status = "okay";
 };
 
-&uart2 {
-	status = "okay";
-	current-speed = <2000000>;
-};
-
 &pinctrl {
-	sdhc0_default: sdhc0_default {
-		group1 {
-			psels =
-				<RTL87X3G_PSEL(HS_P5_0_SDH0_CLK,   P5_0, DIR_OUT, DRV_HIGH, PULL_UP)>,
-				<RTL87X3G_PSEL(HS_P5_1_SDH0_CMD,   P5_1, DIR_OUT, DRV_HIGH, PULL_UP)>,
-				<RTL87X3G_PSEL(HS_P5_2_SDH0_DATA0, P5_2, DIR_OUT, DRV_HIGH, PULL_UP)>;
-			bias-pull-strong;
-		};
-	};
-
 	uart3_default: uart3_default {
 		group1 {
 			psels =
@@ -48,21 +33,6 @@
 		group2 {
 			psels = <RTL87X3G_PSEL(SW_MODE, P5_5, DIR_IN, DRV_HIGH, PULL_UP)>;
 			wakeup-low;
-		};
-	};
-
-	i2c1_default: i2c1_default {
-		group1 {
-			psels =
-				<RTL87X3G_PSEL(I2C1_CLK, ADC_0, DIR_OUT, DRV_HIGH, PULL_NONE)>,
-				<RTL87X3G_PSEL(I2C1_DAT, ADC_1, DIR_OUT, DRV_HIGH, PULL_NONE)>;
-		};
-	};
-	i2c1_sleep: i2c1_sleep {
-		group1 {
-			psels =
-				<RTL87X3G_PSEL(SW_MODE, ADC_0, DIR_IN, DRV_LOW, PULL_UP)>,
-				<RTL87X3G_PSEL(SW_MODE, ADC_1, DIR_IN, DRV_LOW, PULL_UP)>;
 		};
 	};
 };
@@ -90,40 +60,37 @@
 };
 
 &sdhc0 {
-	pin-group = <0>;
-	bus-width = <1>;
-	max-bus-freq = <50000000>;
-	pinctrl-0 = <&sdhc0_default>;
-	pinctrl-names = "default";
-	status = "okay";
+	status = "disabled";
 };
 
-/ {
-	aliases {
-		sdhc0 = &sdhc0;
-		wifi-int = &wifi_int;
-		uart3 = &uart3;
+&pinctrl {
+	i2c2_default: i2c2_default {
+		group1 {
+			psels =
+				<RTL87X3G_PSEL(I2C2_CLK, P4_4, DIR_OUT, DRV_HIGH, PULL_NONE)>,
+				<RTL87X3G_PSEL(I2C2_DAT, P4_3, DIR_OUT, DRV_HIGH, PULL_NONE)>;
+		};
 	};
-	gpio_devs {
-		compatible = "gpio-keys";
-		wifi_int: wifi_int {
-			gpios = <&gpiob 18 GPIO_ACTIVE_LOW>;  /* P5_3 */
-			label = "wifi int";
+	i2c2_sleep: i2c2_sleep {
+		group1 {
+			psels =
+				<RTL87X3G_PSEL(SW_MODE, P4_4, DIR_IN, DRV_LOW, PULL_UP)>,
+				<RTL87X3G_PSEL(SW_MODE, P4_3, DIR_IN, DRV_LOW, PULL_UP)>;
 		};
 	};
 };
 
-&i2c1 {
+&i2c2 {
 	status = "okay";
 	clock-frequency = <400000>;
-	pinctrl-0 = <&i2c1_default>;
-	pinctrl-1 = <&i2c1_sleep>;
+	pinctrl-0 = <&i2c2_default>;
+	pinctrl-1 = <&i2c2_sleep>;
 	pinctrl-names = "default", "sleep";
-	touch_device: touch_chsc6417@2e {
-		compatible = "chipsemi,chsc6417";
-		reg = <0x2E>;
-		irq-gpios = <&gpioa 2 GPIO_ACTIVE_HIGH>;  /* P0_2 */
-		rst-gpios = <&gpioa 3 GPIO_ACTIVE_HIGH>;  /* P0_3 */
+	touch_device: touch_cst816d@15 {
+		compatible = "hynitron,cst816d";
+		reg = <0x15>;
+		irq-gpios = <&gpioa 0 GPIO_ACTIVE_LOW>;		/* P0_0, falling edge */
+		rst-gpios = <&gpioa 3 GPIO_ACTIVE_HIGH>;	/* P0_3 */
 		gesture-release-timeout-ms = <30>;
 		status = "okay";
 	};

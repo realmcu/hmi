@@ -13,20 +13,20 @@
 #include "system_status_api.h"
 #include "fmc_api_ext.h"
 #include "section.h"
-#include "lcd_sh8601z_410_502_qspi.h"
+#include "lcd_st77916_360_360_qspi.h"
 
 
-#define DRV_LCD_WIDTH   410
-#define DRV_LCD_HIGHT   502
+#define DRV_LCD_WIDTH   360
+#define DRV_LCD_HIGHT   360
 
 #ifdef DRV_LCD_WIDTH
 #undef DRV_LCD_WIDTH
-#define DRV_LCD_WIDTH   410
+#define DRV_LCD_WIDTH   360
 #endif
 
 #ifdef DRV_LCD_HIGHT
 #undef DRV_LCD_HIGHT
-#define DRV_LCD_HIGHT   502
+#define DRV_LCD_HIGHT   360
 #endif
 
 #define LCD_SECTION_HEIGHT                      20
