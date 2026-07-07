@@ -12,6 +12,10 @@
 /* 启用键值数据库 (KVDB) */
 #define FDB_USING_KVDB
 
+/* 启用 BigFile 大文件扩展 (BF) —— 依赖 FDB_USING_FAL_MODE
+ * BF 的目录项存于 KVDB，大文件数据存于独立的 "bf_data" FAL 分区 */
+#define FDB_USING_BF
+
 /* 启用时序数据库 (TSDB)，暂不需要可保持注释 */
 /* #define FDB_USING_TSDB */
 

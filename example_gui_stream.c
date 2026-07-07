@@ -59,9 +59,9 @@ static void stream_click_cb(void *obj, gui_event_t *e)
 /* Stream geometry / codec — fixed contract with the wifi RX producer. */
 #define STREAM_X            0
 #define STREAM_Y            0
-#define STREAM_W            400
-#define STREAM_H            496
-#define STREAM_CODEC        GUI_STREAM_CODEC_JPEG
+#define STREAM_W            368//400
+#define STREAM_H            368//496
+#define STREAM_CODEC        GUI_STREAM_CODEC_H264 // GUI_STREAM_CODEC_H264//GUI_STREAM_CODEC_JPEG
 #define STREAM_INTERVAL_MS  10
 
 /* Transport sizing.  The frame pool is allocated INTERNALLY by
@@ -69,8 +69,8 @@ static void stream_click_cb(void *obj, gui_event_t *e)
  * external pool address any more.  One size class of STREAM_BUF_COUNT buffers,
  * STREAM_MAX_FRAME bytes each -> heap budget = STREAM_MAX_FRAME *
  * STREAM_BUF_COUNT (+ alignment slack). */
-#define STREAM_MAX_FRAME    (25u * 1024u)
-#define STREAM_BUF_COUNT    16u
+#define STREAM_MAX_FRAME    (35u * 1024u)
+#define STREAM_BUF_COUNT    32u
 
 static const stp_class_cfg_t s_stream_classes[] =
 {
@@ -90,7 +90,7 @@ stp_transport_t *app_stream_transport_get(void)
 static int app_init_stream(void)
 {
     gui_log("GUI Stream Widget Example Start\n");
-    gui_set_keep_active_time(1000000);
+    // gui_set_keep_active_time(1000000);
 
 #ifdef ENABLE_STREAM  // streaming
     /* Create the one transport the app owns; the pool is allocated internally
@@ -121,7 +121,14 @@ static int app_init_stream(void)
     }
 
     gui_stream_set_update_interval(st, STREAM_INTERVAL_MS);
-    gui_stream_set_drop_mode(st, GUI_STREAM_DROP_UNCONDITIONAL);
+    if (STREAM_CODEC != GUI_STREAM_CODEC_JPEG)
+    {
+        gui_stream_set_drop_mode(st, GUI_STREAM_DROP_NONE);
+    }
+    else
+    {
+        gui_stream_set_drop_mode(st, GUI_STREAM_DROP_UNCONDITIONAL);
+    }
     // gui_obj_add_event_cb(st, stream_click_cb, GUI_EVENT_TOUCH_CLICKED, NULL);
 #endif
     return 0;
@@ -129,7 +136,8 @@ static int app_init_stream(void)
 
 #if 0
 #include "gui_video.h"
-#include "410502_jpg.c"
+// #include "earth_400_496_30.c"
+// #include "410502_jpg.c"
 static int app_init(void)
 {
     gui_log("GUI video  Start\n");
@@ -137,14 +145,17 @@ static int app_init(void)
 
 #if 1
 
-    extern const unsigned char _ac410502_jpg[];
-    memcpy((STREAM_DB), _ac410502_jpg, _ac410502_jpg_len);
-    gui_video_t *st = gui_video_create_from_mem(gui_obj_get_root(), NULL, STREAM_DB, 0,
-                                                0, 480, 400);
+    // extern const unsigned char _acearth_400_496_30[];
+    // memcpy((STREAM_DB), _ac410502_jpg, _ac410502_jpg_len);
+    // gui_video_t *st = gui_video_create_from_mem(gui_obj_get_root(), NULL, _acearth_400_496_30, 0,
+    //                                             0, 400, 496);
+
+    gui_video_t *st = gui_video_create_from_mem(gui_obj_get_root(), NULL, 0x70610000, 0,
+                                                0, 400, 496);
 
 #endif
 
-    gui_video_set_frame_rate(st, 1);
+    gui_video_set_frame_rate(st, 30);
     gui_video_set_repeat_count(st, -1);
     gui_video_set_state(st, GUI_VIDEO_STATE_PLAYING);
 

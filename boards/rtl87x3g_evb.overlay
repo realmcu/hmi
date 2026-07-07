@@ -8,8 +8,8 @@
 
 / {
 	chosen {
-		zephyr,console = &uart3;
-		zephyr,shell-uart = &uart3;
+		zephyr,console = &uart2;
+		zephyr,shell-uart = &uart2;
 		zephyr,display = &display_lcd;
 	};
 };
@@ -17,6 +17,12 @@
 &display_lcd {
 	status = "okay";
 };
+
+&uart2 {
+	status = "okay";
+	current-speed = <2000000>;
+};
+
 
 &pinctrl {
 	uart3_default: uart3_default {

@@ -27,6 +27,7 @@
  * producer only borrows that single shared instance through the getter below.
  * Declared here (instead of including the GUI header chain) so the BLE side
  * stays free of guidef.h / tlsf.h. */
+extern stp_transport_t *gui_stream_transport_get(void);
 extern stp_transport_t *app_stream_transport_get(void);
 
 /* ---- Task / queue config ------------------------------------------------- */
@@ -90,7 +91,7 @@ static stp_transport_t *stream_tp(void)
 {
     if (s_tp == NULL)
     {
-        s_tp = app_stream_transport_get();
+        s_tp = gui_stream_transport_get();//app_stream_transport_get();//gui_stream_transport_get();
     }
     return s_tp;
 }
