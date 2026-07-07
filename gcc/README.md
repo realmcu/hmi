@@ -15,7 +15,7 @@ HMI Dashboard supports GCC compilation with a 2×2 build mode matrix: GUI source
 
 ## Build Commands
 
-Run from the SDK root directory (`honeycomb/sdk/`):
+Run from the SDK root directory (`sdk/`):
 
 ```powershell
 # Default: source mode, bank0
@@ -34,13 +34,25 @@ Edit `defconfig.RTL8773E.hmi_dashboard_src_bank0` to select a demo (only one at 
 > `src_bank1` has the same demo options — it differs only by `CONFIG_REALTEK_COMPILE_BANK1=y`.
 
 ```ini
-# Demo Selection - Uncomment ONE option
+# 2D Graphics
 CONFIG_REALTEK_BUILD_EXAMPLE_IMAGE_WIDGET=y
 # CONFIG_REALTEK_BUILD_EXAMPLE_SVG_WIDGET=y
 # CONFIG_REALTEK_BUILD_EXAMPLE_GIF_WIDGET=y
 # CONFIG_REALTEK_BUILD_EXAMPLE_TEXT_WIDGET=y
+
+# 3D Graphics
 # CONFIG_REALTEK_BUILD_REAL_DOG_3D=y
+# CONFIG_REALTEK_BUILD_REAL_EARTH_3D=y
+# CONFIG_REALTEK_BUILD_REAL_DONUT_3D=y
+
+# Screen Fit Demos
 # CONFIG_REALTEK_BUILD_GUI_800_480_DEMO=y
+# CONFIG_REALTEK_BUILD_GUI_466_466_DEMO=y
+# CONFIG_REALTEK_BUILD_GUI_240_240_DEMO=y
+
+# HML Designer
+# CONFIG_REALTEK_BUILD_HML_DESIGNER=y
+
 # ... more options in Kconfig.gui
 ```
 
@@ -102,6 +114,17 @@ CONFIG_REALTEK_ROMFS=y
 | Demo Select | menu_config.h macro | Kconfig choice |
 
 ## Troubleshooting
+
+### Compiler not found
+
+Make sure the Arm GNU Toolchain is on `PATH`:
+
+```powershell
+arm-none-eabi-gcc --version
+# expected: Arm GNU Toolchain 12.3.Rel1 ... 12.3.1
+```
+
+Recommended path: `C:\Program Files (x86)\Arm GNU Toolchain arm-none-eabi\12.3 rel1\bin`
 
 ### Missing GUI source code
 

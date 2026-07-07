@@ -6,44 +6,34 @@ applications with display and wireless connectivity.
 ## Features
 
 | Feature | Status |
-|---|---|
+| --- | --- |
 | HoneyGUI display engine | ✅ Available |
 | Bluetooth (BLE + BR/EDR) | ✅ Available |
 | OTA firmware update | ✅ Available |
 | 4-mode build matrix (src/lib × bank0/bank1) | ✅ Available |
 | Dual toolchain support (GCC / Keil MDK) | ✅ Available |
 
-## Hardware
-
-- **SoC**: Realtek RTL87X3E
-- **Display**: ST7265, 800 × 480, RGB interface
-- **Keys**: 8-key input (ADC-based)
-- **Audio**: AW87390 smart PA (I2C)
-- **Interfaces**: UART, I2C
-
 ## Prerequisites
 
-| Tool | Min Version | Purpose |
-|---|---|---|
-| `python3` | ≥ 3.8 | west runtime |
-| `west` | ≥ 1.2 | Workspace manager and custom commands |
-| `git` | ≥ 2.20 | Version control |
-| `arm-none-eabi-gcc` | ≥ 10.3 | Cross compiler (GCC builds) |
-| `cmake` | ≥ 3.20 | Build system (GCC builds) |
-| `ninja` | ≥ 1.10 | Parallel build (GCC builds) |
-| `mpcli` | — | Firmware download tool |
+| Tool | Min Version | Check Installed | Install / Download |
+| --- | --- | --- | --- |
+| `python3` | ≥ 3.8 | `python3 --version` | [python.org/downloads](https://www.python.org/downloads/) |
+| `west` | ≥ 1.2 | `west --version` | `pip install west` |
+| `git` | ≥ 2.20 | `git --version` | [git-scm.com/downloads](https://git-scm.com/downloads) |
+| `arm-none-eabi-gcc` | ≥ 10.3 | `arm-none-eabi-gcc --version` | [Arm GNU Toolchain downloads](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) |
+| `cmake` | ≥ 3.20 | `cmake --version` | `pip install cmake` or [cmake.org/download](https://cmake.org/download/) |
+| `ninja` | ≥ 1.10 | `ninja --version` | `pip install ninja` or [ninja releases](https://github.com/ninja-build/ninja/releases) |
+| `scons` | 4.4.0 | `scons --version` | `pip install scons==4.4.0` |
+| `kconfiglib` | - | `python3 -c "import kconfiglib"` | `pip install kconfiglib` |
+| Keil MDK5 + ARM Compiler | ARM Compiler ≥ 6.22 | `armclang --version`, or Keil → *Help* → *About* | [keil.com/download/product](https://www.keil.com/download/product/) |
 
-> Keil MDK users do not need ARM GCC / CMake / Ninja — open the MDK project directly in the IDE.
-
-## Component Repositories
-
-| Repository | Local Path | Description |
-| --- | --- | --- |
-| [rtl87x3ep-hmi-sdk](https://gitee.com/realmcu/rtl87x3ep-hmi-sdk) | `honeycomb/` | Core SDK: HAL drivers, Bluetooth stack, system services, toolchain |
-| [hmi-dashboard](https://gitee.com/realmcu/hmi/tree/rtl8773e-dashboard/) | `honeycomb/sdk/board/evb/hmi_dashboard/` | HMI application layer, BSP, GUI porting, build configuration |
-| [HoneyGUI](https://gitee.com/realmcu/HoneyGUI) | `honeycomb/sdk/src/sample/gui/` | GUI engine: widget library, font engine, animations |
-| [wearable](https://gitee.com/realmcu/wearable) | `honeycomb/sdk/src/app/Wearable/` | Wearable application layer code |
-| [display](https://gitee.com/realmcu/display) | `honeycomb/sdk/src/mcu/display/` | LCD display driver library |
+> - `arm-none-eabi-gcc` / `cmake` / `ninja` are only required for **GCC builds**. Keil users can skip them.
+> - `scons` / `kconfiglib` are only needed when regenerating the Keil mdk5 project (see the
+>   config-sync steps in the Keil MDK section below); not required for regular builds.
+> - Keil users only need Keil MDK5 with **ARM Compiler ≥ 6.22**. An older/mismatched ARM Compiler
+>   version is the most common cause of "the Keil project fails to build with a large number of errors" —
+>   check *Project* → *Manage Project Items* → *Project Targets* → *Target* to confirm the compiler version
+>   before filing a build issue.
 
 ## Getting Started
 
@@ -60,6 +50,9 @@ west init -m https://gitee.com/realmcu/hmi-manifest.git --mr master --mf rtl8773
 # 3. Sync all sub-projects
 west update
 ```
+
+> `west update` automatically clones every repository listed in [Component Repositories](#component-repositories)
+> below — there is no need to manually download or `git clone` any of them.
 
 ### 2. Build the firmware
 
@@ -88,7 +81,7 @@ west flash -m src_bank1     # flash bank1 image (must match west build -m)
 ## Build Command Reference
 
 | Command | Description |
-|---|---|
+| --- | --- |
 | `west build` | Default build (equivalent to `-m src_bank0`) |
 | `west build -m lib_bank0` | Library mode, slot A (precompiled GUI, faster) |
 | `west build -m src_bank1` | Source mode, slot B |
@@ -108,19 +101,70 @@ To invoke CMake directly, see [`gcc/README.md`](gcc/README.md).
 
 ### Keil MDK
 
-Open `mdk/project.uvprojx` in Keil MDK 5 and build directly from the IDE.
+Open `sdk/board/evb/hmi_dashboard/mdk/project.uvprojx` in Keil MDK 5 and build
+directly from the IDE.
 
-If the project file needs to be regenerated (e.g. after configuration changes):
+If GUI/feature options need to change (e.g. switching demo, enabling a module), the
+workflow is:
 
-```bash
-scons --target=mdk5
-```
+1. In the Keil *Project* window, double-click `menu_config.h` to open it, then switch to
+   the **Configuration Wizard** tab at the bottom of the editor (this file is generated
+   from that wizard — do not hand-edit the `#define` lines).
+2. Toggle the desired checkboxes/options in the wizard, then save (`Ctrl+S`). Keil rewrites
+   `menu_config.h` to match your selection.
+3. Close the Keil project (so the file is not locked), open a terminal, and `cd` into
+   `sdk/board/evb/hmi_dashboard/` (the same directory as this README and the
+   `SConstruct` file).
+4. Regenerate the Keil project so it picks up the new configuration:
+
+   ```bash
+   scons --target=mdk5
+   ```
+
+5. Re-open `sdk/board/evb/hmi_dashboard/mdk/project.uvprojx` in Keil MDK 5 and
+   rebuild (*Project* → *Rebuild all target files*).
+
+## Component Repositories
+
+> These repositories are fetched automatically by `west update` in
+> [Getting Started](#1-initialize-the-workspace) above — the links below are for reference
+> only, you normally never need to clone them manually.
+
+| Repository | Local Path | Description |
+| --- | --- | --- |
+| [rtl87x3ep-hmi-sdk](https://gitee.com/realmcu/rtl87x3ep-hmi-sdk) | `sdk/` | Core SDK: HAL drivers, Bluetooth stack, system services, toolchain |
+| [hmi-dashboard](https://gitee.com/realmcu/hmi/tree/rtl8773e-dashboard/) | `sdk/board/evb/hmi_dashboard/` | HMI application layer, BSP, GUI porting, build configuration |
+| [HoneyGUI](https://gitee.com/realmcu/HoneyGUI) | `sdk/src/sample/gui/` | GUI engine: widget library, font engine, animations |
+| [wearable](https://gitee.com/realmcu/wearable) | `sdk/src/app/Wearable/` | Wearable application layer code |
+| [display](https://gitee.com/realmcu/display) | `sdk/src/mcu/display/` | LCD display driver library |
+
+## Chip-Specific Tools
+
+The table above covers the open-source repositories managed alongside the SDK. In addition,
+RTL87X3EP chip-specific tools (chip configuration, firmware download/flashing, OTA packaging,
+etc.) are maintained in the [rtl87x3ep-mcu-hmi-sdk-tool](https://gitee.com/realmcu/rtl87x3ep-mcu-hmi-sdk-tool)
+repository. It is not fetched automatically by `west update` — download it separately when needed.
+
+| Tool | Purpose |
+| --- | --- |
+| `MCUConfigTool` | Chip / MCU configuration |
+| `MPPGTool` | Firmware download (flashing), supports Watch devices |
+| `CFUDownloadTool` | CFU firmware download |
+| `DspConfigTool` | DSP configuration |
+| `ImageConverter` | Image conversion |
+| `DebugAnalyzer` | Debug analysis |
+| `AciHostCLI` | ACI host command-line tool |
+| OTA (Android / iOS) | OTA update package generation and test apps |
+| AudioConnect (Android / iOS) | Audio connectivity test apps |
+
+> The chip firmware package lives under `sdk/bin/` (e.g. `sdk/bin/rtl87x3ep/default_bin/`)
+> and must be flashed using `MPPGTool`.
 
 ## Directory Structure
 
-> Paths below are relative to `honeycomb/sdk/board/evb/hmi_dashboard/` (the main application repository root within the West workspace).
+> Paths below are relative to `sdk/board/evb/hmi_dashboard/` (the main application repository root within the West workspace).
 
-```
+```text
 hmi_dashboard/
 ├── src/
 │   ├── application/         # App entry point, feature flags, panel init
@@ -138,7 +182,7 @@ hmi_dashboard/
 ├── west_commands_extention/ # West custom command definitions
 ├── board.h                  # Pin mapping and peripheral configuration
 ├── mem_config.h             # Memory layout (DTCM1 / ITCM1)
-├── menu_config.h            # GUI menu configuration
+├── menu_config.h             # GUI menu configuration
 └── version.h                # Firmware version
 ```
 
@@ -168,6 +212,7 @@ input device, filesystem, OS interface, and flash translation layer.
 ### `src/hmi_rtk_bt/` *(In Development)*
 
 Bluetooth stack integration covering:
+
 - **BLE**: GAP, GATT profiles, and private GATT services
 - **BR/EDR**: A2DP, AVRCP, HFP, SPP, PAN
 
@@ -179,7 +224,7 @@ architecture).
 ## Key Configuration Files
 
 | File | Purpose |
-|---|---|
+| --- | --- |
 | `app_flags.h` | Feature enable/disable switches for the whole application |
 | `board.h` | GPIO pin mapping and peripheral configuration |
 | `mem_config.h` | DTCM / ITCM memory region layout |
@@ -187,11 +232,7 @@ architecture).
 | `gcc/defconfig.*` | Kconfig presets for GCC builds |
 | `version.h` | Firmware version (`VERSION`, `BUILD_NUM`) |
 
-## Version
+## More Documentation
 
-The current firmware version is defined in `version.h`:
-
-```c
-#define VERSION     "3.14.8"
-#define BUILD_NUM   72
-```
+For official RTL8773E series datasheets, quick start guides, hardware notes, and SDK/GUI
+online documentation, see the [RTL8773E-Series documentation center](https://www.realmcu.com/zh/Resources/Documentation/RTL8773E-Series#pagetab).

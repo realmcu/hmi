@@ -1,12 +1,13 @@
-# West 扩展命令
+# West Extension Commands
 
-RTL8773E Dashboard 项目的 West 自定义命令（仅面向 GCC/CMake 构建，MDK 工程请直接在 Keil 中操作）。
+Custom West commands for the RTL8773E Dashboard project (GCC/CMake builds only — for
+MDK projects, build directly in Keil).
 
-## 可用命令
+## Available Commands
 
 ### `west info`
 
-显示工作区路径、构建状态和输出 ELF 文件。
+Show workspace path, build status, and output ELF file.
 
 ```bash
 west info
@@ -14,89 +15,93 @@ west info
 
 ### `west build`
 
-封装 cmake configure + ninja build，省去每次手打长命令。
+Wraps `cmake configure` + `ninja build` so you don't have to type the full command
+every time.
 
 ```bash
-# 默认：源码 GUI + bank0（等价 -m src_bank0）
+# Default: source GUI + bank0 (equivalent to -m src_bank0)
 west build
 
-# 完整 4 种 mode：<gui>_<bank>
-west build -m src_bank0   # 源码 GUI，A 槽（默认）
-west build -m src_bank1   # 源码 GUI，B 槽
-west build -m lib_bank0   # 预编译 libgui.a，A 槽（迭代更快）
-west build -m lib_bank1   # 预编译 libgui.a，B 槽
+# Full 4-mode matrix: <gui>_<bank>
+west build -m src_bank0   # Source GUI, slot A (default)
+west build -m src_bank1   # Source GUI, slot B
+west build -m lib_bank0   # Precompiled libgui.a, slot A (faster iteration)
+west build -m lib_bank1   # Precompiled libgui.a, slot B
 
-# 向后兼容别名：-m src → src_bank0、-m lib → lib_bank0
+# Backward-compatible aliases: -m src → src_bank0, -m lib → lib_bank0
 west build -m src
 west build -m lib
 
-# 先清理再编译
+# Clean then rebuild
 west build -c
 
-# 并行编译（8 线程）
+# Parallel build (8 threads)
 west build -j 8
 
-# 仅 cmake configure，跳过 build（用于调试 cmake 配置）
+# CMake configure only, skip build (for debugging CMake configuration)
 west build --configure-only
 ```
 
-等价的手动命令：
+Equivalent manual command:
 
 ```powershell
-# 在 honeycomb/sdk/ 目录下，以 src_bank0 为例
+# From sdk/, using src_bank0 as an example
 cmake -G Ninja -D kconfig_path=board/evb/hmi_dashboard/gcc/defconfig.RTL8773E.hmi_dashboard_src_bank0 -DIS_CHECK_FLOW=OFF -Dcompile_lib_only=OFF -B build
 cmake --build build
 ```
 
 ### `west clean`
 
-删除 cmake build 目录。
+Remove the CMake build directory.
 
-> 每个 mode 使用独立的 build 子目录（`build/<mode>/`，如 `build/lib_bank1/`），
-> 因此切换 mode 无需重新全量编译，各自保留增量缓存，也不会互相串味。
+> Each mode has its own build subdirectory (`build/<mode>/`, e.g. `build/lib_bank1/`),
+> so switching modes never triggers a full rebuild — each mode keeps its own
+> incremental cache without interfering with the others.
 
 ```bash
-# 删除所有 mode 的 build 目录（整个 build/）
+# Remove build directories for all modes (the whole build/)
 west clean
 
-# 只删除某个 mode 的 build 目录
+# Remove the build directory for one mode only
 west clean -m lib_bank1
 
-# 同时删除 board/evb/hmi_dashboard/bin/ 输出目录
+# Also remove the board/evb/hmi_dashboard/bin/ output directory
 west clean --all
 ```
 
 ### `west flash`
 
-调用 `gcc/download.bat`，自动定位 MP binary 并通过串口烧录到设备。
+Calls `gcc/download.bat`, auto-locates the MP binary, and flashes it to the device
+over serial.
 
 ```bash
-# 使用 download.bat 默认串口（COM3），默认 mode = src_bank0
+# Use download.bat's default port (COM3), default mode = src_bank0
 west flash
 
-# 指定串口
+# Specify a port
 west flash -p COM5
 
-# 烧录 bank1 镜像（必须与之前 west build -m 的 mode 对应）
+# Flash the bank1 image (must match the mode used at west build -m time)
 west flash -m src_bank1
 west flash -m lib_bank1 -p COM5
 
-# 同时烧录 userdata 分区
+# Also flash the userdata partition
 west flash -p COM3 --userdata path/to/userdata.bin --userdata-addr 0x00A00000
 ```
 
-> `-m` 决定从哪个 `bin/RTL8773E.hmi_dashboard_<mode>/` 目录捞取 `dashboard_<bank>_MP-*.bin`。
-> 依赖 `download/mpcli/mpcli.exe`，烧录完成后会有 `[DONE]` 或 `[FAILED]` 提示。
+> `-m` determines which `bin/RTL8773E.hmi_dashboard_<mode>/` directory to pull
+> `dashboard_<bank>_MP-*.bin` from. Depends on `download/mpcli/mpcli.exe`; prints
+> `[DONE]` or `[FAILED]` when flashing completes.
 
 ### `west size`
 
-调用 `arm-none-eabi-size` 显示各 section 内存占用，以及 MP binary 大小。
+Calls `arm-none-eabi-size` to show per-section memory usage and the MP binary size.
 
 ```bash
 west size
 ```
 
-示例输出：
+Example output:
 
 ```text
 ELF: .../gcc/bin/RTL8773E.hmi_dashboard_src_bank0/honeygui_src.elf
@@ -112,37 +117,39 @@ MP binary : 126,976 bytes  (124.0 KB)
 
 ### `west sync`
 
-**替代 `west update` 的推荐命令**，按顺序执行三步：
+**Recommended replacement for `west update`.** Runs three steps in order:
 
-1. **强制更新 manifest 仓库**（`.manifest/`）：`git fetch origin` + `git reset --hard origin/<branch>`
-2. **`west update`**：按最新 manifest YAML 同步所有 West project
-3. **submodule 更新**：对所有含 `.gitmodules` 的 project 执行 `git submodule update --init --recursive`
+1. **Force-update the manifest repo** (`.manifest/`): `git fetch origin` + `git reset --hard origin/<branch>`
+2. **`west update`**: sync all West projects per the latest manifest YAML
+3. **Submodule update**: run `git submodule update --init --recursive` for every project with a `.gitmodules`
 
 ```bash
 west sync
 
-# 可以透传任何 west update 的原生参数
+# Any native west update argument can be passed through
 west sync --narrow
 west sync -o=--depth=1
 ```
 
-> manifest 仓库处于 detached HEAD 时，步骤 1 会跳过 reset 并打印警告，不阻断后续流程。
+> If the manifest repo is in a detached HEAD state, step 1 skips the reset, prints a
+> warning, and does not block the rest of the flow.
 
-## MDK 工程
+## MDK Project
 
-MDK 工程使用 `board/evb/hmi_dashboard/mdk/` 下的 Keil 工程文件，与 west 无关，直接在 Keil IDE 中编译和下载即可。
+The MDK project uses the Keil project files under `board/evb/hmi_dashboard/mdk/` — it
+is unrelated to west. Build and flash directly from the Keil IDE.
 
-## 添加新命令
+## Adding a New Command
 
-1. 在 `west-commands.yml` 中注册：
+1. Register it in `west-commands.yml`:
 
 ```yaml
 - name: my-command
   class: MyCommand
-  help: 命令描述
+  help: Command description
 ```
 
-2. 在 `commands.py` 中实现：
+2. Implement it in `commands.py`:
 
 ```python
 class MyCommand(WestCommand):
@@ -157,6 +164,6 @@ class MyCommand(WestCommand):
         log.inf(f'workspace: {topdir}')
 ```
 
-## 参考
+## Reference
 
 - [West Extension Commands](https://docs.zephyrproject.org/latest/develop/west/extensions.html)
