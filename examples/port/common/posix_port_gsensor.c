@@ -41,6 +41,9 @@
 #define SC7A20_ADDR_HIGH        0x19
 #define SC7A20_ADDR_LOW         0x18
 
+/* SC7A20 的 sub-address auto-increment 位（bit7 = 1 才会连读多寄存器） */
+#define SC7A20_AUTO_INC         0x80
+
 /* CTRL_REG1 字段 */
 #define SC7A20_ODR_1HZ          (1u << 4)
 #define SC7A20_ODR_10HZ         (2u << 4)
@@ -118,11 +121,12 @@ static int gsensor_read_regs(gsensor_file_t *file, uint8_t reg,
     return posix_ioctl(file->i2c_fd, POSIX_I2C_IOCTL_READ_REG, &m);
 }
 
-/* 探测 0x19 / 0x18，命中 WHO_AM_I 的那个地址回写到 drv->i2c_addr */
+/* 探测 0x18 / 0x19，命中 WHO_AM_I 的那个地址回写到 drv->i2c_addr
+ * （顺序 LOW 先，因为 eBadge 板上 SA0 接 GND） */
 static bool gsensor_probe(gsensor_file_t *file)
 {
     gsensor_drv_t *drv = file->drv;
-    const uint8_t  addrs[2] = { SC7A20_ADDR_HIGH, SC7A20_ADDR_LOW };
+    const uint8_t  addrs[2] = { SC7A20_ADDR_LOW, SC7A20_ADDR_HIGH };
     for (uint8_t i = 0; i < 2; i++)
     {
         uint8_t id = 0;
@@ -134,7 +138,7 @@ static bool gsensor_probe(gsensor_file_t *file)
             return true;
         }
     }
-    drv->i2c_addr = SC7A20_ADDR_HIGH;
+    drv->i2c_addr = SC7A20_ADDR_LOW;
     drv->probed   = 0;
     return false;
 }
@@ -284,7 +288,14 @@ static void *gsensor_open(void *d, const char *p)
     /* 探测从地址 + 写默认配置 */
     if (!drv->probed)
     {
-        (void)gsensor_probe(f);
+        if (!gsensor_probe(f))
+        {
+            /* WHO_AM_I 都读不到，回收资源直接失败，避免 self-test/read 误报 OK */
+            posix_close(f->i2c_fd);
+            f->i2c_fd = POSIX_FD_NULL;
+            s_gsensor_file_used[f - s_gsensor_files] = 0;
+            return POSIX_OPEN_ERR;
+        }
     }
     (void)gsensor_apply_config(f);
     return f;
@@ -332,7 +343,7 @@ static posix_ssize_t gsensor_read(void *d, void *fv, void *buf, size_t count)
         }
     }
 
-    int r = gsensor_read_regs(file, SC7A20_REG_OUT_X_L, raw, 6);
+    int r = gsensor_read_regs(file, SC7A20_REG_OUT_X_L | SC7A20_AUTO_INC, raw, 6);
     if (r != POSIX_OK) { return POSIX_ERR_IO; }
 
     int16_t rx = (int16_t)((uint16_t)raw[1] << 8 | raw[0]);
@@ -435,10 +446,10 @@ const posix_driver_ops_t g_gsensor_ops =
 static gsensor_drv_t s_gsensor0 =
 {
     .unit         = 0,
-    .i2c_addr     = SC7A20_ADDR_HIGH,
+    .i2c_addr     = SC7A20_ADDR_LOW,   /* eBadge 板 SA0 接 GND → 0x18 */
     .probed       = 0,
     .i2c_path     = "/dev/i2c0",
-    .int_pin_path = "/dev/gpio0/p5",   /* 移植时改为实际 INT1 引脚路径；NULL 关闭中断模式 */
+    .int_pin_path = NULL,   /* 仅轮询模式；如需 DRDY 中断，填 "/dev/gpioX/pYY" */
 };
 
 /* ---------- 自动注册 ---------- */

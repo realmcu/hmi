@@ -348,16 +348,16 @@ const posix_driver_ops_t g_touch_ops =
 };
 
 /* ---------- 设备实例
- * i2c1  已在 overlay enabled（touch_device 挂在 i2c1 上）
- * INT   -> GPIOA2 -> /dev/gpio0/p2
- * RST   -> GPIOA3 -> /dev/gpio0/p3
+ * i2c1  已在 overlay enabled（SCL=P4_4, SDA=P4_3）
+ * INT   -> P0_0 -> /dev/gpio0/p0
+ * RST   -> P0_3 -> /dev/gpio0/p3
  * ---------------------------------------------------------------- */
 static touch_drv_t s_touch0 =
 {
     .unit         = 0,
     .i2c_addr     = CHSC6417_I2C_ADDR,
     .i2c_path     = "/dev/i2c1",
-    .int_pin_path = "/dev/gpio0/p2",
+    .int_pin_path = "/dev/gpio0/p0",
     .rst_pin_path = "/dev/gpio0/p3",
 };
 

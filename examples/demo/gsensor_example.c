@@ -139,6 +139,8 @@ static int do_gsensor_poll(const struct shell *sh)
             break;
         }
         shell_print(sh, "[poll %d] x=%d y=%d z=%d (mg)", i, a.x, a.y, a.z);
+        /* ODR=100Hz -> 10ms/sample；BDU 生效时不 delay 会读到同一帧 */
+        posix_port_delay_ms(200);
     }
     posix_close(gs);
     return 0;

@@ -11,7 +11,13 @@
 
 #include "ioctls/posix_ioctl_lcd.h"
 #include "rtl_lcdc.h"
+#if defined(CONFIG_REALTEK_LCD_SH8601Z_410_502_QSPI)
 #include "lcd_sh8601z_410_502_qspi.h"
+#elif defined(CONFIG_REALTEK_LCD_ST77916_360_360_QSPI)
+#include "lcd_st77916_360_360_rd_qspi.h"
+#else
+#error "posix_port_lcd.c: no supported panel Kconfig enabled"
+#endif
 
 /* ------------------------------------------------------------------ */
 /* Private types                                                        */

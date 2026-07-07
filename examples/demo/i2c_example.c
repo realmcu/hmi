@@ -275,8 +275,21 @@ static int cmd_i2c(const struct shell *sh, size_t argc, char **argv)
 {
     if (!s_i2c_inited) { posix_port_init_all(); s_i2c_inited = true; }
 
-    const char *bus_path = "/dev/i2c1";
+    /* argv[1] = 子命令; argv[2..] = 参数
+     * 允许通过 "bus=i2c0" / "bus=i2c1" 选总线，缺省 i2c1（touch）
+     * 例：
+     *   posix_i2c scan bus=i2c0
+     *   posix_i2c probe 0x19 bus=i2c0
+     */
     const char *sub = (argc >= 2) ? argv[1] : "scan";
+    const char *bus_path = "/dev/i2c1";
+    /* 从末尾扫描 bus= 前缀，覆盖默认值 */
+    for (size_t i = 1; i < argc; i++)
+    {
+        if (strncmp(argv[i], "bus=i2c0", 8) == 0) { bus_path = "/dev/i2c0"; }
+        else if (strncmp(argv[i], "bus=i2c1", 8) == 0) { bus_path = "/dev/i2c1"; }
+    }
+    shell_print(sh, "using %s", bus_path);
 
     if (strcmp(sub, "scan") == 0)
     {
@@ -291,7 +304,9 @@ static int cmd_i2c(const struct shell *sh, size_t argc, char **argv)
     {
         return do_touch_read(sh, bus_path);
     }
-    shell_error(sh, "usage: posix_i2c scan | posix_i2c probe <addr> | posix_i2c touch");
+    shell_error(sh, "usage: posix_i2c scan [bus=i2c0|bus=i2c1]"
+                " | posix_i2c probe <addr> [bus=i2c0|bus=i2c1]"
+                " | posix_i2c touch");
     return -1;
 }
 
