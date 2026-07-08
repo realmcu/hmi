@@ -115,6 +115,32 @@ section              size      addr
 MP binary : 126,976 bytes  (124.0 KB)
 ```
 
+### `west guilib`
+
+Rebuilds both HoneyGUI static libraries from source — armclang (MDK/Keil) and
+arm-none-eabi-gcc (GCC lib build modes) — and syncs them into `src/gui_lib/`.
+
+```bash
+west guilib
+```
+
+Runs both build scripts in turn:
+
+- `lib/armclang/bulidRTL8773E.bat` (Keil armclang toolchain,
+  `C:/Keil_v5/ARM/ArmCompilerforEmbedded6.22` by default)
+- `lib/arm-none-eabi-gcc/bulidRTL8773E.bat` (`arm-none-eabi-gcc` from PATH,
+  else `C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/13.2 Rel1/bin`)
+
+then copies each build's output into `board/evb/hmi_dashboard/src/gui_lib/`:
+
+- `lib/armclang/install/lib/gui.lib` → `src/gui_lib/armclang/gui.lib`
+- `lib/arm-none-eabi-gcc/install/lib/libgui.a` → `src/gui_lib/gcc/libgui.a`
+- `install/include/*` (identical on both sides) → `src/gui_lib/include/`
+
+> All three destination directories (`armclang/`, `gcc/`, `include/`) are
+> removed and recreated before copying, so files deleted upstream don't linger
+> as stale leftovers.
+
 ### `west sync`
 
 **Recommended replacement for `west update`.** Runs three steps in order:

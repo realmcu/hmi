@@ -101,6 +101,8 @@ typedef enum t_obj_type
     LIST,
     LIST_NOTE,
     MENU_CELLULAR,
+    CARD_LIST,
+    CARD_LIST_SLOT,
 } T_OBJ_TYPE;
 typedef enum
 {
@@ -136,9 +138,10 @@ typedef struct _gui_obj_t
     //start of run time
     void (* obj_cb)(struct _gui_obj_t *obj, T_OBJ_CB_TYPE cb_type);
     //end of run time
-    T_OBJ_TYPE type;                            //no need this , only use name
+    uint32_t type                       : 8;    // T_OBJ_TYPE; no need this, only use name
     uint32_t active                     : 1;    // this_widget flag means obj location in screen
-    uint32_t not_show                   : 1;
+uint32_t hidden                     :
+    1;    // if true, object is not rendered and does not receive events; replaces not_show
 
     uint32_t suppress_conflict_obj_cnt  : 6;
     uint32_t opacity_value              : 8;
@@ -151,6 +154,7 @@ typedef struct _gui_obj_t
     uint32_t has_destroy_cb             : 1;
     uint32_t need_preprocess            : 1;
     uint32_t has_subscribe              : 1;
+    uint32_t dirty                      : 1;    // widget self-redraw request flag
     uint32_t magic                      : 4;
     gui_event_dsc_t   *event_dsc;
     struct _gui_obj_t **suppress_conflict_obj_list; //chrild obj list that has the same event
@@ -158,6 +162,7 @@ typedef struct _gui_obj_t
     gui_matrix_t *matrix;
     gui_obj_timer_t *timer;
     void *user_data;
+    gui_rect_t last_render_rect;
 } gui_obj_t;
 
 

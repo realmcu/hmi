@@ -55,16 +55,17 @@ typedef enum
     GUI_EVENT_TOUCH_SCROLL_HORIZONTAL,
     GUI_EVENT_TOUCH_SCROLL_VERTICAL,
 
-    GUI_EVENT_TOUCH_TOUCH_RIGHT_SLIDE,
-    GUI_EVENT_TOUCH_TOUCH_LEFT_SLIDE,
+    GUI_EVENT_TOUCH_RIGHT_SLIDE_QUICK, // Quick slide at the edge of the screen
+    GUI_EVENT_TOUCH_LEFT_SLIDE_QUICK,  // Quick slide at the edge of the screen
+    GUI_EVENT_TOUCH_UP_SLIDE_QUICK,    // Quick slide at the edge of the screen
+    GUI_EVENT_TOUCH_DOWN_SLIDE_QUICK,  // Quick slide at the edge of the screen
 
 
     /** keyboard device events*/
     GUI_EVENT_KB_SHORT_PRESSED          = 0x0200,
     GUI_EVENT_KB_LONG_PRESSED,
 
-    GUI_EVENT_VIEW_SWITCH_DIRECT
-    /** wheel device events*/
+    GUI_EVENT_VIEW_SWITCH_DIRECT,
 
 } gui_event_code_t;
 

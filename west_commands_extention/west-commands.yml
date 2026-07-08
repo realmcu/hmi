@@ -18,6 +18,9 @@ west-commands:
       - name: size
         class: SizeCommand
         help: Show firmware memory usage via arm-none-eabi-size
+      - name: guilib
+        class: GuiLibCommand
+        help: Build HoneyGUI armclang + arm-none-eabi-gcc libs and sync into src/gui_lib/
       - name: sync
         class: SyncCommand
         help: Run west update then git submodule update for all projects

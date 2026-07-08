@@ -277,6 +277,84 @@ class FlashCommand(WestCommand):
         subprocess.run(cmd)
 
 
+# Both toolchains share the same bulidRTL8773E.bat / install layout
+# (lib/armclang and lib/arm-none-eabi-gcc are parallel directory structures),
+# just with a different compiler and static-lib output name.
+_GUI_TOOLCHAINS = [
+    {'name': 'armclang', 'src_dir': 'armclang', 'lib_name': 'gui.lib', 'dst_subdir': 'armclang'},
+    {'name': 'arm-none-eabi-gcc', 'src_dir': 'arm-none-eabi-gcc', 'lib_name': 'libgui.a', 'dst_subdir': 'gcc'},
+]
+
+
+class GuiLibCommand(WestCommand):
+    def __init__(self):
+        super().__init__(
+            'guilib', 'build and sync the HoneyGUI static libraries',
+            'Build the HoneyGUI armclang (MDK) and arm-none-eabi-gcc (GCC) '
+            'static libraries from source, then copy the resulting libs and '
+            'headers into board/evb/hmi_dashboard/src/gui_lib/'
+        )
+
+    def do_add_parser(self, parser_adder, **kwargs):
+        return parser_adder.add_parser(self.name, help=self.help,
+                                       description=self.description)
+
+    def do_run(self, args, unknown_args):
+        # cmake_src is the sdk root (computed relative to hmi_dashboard's own
+        # abspath), so it transparently absorbs the extra honeycomb/ wrapper
+        # directory that only exists in this dev workspace.
+        cmake_src = _cmake_src(self.manifest)
+        gui_lib_root = os.path.join(cmake_src, 'src', 'sample', 'gui', 'lib')
+        gui_lib_dir = os.path.join(cmake_src, 'board', 'evb', 'hmi_dashboard', 'src', 'gui_lib')
+
+        include_src = None
+        for tc in _GUI_TOOLCHAINS:
+            toolchain_dir = os.path.join(gui_lib_root, tc['src_dir'])
+            build_bat = os.path.join(toolchain_dir, 'bulidRTL8773E.bat')
+            if not os.path.exists(build_bat):
+                log.die(f'Build script not found: {build_bat}')
+
+            log.inf(f'[{tc["name"]}] Running {build_bat} ...')
+            # bulidRTL8773E.bat ends with `pause`; feed it a newline on stdin
+            # so it doesn't hang waiting for a keypress.
+            r = subprocess.run(['cmd', '/c', build_bat], cwd=toolchain_dir,
+                               input='\n', text=True)
+            if r.returncode != 0:
+                log.die(f'[{tc["name"]}] HoneyGUI build failed')
+
+            # NOTE: install prefix is a sibling of temp/, not nested inside
+            # it -- the bat's `cmake -B ./temp` omits -S, so the source dir
+            # (and thus CMAKE_INSTALL_PREFIX) resolves to toolchain_dir itself.
+            install_dir = os.path.join(toolchain_dir, 'install')
+            lib_src = os.path.join(install_dir, 'lib', tc['lib_name'])
+            tc_include_src = os.path.join(install_dir, 'include')
+            if not os.path.exists(lib_src):
+                log.die(f'[{tc["name"]}] Build did not produce {lib_src}')
+            if not os.path.isdir(tc_include_src):
+                log.die(f'[{tc["name"]}] Build did not produce {tc_include_src}')
+
+            dst_dir = os.path.join(gui_lib_dir, tc['dst_subdir'])
+            log.inf(f'[{tc["name"]}] Clearing {dst_dir}')
+            shutil.rmtree(dst_dir, ignore_errors=True)
+            os.makedirs(dst_dir)
+
+            log.inf(f'[{tc["name"]}] Copying {lib_src} -> {dst_dir}')
+            shutil.copy2(lib_src, dst_dir)
+
+            # Headers are toolchain-independent (same .config on both sides);
+            # keep the last build's output to sync into the shared include/ dir.
+            include_src = tc_include_src
+
+        include_dst = os.path.join(gui_lib_dir, 'include')
+        log.inf(f'Clearing {include_dst}')
+        shutil.rmtree(include_dst, ignore_errors=True)
+
+        log.inf(f'Copying {include_src} -> {include_dst}')
+        shutil.copytree(include_src, include_dst)
+
+        log.inf('Done.')
+
+
 class SyncCommand(WestCommand):
     def __init__(self):
         super().__init__(

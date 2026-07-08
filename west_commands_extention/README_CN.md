@@ -110,6 +110,32 @@ section              size      addr
 MP binary : 126,976 bytes  (124.0 KB)
 ```
 
+### `west guilib`
+
+从源码重新编译 HoneyGUI 的两套静态库——armclang（MDK/Keil）和
+arm-none-eabi-gcc（GCC lib 模式）——并同步到 `src/gui_lib/`。
+
+```bash
+west guilib
+```
+
+依次执行两个编译脚本：
+
+- `lib/armclang/bulidRTL8773E.bat`（Keil armclang 工具链，
+  默认路径 `C:/Keil_v5/ARM/ArmCompilerforEmbedded6.22`）
+- `lib/arm-none-eabi-gcc/bulidRTL8773E.bat`（优先用 PATH 里的
+  `arm-none-eabi-gcc`，否则 fallback 到
+  `C:/Program Files (x86)/Arm GNU Toolchain arm-none-eabi/13.2 Rel1/bin`）
+
+再把各自编译产物拷贝到 `board/evb/hmi_dashboard/src/gui_lib/`：
+
+- `lib/armclang/install/lib/gui.lib` → `src/gui_lib/armclang/gui.lib`
+- `lib/arm-none-eabi-gcc/install/lib/libgui.a` → `src/gui_lib/gcc/libgui.a`
+- `install/include/*`（两边内容一致） → `src/gui_lib/include/`
+
+> 拷贝前会依次清空 `armclang/`、`gcc/`、`include/` 三个目标目录，
+> 避免上游已删除的文件残留误导。
+
 ### `west sync`
 
 **替代 `west update` 的推荐命令**，按顺序执行三步：
