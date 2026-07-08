@@ -1,7 +1,8 @@
 /* ================================================================
- * Touch 驱动 POSIX 端口（platform-independent）
+ * Touch 驱动 POSIX 端口 —— CHSC6417（Chipsemi）
  *
- * 参考芯片：CHSC6417
+ * 与 posix_port_cst816d.c 并列存在；两份文件都会被 CMake glob 编入，
+ * 分别注册 /dev/chsc6417 与 /dev/cst816d，上层按需 open 其中之一。
  *
  * 完全通过 posix 框架上游设备操作硬件：
  *   /dev/i2cN       — I2C 总线（posix_ioctl_i2c.h）
@@ -48,25 +49,25 @@ typedef struct
     const char *i2c_path;
     const char *int_pin_path;   /* NULL = 轮询模式 */
     const char *rst_pin_path;   /* NULL = 不控制复位 */
-} touch_drv_t;
+} chsc6417_drv_t;
 
 /* ---------- per-open 文件私有数据 ---------- */
 typedef struct
 {
     bool                  in_use;
-    touch_drv_t          *drv;
+    chsc6417_drv_t       *drv;
     posix_touch_config_t  cfg;
     posix_fd_t            i2c_fd;
     posix_fd_t            int_fd;
     posix_fd_t            rst_fd;
     void                 *int_sem;
-} touch_file_t;
+} chsc6417_file_t;
 
-#define MAX_TOUCH_FILES  2
-static touch_file_t s_touch_files[MAX_TOUCH_FILES];
+#define CHSC6417_MAX_FILES  2
+static chsc6417_file_t s_chsc6417_files[CHSC6417_MAX_FILES];
 
 /* ---------- I2C 读取：先写 4 字节地址，再读 8 字节 ---------- */
-static int touch_read_raw(touch_file_t *f, uint8_t out[CHSC6X_READ_LEN])
+static int chsc6417_read_raw(chsc6417_file_t *f, uint8_t out[CHSC6X_READ_LEN])
 {
     uint32_t addr = CHSC6X_WRITE_ADDR;
     posix_i2c_msg_t m =
@@ -91,7 +92,7 @@ static int touch_read_raw(touch_file_t *f, uint8_t out[CHSC6X_READ_LEN])
 }
 
 /* ---------- I2C 寄存器写（电源控制等） ---------- */
-static int touch_write_reg(touch_file_t *f, uint8_t reg, uint8_t val)
+static int chsc6417_write_reg(chsc6417_file_t *f, uint8_t reg, uint8_t val)
 {
     posix_i2c_msg_t m =
     {
@@ -105,14 +106,14 @@ static int touch_write_reg(touch_file_t *f, uint8_t reg, uint8_t val)
 }
 
 /* ---------- INT 引脚 ISR ---------- */
-static void touch_int_isr(void *arg)
+static void chsc6417_int_isr(void *arg)
 {
-    touch_file_t *f = (touch_file_t *)arg;
+    chsc6417_file_t *f = (chsc6417_file_t *)arg;
     if (f && f->int_sem) { (void)posix_sem_give(f->int_sem); }
 }
 
 /* ---------- 复位芯片（参考 Zephyr 驱动时序） ---------- */
-static void touch_hw_reset(touch_file_t *f)
+static void chsc6417_hw_reset(chsc6417_file_t *f)
 {
     if (f->rst_fd == POSIX_FD_NULL) { return; }
 
@@ -128,7 +129,7 @@ static void touch_hw_reset(touch_file_t *f)
 }
 
 /* ---------- 建立 / 拆除 INT 中断 ---------- */
-static int touch_setup_irq(touch_file_t *f)
+static int chsc6417_setup_irq(chsc6417_file_t *f)
 {
     if (f->int_fd != POSIX_FD_NULL) { return POSIX_OK; }
     if (!f->drv->int_pin_path)      { return POSIX_ERR_NOSUPP; }
@@ -145,7 +146,7 @@ static int touch_setup_irq(touch_file_t *f)
 
     if (!f->int_sem)
     {
-        f->int_sem = posix_sem_create("touch_int", 0, 1);
+        f->int_sem = posix_sem_create("chsc6417_int", 0, 1);
         if (!f->int_sem)
         {
             posix_close(f->int_fd);
@@ -157,7 +158,7 @@ static int touch_setup_irq(touch_file_t *f)
     posix_gpio_irq_t irq =
     {
         .trigger  = POSIX_GPIO_INT_FALLING,
-        .callback = touch_int_isr,
+        .callback = chsc6417_int_isr,
         .arg      = f,
     };
     posix_ioctl(f->int_fd, POSIX_GPIO_IOCTL_SET_IRQ, &irq);
@@ -165,7 +166,7 @@ static int touch_setup_irq(touch_file_t *f)
     return POSIX_OK;
 }
 
-static void touch_teardown_irq(touch_file_t *f)
+static void chsc6417_teardown_irq(chsc6417_file_t *f)
 {
     if (f->int_fd != POSIX_FD_NULL)
     {
@@ -181,17 +182,17 @@ static void touch_teardown_irq(touch_file_t *f)
 }
 
 /* ---------- open ---------- */
-static void *touch_open(void *d, const char *p)
+static void *chsc6417_open(void *d, const char *p)
 {
     (void)p;
-    touch_drv_t  *drv = (touch_drv_t *)d;
-    touch_file_t *f   = NULL;
+    chsc6417_drv_t  *drv = (chsc6417_drv_t *)d;
+    chsc6417_file_t *f   = NULL;
 
-    for (int i = 0; i < MAX_TOUCH_FILES; i++)
+    for (int i = 0; i < CHSC6417_MAX_FILES; i++)
     {
-        if (!s_touch_files[i].in_use)
+        if (!s_chsc6417_files[i].in_use)
         {
-            f = &s_touch_files[i];
+            f = &s_chsc6417_files[i];
             memset(f, 0, sizeof(*f));
             f->in_use = true;
             break;
@@ -229,19 +230,19 @@ static void *touch_open(void *d, const char *p)
         }
     }
 
-    touch_hw_reset(f);
-    (void)touch_setup_irq(f);
+    chsc6417_hw_reset(f);
+    (void)chsc6417_setup_irq(f);
     return f;
 }
 
 /* ---------- close ---------- */
-static int touch_close(void *d, void *fv)
+static int chsc6417_close(void *d, void *fv)
 {
     (void)d;
-    touch_file_t *f = (touch_file_t *)fv;
+    chsc6417_file_t *f = (chsc6417_file_t *)fv;
     if (!f || !f->in_use) { return POSIX_OK; }
 
-    touch_teardown_irq(f);
+    chsc6417_teardown_irq(f);
     if (f->rst_fd != POSIX_FD_NULL) { posix_close(f->rst_fd); f->rst_fd = POSIX_FD_NULL; }
     if (f->i2c_fd != POSIX_FD_NULL) { posix_close(f->i2c_fd); f->i2c_fd = POSIX_FD_NULL; }
     f->in_use = false;
@@ -249,10 +250,10 @@ static int touch_close(void *d, void *fv)
 }
 
 /* ---------- read：读一次触摸快照 ---------- */
-static posix_ssize_t touch_read(void *d, void *fv, void *buf, size_t count)
+static posix_ssize_t chsc6417_read(void *d, void *fv, void *buf, size_t count)
 {
     (void)d;
-    touch_file_t *f = (touch_file_t *)fv;
+    chsc6417_file_t *f = (chsc6417_file_t *)fv;
 
     if (count < sizeof(posix_touch_data_t)) { return POSIX_ERR_INVAL; }
 
@@ -263,7 +264,7 @@ static posix_ssize_t touch_read(void *d, void *fv, void *buf, size_t count)
     }
 
     uint8_t raw[CHSC6X_READ_LEN];
-    if (touch_read_raw(f, raw) != POSIX_OK) { return POSIX_ERR_IO; }
+    if (chsc6417_read_raw(f, raw) != POSIX_OK) { return POSIX_ERR_IO; }
 
     posix_touch_data_t *data = (posix_touch_data_t *)buf;
     memset(data, 0, sizeof(*data));
@@ -299,17 +300,17 @@ static posix_ssize_t touch_read(void *d, void *fv, void *buf, size_t count)
     return (posix_ssize_t)sizeof(posix_touch_data_t);
 }
 
-static posix_ssize_t touch_write(void *d, void *f, const void *b, size_t c)
+static posix_ssize_t chsc6417_write(void *d, void *f, const void *b, size_t c)
 {
     (void)d; (void)f; (void)b; (void)c;
     return POSIX_ERR_NOSUPP;
 }
 
 /* ---------- ioctl ---------- */
-static int touch_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
+static int chsc6417_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
 {
     (void)d;
-    touch_file_t *f = (touch_file_t *)fv;
+    chsc6417_file_t *f = (chsc6417_file_t *)fv;
 
     switch (cmd)
     {
@@ -329,8 +330,8 @@ static int touch_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
 
     case POSIX_TOUCH_IOCTL_SET_POWER:
         if (!arg) { return POSIX_ERR_INVAL; }
-        return touch_write_reg(f, CHSC6417_REG_POWER,
-                               *(int *)arg ? 0x00 : 0x03);
+        return chsc6417_write_reg(f, CHSC6417_REG_POWER,
+                                  *(int *)arg ? 0x00 : 0x03);
 
     default:
         return POSIX_ERR_NOSUPP;
@@ -338,21 +339,21 @@ static int touch_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
 }
 
 /* ---------- 驱动函数表 ---------- */
-const posix_driver_ops_t g_touch_ops =
+static const posix_driver_ops_t g_chsc6417_ops =
 {
-    .open  = touch_open,
-    .close = touch_close,
-    .read  = touch_read,
-    .write = touch_write,
-    .ioctl = touch_ioctl,
+    .open  = chsc6417_open,
+    .close = chsc6417_close,
+    .read  = chsc6417_read,
+    .write = chsc6417_write,
+    .ioctl = chsc6417_ioctl,
 };
 
 /* ---------- 设备实例
  * i2c1  已在 overlay enabled（SCL=P4_4, SDA=P4_3）
- * INT   -> P0_0 -> /dev/gpio0/p0
- * RST   -> P0_3 -> /dev/gpio0/p3
+ * TP_INT -> P0_0 -> /dev/gpio0/p0
+ * TP_RST -> P0_3 -> /dev/gpio0/p3
  * ---------------------------------------------------------------- */
-static touch_drv_t s_touch0 =
+static chsc6417_drv_t s_chsc6417_0 =
 {
     .unit         = 0,
     .i2c_addr     = CHSC6417_I2C_ADDR,
@@ -361,8 +362,8 @@ static touch_drv_t s_touch0 =
     .rst_pin_path = "/dev/gpio0/p3",
 };
 
-static int touch_init(void)
+static int chsc6417_init(void)
 {
-    return posix_device_register("/dev/touch0", &g_touch_ops, &s_touch0);
+    return posix_device_register("/dev/chsc6417", &g_chsc6417_ops, &s_chsc6417_0);
 }
-POSIX_INIT_DEVICE_EXPORT(touch_init);
+POSIX_INIT_DEVICE_EXPORT(chsc6417_init);
