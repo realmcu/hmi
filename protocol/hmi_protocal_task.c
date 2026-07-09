@@ -56,8 +56,8 @@ static void l2_task(void *p_param)
             break;
 
         case L2_MSG_CALL:
-            /* 其它任务投递的回调：在 l2_task 上下文执行，避免与 BLE 帧处理
-             * 竞争 proto_send 等非线程安全资源 */
+            /* Callbacks posted by other tasks: execute in l2_task context to avoid
+             * racing with BLE frame processing for non-thread-safe resources like proto_send */
             if (msg.cb != NULL)
             {
                 msg.cb(&msg);
