@@ -14,39 +14,41 @@
  */
 
 /* ============================================================================
- * Dashboard WiFi 派发器（dispatcher）实现
+ * Dashboard WiFi dispatcher implementation.
  *
- * 整体架构（详见 dashboard_wifi.h 顶部的说明）：
+ * Overall architecture. See the top of dashboard_wifi.h for details:
  *
- *   ┌──────────────────────┐                  ┌──────────────────────┐
- *   │ SDK 内部 WiFi 任务   │                  │ shell 任务           │
- *   │ (driver / 协议栈)    │                  │ (用户输入 cmd)       │
- *   └──────────┬───────────┘                  └──────────┬───────────┘
- *              │ 调用 event_external_hdl[]                │ 调用 cmd handler
- *              │                                          │
- *              ▼                                          ▼
+ *   +----------------------+                  +----------------------+
+ *   | SDK internal WiFi    |                  | Shell task           |
+ *   | task (driver/stack)  |                  | (user commands)      |
+ *   +----------+-----------+                  +----------+-----------+
+ *              | calls event_external_hdl[]              | calls cmd handler
+ *              |                                         |
+ *              v                                         v
  *   on_join_status / on_dhcp_status            cmd_dashboard_ota_http
- *              │                                          │
- *              │ 构造 dashboard_wifi_msg_t                │ 构造 dashboard_wifi_msg_t
- *              │ rtos_queue_send                          │ rtos_queue_send
- *              │                                          │
- *              └─────────────┬────────────────────────────┘
- *                            ▼
- *                  ┌────────────────────┐
- *                  │ g_wifi_msg_queue   │ ← 同一条队列
- *                  └─────────┬──────────┘
- *                            │ rtos_queue_receive
- *                            ▼
- *                ┌─────────────────────────┐
- *                │ dash_board_wifi_task    │ ← 唯一消费者，单线程顺序
- *                │   switch (msg.type)     │
- *                └─────────────────────────┘
+ *              |                                         |
+ *              | build dashboard_wifi_msg_t              | build dashboard_wifi_msg_t
+ *              | rtos_queue_send                         | rtos_queue_send
+ *              |                                         |
+ *              +-------------+---------------------------+
+ *                            v
+ *                  +--------------------+
+ *                  | g_wifi_msg_queue   | <- shared queue
+ *                  +---------+----------+
+ *                            | rtos_queue_receive
+ *                            v
+ *                +-------------------------+
+ *                | dash_board_wifi_task    | <- sole consumer, ordered
+ *                |   switch (msg.type)     |
+ *                +-------------------------+
  *
- * --- 关于 SDK 自身的 WiFi 事件回调 -----------------------------------------
- * 我们覆盖的是 component/soc/usrcfg/amebagreen2/ameba_wificfg.c 里的
- * `__weak event_external_hdl[]` —— SDK 留给应用层的钩子。SDK 内部的认证、
- * 关联、DHCP、auto-reconnect 等业务逻辑，走的是 wifi_event_handle_internal /
- * wifi_event_handle_common 等独立路径，**不受影响**。我们这里只是订阅通知。
+ * --- About the SDK's own WiFi event callbacks -------------------------------
+ * This module overrides the `__weak event_external_hdl[]` in
+ * component/soc/usrcfg/amebagreen2/ameba_wificfg.c, which is the hook the SDK
+ * leaves for application code. SDK-internal authentication, association, DHCP,
+ * auto-reconnect, and related logic use independent paths such as
+ * wifi_event_handle_internal / wifi_event_handle_common, so they are not
+ * affected. This module only subscribes to notifications.
  * ============================================================================ */
 
 #include <stdlib.h>
@@ -61,37 +63,38 @@
 #include "lwip_netconf.h"
 
 #include "dashboard_wifi.h"
-/* 派发器需要看到各个业务插件的 run_xxx() 接口。
- * 加新业务时在这里追加 #include "dashboard_<feature>.h"。 */
+/* The dispatcher needs the run_xxx() interface for each service plugin.
+ * Add #include "dashboard_<feature>.h" here when adding a service. */
 #include "dashboard_ota_http.h"
 
 #define LOG_TAG "DASHBOARD-WIFI"
 
 /* ============================================================================
- * 消息定义（仅在本文件可见，不暴露给其他模块）
+ * Message definitions. They are private to this file and are not exposed to
+ * other modules.
  *
- * 用 type-tagged union 区分消息种类。新加业务只要：
- *   1) 加一个 MSG_CMD_xxx 枚举值
- *   2) 加一个 union 成员承载该业务的参数
- *   3) 在 .h 里加一个 dashboard_wifi_request_xxx() wrapper
- *   4) 在 dispatch_msg() 里加一个 case
+ * A type-tagged union distinguishes message kinds. To add a service:
+ *   1) Add a MSG_CMD_xxx enum value.
+ *   2) Add a union member carrying that service's parameters.
+ *   3) Add a dashboard_wifi_request_xxx() wrapper in the header.
+ *   4) Add a case in dispatch_msg().
  * ============================================================================ */
 typedef enum {
-	/* 来自 SDK 的事件（异步推上来） */
+	/* Events posted asynchronously by the SDK. */
 	DASHBOARD_WIFI_MSG_EVT_JOIN_STATUS,
 	DASHBOARD_WIFI_MSG_EVT_DHCP_STATUS,
 
-	/* 来自用户的命令（shell / GUI 触发） */
+	/* User commands triggered by the shell or GUI. */
 	DASHBOARD_WIFI_MSG_CMD_OTA_HTTP,
-	/* 未来扩展占位：
+	/* Future extension placeholders:
 	 * DASHBOARD_WIFI_MSG_CMD_STREAM_IMG,
 	 * DASHBOARD_WIFI_MSG_CMD_FILE_DOWNLOAD,
 	 * ...
 	 */
 } dashboard_wifi_msg_type_t;
 
-/* OTA 业务的参数（必须可被值拷贝到队列消息里）。
- * 这个结构体也被 dashboard_ota_http.c 里的 run_ota_http() 消费。 */
+/* OTA service parameters. They must be copyable by value into a queue message.
+ * run_ota_http() in dashboard_ota_http.c also consumes this structure's fields. */
 typedef struct {
 	char host[64];
 	u16  port;
@@ -117,23 +120,27 @@ typedef struct {
 } dashboard_wifi_msg_t;
 
 /* ============================================================================
- * 模块状态
+ * Module state.
  * ============================================================================ */
 static rtos_queue_t  g_wifi_msg_queue = NULL;
-static volatile bool g_wifi_online    = false;  /* 单写者（task）+ 多读者，volatile 即可 */
+static volatile bool g_wifi_online    = false;  /* Single writer (task) + multiple readers; volatile is enough. */
 static u8            g_join_state     = RTW_JOINSTATUS_UNKNOWN;
 
-/* run_ota_http() 在 dashboard_ota_http.h 里声明，用最朴素的参数列表
- * （不依赖任何业务专属 struct），派发器只把 union 里的字段解包传出去。
- * 加新业务时同样原则：每个业务一个 run_xxx(基本类型...)。 */
+/* run_ota_http() is declared in dashboard_ota_http.h with a plain parameter
+ * list that does not depend on any service-specific struct. The dispatcher only
+ * unpacks fields from the union and passes them through. Use the same principle
+ * for new services: one run_xxx(plain types...) function per service. */
 
 /* ============================================================================
- * 公共 API：投递消息（给 cmd handler 用）
+ * Public API helper: post a message, used by command handlers.
  *
- * 注意 wait_ms：
- *   - 0      = 不等队列空位，满了立即失败（适合事件回调，不能阻塞 SDK）
- *   - 100ms  = 等一小会（适合 cmd handler，给业务 task 一点时间消费旧消息）
- *   - 0xFFFFFFFF = 一直等（不推荐，shell 会卡）
+ * wait_ms semantics:
+ *   - 0          = Do not wait for queue space; fail immediately if full. This
+ *                  suits event callbacks, which must not block the SDK.
+ *   - 100 ms     = Wait briefly. This suits command handlers and gives the
+ *                  service task time to consume older messages.
+ *   - 0xFFFFFFFF = Wait forever. This is not recommended because it blocks the
+ *                  shell.
  * ============================================================================ */
 static int post_msg(const dashboard_wifi_msg_t *msg, uint32_t wait_ms)
 {
@@ -151,7 +158,7 @@ int dashboard_wifi_request_ota_http(const char *host, u16 port, const char *reso
 	dashboard_wifi_msg_t msg = {0};
 	msg.type = DASHBOARD_WIFI_MSG_CMD_OTA_HTTP;
 
-	const char *h = host     ? host     : "";  /* 空串让 run_ota_http 用默认值 */
+	const char *h = host     ? host     : "";  /* Empty string lets run_ota_http use defaults. */
 	const char *r = resource ? resource : "";
 
 	strncpy(msg.u.ota.host,     h, sizeof(msg.u.ota.host)     - 1);
@@ -167,10 +174,12 @@ bool dashboard_wifi_is_online(void)
 }
 
 /* ============================================================================
- * SDK 事件回调
+ * SDK event callbacks.
  *
- * 重要：这些函数运行在 SDK 内部线程上下文，**不能阻塞**。只做"打包字段 +
- * 入队"，全部细致处理留给派发器线程。入队用 0 超时，满了就丢弃事件并打 warn。
+ * Important: these functions run in the SDK's internal thread context and must
+ * not block. They only package fields and enqueue messages; detailed handling
+ * is left to the dispatcher thread. Enqueue with a 0 timeout, dropping the
+ * event and logging a warning if the queue is full.
  * ============================================================================ */
 static void on_join_status(u8 *evt_info)
 {
@@ -209,14 +218,16 @@ static void on_dhcp_status(u8 *evt_info)
 }
 
 /* ----------------------------------------------------------------------------
- * event_external_hdl[] 强符号定义。
+ * Strong symbol definition for event_external_hdl[].
  *
- * SDK 在 ameba_wificfg.c 里给了 __weak 默认值（一个无意义占位）。我们这里
- * 提供同名强符号，链接器选我们这份。SDK 收到事件后会遍历这个表分发到我们
- * 的 handler。
+ * The SDK provides a __weak default value in ameba_wificfg.c as a placeholder.
+ * This module provides the same symbol as a strong definition, so the linker
+ * selects this one. After the SDK receives events, it iterates this table and
+ * dispatches them to our handlers.
  *
- * 加新事件订阅：在数组里追加 {EVT_ID, your_callback}，并把 array_len 一起改。
- * 比如想监听 SoftAP 模式下 STA 关联：{RTW_EVENT_AP_STA_ASSOC, on_ap_sta_assoc}
+ * To subscribe to a new event, append {EVT_ID, your_callback} to the array and
+ * update array_len as well. For example, to listen for STA association in
+ * SoftAP mode: {RTW_EVENT_AP_STA_ASSOC, on_ap_sta_assoc}.
  * ---------------------------------------------------------------------------- */
 struct rtw_event_hdl_func_t event_external_hdl[2] = {
 	{RTW_EVENT_JOIN_STATUS, on_join_status},
@@ -226,7 +237,7 @@ u16 array_len_of_event_external_hdl =
 	sizeof(event_external_hdl) / sizeof(struct rtw_event_hdl_func_t);
 
 /* ============================================================================
- * 派发器内部：事件处理
+ * Dispatcher internals: event handling.
  * ============================================================================ */
 static const char *join_status_str(u8 s)
 {
@@ -254,7 +265,7 @@ static void handle_join_status(const dashboard_wifi_msg_t *msg)
 	case RTW_JOINSTATUS_SUCCESS:
 		RTK_LOGI(LOG_TAG, "Join SUCCESS, ch=%u rssi=%d (waiting DHCP...)\n",
 				 msg->u.join.channel, msg->u.join.rssi);
-		/* 故意不在这里设 online。等 DHCP_ADDRESS_ASSIGNED 事件再设。 */
+		/* Intentionally do not mark online here. Wait for DHCP_ADDRESS_ASSIGNED. */
 		break;
 	case RTW_JOINSTATUS_FAIL:
 		g_wifi_online = false;
@@ -264,7 +275,7 @@ static void handle_join_status(const dashboard_wifi_msg_t *msg)
 	case RTW_JOINSTATUS_DISCONNECT:
 		g_wifi_online = false;
 		RTK_LOGW(LOG_TAG, "DISCONNECTED, reason=%u\n", msg->u.join.disconn_reason);
-		/* SDK 默认 auto-reconnect 会自己尝试重连；想自定义就在这里 hook。 */
+		/* The SDK default auto-reconnect tries reconnecting itself; hook here to customize it. */
 		break;
 	default:
 		RTK_LOGD(LOG_TAG, "Join state: %s\n", join_status_str(msg->u.join.status));
@@ -291,16 +302,19 @@ static void handle_dhcp_status(const dashboard_wifi_msg_t *msg)
 }
 
 /* ============================================================================
- * 派发器主循环
+ * Dispatcher main loop.
  *
- * 单消费者顺序处理。事件类的 handle_xxx 通常很快（更新标志 + 打 log）；
- * 命令类的 run_xxx 可能阻塞很久（OTA 30s+，未来图片流 60s）—— 这是 by
- * design，期间新消息会在 queue 里排队，OTA 跑完再处理，无需互斥。
+ * A single consumer handles messages in order. Event handle_xxx functions are
+ * usually quick: update flags and log. Command run_xxx functions may block for
+ * a long time, such as OTA for 30s+ or a future image stream for 60s. This is by
+ * design: new messages queue up while OTA runs and are handled afterward, with
+ * no mutex required.
  *
- * 队列容量在 task 启动时设定（默认 16）：
- *   - 一次入网会产生 ~7 个 join 状态变化
- *   - DHCP 1~2 个事件
- *   - 加上零散的命令，16 足够容纳一次握手 + 几条 cmd
+ * Queue capacity is set when the task starts (default 16):
+ *   - One connection attempt produces about 7 join status changes.
+ *   - DHCP produces 1 or 2 events.
+ *   - With a few additional commands, 16 is enough for one handshake plus a few
+ *     commands.
  * ============================================================================ */
 static void dispatch_msg(const dashboard_wifi_msg_t *msg)
 {
@@ -312,8 +326,8 @@ static void dispatch_msg(const dashboard_wifi_msg_t *msg)
 		handle_dhcp_status(msg);
 		break;
 	case DASHBOARD_WIFI_MSG_CMD_OTA_HTTP:
-		/* 进入这里时如果 WiFi 不在线，run_ota_http 内部会自己 abort 并打 log。
-		 * 解包 union 里的 OTA 参数传给业务函数。 */
+		/* If WiFi is offline here, run_ota_http aborts internally and logs it.
+		 * Unpack OTA parameters from the union and pass them to the service function. */
 		(void)run_ota_http(msg->u.ota.host, msg->u.ota.port, msg->u.ota.resource);
 		break;
 	default:
@@ -326,8 +340,8 @@ void dash_board_wifi_task(void *param)
 {
 	UNUSED(param);
 
-	/* 必须在第一个 WiFi 事件可能到来之前完成 queue 创建。app_example()
-	 * 拉起这个 task 的时机已经足够早（在 wifi_init 之前）。 */
+	/* The queue must be created before the first WiFi event can arrive.
+	 * app_example() starts this task early enough, before wifi_init. */
 	if (rtos_queue_create(&g_wifi_msg_queue, 16, sizeof(dashboard_wifi_msg_t)) != RTK_SUCCESS) {
 		RTK_LOGE(LOG_TAG, "create wifi msg queue failed\n");
 		rtos_task_delete(NULL);

@@ -17,32 +17,36 @@
 #define DASHBOARD_OTA_HTTP_H
 
 /* ============================================================================
- * Dashboard OTA HTTP 模块对外接口
+ * Public interface for the Dashboard OTA HTTP module.
  *
- * 这是一个 dashboard_wifi 派发器之上的"业务插件"。对外只暴露：
- *   - 几个默认参数宏（DASHBOARD_OTA_HTTP_DEFAULT_*）
- *   - run_ota_http() —— 给派发器调度时调用，**不要**直接从其他地方调
+ * This is a service plugin on top of the dashboard_wifi dispatcher. It exposes
+ * only:
+ *   - Default parameter macros (DASHBOARD_OTA_HTTP_DEFAULT_*).
+ *   - run_ota_http(), called by the dispatcher only. Do not call it directly
+ *     from other code.
  *
- * Shell 命令 "ota_http" 在 .c 里通过 CMD_TABLE_DATA_SECTION 自注册，链接器
- * 自动收集，使用者不需要从 .h 里看到它。
+ * The "ota_http" shell command self-registers in the .c file through
+ * CMD_TABLE_DATA_SECTION. The linker collects it automatically, so users of
+ * this header do not need to see it.
  *
- * 使用方式：
- *   - 用户在串口输入 "ota_http [host] [port] [resource]"
- *   - cmd handler 调 dashboard_wifi_request_ota_http(...) 把请求塞进
- *     wifi 派发器队列
- *   - 派发器在自己的任务上下文调用 run_ota_http()，业务真正执行
+ * Usage:
+ *   - The user enters "ota_http [host] [port] [resource]" on the serial shell.
+ *   - The command handler calls dashboard_wifi_request_ota_http(...) to enqueue
+ *     the request into the WiFi dispatcher queue.
+ *   - The dispatcher calls run_ota_http() in its own task context, where the
+ *     service actually runs.
  *
- * 默认参数说明（dashboard_ota_http.c 也用同一份默认值）：
- *   HOST     — HTTP 服务器 IP。预设为 PC 的 WLAN 适配器 IP。
- *   PORT     — Realtek DownloadServer(HTTP) 默认监听 8082。
- *   RESOURCE — 服务器分发的固件名，对应 build 出来的 ota_all.bin。
+ * Default parameters, shared with dashboard_ota_http.c:
+ *   HOST     - HTTP server IP, preset to the PC WLAN adapter IP.
+ *   PORT     - Realtek DownloadServer (HTTP) listens on 8082 by default.
+ *   RESOURCE - Firmware name served by the server, matching built ota_all.bin.
  *
- * 用户可以在 shell 里全部覆写：
- *   ota_http                              全用默认
- *   ota_http 192.168.1.100                只覆写 host
- *   ota_http 192.168.1.100 8080           覆写 host + port
- *   ota_http 192.168.1.100 8080 a.bin     全部覆写
- *   ota_http ?                            打印 usage
+ * Users can override all defaults from the shell:
+ *   ota_http                              use all defaults
+ *   ota_http 192.168.1.100                override host only
+ *   ota_http 192.168.1.100 8080           override host and port
+ *   ota_http 192.168.1.100 8080 a.bin     override all parameters
+ *   ota_http ?                            print usage
  * ============================================================================ */
 
 #include "basic_types.h"   /* u16 */
@@ -56,19 +60,22 @@ extern "C" {
 #define DASHBOARD_OTA_HTTP_DEFAULT_RESOURCE "ota_all.bin"
 
 /**
- * @brief 真正执行一次 OTA HTTP 升级的阻塞函数。
+ * @brief Blocking function that performs one OTA HTTP upgrade.
  *
- * **只应由 dashboard_wifi 派发器调用**。普通调用方请用
- * dashboard_wifi_request_ota_http() 把请求异步入队。直接调这个函数会让
- * 调用者的任务被阻塞几十秒（HTTP 下载 + flash 写入）。
+ * This should only be called by the dashboard_wifi dispatcher. Normal callers
+ * should use dashboard_wifi_request_ota_http() to enqueue the request
+ * asynchronously. Calling this function directly blocks the caller task for
+ * tens of seconds while HTTP download and flash writing run.
  *
- * 任意参数传 NULL/空串/0，将自动回退到 DASHBOARD_OTA_HTTP_DEFAULT_*。
+ * Passing NULL, an empty string, or 0 for any parameter falls back to the
+ * corresponding DASHBOARD_OTA_HTTP_DEFAULT_* value.
  *
- * @param host      HTTP server 地址（IP 字符串）
- * @param port      端口
- * @param resource  HTTP 资源路径
- * @retval 0    成功（注意成功后函数通常不会返回，因为内部会 sys_reset）
- * @retval <0   失败（IP 没就绪 / malloc 失败 / ota_start 失败）
+ * @param host      HTTP server address as an IP string.
+ * @param port      Port.
+ * @param resource  HTTP resource path.
+ * @retval 0    Success. The function usually does not return on success
+ *              because it calls sys_reset internally.
+ * @retval <0   Failure: IP not ready, malloc failed, or ota_start failed.
  */
 int run_ota_http(const char *host, u16 port, const char *resource);
 
