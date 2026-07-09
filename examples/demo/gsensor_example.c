@@ -1,39 +1,39 @@
 // Zephyr Shell test: uart:~$ posix_gsensor [poll|irq]
 /* ================================================================
- * G-sensor 使用示例（含轮询 & 中断两种模式）
+ * G-sensor usage example (polling & interrupt modes)
  *
- * 数据通路完全走 POSIX 抽象：
- *   /dev/gsensor0 内部再 posix_open(/dev/i2c0) + posix_open(/dev/gpio0/pX)
- *   应用层只需要打开 gsensor 就够。
+ * Data path goes entirely through POSIX abstraction:
+ *   /dev/gsensor0 internally does posix_open(/dev/i2c0) + posix_open(/dev/gpio0/pX)
+ *   Application only needs to open gsensor.
  *
- * 模式选择：
- *   posix_gsensor_config_t.use_irq = 0  → 轮询：posix_read 不阻塞
- *   posix_gsensor_config_t.use_irq = 1  → 中断：DRDY 上升沿唤醒 posix_read
+ * Mode selection:
+ *   posix_gsensor_config_t.use_irq = 0  -> polling: posix_read non-blocking
+ *   posix_gsensor_config_t.use_irq = 1  -> interrupt: DRDY rising edge wakes posix_read
  *
- * !!! 当前实现状态（本工程 link 的是 custom-rtos 端口） !!!
- *   posix_port_i2c.c      — RTL876x 原生 I2C API 落地（真跑 SC7A20）
- *   posix_port_gsensor.c  — 完整逻辑（SC7A20 全套寄存器 + IRQ 阻塞 read）
- *   posix_port_gpio.c     — 仍为 stub。因此 use_irq=1 时 SET_IRQ 会返回 OK，
- *                           但 DRDY 中断实际不会触发，posix_read 会一直超时。
- *                           要用 IRQ 模式，需先把 GPIO 端口落地（Zephyr GPIO
- *                           subsystem 或 RTL876x 原生 API 二选一）。
+ * !!! Current implementation status (this project links custom-rtos port) !!!
+ *   posix_port_i2c.c      - RTL876x native I2C API implementation (actual SC7A20)
+ *   posix_port_gsensor.c  - full logic (SC7A20 complete registers + IRQ blocking read)
+ *   posix_port_gpio.c     - still a stub. So with use_irq=1, SET_IRQ returns OK,
+ *                           but DRDY interrupt never fires, posix_read always times out.
+ *                           To use IRQ mode, implement GPIO port first (Zephyr GPIO
+ *                           subsystem or RTL876x native API, pick one).
  *
- *   zephyr-rtk 端口保持独立 stub 副本，不影响本工程构建。
+ *   zephyr-rtk port keeps independent stub copy, unaffected by this project build.
  *
- * 编译要求：需要 posix.h + posix_ioctl_gsensor.h
+ * Build requirement: need posix.h + posix_ioctl_gsensor.h
  * ================================================================ */
 
 #include "posix.h"
 #include "ioctls/posix_ioctl_gsensor.h"
 
-/* ----------------- 轮询模式（最简） ----------------- */
+/* ----------------- Polling mode (simplest) ----------------- */
 void example_gsensor_poll(void)
 {
-    /* === 1. 打开 === */
+    /* === 1. Open === */
     posix_fd_t gs = posix_open("/dev/gsensor0");
     if (!gs) { return; }
 
-    /* === 2. 配置量程 ±2G、100Hz、轮询 === */
+    /* === 2. Config range +/-2G, 100Hz, polling === */
     posix_gsensor_config_t cfg =
     {
         .range     = POSIX_GSENSOR_RANGE_2G,
@@ -43,33 +43,33 @@ void example_gsensor_poll(void)
     };
     posix_ioctl(gs, POSIX_GSENSOR_IOCTL_SET_CONFIG, &cfg);
 
-    /* === 3. 读三轴加速度（mg） === */
+    /* === 3. Read 3-axis acceleration (mg) === */
     posix_gsensor_axis_t accel;
     posix_read(gs, &accel, sizeof(accel));
 
-    /* === 4. 自检（读 WHO_AM_I 校验） === */
+    /* === 4. Self-test (verify WHO_AM_I) === */
     int ret = posix_ioctl(gs, POSIX_GSENSOR_IOCTL_SELF_TEST, NULL);
-    /* ret == 0 表示正常 */
+    /* ret == 0 means OK */
 
-    /* === 5. 关闭 === */
+    /* === 5. Close === */
     posix_close(gs);
     (void)accel; (void)ret;
 }
 
-/* ----------------- 中断模式（推荐用于低占用读取） -----------------
- * 流程：
- *   SET_CONFIG{use_irq=1} 内部会：
- *     - posix_open /dev/gpio0/pX 拿 DRDY 引脚
- *     - 创建信号量、posix_ioctl(SET_IRQ + ENABLE_IRQ)
- *     - 写 SC7A20 CTRL_REG3，把 DRDY 路由到 INT1
- *   posix_read 会阻塞在内部信号量上，直到 ISR 触发 give。
+/* ----------------- Interrupt mode (recommended for low-overhead reads) -----------------
+ * Flow:
+ *   SET_CONFIG{use_irq=1} internally:
+ *     - posix_open /dev/gpio0/pX to get DRDY pin
+ *     - create semaphore, posix_ioctl(SET_IRQ + ENABLE_IRQ)
+ *     - write SC7A20 CTRL_REG3 to route DRDY to INT1
+ *   posix_read blocks on the internal semaphore until ISR triggers give.
  */
 void example_gsensor_irq(void)
 {
     posix_fd_t gs = posix_open("/dev/gsensor0");
     if (!gs) { return; }
 
-    /* 1. 开中断模式：±4G、50Hz */
+    /* 1. Enable interrupt mode: +/-4G, 50Hz */
     posix_gsensor_config_t cfg =
     {
         .range     = POSIX_GSENSOR_RANGE_4G,
@@ -83,24 +83,24 @@ void example_gsensor_irq(void)
         return;
     }
 
-    /* 2. 设置 DRDY 等待超时（默认 1000ms） */
+    /* 2. Set DRDY wait timeout (default 1000ms) */
     uint32_t tmo_ms = 500;
     posix_ioctl(gs, POSIX_GSENSOR_IOCTL_SET_TIMEOUT, &tmo_ms);
 
-    /* 3. 连续读 16 次 —— 每次 read 都阻塞到下一个数据就绪中断 */
+    /* 3. Read 16 times - each read blocks until next data-ready interrupt */
     for (int i = 0; i < 16; i++)
     {
         posix_gsensor_axis_t accel;
         posix_ssize_t n = posix_read(gs, &accel, sizeof(accel));
         if (n < 0)
         {
-            /* n == POSIX_ERR_TIMEOUT (-3) 表示中断超时 */
+            /* n == POSIX_ERR_TIMEOUT (-3) means interrupt timeout */
             break;
         }
         /* TODO: process accel.x/y/z (mg) */
     }
 
-    /* 4. 切回轮询模式（teardown IRQ） */
+    /* 4. Switch back to polling mode (teardown IRQ) */
     cfg.use_irq = 0;
     posix_ioctl(gs, POSIX_GSENSOR_IOCTL_SET_CONFIG, &cfg);
 
@@ -139,7 +139,7 @@ static int do_gsensor_poll(const struct shell *sh)
             break;
         }
         shell_print(sh, "[poll %d] x=%d y=%d z=%d (mg)", i, a.x, a.y, a.z);
-        /* ODR=100Hz -> 10ms/sample；BDU 生效时不 delay 会读到同一帧 */
+        /* ODR=100Hz -> 10ms/sample; without delay when BDU active, may read same frame */
         posix_port_delay_ms(200);
     }
     posix_close(gs);

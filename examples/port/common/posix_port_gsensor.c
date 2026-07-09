@@ -1,22 +1,22 @@
 /* ================================================================
- * G-sensor POSIX 端口（custom-rtos 模板）
+ * G-sensor POSIX port (custom-rtos template)
  *
- * 参考芯片：SC7A20 / SC7A20H（与 LIS2DH/LIS3DH 寄存器兼容）
+ * Reference chip: SC7A20 / SC7A20H (register-compatible with LIS2DH/LIS3DH)
  *
- * 关键架构：本驱动不直接访问硬件，而是通过 POSIX 框架自身的
- *   /dev/i2c0   — I²C 总线（posix_ioctl_i2c.h）
- *   /dev/gpio0/pXX — DRDY 中断引脚（posix_ioctl_gpio.h）
- * 两个上游设备完成所有寄存器读写与中断订阅。
+ * Key architecture: this driver does not access hardware directly, but goes through the POSIX framework
+ *   /dev/i2c0   — I2C bus (posix_ioctl_i2c.h)
+ *   /dev/gpio0/pXX — DRDY interrupt pin (posix_ioctl_gpio.h)
+ * Two upstream devices handle all register R/W and interrupt subscription.
  *
- * 中断模式（cfg.use_irq=1）：
- *   1. open 内 posix_open GPIO，注册 SET_IRQ 回调 gsensor_drdy_isr
- *   2. ISR 调 posix_sem_give() 释放 DRDY 信号量
- *   3. posix_read 先 posix_sem_take(timeout) 等中断，再走 I²C 读
+ * Interrupt mode (cfg.use_irq=1):
+ *   1. inside open: posix_open GPIO, register SET_IRQ callback gsensor_drdy_isr
+ *   2. ISR calls posix_sem_give() to release DRDY semaphore
+ *   3. posix_read waits for interrupt with posix_sem_take(timeout), then performs I2C read
  *
- * 轮询模式（cfg.use_irq=0 默认）：
- *   posix_read 直接发 I²C 读，不等中断
+ * Polling mode (cfg.use_irq=0 default):
+ *   posix_read directly issues I2C read without waiting for interrupt
  *
- * 实物 SC7A20 直驱参考见：
+ * Actual SC7A20 direct-drive reference:
  *   board/evb/eBadge/app/driver/gsensor_sc7a20.[ch]
  * ================================================================ */
 
@@ -29,11 +29,11 @@
 #include <stdbool.h>
 #include <string.h>
 
-/* ---------------- SC7A20 寄存器 ---------------- */
+/* ---------------- SC7A20 registers ---------------- */
 #define SC7A20_REG_WHO_AM_I     0x0F
 #define SC7A20_REG_CTRL_REG1    0x20   /* ODR + LPen + Z/Y/X enable */
-#define SC7A20_REG_CTRL_REG3    0x22   /* INT1 路由：I1_DRDY1 = bit4 */
-#define SC7A20_REG_CTRL_REG4    0x23   /* BDU + FS + 端序 */
+#define SC7A20_REG_CTRL_REG3    0x22   /* INT1 routing: I1_DRDY1 = bit4 */
+#define SC7A20_REG_CTRL_REG4    0x23   /* BDU + FS + endianness */
 #define SC7A20_REG_OUT_X_L      0x28
 
 #define SC7A20_CHIP_ID          0x11
@@ -41,10 +41,10 @@
 #define SC7A20_ADDR_HIGH        0x19
 #define SC7A20_ADDR_LOW         0x18
 
-/* SC7A20 的 sub-address auto-increment 位（bit7 = 1 才会连读多寄存器） */
+/* SC7A20 sub-address auto-increment bit (bit7=1 enables multi-register burst read) */
 #define SC7A20_AUTO_INC         0x80
 
-/* CTRL_REG1 字段 */
+/* CTRL_REG1 fields */
 #define SC7A20_ODR_1HZ          (1u << 4)
 #define SC7A20_ODR_10HZ         (2u << 4)
 #define SC7A20_ODR_25HZ         (3u << 4)
@@ -56,27 +56,27 @@
 #define SC7A20_XYZ_EN           0x07
 #define SC7A20_POWERDOWN        0x00
 
-/* CTRL_REG3 字段：DRDY1 中断输出到 INT1 引脚 */
+/* CTRL_REG3 fields: DRDY1 interrupt output to INT1 pin */
 #define SC7A20_I1_DRDY1         (1u << 4)
 
-/* CTRL_REG4 字段 */
+/* CTRL_REG4 fields */
 #define SC7A20_BDU              (1u << 7)
 #define SC7A20_FS_2G            (0u << 4)
 #define SC7A20_FS_4G            (1u << 4)
 #define SC7A20_FS_8G            (2u << 4)
 #define SC7A20_FS_16G           (3u << 4)
 
-/* 各量程 raw>>6 后 mg/digit */
+/* mg/digit after raw>>6 for each range */
 static const int s_sensitivity_mg[4] = { 4, 8, 16, 48 };
 
-/* ---------------- 驱动私有数据 ---------------- */
+/* ---------------- driver private data ---------------- */
 typedef struct
 {
     int         unit;
-    uint8_t     i2c_addr;        /* probe 命中地址 */
+    uint8_t     i2c_addr;        /* address hit by probe */
     uint8_t     probed;
     const char *i2c_path;        /* /dev/i2cX */
-    const char *int_pin_path;    /* /dev/gpioY/pZZ；NULL 表示无中断引脚 */
+    const char *int_pin_path;    /* /dev/gpioY/pZZ; NULL = no interrupt pin */
 } gsensor_drv_t;
 
 typedef struct
@@ -84,8 +84,8 @@ typedef struct
     gsensor_drv_t         *drv;
     posix_gsensor_config_t cfg;
     posix_fd_t             i2c_fd;
-    posix_fd_t             int_fd;       /* 中断模式下的 GPIO fd */
-    void                  *drdy_sem;     /* DRDY 信号量 */
+    posix_fd_t             int_fd;       /* GPIO fd in interrupt mode */
+    void                  *drdy_sem;     /* DRDY semaphore */
     uint32_t               drdy_timeout_ms;
 } gsensor_file_t;
 
@@ -93,7 +93,7 @@ typedef struct
 static gsensor_file_t s_gsensor_files[MAX_GSENSOR_FILES];
 static int            s_gsensor_file_used[MAX_GSENSOR_FILES];
 
-/* ---------------- I²C 寄存器助手（通过 posix /dev/i2cN） ---------------- */
+/* ---------------- I2C register helpers (via posix /dev/i2cN) ---------------- */
 static int gsensor_write_reg(gsensor_file_t *file, uint8_t reg, uint8_t val)
 {
     posix_i2c_msg_t m =
@@ -121,8 +121,8 @@ static int gsensor_read_regs(gsensor_file_t *file, uint8_t reg,
     return posix_ioctl(file->i2c_fd, POSIX_I2C_IOCTL_READ_REG, &m);
 }
 
-/* 探测 0x18 / 0x19，命中 WHO_AM_I 的那个地址回写到 drv->i2c_addr
- * （顺序 LOW 先，因为 eBadge 板上 SA0 接 GND） */
+/* Probe 0x18 / 0x19, write back the address matching WHO_AM_I to drv->i2c_addr
+ * (LOW first, because SA0 is tied to GND on eBadge board) */
 static bool gsensor_probe(gsensor_file_t *file)
 {
     gsensor_drv_t *drv = file->drv;
@@ -143,7 +143,7 @@ static bool gsensor_probe(gsensor_file_t *file)
     return false;
 }
 
-/* ---------------- 配置翻译 ---------------- */
+/* ---------------- config translation ---------------- */
 static uint8_t range_to_fs(uint8_t range)
 {
     switch (range)
@@ -167,15 +167,15 @@ static uint8_t odr_to_field(uint8_t odr_hz)
     return SC7A20_ODR_1HZ;
 }
 
-/* ---------------- DRDY 中断回调（运行在 ISR 上下文） ---------------- */
+/* ---------------- DRDY interrupt callback (runs in ISR context) ---------------- */
 static void gsensor_drdy_isr(void *arg)
 {
     gsensor_file_t *file = (gsensor_file_t *)arg;
-    /* posix_sem_give 必须是 ISR-safe（见 posix_device.h 注释） */
+    /* posix_sem_give must be ISR-safe (see posix_device.h comment) */
     if (file && file->drdy_sem) { (void)posix_sem_give(file->drdy_sem); }
 }
 
-/* ---------------- 把当前 cfg 写入芯片 + 同步 DRDY 路由 ---------------- */
+/* ---------------- write current cfg to chip + sync DRDY routing ---------------- */
 static int gsensor_apply_config(gsensor_file_t *file)
 {
     const posix_gsensor_config_t *cfg = &file->cfg;
@@ -192,30 +192,30 @@ static int gsensor_apply_config(gsensor_file_t *file)
     return POSIX_OK;
 }
 
-/* ---------------- 中断引脚启用 / 停用 ---------------- */
+/* ---------------- interrupt pin enable / disable ---------------- */
 static int gsensor_setup_irq(gsensor_file_t *file)
 {
-    if (file->int_fd != POSIX_FD_NULL) { return POSIX_OK; }   /* 已配过 */
+    if (file->int_fd != POSIX_FD_NULL) { return POSIX_OK; }   /* already configured */
     if (!file->drv->int_pin_path)      { return POSIX_ERR_NOSUPP; }
 
     file->int_fd = posix_open(file->drv->int_pin_path);
     if (file->int_fd == POSIX_FD_NULL) { return POSIX_ERR_NODEV; }
 
-    /* 配置为输入 + 上拉 */
+    /* configure as input + pull-up */
     posix_gpio_config_t pin_cfg =
     {
         .pin = 0, .direction = POSIX_GPIO_DIR_INPUT, .pull = POSIX_GPIO_PULL_UP,
     };
     (void)posix_ioctl(file->int_fd, POSIX_GPIO_IOCTL_SET_DIR, &pin_cfg);
 
-    /* 创建 DRDY 信号量（最大计数 1，避免边沿堆积） */
+    /* create DRDY semaphore (max count 1, avoid edge stacking) */
     if (!file->drdy_sem)
     {
         file->drdy_sem = posix_sem_create("gsensor_drdy", 0, 1);
         if (!file->drdy_sem) { posix_close(file->int_fd); file->int_fd = POSIX_FD_NULL; return POSIX_ERR_NOMEM; }
     }
 
-    /* 注册中断回调（上升沿；SC7A20 DRDY 默认高有效） */
+    /* register interrupt callback (rising edge; SC7A20 DRDY active-high by default) */
     posix_gpio_irq_t irq =
     {
         .pin = 0, .trigger = POSIX_GPIO_INT_RISING,
@@ -241,7 +241,7 @@ static void gsensor_teardown_irq(gsensor_file_t *file)
     }
 }
 
-/* ---------------- POSIX 驱动接口 ---------------- */
+/* ---------------- POSIX driver interface ---------------- */
 static void *gsensor_open(void *d, const char *p)
 {
     (void)p;
@@ -259,7 +259,7 @@ static void *gsensor_open(void *d, const char *p)
     }
     if (!f) { return POSIX_OPEN_ERR; }
 
-    /* 清空 file 结构（避免回收复用导致脏数据） */
+    /* clear file struct (prevent stale data from recycled entry) */
     memset(f, 0, sizeof(*f));
     f->drv = drv;
     f->cfg.range     = POSIX_GSENSOR_RANGE_2G;
@@ -269,7 +269,7 @@ static void *gsensor_open(void *d, const char *p)
     f->drdy_timeout_ms = 1000;
     f->int_fd = POSIX_FD_NULL;
 
-    /* 打开 I²C 总线 */
+    /* open I2C bus */
     f->i2c_fd = posix_open(drv->i2c_path);
     if (f->i2c_fd == POSIX_FD_NULL)
     {
@@ -277,7 +277,7 @@ static void *gsensor_open(void *d, const char *p)
         return POSIX_OPEN_ERR;
     }
 
-    /* 设置 I²C 速度（400kHz） */
+    /* set I2C speed (400kHz) */
     posix_i2c_config_t bus_cfg =
     {
         .speed_hz  = POSIX_I2C_SPEED_FAST,
@@ -285,12 +285,12 @@ static void *gsensor_open(void *d, const char *p)
     };
     (void)posix_ioctl(f->i2c_fd, POSIX_I2C_IOCTL_SET_CONFIG, &bus_cfg);
 
-    /* 探测从地址 + 写默认配置 */
+    /* probe slave address + write default config */
     if (!drv->probed)
     {
         if (!gsensor_probe(f))
         {
-            /* WHO_AM_I 都读不到，回收资源直接失败，避免 self-test/read 误报 OK */
+            /* can not read WHO_AM_I at all, free resources and fail to avoid false OK on self-test/read */
             posix_close(f->i2c_fd);
             f->i2c_fd = POSIX_FD_NULL;
             s_gsensor_file_used[f - s_gsensor_files] = 0;
@@ -307,7 +307,7 @@ static int gsensor_close(void *d, void *fv)
     gsensor_file_t *f = (gsensor_file_t *)fv;
     if (!f) { return POSIX_OK; }
 
-    /* 关电：CTRL_REG1 = POWERDOWN */
+    /* power down: CTRL_REG1 = POWERDOWN */
     if (f->i2c_fd != POSIX_FD_NULL)
     {
         (void)gsensor_write_reg(f, SC7A20_REG_CTRL_REG1, SC7A20_POWERDOWN);
@@ -320,8 +320,8 @@ static int gsensor_close(void *d, void *fv)
     return POSIX_OK;
 }
 
-/* posix_read = 读三轴加速度（单位 mg）
- * 若 use_irq=1，先阻塞等 DRDY 信号量，再 I²C 读 */
+/* posix_read = read 3-axis acceleration (in mg)
+ * if use_irq=1, first block on DRDY semaphore, then I2C read */
 static posix_ssize_t gsensor_read(void *d, void *fv, void *buf, size_t count)
 {
     (void)d;
@@ -334,7 +334,7 @@ static posix_ssize_t gsensor_read(void *d, void *fv, void *buf, size_t count)
     {
         if (!file->drdy_sem)
         {
-            /* 应用层先 SET_CONFIG{use_irq=1} 才会建好；否则降级失败 */
+            /* app must first SET_CONFIG{use_irq=1} to create it; otherwise degrade to failure */
             return POSIX_ERR_NODEV;
         }
         if (posix_sem_take(file->drdy_sem, file->drdy_timeout_ms) != 0)
@@ -381,7 +381,7 @@ static int gsensor_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
             int r = gsensor_apply_config(file);
             if (r != POSIX_OK) { return r; }
 
-            /* IRQ 状态切换 */
+            /* IRQ state transition */
             if (new_cfg.use_irq && !old_use_irq)
             {
                 r = gsensor_setup_irq(file);
@@ -421,7 +421,7 @@ static int gsensor_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
         }
 
     case POSIX_GSENSOR_IOCTL_READ_TEMP:
-        /* SC7A20 无独立温度通道，保持模板默认 */
+        /* SC7A20 has no dedicated temperature channel, keep template default */
         return POSIX_ERR_NOSUPP;
 
     case POSIX_GSENSOR_IOCTL_SET_TIMEOUT:
@@ -446,13 +446,13 @@ const posix_driver_ops_t g_gsensor_ops =
 static gsensor_drv_t s_gsensor0 =
 {
     .unit         = 0,
-    .i2c_addr     = SC7A20_ADDR_LOW,   /* eBadge 板 SA0 接 GND → 0x18 */
+    .i2c_addr     = SC7A20_ADDR_LOW,   /* eBadge board SA0 tied to GND -> 0x18 */
     .probed       = 0,
     .i2c_path     = "/dev/i2c0",
-    .int_pin_path = NULL,   /* 仅轮询模式；如需 DRDY 中断，填 "/dev/gpioX/pYY" */
+    .int_pin_path = NULL,   /* polling only; for DRDY interrupt, set "/dev/gpioX/pYY" */
 };
 
-/* ---------- 自动注册 ---------- */
+/* ---------- auto-registration ---------- */
 static int gsensor_init(void)
 {
     return posix_device_register("/dev/gsensor0", &g_gsensor_ops, &s_gsensor0);

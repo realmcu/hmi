@@ -1,14 +1,15 @@
 /* ================================================================
- * I2C 控制器 POSIX 端口（RTL87x3G / RTL876x 原生驱动直调）
+ * I2C controller POSIX port (direct RTL87x3G / RTL876x native driver calls)
  *
- * 路径：/dev/i2c0
+ * Path: /dev/i2c0
  *
- * 该文件直接调用 rtl876x_i2c.h / rtl876x_pinmux.h / rtl876x_rcc.h
- * 提供的原生驱动 API（I2C_Init / I2C_MasterWrite / I2C_RepeatRead ...），
- * 而不是过 hw_* 间接钩子。定位对齐 Zephyr 板级 I²C driver 的
- * 常见做法：POSIX 层做上层抽象，底层直吃 SDK。
+ * This file directly calls native driver APIs from rtl876x_i2c.h / rtl876x_pinmux.h / rtl876x_rcc.h
+ * (I2C_Init / I2C_MasterWrite / I2C_RepeatRead ...),
+ * rather than going through hw_* indirection hooks. Aligns with common
+ * Zephyr board-level I2C driver practice: POSIX layer for upper abstraction,
+ * bottom layer directly consumes SDK.
  *
- * 板级引脚（与 board/evb/eBadge/app/driver/gsensor_sc7a20.c 一致）：
+ * Board pins (consistent with board/evb/eBadge/app/driver/gsensor_sc7a20.c):
  *   I2C0 SCL = P3_5   SDA = P3_4
  * ================================================================ */
 
@@ -23,20 +24,20 @@
 #include "rtl876x_pinmux.h"
 #include "rtl876x_i2c.h"
 
-/* ---------------- I²C 控制器配置 ---------------- */
+/* ---------------- I2C controller config ---------------- */
 typedef struct
 {
-    int                unit;         /* 0 → /dev/i2c0 */
-    I2C_TypeDef       *bus;          /* 硬件基址 */
+    int                unit;         /* 0 -> /dev/i2c0 */
+    I2C_TypeDef       *bus;          /* hardware base address */
     uint8_t            pin_scl;
     uint8_t            pin_sda;
-    uint8_t            func_scl;     /* Pinmux 功能号 */
+    uint8_t            func_scl;     /* Pinmux function number */
     uint8_t            func_sda;
     uint32_t           apb_periph;
     uint32_t           apb_clock;
     uint32_t           default_hz;
     uint8_t            hw_inited;
-    uint8_t            cur_slave;    /* 缓存以避免每次都写 SlaveAddress */
+    uint8_t            cur_slave;    /* cache to avoid writing SlaveAddress every time */
 } i2c_drv_t;
 
 typedef struct
@@ -49,10 +50,10 @@ typedef struct
 #define MAX_I2C_FILES   4
 static i2c_file_t s_i2c_files[MAX_I2C_FILES];
 
-/* ---------------- 硬件初始化：pin + RCC + I2C_Init ---------------- */
+/* ---------------- HW init: pin + RCC + I2C_Init ---------------- */
 static bool i2c_hw_init(i2c_drv_t *drv, uint32_t speed_hz, uint8_t addr_bits)
 {
-    /* Pad 上拉，进入 pinmux 模式 */
+    /* Pad pull-up, enter pinmux mode */
     Pad_PullConfigValue(drv->pin_scl, 1);
     Pad_PullConfigValue(drv->pin_sda, 1);
     Pinmux_Config(drv->pin_scl, drv->func_scl);
@@ -62,14 +63,14 @@ static bool i2c_hw_init(i2c_drv_t *drv, uint32_t speed_hz, uint8_t addr_bits)
     Pad_Config(drv->pin_sda, PAD_PINMUX_MODE, PAD_IS_PWRON, PAD_PULL_UP,
                PAD_OUT_DISABLE, PAD_OUT_LOW);
 
-    /* 上电时钟：先关后开，保证寄存器复位 */
+    /* Power-up clock: disable then enable to ensure register reset */
     RCC_PeriphClockCmd(drv->apb_periph, drv->apb_clock, DISABLE);
     RCC_PeriphClockCmd(drv->apb_periph, drv->apb_clock, ENABLE);
 
-    /* 控制器：Master 模式、7 / 10 bit 寻址、开 ACK */
+    /* Controller: Master mode, 7/10 bit addressing, ACK enabled */
     I2C_InitTypeDef cfg;
     I2C_StructInit(&cfg);
-    cfg.I2C_Clock        = 40000000;      /* 内部时钟 40 MHz */
+    cfg.I2C_Clock        = 40000000;      /* internal clock 40 MHz */
     cfg.I2C_ClockSpeed   = speed_hz;
     cfg.I2C_DeviveMode   = I2C_DeviveMode_Master;
     cfg.I2C_AddressMode  = (addr_bits == POSIX_I2C_ADDR_10BIT)
@@ -80,7 +81,7 @@ static bool i2c_hw_init(i2c_drv_t *drv, uint32_t speed_hz, uint8_t addr_bits)
     return true;
 }
 
-/* ---------------- I²C 事务包装 ---------------- */
+/* ---------------- I2C transaction wrappers ---------------- */
 static bool i2c_hw_write(i2c_drv_t *drv, uint16_t addr,
                          const uint8_t *buf, size_t len)
 {
@@ -116,7 +117,7 @@ static bool i2c_hw_write_then_read(i2c_drv_t *drv, uint16_t addr,
                           rbuf, (uint16_t)rlen) == I2C_Success;
 }
 
-/* ---------------- POSIX 驱动接口 ---------------- */
+/* ---------------- POSIX driver interface ---------------- */
 static void *i2c_open(void *d, const char *p)
 {
     (void)p;
@@ -146,7 +147,7 @@ static void *i2c_open(void *d, const char *p)
             return POSIX_OPEN_ERR;
         }
         drv->hw_inited  = 1;
-        drv->cur_slave  = 0xFF;   /* 强制第一次事务写 SlaveAddress */
+        drv->cur_slave  = 0xFF;   /* force first transaction to write SlaveAddress */
     }
     return f;
 }
@@ -159,14 +160,14 @@ static int i2c_close(void *d, void *fv)
     return POSIX_OK;
 }
 
-/* I2C 不走数据流，read/write 恒不支持 */
+/* I2C has no data stream, read/write always unsupported */
 static posix_ssize_t i2c_read(void *d, void *f, void *b, size_t c)
 { (void)d; (void)f; (void)b; (void)c; return POSIX_ERR_NOSUPP; }
 
 static posix_ssize_t i2c_write(void *d, void *f, const void *b, size_t c)
 { (void)d; (void)f; (void)b; (void)c; return POSIX_ERR_NOSUPP; }
 
-/* 构造子地址 byte 数组（最多 2 字节，大端） */
+/* Build sub-address byte array (max 2 bytes, big-endian) */
 static int build_subaddr(const posix_i2c_msg_t *m, uint8_t out[2])
 {
     if (m->reg_len == 0) { return 0; }
@@ -187,7 +188,7 @@ static int i2c_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
         {
             if (!arg) { return POSIX_ERR_INVAL; }
             posix_i2c_config_t *cfg = (posix_i2c_config_t *)arg;
-            /* 只有频率或寻址位数变了才重 init（避免不必要的 pin 重配置） */
+            /* Only re-init if frequency or addressing bits changed (avoid unnecessary pin reconfig) */
             if (cfg->speed_hz != file->cfg.speed_hz ||
                 cfg->addr_bits != file->cfg.addr_bits)
             {
@@ -213,7 +214,7 @@ static int i2c_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
             uint8_t sub[2]; int slen = build_subaddr(m, sub);
             if (slen < 0) { return POSIX_ERR_INVAL; }
 
-            /* 子地址 + payload 串成单一事务，避免中间 STOP */
+            /* Concatenate sub-address + payload into single transaction, avoid mid-STOP */
             uint8_t stack[16];
             size_t  total = (size_t)slen + m->len;
             if (total > sizeof(stack)) { return POSIX_ERR_NOMEM; }
@@ -268,7 +269,7 @@ const posix_driver_ops_t g_i2c_ops =
     .ioctl = i2c_ioctl,
 };
 
-/* ---------- 设备实例 + 自动注册 ---------- */
+/* ---------- device instance + auto-registration ---------- */
 static i2c_drv_t s_i2c0 =
 {
     .unit       = 0,

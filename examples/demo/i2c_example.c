@@ -1,24 +1,24 @@
 // Zephyr Shell test: uart:~$ posix_i2c [scan|probe <addr>]
 /* ================================================================
- * I2C 总线使用示例
+ * I2C bus usage example
  *
- * 路径：/dev/i2c1（i2c0 在当前板级 overlay 中未 enabled）
+ * Path: /dev/i2c1 (i2c0 not enabled in current board overlay)
  *
- * I2C 没有"数据流"语义，因此 posix_read / posix_write 直接返回 NOSUPP。
- * 所有事务通过 ioctl 表达，四个常用命令：
- *   POSIX_I2C_IOCTL_WRITE_REG  写子地址 + payload（单一 START/STOP）
- *   POSIX_I2C_IOCTL_READ_REG   写子地址 + repeated-start 读多字节
- *   POSIX_I2C_IOCTL_RAW_WRITE  纯写（不带子地址）
- *   POSIX_I2C_IOCTL_RAW_READ   纯读（不带子地址）
+ * I2C has no "data stream" semantics, so posix_read / posix_write return NOSUPP directly.
+ * All transactions expressed via ioctl, four common commands:
+ *   POSIX_I2C_IOCTL_WRITE_REG  write sub-address + payload (single START/STOP)
+ *   POSIX_I2C_IOCTL_READ_REG   write sub-address + repeated-start read multi-byte
+ *   POSIX_I2C_IOCTL_RAW_WRITE  raw write (no sub-address)
+ *   POSIX_I2C_IOCTL_RAW_READ   raw read (no sub-address)
  *
- * 编译要求：需要 posix.h + posix_ioctl_i2c.h
+ * Build requirement: need posix.h + posix_ioctl_i2c.h
  * ================================================================ */
 
 #include "posix.h"
 #include "ioctls/posix_ioctl_i2c.h"
 
-/* ---------------- 场景 1：配置总线并 ACK 探测某个从地址 ---------------- */
-/* RTL87x3G I2C 驱动不支持 0 字节写，改用读 1 字节探测 ACK */
+/* ---------------- Scenario 1: configure bus and probe slave address by ACK ---------------- */
+/* RTL87x3G I2C driver does not support 0-byte write, use 1-byte read to probe ACK */
 static int i2c_probe_addr(posix_fd_t bus, uint16_t addr)
 {
     uint8_t dummy = 0;
@@ -26,7 +26,7 @@ static int i2c_probe_addr(posix_fd_t bus, uint16_t addr)
     return posix_ioctl(bus, POSIX_I2C_IOCTL_RAW_READ, &m);
 }
 
-/* ---------------- 场景 2：读单个寄存器（1 字节子地址） ---------------- */
+/* ---------------- Scenario 2: read single register (1-byte sub-address) ---------------- */
 static int i2c_read_reg8(posix_fd_t bus, uint16_t addr, uint8_t reg, uint8_t *val)
 {
     posix_i2c_msg_t m =
@@ -40,7 +40,7 @@ static int i2c_read_reg8(posix_fd_t bus, uint16_t addr, uint8_t reg, uint8_t *va
     return posix_ioctl(bus, POSIX_I2C_IOCTL_READ_REG, &m);
 }
 
-/* ---------------- 场景 3：写单个寄存器 ---------------- */
+/* ---------------- Scenario 3: write single register ---------------- */
 static int i2c_write_reg8(posix_fd_t bus, uint16_t addr, uint8_t reg, uint8_t val)
 {
     posix_i2c_msg_t m =
@@ -54,7 +54,7 @@ static int i2c_write_reg8(posix_fd_t bus, uint16_t addr, uint8_t reg, uint8_t va
     return posix_ioctl(bus, POSIX_I2C_IOCTL_WRITE_REG, &m);
 }
 
-/* ---------------- 场景 4：burst 读（例：从 gsensor 读 6 字节三轴） ---------------- */
+/* ---------------- Scenario 4: burst read (e.g., read 6-byte 3-axis from gsensor) ---------------- */
 static int i2c_read_burst(posix_fd_t bus, uint16_t addr,
                           uint8_t reg, uint8_t *buf, size_t len)
 {
@@ -70,15 +70,15 @@ static int i2c_read_burst(posix_fd_t bus, uint16_t addr,
 }
 
 /* ================================================================
- * 完整流程示例：打开 /dev/i2c1 → 配 400kHz → 探 SC7A20 → 读 WHO_AM_I → 读三轴
+ * Full flow example: open /dev/i2c1 -> set 400kHz -> probe SC7A20 -> read WHO_AM_I -> read 3-axis
  * ================================================================ */
 void example_i2c(void)
 {
-    /* === 1. 打开总线 === */
+    /* === 1. Open bus === */
     posix_fd_t bus = posix_open("/dev/i2c1");
     if (!bus) { return; }
 
-    /* === 2. 设置总线频率 400kHz（Fast mode） === */
+    /* === 2. Set bus frequency 400kHz (Fast mode) === */
     posix_i2c_config_t cfg =
     {
         .speed_hz  = POSIX_I2C_SPEED_FAST,
@@ -86,28 +86,28 @@ void example_i2c(void)
     };
     posix_ioctl(bus, POSIX_I2C_IOCTL_SET_CONFIG, &cfg);
 
-    /* === 3. 探测 SC7A20 从地址（0x19 或 0x18） === */
+    /* === 3. Probe SC7A20 slave address (0x19 or 0x18) === */
     uint16_t sc7a20 = 0;
     if (i2c_probe_addr(bus, 0x19) == POSIX_OK) { sc7a20 = 0x19; }
     else if (i2c_probe_addr(bus, 0x18) == POSIX_OK) { sc7a20 = 0x18; }
     if (!sc7a20) { posix_close(bus); return; }
 
-    /* === 4. 读 WHO_AM_I(0x0F)，SC7A20 应为 0x11 === */
+    /* === 4. Read WHO_AM_I(0x0F), SC7A20 should be 0x11 === */
     uint8_t who = 0;
     i2c_read_reg8(bus, sc7a20, 0x0F, &who);
     /* who == 0x11 */
 
-    /* === 5. 写 CTRL_REG1 = 0x57 (ODR=100Hz, Normal, XYZ enable) === */
+    /* === 5. Write CTRL_REG1 = 0x57 (ODR=100Hz, Normal, XYZ enable) === */
     i2c_write_reg8(bus, sc7a20, 0x20, 0x57);
-    /* CTRL_REG4 = 0x80 (BDU, ±2g) */
+    /* CTRL_REG4 = 0x80 (BDU, +/-2g) */
     i2c_write_reg8(bus, sc7a20, 0x23, 0x80);
 
-    /* === 6. burst 读 6 字节（X_L..Z_H），子地址 bit7=1 用于自增 === */
+    /* === 6. Burst read 6 bytes (X_L..Z_H), sub-addr bit7=1 for auto-increment === */
     uint8_t xyz[6] = {0};
     i2c_read_burst(bus, sc7a20, 0x28 | 0x80, xyz, 6);
-    /* xyz[0..5] = x_l,x_h,y_l,y_h,z_l,z_h（左对齐 int16） */
+    /* xyz[0..5] = x_l,x_h,y_l,y_h,z_l,z_h (left-aligned int16) */
 
-    /* === 7. 关闭 === */
+    /* === 7. Close === */
     posix_close(bus);
     (void)who;
 }
@@ -121,7 +121,7 @@ void example_i2c(void)
 
 static bool s_i2c_inited = false;
 
-/* 扫描 0x08~0x77（保留头/尾地址） */
+/* Scan 0x08~0x77 (reserved head/tail addresses) */
 static int do_i2c_scan(const struct shell *sh, const char *bus_path)
 {
     posix_fd_t bus = posix_open(bus_path);
@@ -129,7 +129,7 @@ static int do_i2c_scan(const struct shell *sh, const char *bus_path)
 
     posix_i2c_config_t cfg =
     {
-        .speed_hz  = POSIX_I2C_SPEED_STANDARD,   /* 扫描降到 100kHz 更稳 */
+        .speed_hz  = POSIX_I2C_SPEED_STANDARD,   /* scan at 100kHz for stability */
         .addr_bits = POSIX_I2C_ADDR_7BIT,
     };
     posix_ioctl(bus, POSIX_I2C_IOCTL_SET_CONFIG, &cfg);
@@ -168,9 +168,9 @@ static int do_i2c_scan(const struct shell *sh, const char *bus_path)
     return 0;
 }
 
-/* 单地址探测：
- * 普通设备：RAW_READ 1 字节看 ACK
- * CHSC6417（0x2E）：需先写 4 字节地址 0x2c000020 才会响应，特殊处理 */
+/* Single address probe:
+ * Normal device: RAW_READ 1 byte for ACK
+ * CHSC6417 (0x2E): requires writing 4-byte address 0x2c000020 first, special handling */
 static int do_i2c_probe(const struct shell *sh, const char *bus_path, uint16_t addr)
 {
     posix_fd_t bus = posix_open(bus_path);
@@ -186,7 +186,7 @@ static int do_i2c_probe(const struct shell *sh, const char *bus_path, uint16_t a
     int r;
     if (addr == 0x2E)
     {
-        /* CHSC6417 特殊协议：写 4 字节地址再读 1 字节 */
+        /* CHSC6417 special protocol: write 4-byte address then read 1 byte */
         uint32_t write_addr = 0x2c000020u;
         posix_i2c_msg_t wr = { .addr = addr, .reg = 0, .reg_len = 0,
                                .buf = (uint8_t *) &write_addr, .len = 4
@@ -220,8 +220,8 @@ static int do_i2c_probe(const struct shell *sh, const char *bus_path, uint16_t a
     return 0;
 }
 
-/* CHSC6417 读取：先写 4 字节地址 0x2c000020，再读 8 字节
- * 与 Zephyr chsc6417 驱动 chsc6x_process() 协议一致 */
+/* CHSC6417 read: write 4-byte address 0x2c000020 first, then read 8 bytes
+ * consistent protocol with Zephyr chsc6417 driver chsc6x_process() */
 static int do_touch_read(const struct shell *sh, const char *bus_path)
 {
     posix_fd_t bus = posix_open(bus_path);
@@ -230,13 +230,13 @@ static int do_touch_read(const struct shell *sh, const char *bus_path)
     posix_i2c_config_t cfg = { .speed_hz = POSIX_I2C_SPEED_FAST, .addr_bits = POSIX_I2C_ADDR_7BIT };
     posix_ioctl(bus, POSIX_I2C_IOCTL_SET_CONFIG, &cfg);
 
-    /* 写 4 字节地址 */
+    /* write 4-byte address */
     uint32_t write_addr = 0x2c000020u;
     posix_i2c_msg_t wr = { .addr = 0x2E, .reg = 0, .reg_len = 0, .buf = (uint8_t *) &write_addr, .len = 4 };
     int r = posix_ioctl(bus, POSIX_I2C_IOCTL_RAW_WRITE, &wr);
     if (r != POSIX_OK) { shell_error(sh, "write addr failed: %d", r); posix_close(bus); return -1; }
 
-    /* 读 8 字节 */
+    /* read 8 bytes */
     uint8_t output[8] = {0};
     posix_i2c_msg_t rd = { .addr = 0x2E, .reg = 0, .reg_len = 0, .buf = output, .len = 8 };
     r = posix_ioctl(bus, POSIX_I2C_IOCTL_RAW_READ, &rd);
@@ -246,7 +246,7 @@ static int do_touch_read(const struct shell *sh, const char *bus_path)
                 output[0], output[1], output[2], output[3],
                 output[4], output[5], output[6], output[7]);
 
-    /* 有效帧的 header 应为 0xff；否则视为无数据/仲裁失败/竞争污染 */
+    /* valid frame header should be 0xff; otherwise treat as no data/arbitration loss/bus contention */
     if (output[0] != 0xff)
     {
         shell_print(sh, "invalid frame (header=0x%02x, expect 0xff)", output[0]);
@@ -275,15 +275,15 @@ static int cmd_i2c(const struct shell *sh, size_t argc, char **argv)
 {
     if (!s_i2c_inited) { posix_port_init_all(); s_i2c_inited = true; }
 
-    /* argv[1] = 子命令; argv[2..] = 参数
-     * 允许通过 "bus=i2c0" / "bus=i2c1" 选总线，缺省 i2c1（touch）
-     * 例：
+    /* argv[1] = sub-command; argv[2..] = arguments
+     * allow selecting bus via "bus=i2c0" / "bus=i2c1", default i2c1 (touch)
+     * e.g.:
      *   posix_i2c scan bus=i2c0
      *   posix_i2c probe 0x19 bus=i2c0
      */
     const char *sub = (argc >= 2) ? argv[1] : "scan";
     const char *bus_path = "/dev/i2c1";
-    /* 从末尾扫描 bus= 前缀，覆盖默认值 */
+    /* scan from end for bus= prefix, override default */
     for (size_t i = 1; i < argc; i++)
     {
         if (strncmp(argv[i], "bus=i2c0", 8) == 0) { bus_path = "/dev/i2c0"; }

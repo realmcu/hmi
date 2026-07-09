@@ -1,12 +1,12 @@
 /* ================================================================
- * PWM 使用示例
+ * PWM usage example
  *
- * 功能：打开 PWM0 → 配置 50Hz 舵机控制 → 动态调占空比 → 关闭
+ * Usage: open PWM0 -> configure 50Hz servo control -> dynamically adjust duty cycle -> close
  *
- * PWM 没有流式数据，read/write 返回 NOSUPP，
- * 全部操作通过 ioctl 完成。
+ * PWM has no streaming data, read/write returns NOSUPP,
+ * all operations done via ioctl.
  *
- * 编译要求：需要 posix.h + posix_ioctl_pwm.h
+ * Build requirement: need posix.h + posix_ioctl_pwm.h
  * ================================================================ */
 
 #include "posix.h"
@@ -14,44 +14,44 @@
 
 void example_pwm(void)
 {
-    /* === 1. 打开设备 === */
+    /* === 1. Open device === */
     posix_fd_t pwm = posix_open("/dev/pwm0");
     if (pwm == POSIX_FD_NULL)
     {
         return;
     }
 
-    /* === 2. 配置：50Hz, 7.5% 占空比 === */
-    /* 舵机：50Hz 周期 20ms
-     *   0.5ms 脉宽  →  0°  (2.5%)
-     *   1.5ms 脉宽  →  90° (7.5%)
-     *   2.5ms 脉宽  →  180°(12.5%) */
+    /* === 2. Config: 50Hz, 7.5% duty cycle === */
+    /* Servo: 50Hz period 20ms
+     *   0.5ms pulse  ->  0deg  (2.5%)
+     *   1.5ms pulse  ->  90deg (7.5%)
+     *   2.5ms pulse  ->  180deg(12.5%) */
     posix_pwm_config_t cfg =
     {
         .channel    = 0,
-        .freq_hz    = 50,           /* 20ms 周期 */
-        .duty_cycle = 0.075f,       /* 1.5ms 脉宽 = 中位 */
+        .freq_hz    = 50,           /* 20ms period */
+        .duty_cycle = 0.075f,       /* 1.5ms pulse = center */
         .polarity   = POSIX_PWM_POLARITY_NORMAL,
     };
     posix_ioctl(pwm, POSIX_PWM_IOCTL_SET_CONFIG, &cfg);
 
-    /* === 3. 启动输出 === */
+    /* === 3. Start output === */
     posix_ioctl(pwm, POSIX_PWM_IOCTL_START, &(int) {0}); /* channel 0 */
 
-    /* === 4. 动态调脉宽（微秒） === */
-    /* 转到 0° */
+    /* === 4. Dynamic pulse width adjust (us) === */
+    /* Rotate to 0deg */
     posix_ioctl(pwm, POSIX_PWM_IOCTL_SET_PULSE,
     &(posix_pwm_config_t) { .channel = 0, .pulse_us = 500 });
-    /* 延时... */
+    /* Delay... */
 
-    /* 转到 180° */
+    /* Rotate to 180deg */
     posix_ioctl(pwm, POSIX_PWM_IOCTL_SET_DUTY,
     &(posix_pwm_config_t) { .channel = 0, .duty_cycle = 0.125f });
 
-    /* === 5. 停止输出 === */
+    /* === 5. Stop output === */
     posix_ioctl(pwm, POSIX_PWM_IOCTL_STOP, &(int) {0});
 
-    /* === 6. 关闭 === */
+    /* === 6. Close === */
     posix_close(pwm);
 }
 
