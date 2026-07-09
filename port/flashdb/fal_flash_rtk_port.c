@@ -2,16 +2,18 @@
  * Copyright (c) 2024, Realtek Semiconductor Corporation.
  * SPDX-License-Identifier: Apache-2.0
  *
- * FAL Flash 移植层 —— RTL87x2G eBadge 平台
+ * FAL Flash porting layer -- RTL87x2G eBadge platform
  *
- * 使用 Realtek FMC API（fmc_api.h）实现 FAL 所需的
- * init / read / write / erase 四个操作。
+ * Uses Realtek FMC API (fmc_api.h) to implement the four FAL
+ * operations: init / read / write / erase.
  *
- * fmc_flash_nor_xxx 的 addr 参数为 Flash 物理绝对地址（0x70000000 起）。
- * FAL ops 的 offset 参数为相对于 fal_flash_dev.addr 的偏移，
- * 因此：abs_addr = RTK_FLASH_START_ADDR + offset
+ * The addr parameter of fmc_flash_nor_xxx is the Flash physical
+ * absolute address (starting from 0x70000000).
+ * The offset parameter of FAL ops is relative to fal_flash_dev.addr,
+ * so: abs_addr = RTK_FLASH_START_ADDR + offset
  *
- * 此文件属于应用工程移植层，FlashDB 仓库本身不包含此文件。
+ * This file belongs to the application porting layer; the FlashDB
+ * repository itself does not include this file.
  */
 
 #include <fal_def.h>
@@ -19,19 +21,19 @@
 #include "fal_cfg.h"
 
 /* ============================================================
- * FAL ops 实现
+ * FAL ops implementation
  * ============================================================ */
 
 static int rtk_flash_init(void)
 {
-    /* FMC 由平台启动流程初始化，此处无需额外操作 */
+    /* FMC is initialized by the platform startup sequence, no additional ops needed here */
     log_i("RTK onchip flash (FMC) ready, base=0x%08lx size=%luMB",
           RTK_FLASH_START_ADDR, RTK_FLASH_SIZE >> 20);
     return 0;
 }
 
 /**
- * @param offset  相对于 Flash 设备起始地址（RTK_FLASH_START_ADDR）的偏移
+ * @param offset  Offset relative to the Flash device base address (RTK_FLASH_START_ADDR)
  */
 static int rtk_flash_read(long offset, uint8_t *buf, size_t size)
 {
@@ -46,13 +48,13 @@ static int rtk_flash_read(long offset, uint8_t *buf, size_t size)
 }
 
 /**
- * @param offset  相对于 Flash 设备起始地址的偏移
+ * @param offset  Offset relative to the Flash device base address
  */
 static int rtk_flash_write(long offset, const uint8_t *buf, size_t size)
 {
     uint32_t abs_addr = RTK_FLASH_START_ADDR + (uint32_t)offset;
 
-    /* fmc_flash_nor_write 的 data 参数为 void*，const 转换安全 */
+    /* fmc_flash_nor_write data param is void*, const cast is safe */
     if (!fmc_flash_nor_write(abs_addr, (void *)buf, (uint32_t)size))
     {
         log_e("Flash write failed, abs_addr=0x%08x size=%u", abs_addr, (unsigned)size);
@@ -62,10 +64,10 @@ static int rtk_flash_write(long offset, const uint8_t *buf, size_t size)
 }
 
 /**
- * @param offset  相对于 Flash 设备起始地址的偏移（需 4KB 对齐）
- * @param size    需为 4KB 整数倍
+ * @param offset  Offset relative to the Flash device base address (must be 4KB aligned)
+ * @param size    Must be a multiple of 4KB
  *
- * fmc_flash_nor_erase 每次擦除一个扇区，循环处理整个区域。
+ * fmc_flash_nor_erase erases one sector at a time; loops over the entire region.
  */
 static int rtk_flash_erase(long offset, size_t size)
 {
@@ -84,8 +86,8 @@ static int rtk_flash_erase(long offset, size_t size)
 }
 
 /* ============================================================
- * FAL Flash 设备描述符
- * 在 fal_cfg.h 中通过 extern 引用，加入 FAL_FLASH_DEV_TABLE
+ * FAL Flash device descriptor
+ * Referenced via extern in fal_cfg.h, added to FAL_FLASH_DEV_TABLE
  * ============================================================ */
 const struct fal_flash_dev rtk_onchip_flash =
 {
