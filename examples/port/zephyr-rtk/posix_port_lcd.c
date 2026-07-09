@@ -25,10 +25,6 @@
 
 #define MAX_LCD_FILES   2
 
-/* SH8601Z panel geometry */
-#define SH8601Z_WIDTH   410
-#define SH8601Z_HEIGHT  502
-#define SH8601Z_BPP     16   /* RGB565 default */
 
 /**
  * @brief Per-device (driver-level) data.
@@ -130,17 +126,15 @@ static int lcd_close(void *drv_data, void *file_priv)
 /**
  * @brief Write pixel data to the LCD.
  *
- * Two calling conventions are supported:
+ * count 语义（对齐 posix_ioctl_lcd.h 顶部约定）：
+ *   len 是【字节数】，与 UART/SPI/I2C 等其它设备保持一致。
+ *   port 层按 file->cfg.bpp 折算成 RTK HAL 期望的像素数：
+ *     RGB565 (bpp=16): pixels = len / 2
+ *     RGB888 (bpp=24): pixels = len / 3
+ *   len 必须能被 (bpp/8) 整除，否则返回 POSIX_ERR_INVAL。
  *
- *   a) buf points to a posix_lcd_write_t that carries {x,y,w,h,data,len}
- *      — if posix_lcd_write_t is defined in the ioctl header.
- *
- *   b) buf is a raw pixel buffer whose byte length equals
- *      (cfg.width * cfg.height * cfg.bpp / 8), i.e. a full-frame blit.
- *      The current SET_WINDOW rect is used in this case.
- *
- * Because the ioctl header provided does NOT define posix_lcd_write_t,
- * we always use convention (b): raw buffer + current window.
+ * 目标窗口取自 file->window（上一次 SET_WINDOW 记录的 rect），
+ * write 不会自动重置窗口起点。
  */
 static posix_ssize_t lcd_write(void *drv_data, void *file_priv,
                                const void *buf, size_t len)
@@ -153,15 +147,25 @@ static posix_ssize_t lcd_write(void *drv_data, void *file_priv,
         return 0;
     }
 
+    /* 字节数 → 像素数：RTK HAL 的 rtk_lcd_hal_start_transfer 期望像素数
+     * （内部 GDMA burst 用 Word=4B/2 像素，len>>1 得到 word 数），
+     * 因此这里必须做单位换算，不能把字节数原样透传。 */
+    uint8_t bytes_per_pixel = file->cfg.bpp / 8;
+    if (bytes_per_pixel == 0 || (len % bytes_per_pixel) != 0)
+    {
+        return POSIX_ERR_INVAL;
+    }
+    uint32_t pixels = (uint32_t)(len / bytes_per_pixel);
+
     /* Apply the window that was last set via SET_WINDOW ioctl */
     rtk_lcd_hal_set_window(file->window.x, file->window.y,
                            file->window.w, file->window.h);
 
     /* Kick off the transfer and wait for completion */
-    rtk_lcd_hal_start_transfer((void *)buf, (uint32_t)len);
+    rtk_lcd_hal_start_transfer((void *)buf, pixels);
     rtk_lcd_hal_transfer_done();
 
-    return (posix_ssize_t)len;
+    return (posix_ssize_t)len;   /* 与 count 对称，返回字节数 */
 }
 
 static posix_ssize_t lcd_read(void *drv_data, void *file_priv, void *buf, size_t count)
@@ -203,13 +207,14 @@ static int lcd_ioctl(void *drv_data, void *file_priv,
             return 0;
         }
 
-    /* ---- window ---- */
+    /* ---- window ----
+     * 只记录到 file->window，实际写硬件窗口寄存器统一在 lcd_write 里
+     * 完成。避免"SET_WINDOW 时写一次、write 前再写一次"的重复调用，
+     * 也让"多次 SET_WINDOW 后只做一次刷屏"这种用法零开销。 */
     case POSIX_LCD_IOCTL_SET_WINDOW:
         {
             if (!arg) { return POSIX_ERR_INVAL; }
-            posix_lcd_rect_t *r = (posix_lcd_rect_t *)arg;
-            file->window = *r;
-            rtk_lcd_hal_set_window(r->x, r->y, r->w, r->h);
+            file->window = *(posix_lcd_rect_t *)arg;
             return 0;
         }
 
@@ -274,17 +279,20 @@ static const posix_driver_ops_t g_lcd_ops =
     .ioctl = lcd_ioctl,
 };
 
-/* SH8601Z: 410 x 502, RGB565 (16 bpp), QSPI */
+
 static lcd_drv_t s_lcd0 =
 {
     .unit = 0,
-    .w    = SH8601Z_WIDTH,
-    .h    = SH8601Z_HEIGHT,
-    .bpp  = SH8601Z_BPP,
+    .w    = 0,
+    .h    = 0,
+    .bpp  = 0,
 };
 
 static int lcd_init(void)
 {
+    s_lcd0.w   = rtk_lcd_hal_get_width();
+    s_lcd0.h   = rtk_lcd_hal_get_height();
+    s_lcd0.bpp = rtk_lcd_hal_get_pixel_bits();
     return posix_device_register("/dev/lcd0", &g_lcd_ops, &s_lcd0);
 }
 POSIX_INIT_DEVICE_EXPORT(lcd_init);
