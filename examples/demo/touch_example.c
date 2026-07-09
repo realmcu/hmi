@@ -20,6 +20,8 @@
  * ================================================================ */
 
 #include "posix.h"
+#include "posix_init.h"
+#include "posix_port.h"
 #include "ioctls/posix_ioctl_touch.h"
 
 void example_touch(void)
@@ -28,10 +30,9 @@ void example_touch(void)
     posix_fd_t tp = posix_open("/dev/touch0");
     if (!tp) { return; }
 
-    /* === 2. 配置（面板分辨率 / swap_xy；i2c_addr 由 port 层内置） === */
+    /* === 2. 配置（面板分辨率 / swap_xy；I²C 从机地址不在上层配置里） === */
     posix_touch_config_t cfg =
     {
-        .i2c_addr = 0,       /* 0 = 保留 port 内置地址 */
         .width    = 360,     /* 按当前面板改 */
         .height   = 360,
         .swap_xy  = 0,
@@ -51,10 +52,85 @@ void example_touch(void)
     posix_close(tp);
 }
 
+/* ================================================================
+ * Boot 自测：main() 里直接调用，不用敲 shell 命令
+ *
+ * 起一个独立线程做单次读取：
+ *   posix_port_init_all → open /dev/touch0 → 阻塞等一次 INT
+ *   → 打印一次结果 → close → 线程退出
+ *
+ * 想再读就再敲 shell 命令 posix_touch open/read/close。
+ * ================================================================ */
+#include <zephyr/kernel.h>
+
+#define TOUCH_SELFTEST_STACK   1024
+#define TOUCH_SELFTEST_PRIO    10
+
+static K_THREAD_STACK_DEFINE(s_selftest_stack, TOUCH_SELFTEST_STACK);
+static struct k_thread       s_selftest_thread;
+
+static void touch_selftest_task(void *p1, void *p2, void *p3)
+{
+    (void)p1; (void)p2; (void)p3;
+
+    /* 保证 posix 设备表已注册（其实 posix_init.c 用链接段自动跑过了；
+     * 显式再调一次是幂等的，防止启动时序有变时静默失败）。 */
+    posix_port_init_all();
+
+    posix_fd_t tp = posix_open("/dev/touch0");
+    if (tp == POSIX_FD_NULL)
+    {
+        printk("[touch selftest] open /dev/touch0 failed\n");
+        return;
+    }
+
+    posix_touch_config_t cfg =
+    {
+        .width = 360, .height = 360, .swap_xy = 0,
+    };
+    posix_ioctl(tp, POSIX_TOUCH_IOCTL_SET_CONFIG, &cfg);
+
+    printk("[touch selftest] /dev/touch0 opened, INT armed. Touch the screen.\n");
+
+    /* 单次读取：阻塞直到 INT 到达（或芯片超时视为 release） */
+    posix_touch_data_t data;
+    int ret = posix_read(tp, &data, sizeof(data));
+
+    if (ret == POSIX_ERR_TIMEOUT)
+    {
+        printk("[touch selftest] no touch (timeout)\n");
+    }
+    else if (ret < 0)
+    {
+        printk("[touch selftest] read err %d\n", ret);
+    }
+    else if (data.point_count == 0)
+    {
+        printk("[touch selftest] release (no touch in release window)\n");
+    }
+    else
+    {
+        printk("[touch selftest] x=%u y=%u %s\n",
+               data.points[0].x, data.points[0].y,
+               data.points[0].status == POSIX_TOUCH_PRESS ? "press" : "release");
+    }
+
+    posix_close(tp);
+    printk("[touch selftest] done, /dev/touch0 closed\n");
+}
+
+void touch_selftest_start(void)
+{
+    k_thread_create(&s_selftest_thread, s_selftest_stack,
+                    K_THREAD_STACK_SIZEOF(s_selftest_stack),
+                    touch_selftest_task, NULL, NULL, NULL,
+                    K_PRIO_PREEMPT(TOUCH_SELFTEST_PRIO), 0, K_NO_WAIT);
+    k_thread_name_set(&s_selftest_thread, "touch_st");
+}
+
 #ifdef CONFIG_SHELL
 #include <zephyr/shell/shell.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/kernel.h>
 #include <string.h>
 #include "posix_port.h"
 LOG_MODULE_REGISTER(touch_demo, LOG_LEVEL_INF);
@@ -64,55 +140,6 @@ LOG_MODULE_REGISTER(touch_demo, LOG_LEVEL_INF);
 static bool       s_posix_touch_inited = false;
 static posix_fd_t s_touch_fd = POSIX_FD_NULL;
 static char       s_touch_opened_path[32];
-
-/* ---------- 持续读线程 ---------- *
- * open 后由 read 子命令启动，close 停。posix_read 会阻塞在芯片 INT
- * 信号量上（CST816D release_ms=30ms 超时/CHSC6417 100ms 超时），因此
- * 线程能感知到 s_reader_running 变化的最坏延迟就是这个超时窗口。
- */
-static K_THREAD_STACK_DEFINE(s_reader_stack, 1024);
-static struct k_thread     s_reader_thread;
-static volatile bool       s_reader_running = false;
-static struct k_sem        s_reader_done;   /* 线程退出后 give，close 端 take */
-static bool                s_reader_done_inited = false;
-
-static void touch_reader_task(void *p1, void *p2, void *p3)
-{
-    const struct shell *sh = (const struct shell *)p1;
-    (void)p2; (void)p3;
-
-    while (s_reader_running)
-    {
-        posix_touch_data_t data;
-        int ret = posix_read(s_touch_fd, &data, sizeof(data));
-
-        if (!s_reader_running) { break; }   /* close 期间被叫醒，直接退 */
-
-        if (ret == POSIX_ERR_TIMEOUT)
-        {
-            /* CHSC6417 语义：100ms 内无 INT —— 不打印，避免刷屏 */
-            continue;
-        }
-        if (ret < 0)
-        {
-            shell_error(sh, "read failed: %d", ret);
-            continue;
-        }
-        if (data.point_count == 0)
-        {
-            /* CST816D 语义：release_ms 内无新 INT，返回释放帧 —— 不打印 */
-            continue;
-        }
-
-        /* 有触摸事件才打印 */
-        shell_print(sh, "points=%d x=%d y=%d status=%s",
-                    data.point_count,
-                    data.points[0].x, data.points[0].y,
-                    data.points[0].status == POSIX_TOUCH_PRESS ? "press" : "release");
-    }
-
-    k_sem_give(&s_reader_done);
-}
 
 /* posix_touch open [/dev/touch0 | /dev/cst816d | /dev/chsc6417] */
 static int cmd_touch_open(const struct shell *sh, size_t argc, char **argv)
@@ -136,18 +163,17 @@ static int cmd_touch_open(const struct shell *sh, size_t argc, char **argv)
     s_touch_opened_path[sizeof(s_touch_opened_path) - 1] = '\0';
 
     /* 面板尺寸留一份默认；用户可后续用 ioctl 覆盖 */
-    posix_touch_config_t cfg = { .i2c_addr = 0, .width = 360, .height = 360, .swap_xy = 0 };
+    posix_touch_config_t cfg = { .width = 360, .height = 360, .swap_xy = 0 };
     posix_ioctl(s_touch_fd, POSIX_TOUCH_IOCTL_SET_CONFIG, &cfg);
 
-    shell_print(sh, "%s opened, INT armed. Run 'posix_touch read' to start streaming.",
-                path);
+    shell_print(sh, "%s opened, INT armed. Run 'posix_touch read' to read one sample.", path);
     return 0;
 }
 
 /* posix_touch read
  *
- * 启动后台线程持续读；每次触发中断（手指触屏）就打印一次坐标。
- * 用 'posix_touch close' 停止并释放 fd。
+ * 单次读取：阻塞直到 INT 到来（或芯片的 release 超时），打印一次结果就返回。
+ * 想连续观察就重复敲 read；close 释放 fd。
  */
 static int cmd_touch_read(const struct shell *sh, size_t argc, char **argv)
 {
@@ -157,46 +183,37 @@ static int cmd_touch_read(const struct shell *sh, size_t argc, char **argv)
         shell_error(sh, "not open, run 'posix_touch open' first");
         return -1;
     }
-    if (s_reader_running)
-    {
-        shell_print(sh, "already reading; run 'posix_touch close' to stop");
-        return 0;
-    }
 
-    if (!s_reader_done_inited)
+    posix_touch_data_t data;
+    int ret = posix_read(s_touch_fd, &data, sizeof(data));
+
+    if (ret == POSIX_ERR_TIMEOUT)
     {
-        k_sem_init(&s_reader_done, 0, 1);
-        s_reader_done_inited = true;
+        /* CHSC6417 语义：100ms 内无 INT */
+        shell_print(sh, "no touch (timeout)");
+    }
+    else if (ret < 0)
+    {
+        shell_error(sh, "read failed: %d", ret);
+    }
+    else if (data.point_count == 0)
+    {
+        /* CST816D 语义：release_ms 内无新 INT，返回释放帧 */
+        shell_print(sh, "release (no touch in release window)");
     }
     else
     {
-        k_sem_reset(&s_reader_done);
+        shell_print(sh, "points=%d x=%d y=%d status=%s",
+                    data.point_count,
+                    data.points[0].x, data.points[0].y,
+                    data.points[0].status == POSIX_TOUCH_PRESS ? "press" : "release");
     }
-
-    s_reader_running = true;
-    k_thread_create(&s_reader_thread, s_reader_stack,
-                    K_THREAD_STACK_SIZEOF(s_reader_stack),
-                    touch_reader_task, (void *)sh, NULL, NULL,
-                    K_PRIO_PREEMPT(10), 0, K_NO_WAIT);
-    k_thread_name_set(&s_reader_thread, "touch_rd");
-
-    shell_print(sh, "streaming touch events (INT-driven). "
-                "Touch the screen; run 'posix_touch close' to stop.");
     return 0;
 }
 
 static int cmd_touch_close(const struct shell *sh, size_t argc, char **argv)
 {
     (void)argc; (void)argv;
-
-    /* 1) 先让线程停 —— 等它自己走完最后一轮 read（最坏 100ms） */
-    if (s_reader_running)
-    {
-        s_reader_running = false;
-        (void)k_sem_take(&s_reader_done, K_MSEC(500));
-    }
-
-    /* 2) 再关 fd */
     if (s_touch_fd != POSIX_FD_NULL)
     {
         posix_close(s_touch_fd);
@@ -207,45 +224,6 @@ static int cmd_touch_close(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
-/* posix_touch bind <alias> <chip_path>
- *   例：posix_touch bind /dev/my_touch /dev/chsc6417
- * 演示 posix_touch_bind() —— 板级 posix_port_touch.c 已经在启动阶段
- * 绑好 /dev/touch0，这里给出运行时再绑一个别名的例子。 */
-static int cmd_touch_bind(const struct shell *sh, size_t argc, char **argv)
-{
-    if (argc != 3)
-    {
-        shell_error(sh, "usage: posix_touch bind <alias> <chip_path>");
-        return -1;
-    }
-    if (!s_posix_touch_inited) { posix_port_init_all(); s_posix_touch_inited = true; }
-
-    int ret = posix_touch_bind(argv[1], argv[2]);
-    if (ret != POSIX_OK)
-    {
-        shell_error(sh, "bind %s -> %s failed: %d", argv[1], argv[2], ret);
-        return -1;
-    }
-    shell_print(sh, "bound %s -> %s", argv[1], argv[2]);
-    return 0;
-}
-
-static int cmd_touch_unbind(const struct shell *sh, size_t argc, char **argv)
-{
-    if (argc != 2)
-    {
-        shell_error(sh, "usage: posix_touch unbind <alias>");
-        return -1;
-    }
-    int ret = posix_touch_unbind(argv[1]);
-    if (ret != POSIX_OK)
-    {
-        shell_error(sh, "unbind %s failed: %d (busy? not bound?)", argv[1], ret);
-        return -1;
-    }
-    shell_print(sh, "unbound %s", argv[1]);
-    return 0;
-}
 
 SHELL_STATIC_SUBCMD_SET_CREATE(touch_cmds,
                                SHELL_CMD_ARG(open,   NULL,
@@ -253,17 +231,11 @@ SHELL_STATIC_SUBCMD_SET_CREATE(touch_cmds,
                                              "Optional path: /dev/cst816d | /dev/chsc6417 | <alias>",
                                              cmd_touch_open, 1, 1),
                                SHELL_CMD(read,   NULL,
-                                         "Start streaming touch events; prints on every INT until 'close'",
+                                         "Read one touch sample (blocks until INT or timeout)",
                                          cmd_touch_read),
                                SHELL_CMD(close,  NULL,
-                                         "Stop streaming and close current touch fd",
+                                         "Close current touch fd",
                                          cmd_touch_close),
-                               SHELL_CMD_ARG(bind,   NULL,
-                                             "posix_touch bind <alias> <chip_path>",
-                                             cmd_touch_bind, 3, 0),
-                               SHELL_CMD_ARG(unbind, NULL,
-                                             "posix_touch unbind <alias>",
-                                             cmd_touch_unbind, 2, 0),
                                SHELL_SUBCMD_SET_END
                               );
 SHELL_CMD_REGISTER(posix_touch, &touch_cmds,

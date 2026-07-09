@@ -38,16 +38,9 @@ int posix_touch_unbind(const char *alias)
     return posix_device_unbind_alias(alias);
 }
 
-/* ---------- 当前板选型 ---------- */
-
-#if defined(CONFIG_BOARD_TOUCH_CHSC6417)
-#  define BOARD_TOUCH_CHIP_PATH  "/dev/chsc6417"
-#else   /* 默认 CST816D，对齐 eBadge 板硬件 */
-#  define BOARD_TOUCH_CHIP_PATH  "/dev/cst816d"
-#endif
 
 static int board_touch_init(void)
 {
-    return posix_touch_bind("/dev/touch0", BOARD_TOUCH_CHIP_PATH);
+    return posix_touch_bind("/dev/touch0", "/dev/cst816d");
 }
 POSIX_INIT_APP_EXPORT(board_touch_init);

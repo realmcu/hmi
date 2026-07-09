@@ -26,10 +26,11 @@ typedef struct
     posix_touch_point_t points[5];  /* 最多 5 点 */
 } posix_touch_data_t;
 
-/* 配置结构体 */
+/* 上层配置：只描述 TP 面板本身。I2C 从机地址属于端口层 drv 数据，
+ * 不在上层配置面里出现——想切换从机地址请改 port 里的 drv->i2c_addr，
+ * 或走 /dev/i2cN 自己的 ioctl。 */
 typedef struct
 {
-    uint8_t  i2c_addr;          /* I2C 地址 */
     uint16_t width;             /* TP 分辨率宽 */
     uint16_t height;            /* TP 分辨率高 */
     uint8_t  swap_xy;           /* 是否交换 XY */

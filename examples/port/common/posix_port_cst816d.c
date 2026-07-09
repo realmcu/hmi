@@ -85,7 +85,7 @@ static int cst816d_read_raw(cst816d_file_t *f, uint8_t out[CST816D_READ_LEN])
     uint8_t reg = CST816D_REG_DATA;
     posix_i2c_msg_t m =
     {
-        .addr    = f->drv->i2c_addr,
+        .addr    = f->drv->i2c_addr,   /* 从机地址属端口层数据 */
         .reg     = reg,
         .reg_len = 1,
         .buf     = out,
@@ -101,7 +101,7 @@ static int cst816d_write_reg(cst816d_file_t *f, uint8_t reg, uint8_t val)
 {
     posix_i2c_msg_t m =
     {
-        .addr    = f->drv->i2c_addr,
+        .addr    = f->drv->i2c_addr,   /* 同 read_raw：从机地址属端口层 */
         .reg     = reg,
         .reg_len = 1,
         .buf     = &val,
@@ -208,7 +208,6 @@ static void *cst816d_open(void *d, const char *p)
     f->drv    = drv;
     f->int_fd = POSIX_FD_NULL;
     f->rst_fd = POSIX_FD_NULL;
-    f->cfg.i2c_addr = drv->i2c_addr;
 
     f->i2c_fd = posix_open(drv->i2c_path);
     if (f->i2c_fd == POSIX_FD_NULL) { f->in_use = false; return POSIX_OPEN_ERR; }
@@ -328,7 +327,6 @@ static int cst816d_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
     case POSIX_TOUCH_IOCTL_SET_CONFIG:
         if (!arg) { return POSIX_ERR_INVAL; }
         f->cfg = *(posix_touch_config_t *)arg;
-        f->drv->i2c_addr = f->cfg.i2c_addr;
         return POSIX_OK;
 
     case POSIX_TOUCH_IOCTL_GET_CONFIG:
