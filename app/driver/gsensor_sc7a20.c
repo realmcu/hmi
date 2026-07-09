@@ -3,9 +3,9 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * SC7A20H 三轴加速度计驱动(I2C0,无中断,轮询读取)。
- * 寄存器与 ST LIS2DH/LIS3DH 兼容。
- * 参考:https://github.com/GoodbyeLina/test-sc7a20h
+ * SC7A20H 3-axis accelerometer driver (I2C0, no interrupt, polling read).
+ * Registers are compatible with ST LIS2DH / LIS3DH.
+ * Reference: https://github.com/GoodbyeLina/test-sc7a20h
  */
 #include "rtl876x_rcc.h"
 #include "rtl876x_pinmux.h"
@@ -15,24 +15,24 @@
 #include "gsensor_sc7a20.h"
 
 
-/* ---------------- SC7A20H 寄存器 ---------------- */
+/* ---------------- SC7A20H Registers ---------------- */
 #define SC7A20_REG_WHO_AM_I     0x0F
 #define SC7A20_REG_CTRL_REG1    0x20
 #define SC7A20_REG_CTRL_REG4    0x23
-#define SC7A20_REG_OUT_X_L      0x28   /* 0x28~0x2D: X/Y/Z 各 L、H 共 6 字节 */
+#define SC7A20_REG_OUT_X_L      0x28   /* 0x28~0x2D: X/Y/Z each L, H, total 6 bytes */
 
-/* 多字节读须将子地址 bit7 置 1 使器件地址自增 */
+/* Multi-byte read: set sub-address bit 7 to enable address auto-increment */
 #define SC7A20_AUTO_INCREMENT   0x80
 
 /* CTRL_REG1 = 0x57: ODR=100Hz, Normal mode, Z/Y/X enable */
 #define SC7A20_CTRL1_VAL        0x57
-/* CTRL_REG4 = 0x80: BDU=1(块更新,避免读取时高低字节撕裂), FS=±2g, 小端 */
+/* CTRL_REG4 = 0x80: BDU=1 (block update, avoids hi/low byte tearing on read), FS=±2g, little-endian */
 #define SC7A20_CTRL4_VAL        0x80
 
-/* 当前生效的 7-bit 从地址,init 探测后确定 */
+/* Currently active 7-bit slave address, determined by init probe */
 static uint8_t s_slave_addr = GSENSOR_I2C_ADDR_HIGH;
 
-/* ---------------- 底层 I2C 读写 ---------------- */
+/* ---------------- Low-level I2C Read / Write ---------------- */
 static bool gsensor_write_reg(uint8_t reg, uint8_t val)
 {
     uint8_t buf[2] = {reg, val};
@@ -49,7 +49,7 @@ static bool gsensor_read_regs(uint8_t reg, uint8_t *p_data, uint8_t len)
 {
     uint8_t sub = (len > 1) ? (uint8_t)(reg | SC7A20_AUTO_INCREMENT) : reg;
     I2C_SetSlaveAddress(GSENSOR_I2C_BUS, s_slave_addr);
-    /* 写子地址 + repeated-start 读,中间无 STOP */
+    /* Write sub-address + repeated-start read, no STOP in between */
     if (I2C_RepeatRead(GSENSOR_I2C_BUS, &sub, 1, p_data, len) != I2C_Success)
     {
         DBG_DIRECT("[sc7a20] read reg 0x%02x fail", reg);
@@ -58,7 +58,7 @@ static bool gsensor_read_regs(uint8_t reg, uint8_t *p_data, uint8_t len)
     return true;
 }
 
-/* ---------------- I2C0 控制器 / 引脚初始化 ---------------- */
+/* ---------------- I2C0 Controller / Pin Initialization ---------------- */
 static void gsensor_i2c_hw_init(void)
 {
     Pad_PullConfigValue(GSENSOR_I2C_SCL, 1);
@@ -95,7 +95,7 @@ bool gsensor_sc7a20_read_id(uint8_t *p_id)
     return gsensor_read_regs(SC7A20_REG_WHO_AM_I, p_id, 1);
 }
 
-/* 探测 0x19 / 0x18,选用 WHO_AM_I 匹配的地址;都不匹配返回 false */
+/* Probe 0x19 / 0x18, pick address matching WHO_AM_I; return false if neither matches */
 static bool gsensor_probe(void)
 {
     const uint8_t addrs[2] = {GSENSOR_I2C_ADDR_HIGH, GSENSOR_I2C_ADDR_LOW};
@@ -125,7 +125,7 @@ void gsensor_sc7a20_init(void)
     {
         DBG_DIRECT("[sc7a20] chip NOT found, check wiring/addr; fallback 0x%02x",
                    GSENSOR_I2C_ADDR_HIGH);
-        s_slave_addr = GSENSOR_I2C_ADDR_HIGH;   /* 仍配置寄存器,便于抓 I2C 波形 */
+        s_slave_addr = GSENSOR_I2C_ADDR_HIGH;   /* Still write registers to facilitate I2C waveform capture */
     }
 
     gsensor_write_reg(SC7A20_REG_CTRL_REG1, SC7A20_CTRL1_VAL);
@@ -147,7 +147,7 @@ bool gsensor_sc7a20_read_xyz(int16_t *x, int16_t *y, int16_t *z)
     {
         return false;
     }
-    /* 小端:低字节在前。原始 16-bit 左对齐,normal 模式高 10 位有效 */
+    /* Little-endian: low byte first. Raw 16-bit left-aligned, normal mode high 10 bits valid */
     *x = (int16_t)((uint16_t)data[1] << 8 | data[0]);
     *y = (int16_t)((uint16_t)data[3] << 8 | data[2]);
     *z = (int16_t)((uint16_t)data[5] << 8 | data[4]);

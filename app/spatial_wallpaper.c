@@ -9,7 +9,7 @@
  *
  * 3D perspective-parallax wallpaper using ONLY a foreground + background image.
  *
- * Principle (mirrors the browser preview tool, see "3D 模式原理与计算.md"):
+ * Principle (mirrors the browser preview tool, see "3D_Mode_Principle_and_Calculation.md"):
  *   - Put the two images at different Z depths around a virtual "stage".
  *   - Each frame, rotate only the stage (rotateX / rotateY) by the device
  *     attitude. A pinhole-perspective projection then turns that single rotation
@@ -19,7 +19,7 @@
  *     the picture is pixel-aligned at rest.
  *   - Both layers are then grown by an `overscan` margin (cover-style) so that
  *     rotation/parallax never sweeps a layer edge into the frame -- otherwise
- *     the opaque background would expose a black border ("穿帮") when tilted.
+ *     the opaque background would expose a black border ("seam") when tilted.
  *
  * Injection method:
  *   Each layer is a transform-node: a plain gui_obj container whose matrix we
@@ -106,7 +106,7 @@ typedef struct
     float fg_cap_ratio; /* fgZ clamp = ratio * D          default 0.6   */
     float overscan;     /* per-side edge margin (px). Browser 3D mode uses
                            max(max(bg, 2*blur), 44) + 8  ->  52 by default.
-                           Larger = more headroom vs. 穿帮, but more zoom-in. */
+                           Larger = more headroom vs. seam, but more zoom-in. */
 
     /* ===== C. Attitude input (3-axis g-sensor) ===== */
     bool     sim_enable;   /* PC demo: synthesize g-sensor data internally  */
