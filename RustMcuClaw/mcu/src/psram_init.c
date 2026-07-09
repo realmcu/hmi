@@ -32,13 +32,13 @@ static T_CLK_USER_HANDLE clk_user_gui;
 
 static void psram_mpu_config(void)
 {
-    /* PSRAM0 via SPIC1 — 4 MB, write-through (0xAA) */
+    /* PSRAM0 via SPIC1 - 4 MB, write-through (0xAA) */
     uint32_t rbar = SPIC1_MEM_BASE | (1 << 1); /* SH:0, AP:1, XN:0 */
     uint32_t limit = SPIC1_MEM_BASE + 0x400000 - 1;
     mpu_set_region(rbar, limit, 2, 0xAA, true);
 
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(psram1), okay)
-    /* PSRAM1 via SPIC3 — size from DTS, write-through (0xAA) */
+    /* PSRAM1 via SPIC3 - size from DTS, write-through (0xAA) */
     rbar = SPIC3_MEM_BASE | (1 << 1);
     limit = SPIC3_MEM_BASE + DT_REG_SIZE(DT_NODELABEL(psram1_for_mcu)) - 1;
     mpu_set_region(rbar, limit, 4, 0xAA, true);

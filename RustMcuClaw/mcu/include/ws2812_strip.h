@@ -119,7 +119,7 @@ int ws2812_strip_effect_rainbow(uint8_t value, uint32_t frame_ms,
  */
 int ws2812_strip_effect_pixels(const uint8_t *rgb, uint32_t length,
                                uint32_t duration_ms);
-// /* WS2812B RGB strip self-test on P2_1 — runs before the heavy PSRAM /
+// /* WS2812B RGB strip self-test on P2_1 - runs before the heavy PSRAM /
 //  * display / Rust engine init so the operator gets immediate visual
 //  * confirmation that the board booted and the strip is wired right. */
 // ret = ws2812_strip_boot_test();

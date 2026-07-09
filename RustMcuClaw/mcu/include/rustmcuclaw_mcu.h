@@ -38,7 +38,7 @@ int rustmcuclaw_mcu_get_feishu_creds(uint8_t *app_id_out,
                                      size_t endpoint_cap);
 
 /* Consume one Feishu event block emitted by the Z2Plus AT URC stream
- * `[FSEV-BEGIN]` … `[FSEV-END]` (see z2_feishu_ws.c::emit_event_urc).
+ * `[FSEV-BEGIN]` ... `[FSEV-END]` (see z2_feishu_ws.c::emit_event_urc).
  * On a text `im.message.receive_v1` event the Rust side runs the same LLM
  * pipeline as the serial CLI and replies via /open-apis/im/v1/messages
  * (which itself goes through `claw_mcu_https_post_json`). `out`/`out_cap`
@@ -101,13 +101,13 @@ int claw_mcu_display_present_rgb565(const uint16_t *pixels,
  * Uses the GNU Unifont bitmap loaded from SD card into PSRAM when available;
  * falls back to the built-in font8x8 for ASCII-only characters otherwise.
  *
- *  pixels  – pointer to the RGB565 buffer (width × height u16 words, row-major)
- *  width   – buffer width in pixels
- *  height  – buffer height in pixels
- *  x, y   – top-left text origin
- *  text    – null-terminated UTF-8 string (Chinese / Latin / etc.)
- *  fg      – foreground colour in RGB565
- *  scale   – pixel magnification (1 = natural glyph size, 2 = 2×, …)
+ *  pixels  - pointer to the RGB565 buffer (width x height u16 words, row-major)
+ *  width   - buffer width in pixels
+ *  height  - buffer height in pixels
+ *  x, y    - top-left text origin
+ *  text    - null-terminated UTF-8 string (Chinese / Latin / etc.)
+ *  fg      - foreground colour in RGB565
+ *  scale   - pixel magnification (1 = natural glyph size, 2 = 2x, ...)
  *
  * Returns the number of glyphs rendered, or a negative value on bad input.
  */
@@ -124,8 +124,8 @@ int rustmcuclaw_mcu_draw_text_rgb565(uint16_t *pixels,
  * Called by the Rust draw function; safe to call before unifont is loaded
  * (returns 0 in that case).
  *
- *  codepoint – Unicode scalar value (BMP only, U+0000 … U+FFFF)
- *  out_rows  – caller-provided array of 16 uint16_t values; on success each
+ *  codepoint - Unicode scalar value (BMP only, U+0000 ... U+FFFF)
+ *  out_rows  - caller-provided array of 16 uint16_t values; on success each
  *              element holds one row of the glyph bitmap with the leftmost
  *              pixel in bit 15 (MSB-first).
  *

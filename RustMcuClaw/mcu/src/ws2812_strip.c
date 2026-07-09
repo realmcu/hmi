@@ -24,7 +24,7 @@ LOG_MODULE_REGISTER(ws2812_strip, LOG_LEVEL_INF);
 /* ------------------------------------------------------------------ */
 
 /* GPIOA base from realtek,rtl87x3g.dtsi (`gpio@40001000`).  The data
- * register is at offset 0x00 — see modules/hal/realtek/rtl87x3g/drivers/
+ * register is at offset 0x00 - see modules/hal/realtek/rtl87x3g/drivers/
  * inc/rtl876x_gpio_def.h.  Writing GPIO_DR drives all 32 GPIOA pins; we
  * read-modify a cached value so neighbouring pins are not disturbed. */
 #define GPIOA_DR_ADDR     0x40001000UL
@@ -33,7 +33,7 @@ LOG_MODULE_REGISTER(ws2812_strip, LOG_LEVEL_INF);
 #define WS2812_GPIO_BIT   16U                 /* P2_1 -> GPIOA16 */
 #define WS2812_PIN_MASK   (1U << WS2812_GPIO_BIT)
 
-/* Zephyr GPIO device — used at init time only.  Once the pad is in GPIO
+/* Zephyr GPIO device - used at init time only.  Once the pad is in GPIO
  * SW mode we hit GPIOA_DR directly to make the timing loop predictable. */
 #define WS2812_GPIO_DEV   DEVICE_DT_GET(DT_NODELABEL(gpioa))
 
@@ -113,7 +113,7 @@ int ws2812_strip_init(void)
     {
         cpu_mhz = 125U; /* sensible default; matches Realtek's stock PM */
     }
-    /* cycles = ns * MHz / 1000 — use 64-bit math to avoid wrap-around. */
+    /* cycles = ns * MHz / 1000 - use 64-bit math to avoid wrap-around. */
     s_cyc_t0h = (uint32_t)(((uint64_t)WS2812_T0H_NS * cpu_mhz) / 1000U);
     s_cyc_t1h = (uint32_t)(((uint64_t)WS2812_T1H_NS * cpu_mhz) / 1000U);
     s_cyc_bit = (uint32_t)(((uint64_t)WS2812_BIT_NS * cpu_mhz) / 1000U);
@@ -236,7 +236,7 @@ int ws2812_strip_show(void)
 
     irq_unlock(key);
 
-    /* Latch: WS2812B requires ≥ 50 us of low to commit the frame. */
+    /* Latch: WS2812B requires at least 50 us of low to commit the frame. */
     k_busy_wait(WS2812_RESET_US);
 
     return 0;
@@ -390,7 +390,7 @@ static void ws2812_fx_work_handler(struct k_work *work)
     {
         (void)ws2812_strip_clear();
         k_mutex_lock(&s_fx_lock, K_FOREVER);
-        /* Only clear state if we are still the active token — a
+        /* Only clear state if we are still the active token - a
          * concurrent restart may already have queued a fresh effect. */
         if (s_fx_token == token)
         {
@@ -476,7 +476,7 @@ static void ws2812_fx_work_handler(struct k_work *work)
 
     k_mutex_lock(&s_fx_lock, K_FOREVER);
     /* If another caller swapped the effect while we were rendering,
-     * abandon this branch — that caller has already queued its own
+     * abandon this branch - that caller has already queued its own
      * first frame. */
     if (s_fx_token == token && s_fx_kind == kind)
     {
