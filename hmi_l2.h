@@ -23,7 +23,7 @@ extern "C" {
 #define HMI_L2_CMD_LOG          0x0au   /* log transfer */
 
 /*============================================================================*
- *                              Keys — settings (0x02)
+ *                              Keys - settings (0x02)
  *============================================================================*/
 
 #define HMI_L2_SET_TIME         0x01u
@@ -40,7 +40,7 @@ extern "C" {
 #define HMI_L2_SET_CALL_SWITCH  0x25u
 
 /*============================================================================*
- *                              Keys — bind (0x03)
+ *                              Keys - bind (0x03)
  *============================================================================*/
 
 #define HMI_L2_BIND_REQ         0x01u
@@ -52,7 +52,7 @@ extern "C" {
 #define HMI_L2_SUPER_BIND_RSP   0x07u
 
 /*============================================================================*
- *                              Keys — notify (0x04)
+ *                              Keys - notify (0x04)
  *============================================================================*/
 
 #define HMI_L2_CALL_RING        0x01u
@@ -60,7 +60,7 @@ extern "C" {
 #define HMI_L2_CALL_REJECT      0x03u
 
 /*============================================================================*
- *                              Keys — sport (0x05)
+ *                              Keys - sport (0x05)
  *============================================================================*/
 
 #define HMI_L2_SPORT_REQ        0x01u
@@ -77,7 +77,7 @@ extern "C" {
 #define HMI_L2_CALIBRATE_RSP    0x0cu
 
 /*============================================================================*
- *                              Keys — control (0x07)
+ *                              Keys - control (0x07)
  *============================================================================*/
 
 #define HMI_L2_CTRL_PHOTO       0x01u
@@ -86,7 +86,7 @@ extern "C" {
 #define HMI_L2_CTRL_CAMERA_ST   0x11u
 
 /*============================================================================*
- *                              Keys — log (0x0a)
+ *                              Keys - log (0x0a)
  *============================================================================*/
 
 #define HMI_L2_LOG_OPEN         0x01u
@@ -94,24 +94,24 @@ extern "C" {
 #define HMI_L2_LOG_SEND         0x03u
 
 /*============================================================================*
- *                              Keys — BLE connection parameters (0x0c)
+ *                              Keys - BLE connection parameters (0x0c)
  *============================================================================*/
 
 #define HMI_L2_CMD_CONN_PARAM       0x0cu   /* BLE connection parameters */
 
-#define HMI_L2_CONN_PARAM_REQ       0x01u   /* query request  (phone → device) */
-#define HMI_L2_CONN_PARAM_RSP       0x02u   /* query response (device → phone) */
+#define HMI_L2_CONN_PARAM_REQ       0x01u   /* query request  (phone -> device) */
+#define HMI_L2_CONN_PARAM_RSP       0x02u   /* query response (device -> phone) */
 
 /*============================================================================*
- *                              Keys — WiFi provisioning (0x0d)
+ *                              Keys - WiFi provisioning (0x0d)
  *============================================================================*/
 
 #define HMI_L2_CMD_WIFI_PROV        0x0du   /* WiFi provisioning */
 
-#define HMI_L2_WIFI_CONFIG_SET      0x01u   /* push SSID/password      (phone → device) */
-#define HMI_L2_WIFI_CONFIG_ACK      0x02u   /* accept / reject         (device → phone) */
-#define HMI_L2_WIFI_STATUS_REQ      0x03u   /* poll current state      (phone → device) */
-#define HMI_L2_WIFI_STATUS          0x04u   /* state report / IP:port  (device → phone) */
+#define HMI_L2_WIFI_CONFIG_SET      0x01u   /* push SSID/password      (phone -> device) */
+#define HMI_L2_WIFI_CONFIG_ACK      0x02u   /* accept / reject         (device -> phone) */
+#define HMI_L2_WIFI_STATUS_REQ      0x03u   /* poll current state      (phone -> device) */
+#define HMI_L2_WIFI_STATUS          0x04u   /* state report / IP:port  (device -> phone) */
 
 /* WIFI_CONFIG_ACK result */
 #define HMI_L2_WIFI_ACK_ACCEPTED    0x00u
@@ -144,17 +144,17 @@ extern "C" {
 #define HMI_L2_WIFI_FLAG_SAVE_CRED  0x01u   /* persist credentials on device */
 
 /*============================================================================*
- *                              Keys — file transfer (0x0b)
+ *                              Keys - file transfer (0x0b)
  *============================================================================*/
 
 // #define HMI_L2_CMD_FILE_XFER        0x0bu   /* file transfer */
 #define HMI_L2_CMD_FILE_XFER        0x10u   /* file transfer */
 
-#define HMI_L2_XFER_BEGIN_REQ       0x01u   /* session open request  (phone → device) */
-#define HMI_L2_XFER_BEGIN_RSP       0x02u   /* session open response (device → phone) */
-#define HMI_L2_XFER_DATA            0x03u   /* data chunk            (phone → device) */
-#define HMI_L2_XFER_END_REQ         0x05u   /* transfer end request  (phone → device) */
-#define HMI_L2_XFER_END_RSP         0x06u   /* transfer end response (device → phone) */
+#define HMI_L2_XFER_BEGIN_REQ       0x01u   /* session open request  (phone -> device) */
+#define HMI_L2_XFER_BEGIN_RSP       0x02u   /* session open response (device -> phone) */
+#define HMI_L2_XFER_DATA            0x03u   /* data chunk            (phone -> device) */
+#define HMI_L2_XFER_END_REQ         0x05u   /* transfer end request  (phone -> device) */
+#define HMI_L2_XFER_END_RSP         0x06u   /* transfer end response (device -> phone) */
 #define HMI_L2_XFER_ABORT           0x07u   /* abort (either direction) */
 
 /* file_type values (XFER_BEGIN_REQ) */
@@ -187,17 +187,17 @@ extern "C" {
 #define HMI_L2_XFER_CHUNK_MAX       2048u
 
 /*============================================================================*
- *                              Keys — stream (0x0e)
+ *                              Keys - stream (0x0e)
  *============================================================================*/
 
 #define HMI_L2_CMD_STREAM           0x0eu   /* live video stream */
 
-#define HMI_L2_KS_OPEN              0x01u   /* App → Dev: open stream session        */
-#define HMI_L2_KS_ACK               0x02u   /* Dev → App: confirm open / error       */
-#define HMI_L2_KS_FRAME             0x03u   /* App → Dev: frame data chunk           */
-#define HMI_L2_KS_CLOSE             0x04u   /* App → Dev: close stream session       */
-#define HMI_L2_KS_CREDIT            0x05u   /* Dev → App: credit grant (flow ctrl)   */
-#define HMI_L2_KS_REPORT            0x06u   /* Dev → App: frame reception status     */
+#define HMI_L2_KS_OPEN              0x01u   /* App -> Dev: open stream session        */
+#define HMI_L2_KS_ACK               0x02u   /* Dev -> App: confirm open / error       */
+#define HMI_L2_KS_FRAME             0x03u   /* App -> Dev: frame data chunk           */
+#define HMI_L2_KS_CLOSE             0x04u   /* App -> Dev: close stream session       */
+#define HMI_L2_KS_CREDIT            0x05u   /* Dev -> App: credit grant (flow ctrl)   */
+#define HMI_L2_KS_REPORT            0x06u   /* Dev -> App: frame reception status     */
 
 /* KS_OPEN codec field */
 #define HMI_L2_KS_CODEC_MSV1        0x00u   /* RGB555 16bpp, MSV1 compatible    */

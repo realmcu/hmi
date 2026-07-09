@@ -8,13 +8,15 @@
 extern "C" {
 #endif
 
-/* l2_task 队列消息——既承载 BLE 收到的 L2 帧，也承载其它任务投递、需在
- * l2_task 上下文执行的回调（避免跨任务竞争 proto_send 等非线程安全资源）。
- * 仿 wifi_task 的 T_WIFI_MSG / msg_cb 范式：通用回调，不为每种业务单列类型。*/
+ /* l2_task queue message - carries both L2 frames received via BLE and callbacks
+  * posted by other tasks that need to execute in l2_task context (avoiding cross-task
+  * races on non-thread-safe resources like proto_send).
+  * Follows the T_WIFI_MSG / msg_cb pattern from wifi_task: generic callback, no
+  * separate types per business domain. */
 typedef enum
 {
-    L2_MSG_FRAME = 0,   /* BLE 收到的 L2 帧（u.frame）*/
-    L2_MSG_CALL,        /* 其它任务投递的回调（cb + u.buf/u.param）*/
+    L2_MSG_FRAME = 0,   /* L2 frame received via BLE (u.frame) */
+    L2_MSG_CALL,        /* Callback posted by other tasks (cb + u.buf/u.param) */
 } l2_msg_type_t;
 
 typedef struct l2_msg l2_msg_t;
@@ -23,7 +25,7 @@ typedef void (*l2_msg_cb_t)(l2_msg_t *p_msg);
 struct l2_msg
 {
     uint16_t    type;       /* l2_msg_type_t */
-    l2_msg_cb_t cb;         /* type == L2_MSG_CALL 时由 l2_task 调用 */
+    l2_msg_cb_t cb;         /* Called by l2_task when type == L2_MSG_CALL */
     union
     {
         struct
@@ -31,16 +33,16 @@ struct l2_msg
             uint8_t  *p_data;   /* malloc'd by sender, freed by l2_task */
             uint16_t  len;
         } frame;
-        uint32_t param;         /* 小负载（按值）*/
-        void    *buf;           /* 指针负载，约定由 cb 释放 */
+        uint32_t param;         /* Small payload (by value) */
+        void    *buf;           /* Pointer payload, cb is responsible for freeing it */
     } u;
 };
 
 void hmi_proto_task_init(void);
 
-/* 供其它任务（如 wifi_task）投递一个在 l2_task 上下文执行的回调。
- * 线程安全（仅 os_msg_send）。buf 若为堆指针，约定由 cb 负责释放。
- * 返回 false 表示队列满或未初始化（此时调用方需自行释放 buf）。*/
+ /* Post a callback to be executed in l2_task context from another task (e.g. wifi_task).
+  * Thread-safe (uses os_msg_send). If buf is a heap pointer, cb is responsible for freeing it.
+  * Returns false if queue is full or not initialized (caller must free buf in that case). */
 bool hmi_proto_post_call(l2_msg_cb_t cb, void *buf);
 
 #ifdef __cplusplus

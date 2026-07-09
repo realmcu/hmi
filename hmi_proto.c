@@ -58,7 +58,7 @@ static bool     s_rx_active    = false;
  *============================================================================*/
 
 /* CRC-16/ARC: poly=0x8005 (reflected 0xA001), init=0x0000,
- * refin=refout=true, xorout=0 — matches the host tool (上位机) parameters. */
+ * refin=refout=true, xorout=0 - matches the host tool (host computer) parameters. */
 static uint16_t crc16_update(uint16_t crc, const uint8_t *data, uint16_t len)
 {
     while (len--)
