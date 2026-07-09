@@ -67,11 +67,15 @@ static int rtk_nor_write(long offset, const uint8_t *buf, size_t size)
     return rc == 1 ? (int)size : -1;
 }
 
+#include "wdg.h"
 static int rtk_nor_erase(long offset, size_t size)
 {
+    // os_lock();
     uint32_t abs_addr = RTK_NOR_FLASH_XIP_BASE + (uint32_t)offset;
     uint32_t erased = 0;
+    uint16_t kick_cnt = 0;
 
+    wdg_kick();
     while (erased < (uint32_t)size)
     {
         /* fmc_flash_nor_erase: sector-aligned address, returns 1 on success */
@@ -81,7 +85,14 @@ static int rtk_nor_erase(long offset, size_t size)
             return -1;
         }
         erased += RTK_NOR_BLK_SIZE;
+
+        kick_cnt++;
+        if (kick_cnt % 50 == 0) // 200k
+        {
+            wdg_kick();
+        }
     }
+    // os_unlock();
     return (int)size;
 }
 

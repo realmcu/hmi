@@ -61,25 +61,27 @@ int flashdb_prepare(void)
     fdb_kvdb_control(&s_kvdb, FDB_KVDB_CTRL_SET_LOCK, (void *)db_lock);
     fdb_kvdb_control(&s_kvdb, FDB_KVDB_CTRL_SET_UNLOCK, (void *)db_unlock);
 
+    extern void WDG_Kick_Core(void);
+    WDG_Kick_Core();
     rc = fdb_kvdb_init(&s_kvdb, "env", "fdb_kvdb1", NULL, NULL);
-    APP_PRINT_INFO1("[db] kvdb init rc=%d", (int)rc);
+    printf("[db] kvdb init rc=%d", (int)rc);
     if (rc != FDB_NO_ERR)
     {
-        APP_PRINT_ERROR1("[db] kvdb init failed (%d)", (int)rc);
+        printf("[db] kvdb init failed (%d)", (int)rc);
         return -1;
     }
 
     /* 3. BF extension — "bf_data" is the FAL data partition */
     rc = fdb_bf_init(&s_bf, &s_kvdb, "bf_data", NULL);
-    APP_PRINT_INFO1("[db] bf init rc=%d", (int)rc);
+    printf("[db] bf init rc=%d", (int)rc);
     if (rc != FDB_NO_ERR)
     {
-        APP_PRINT_ERROR1("[db] bf init failed (%d)", (int)rc);
+        printf("[db] bf init failed (%d)", (int)rc);
         return -1;
     }
 
     /* 4. Enumerate all big files present at boot (equivalent to fdb_get_file_addr loop) */
-    APP_PRINT_INFO0("[db] big file directory:");
+    printf("[db] big file directory:");
 
     // construct resouce list
     uint32_t file_num = 20;
