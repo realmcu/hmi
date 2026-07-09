@@ -2,11 +2,11 @@
  * Copyright (c) 2024, Realtek Semiconductor Corporation.
  * SPDX-License-Identifier: Apache-2.0
  *
- * FlashDB KVDB 功能测试 —— 通用实现
+ * FlashDB KVDB Functional Test — Generic Implementation
  *
- * 核心测试逻辑不依赖任何 OS，日志通过 FDB_PRINT 输出（在 fdb_cfg.h 中定义）。
- * Zephyr Shell 命令注册通过 CONFIG_SHELL 条件编译包裹，其他平台可直接调用
- * flashdb_test_run() 入口函数。
+ * Core test logic does not depend on any OS. Logs are output via FDB_PRINT (defined in fdb_cfg.h).
+ * Zephyr Shell command registration is wrapped by CONFIG_SHELL conditional compilation;
+ * other platforms can directly call the flashdb_test_run() entry function.
  */
 
 #include <string.h>
@@ -19,20 +19,20 @@
 #define LOGE(fmt, ...)  FDB_PRINT(LOG_TAG " [ERR] " fmt "\n", ##__VA_ARGS__)
 
 /* ------------------------------------------------------------------ */
-/* KVDB 实例（静态，模块内共享）                                        */
+/* KVDB instance (static, shared within module) */
 /* ------------------------------------------------------------------ */
 static struct fdb_kvdb s_kvdb;
 static bool            s_kvdb_ready = false;
 
-/* 结构体类型 KV 示例 */
+/* Struct type KV example */
 typedef struct
 {
-    int temperature;  /* 单位：0.1℃，例 253 = 25.3℃ */
-    int humidity;     /* 单位：0.1%，  例 601 = 60.1% */
+    int temperature;  /* Unit: 0.1°C, e.g., 253 = 25.3°C */
+    int humidity;     /* Unit: 0.1%,   e.g., 601 = 60.1% */
 } sensor_data_t;
 
 /* ------------------------------------------------------------------ */
-/* 内部：确保 FAL + KVDB 已初始化                                       */
+/* Internal: ensure FAL + KVDB are initialized */
 /* ------------------------------------------------------------------ */
 static int ensure_init(void)
 {
@@ -61,7 +61,7 @@ static int ensure_init(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* 子测试：整型 KV（掉电计数）                                          */
+/* Sub-test: integer KV (boot count) */
 /* ------------------------------------------------------------------ */
 static void test_boot_count(void)
 {
@@ -90,7 +90,7 @@ static void test_boot_count(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* 子测试：字符串 KV                                                    */
+/* Sub-test: string KV */
 /* ------------------------------------------------------------------ */
 static void test_string_kv(void)
 {
@@ -104,7 +104,7 @@ static void test_string_kv(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* 子测试：结构体 blob KV（写 / 读 / 删 / 验证）                        */
+/* Sub-test: struct blob KV (write / read / delete / verify) */
 /* ------------------------------------------------------------------ */
 static void test_struct_kv(void)
 {
@@ -133,7 +133,7 @@ static void test_struct_kv(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* 公开接口：完整测试，任意平台均可直接调用                              */
+/* Public interface: full test, can be called directly on any platform */
 /* ------------------------------------------------------------------ */
 int flashdb_test_init(void)
 {
@@ -166,7 +166,7 @@ void flashdb_test_run(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* Zephyr Shell 命令注册（仅 Zephyr + CONFIG_SHELL 环境）               */
+/* Zephyr Shell command registration (Zephyr + CONFIG_SHELL only) */
 /* ------------------------------------------------------------------ */
 #ifdef CONFIG_SHELL
 

@@ -2,38 +2,38 @@
  * Copyright (c) 2024, Realtek Semiconductor Corporation.
  * SPDX-License-Identifier: Apache-2.0
  *
- * FlashDB 功能配置 —— eBadge 平台
- * 此文件由应用工程维护，FlashDB 仓库本身不包含此文件。
+ * FlashDB Feature Configuration — eBadge Platform
+ * This file is maintained by the application project; the FlashDB repository itself does not contain this file.
  */
 
 #ifndef _FDB_CFG_H_
 #define _FDB_CFG_H_
 
-/* 启用键值数据库 (KVDB) */
+/* Enable Key-Value Database (KVDB) */
 #define FDB_USING_KVDB
 
-/* 启用时序数据库 (TSDB) */
+/* Enable Time Series Database (TSDB) */
 #define FDB_USING_TSDB
 
-/* 启用 Big File 扩展 (依赖 KVDB + FAL_MODE) */
+/* Enable Big File extension (depends on KVDB + FAL_MODE) */
 #define FDB_USING_BF
 
-/* 使用 FAL 存储模式（通过 FAL 层访问 Flash） */
+/* Use FAL storage mode (access Flash through FAL layer) */
 #define FDB_USING_FAL_MODE
 
 #ifdef FDB_USING_FAL_MODE
-/* Flash 写粒度，单位：bit，NOR Flash 填 1 */
+/* Flash write granularity, unit: bit. For NOR Flash set to 1 */
 #define FDB_WRITE_GRAN 1
 #endif
 
-/* 小端序（RTL87x2G 为 ARM Cortex-M，默认小端） */
+/* Little-endian (RTL87x2G is ARM Cortex-M, default little-endian) */
 /* #define FDB_BIG_ENDIAN */
 
-/* 日志输出宏，使用 Zephyr printk */
+/* Log output macro, uses Zephyr printk */
 #include <zephyr/sys/printk.h>
 #define FDB_PRINT(...) printk(__VA_ARGS__)
 
-/* 开启调试信息输出，正式发布可注释掉 */
+/* Enable debug info output, comment out for release builds */
 #define FDB_DEBUG_ENABLE
 
 #endif /* _FDB_CFG_H_ */
