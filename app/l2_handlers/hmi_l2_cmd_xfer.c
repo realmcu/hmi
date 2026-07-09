@@ -107,7 +107,9 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                 }
                 while (fdb_bf_exists(app_get_bf(), name));
 
+                PROTO_LOG("fdb_bf_create");
                 rc = fdb_bf_create(app_get_bf(), name, s_xfer_total, &file);
+                PROTO_LOG("fdb_bf_create done");
                 if (rc != FDB_NO_ERR)
                 {
                     APP_PRINT_ERROR2("[bf] create '%s' failed (%d)", name, (int)rc);
@@ -173,12 +175,12 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                     }
                     else
                     {
-                        extern void ui_process_msg(void *arg);
-                        gui_msg_t msg = {.event = GUI_EVENT_USER_DEFINE, .sub_event = 0, .cb = (gui_msg_cb)ui_process_msg};
+                        extern void ui_add_resource(uint32_t payload);
+                        uint32_t addr = 0;
                         uint32_t sz = 0;
-                        int grc = fdb_bf_get_addr(app_get_bf(), name, (uint32_t *) & (msg.payload), &sz);
-                        PROTO_LOG("[bf]  rc %d grc %d file %s 0x%x %d", rc, grc, name, msg.payload, sz);
-                        gui_send_msg_to_server(&msg);
+                        int grc = fdb_bf_get_addr(app_get_bf(), name, &addr, &sz);
+                        PROTO_LOG("[bf]  rc %d grc %d file %s 0x%x %d", rc, grc, name, addr, sz);
+                        ui_add_resource(addr);
                     }
                 }
 

@@ -696,6 +696,9 @@ static void stream_on_kv(uint8_t key, const uint8_t *val, uint16_t vl)
 
             PROTO_LOG("STREAM OPEN session=%d codec=%d w=%d h=%d fps=%d",
                       sid, codec, width, height, fps);
+
+            extern void ui_jump_streaming(void);
+            ui_jump_streaming();
             break;
         }
 
