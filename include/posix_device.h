@@ -95,6 +95,34 @@ int posix_device_register_group(const char *fmt, int count,
 
 int posix_device_unregister(const char *path);
 
+/* 查询已注册设备的 ops / drv_data；用于按路径起“别名”注册。
+ * 返回 POSIX_OK 并填 *ops_out / *drv_out；未找到返回 POSIX_ERR_NODEV。
+ * 注意：调用后就地 posix_device_register(alias, ops, drv) 会得到一个
+ * 与源路径共享 ops+drv_data 的别名 entry。ref_count 按 entry 独立计，
+ * 使用别名与源路径同时 open 时，unregister 需要各自 close 后进行。
+ */
+int posix_device_lookup(const char *path,
+                        const posix_driver_ops_t **ops_out,
+                        void **drv_out);
+
+/* 别名注册：把已注册的 src_path 以 alias 名字再挂一份到设备表；
+ * 两条路径共享同一份 ops+drv_data，open 任一路径进入同一设备。
+ * 这是"多型号外设+当前板选型"的通用机制（touch/gsensor/...）：
+ *   posix_device_bind_alias("/dev/touch0",   "/dev/cst816d");
+ *   posix_device_bind_alias("/dev/gsensor0", "/dev/sc7a20");
+ * 返回值：
+ *   POSIX_OK        成功
+ *   POSIX_ERR_NODEV src_path 未注册
+ *   POSIX_ERR_BUSY  alias 已存在（想覆盖需先 unbind）
+ *   POSIX_ERR_INVAL 空参数或 alias 过长
+ */
+int posix_device_bind_alias(const char *alias, const char *src_path);
+
+/* 解绑：等价于 posix_device_unregister(alias)，仅用别名 entry。
+ * alias 上仍有未 close 的 fd 时返回 POSIX_ERR_BUSY。
+ */
+int posix_device_unbind_alias(const char *alias);
+
 /* ---------- POSIX 用户 API ---------- */
 posix_fd_t posix_open(const char *path);
 int        posix_close(posix_fd_t fd);

@@ -251,6 +251,52 @@ int posix_device_unregister(const char *path)
     return POSIX_OK;
 }
 
+/* 只读查找：把已注册 entry 的 ops+drv_data 拷给调用者。
+ * 用于按已注册路径起别名（例如 touch 层把 /dev/cst816d 再挂成 /dev/touch0）。
+ * 不动 ref_count；调用者拿到指针后应立即用 posix_device_register 建立别名，
+ * 别名的 ref_count 独立计。 */
+int posix_device_lookup(const char *path,
+                        const posix_driver_ops_t **ops_out,
+                        void **drv_out)
+{
+    if (!path) { return POSIX_ERR_INVAL; }
+
+    posix_lock();
+    posix_device_entry_t *e = entry_by_path(path);
+    if (!e) { posix_unlock(); return POSIX_ERR_NODEV; }
+
+    if (ops_out) { *ops_out = e->ops; }
+    if (drv_out) { *drv_out = e->drv_data; }
+    posix_unlock();
+    return POSIX_OK;
+}
+
+/* 别名注册：把 src_path 已注册的 ops+drv_data 用同一份再挂到 alias 名下。
+ * 通用于 touch/gsensor 等"多型号+当前板选型"场景，取代各子系统各自实现一份
+ * bind API 的复制粘贴。
+ *
+ * 注意：alias 与 src_path 是两个独立 entry，ref_count 各自计。两条路径都
+ * open 时会占两个 fd 槽（以及各芯片自己的 per-open 池两个槽）。绝大多数
+ * 场景应用只 open alias 或 src_path 其中之一。 */
+int posix_device_bind_alias(const char *alias, const char *src_path)
+{
+    if (!alias || !src_path) { return POSIX_ERR_INVAL; }
+
+    const posix_driver_ops_t *ops = NULL;
+    void                     *drv = NULL;
+    int ret = posix_device_lookup(src_path, &ops, &drv);
+    if (ret != POSIX_OK) { return ret; }
+    if (!ops)            { return POSIX_ERR_NODEV; }
+
+    return posix_device_register(alias, ops, drv);
+}
+
+int posix_device_unbind_alias(const char *alias)
+{
+    if (!alias) { return POSIX_ERR_INVAL; }
+    return posix_device_unregister(alias);
+}
+
 /* ================================================================
  * POSIX 用户 API
  *

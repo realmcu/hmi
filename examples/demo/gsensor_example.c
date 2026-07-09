@@ -1,10 +1,17 @@
-// Zephyr Shell test: uart:~$ posix_gsensor [poll|irq]
+// Zephyr Shell test:
+//   posix_gsensor poll [chip_path]
+//   posix_gsensor irq  [chip_path]
+//   posix_gsensor bind   <alias> <chip_path>
+//   posix_gsensor unbind <alias>
 /* ================================================================
  * G-sensor usage example (polling & interrupt modes)
  *
  * Data path goes entirely through POSIX abstraction:
- *   /dev/gsensor0 internally does posix_open(/dev/i2c0) + posix_open(/dev/gpio0/pX)
- *   Application only needs to open gsensor.
+ *   /dev/gsensor0 is a board-selected alias; on eBadge it points to
+ *   /dev/sc7a20. The chip driver internally does
+ *   posix_open(/dev/i2c0) + posix_open(/dev/gpio0/pX).
+ *   Application code only opens /dev/gsensor0; debug can open
+ *   /dev/sc7a20 directly (same device, different name).
  *
  * Mode selection:
  *   posix_gsensor_config_t.use_irq = 0  -> polling: posix_read non-blocking
@@ -12,7 +19,7 @@
  *
  * !!! Current implementation status (this project links custom-rtos port) !!!
  *   posix_port_i2c.c      - RTL876x native I2C API implementation (actual SC7A20)
- *   posix_port_gsensor.c  - full logic (SC7A20 complete registers + IRQ blocking read)
+ *   posix_port_sc7a20.c   - full logic (SC7A20 complete registers + IRQ blocking read)
  *   posix_port_gpio.c     - still a stub. So with use_irq=1, SET_IRQ returns OK,
  *                           but DRDY interrupt never fires, posix_read always times out.
  *                           To use IRQ mode, implement GPIO port first (Zephyr GPIO
@@ -26,11 +33,13 @@
 #include "posix.h"
 #include "ioctls/posix_ioctl_gsensor.h"
 
+#define GSENSOR_DEFAULT_PATH  "/dev/gsensor0"
+
 /* ----------------- Polling mode (simplest) ----------------- */
 void example_gsensor_poll(void)
 {
     /* === 1. Open === */
-    posix_fd_t gs = posix_open("/dev/gsensor0");
+    posix_fd_t gs = posix_open(GSENSOR_DEFAULT_PATH);
     if (!gs) { return; }
 
     /* === 2. Config range +/-2G, 100Hz, polling === */
@@ -66,7 +75,7 @@ void example_gsensor_poll(void)
  */
 void example_gsensor_irq(void)
 {
-    posix_fd_t gs = posix_open("/dev/gsensor0");
+    posix_fd_t gs = posix_open(GSENSOR_DEFAULT_PATH);
     if (!gs) { return; }
 
     /* 1. Enable interrupt mode: +/-4G, 50Hz */
@@ -114,10 +123,10 @@ void example_gsensor_irq(void)
 
 static bool s_gs_inited = false;
 
-static int do_gsensor_poll(const struct shell *sh)
+static int do_gsensor_poll(const struct shell *sh, const char *path)
 {
-    posix_fd_t gs = posix_open("/dev/gsensor0");
-    if (gs == POSIX_FD_NULL) { shell_error(sh, "open /dev/gsensor0 failed"); return -1; }
+    posix_fd_t gs = posix_open(path);
+    if (gs == POSIX_FD_NULL) { shell_error(sh, "open %s failed", path); return -1; }
 
     posix_gsensor_config_t cfg =
     {
@@ -146,10 +155,10 @@ static int do_gsensor_poll(const struct shell *sh)
     return 0;
 }
 
-static int do_gsensor_irq(const struct shell *sh)
+static int do_gsensor_irq(const struct shell *sh, const char *path)
 {
-    posix_fd_t gs = posix_open("/dev/gsensor0");
-    if (gs == POSIX_FD_NULL) { shell_error(sh, "open /dev/gsensor0 failed"); return -1; }
+    posix_fd_t gs = posix_open(path);
+    if (gs == POSIX_FD_NULL) { shell_error(sh, "open %s failed", path); return -1; }
 
     posix_gsensor_config_t cfg =
     {
@@ -188,20 +197,54 @@ static int cmd_gsensor(const struct shell *sh, size_t argc, char **argv)
 {
     if (!s_gs_inited) { posix_port_init_all(); s_gs_inited = true; }
 
+    /* usage:
+     *   posix_gsensor                        -> poll /dev/gsensor0
+     *   posix_gsensor irq                    -> irq  /dev/gsensor0
+     *   posix_gsensor poll /dev/sc7a20       -> poll a specific chip
+     *   posix_gsensor bind /dev/foo /dev/sc7a20
+     *   posix_gsensor unbind /dev/foo
+     */
     const char *mode = (argc >= 2) ? argv[1] : "poll";
-    if (strcmp(mode, "irq") == 0)
+
+    if (strcmp(mode, "bind") == 0)
     {
-        return do_gsensor_irq(sh);
+        if (argc != 4)
+        {
+            shell_error(sh, "usage: posix_gsensor bind <alias> <chip_path>");
+            return -1;
+        }
+        int ret = posix_gsensor_bind(argv[2], argv[3]);
+        if (ret != POSIX_OK) { shell_error(sh, "bind failed: %d", ret); return -1; }
+        shell_print(sh, "bound %s -> %s", argv[2], argv[3]);
+        return 0;
     }
-    if (strcmp(mode, "poll") == 0)
+    if (strcmp(mode, "unbind") == 0)
     {
-        return do_gsensor_poll(sh);
+        if (argc != 3)
+        {
+            shell_error(sh, "usage: posix_gsensor unbind <alias>");
+            return -1;
+        }
+        int ret = posix_gsensor_unbind(argv[2]);
+        if (ret != POSIX_OK)
+        {
+            shell_error(sh, "unbind failed: %d (busy? not bound?)", ret);
+            return -1;
+        }
+        shell_print(sh, "unbound %s", argv[2]);
+        return 0;
     }
-    shell_error(sh, "usage: posix_gsensor [poll|irq]");
+
+    const char *path = (argc >= 3) ? argv[2] : GSENSOR_DEFAULT_PATH;
+    if (strcmp(mode, "irq") == 0)  { return do_gsensor_irq(sh, path);  }
+    if (strcmp(mode, "poll") == 0) { return do_gsensor_poll(sh, path); }
+
+    shell_error(sh, "usage: posix_gsensor [poll|irq [path] | bind <alias> <chip> | unbind <alias>]");
     return -1;
 }
 
 SHELL_CMD_REGISTER(posix_gsensor, NULL,
-                   "POSIX gsensor test  (usage: posix_gsensor [poll|irq])",
+                   "POSIX gsensor test  "
+                   "(usage: posix_gsensor [poll|irq [path] | bind <alias> <chip> | unbind <alias>])",
                    cmd_gsensor);
 #endif /* CONFIG_SHELL */
