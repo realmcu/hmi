@@ -19,7 +19,7 @@
 
 #define WIFI_DATA_MAX_HANDLERS  4
 #define TX_RETRY_DELAY_MS       10
-#define TX_MAX_RETRY            50   /* 50 × 10ms = 最多等 500ms 让芯片腾出 TX BD */
+#define TX_MAX_RETRY            50   /* 50 x 10ms = wait up to 500ms for chip to free TX BD */
 
 typedef struct
 {
@@ -51,11 +51,11 @@ static T_WIFI_DATA_RX_CB find_rx_cb(uint32_t ip, uint16_t port)
         if (!s_rx_handlers[i].used) { continue; }
         if (s_rx_handlers[i].ip_addr == ip && s_rx_handlers[i].port == port)
         {
-            return s_rx_handlers[i].cb; /* 精确匹配优先 */
+            return s_rx_handlers[i].cb; /* exact match preferred */
         }
         if (s_rx_handlers[i].ip_addr == 0 && s_rx_handlers[i].port == 0)
         {
-            wildcard_cb = s_rx_handlers[i].cb; /* 通配符备用 */
+            wildcard_cb = s_rx_handlers[i].cb; /* wildcard fallback */
         }
     }
     return wildcard_cb;
@@ -70,7 +70,7 @@ static void send_tx_drain_event(void)
     }
 }
 
-/* ---- 公开接口 ---- */
+/* ---- Public API ---- */
 
 bool wifi_data_rx_register(uint32_t ip_addr, uint16_t port, T_WIFI_DATA_RX_CB cb)
 {
@@ -78,7 +78,7 @@ bool wifi_data_rx_register(uint32_t ip_addr, uint16_t port, T_WIFI_DATA_RX_CB cb
     {
         return false;
     }
-    /* 去重：相同 ip/port 已存在则更新 cb，避免重复占槽 */
+    /* Dedup: if same ip/port exists, update cb to avoid slot waste */
     for (uint8_t i = 0; i < WIFI_DATA_MAX_HANDLERS; i++)
     {
         if (s_rx_handlers[i].used
@@ -123,9 +123,9 @@ bool wifi_data_tx(uint32_t ip_addr, uint16_t port, const uint8_t *data, uint16_t
 {
     lazy_init();
 
-    /* 整帧从 tx_desc 起按 512 对齐写入 SDIO，故缓冲需容纳
-     * [p_next | 对齐后的(TXDESC + payload)]。用 offsetof 表达 p_next 占位，
-     * 避免依赖“p_next 与 tx_desc 之间无 padding”的隐含假设。*/
+    /* Entire frame written to SDIO aligned to 512 from tx_desc, so buffer must
+     * hold [p_next | aligned(TXDESC + payload)]. Use offsetof for p_next so
+     * we don't assume no padding between p_next and tx_desc. */
     uint32_t alloc_size = offsetof(T_WIFI_SDIO_WRITE_QUEUE, tx_desc)
                           + ((sizeof(TXDESC) + len + 511u) & ~511u);
 
@@ -324,16 +324,17 @@ void wifi_data_sdio_rx_handler(void)
 
     PRXDESC  rxdesc  = (PRXDESC)buf;
     uint16_t pkt_len = rxdesc->pkt_len;
-    uint16_t offset  = rxdesc->offset; /* payload 相对帧头的偏移，由固件填写 */
+    uint16_t offset  = rxdesc->offset; /* payload offset relative to frame header, filled by firmware */
 
     if (pkt_len == 0)
     {
         return;
     }
 
-    /* RX 帧不携带 EXTDESC：payload 紧跟在 offset 字节的帧头之后，
-     * 不能用 SIZE_RX_DESC(含 ext_desc) 作偏移，也无 ip/port 可路由，
-     * 统一交给通配 handler(ip=0,port=0)。*/
+    /* RX frame carries no EXTDESC: payload follows right after the offset-byte
+     * frame header, so SIZE_RX_DESC (which includes ext_desc) cannot be used
+     * as offset; no ip/port to route on either, unified dispatch to wildcard
+     * handler (ip=0,port=0). */
     uint8_t *payload = buf + offset;
 
     T_WIFI_DATA_RX_CB cb = find_rx_cb(0, 0);
@@ -355,9 +356,10 @@ void wifi_data_sdio_tx_handler(void)
 {
     lazy_init();
 
-    /* 同步把整条 TX 队列发完(参考 watch 实现)：BD 满则原地 os_delay 重试，
-     * 带次数上限，避免长时间不喂狗触发看门狗复位。一次事件内排空，
-     * 不再依赖异步 timer——后者会让 echo 滞留、堵塞单线程 wifi task。*/
+    /* Synchronously drain the entire TX queue (see watch implementation): if
+     * BD is full, retry with os_delay in place, capped to avoid watchdog
+     * reset. Drain within one event, no longer relying on async timer — the
+     * latter would stall echo and block the single-threaded wifi task. */
     while (s_tx_queue.count > 0)
     {
         T_WIFI_SDIO_WRITE_QUEUE *pkt = os_queue_peek(&s_tx_queue, 0);
@@ -375,7 +377,7 @@ void wifi_data_sdio_tx_handler(void)
 
         if (ret == -EAGAIN)
         {
-            /* TX BD 暂时耗尽，等芯片腾出后重发当前包 */
+            /* TX BD temporarily exhausted, wait for chip to free up then retry */
             uint16_t retry = 0;
             while (wifi_sdio_tx_bd_avail() == 0 && retry < TX_MAX_RETRY)
             {
@@ -387,11 +389,11 @@ void wifi_data_sdio_tx_handler(void)
                 printf("[data] tx bd starved, drop 1 pkt\n");
                 os_mem_aligned_free(os_queue_out(&s_tx_queue));
             }
-            /* 否则继续 while，重发当前包 */
+            /* otherwise loop back to retransmit the current packet */
             continue;
         }
 
-        /* 其他错误：丢弃当前包 */
+        /* other errors: drop the current packet */
         printf("[data] write frame error=%d, drop\n", ret);
         os_mem_aligned_free(os_queue_out(&s_tx_queue));
     }
