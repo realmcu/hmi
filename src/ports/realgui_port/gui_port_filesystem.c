@@ -40,10 +40,4 @@ void gui_port_fs_init(void)
 {
     /* Initialize VFS */
     gui_vfs_init();
-
-    // Mount ROMFS
-    gui_vfs_mount_romfs("/rom", 0x00, 0);
-
-    /* Mount current directory using generic adapter (as example) */
-    gui_vfs_mount_generic("/vfs_adapter", ".", &posix_adapter);
 }

@@ -13,14 +13,17 @@ CPPPATH = [cwd]
 group = []
 
 if GetDepend(['CONFIG_REALTEK_HONEYGUI_LIB']):
-    # Use local application code, exclude example_gui_img.c
+    # Precompiled libgui.a: designer project provides the app UI.
     src = Glob('*.c')
     group = DefineGroup('app', src, depend=[''], CPPPATH=CPPPATH)
+    group += SConscript('designer/src/SConscript')
 elif GetDepend(['CONFIG_REALTEK_HONEYGUI_SRC']):
-    # Use source code from submodule (example), exclude local example_gui_img.c
+    # Designer UI and HoneyGUI example demos both export app_init; build only one.
     src = Glob('*.c')
-    SrcRemove(src, 'example_gui_img.c')
     group = DefineGroup('app', src, depend=[''], CPPPATH=CPPPATH)
-    group += SConscript(HONEYGUI_ROOT + '/example/SConscript')
+    if GetDepend(['CONFIG_REALTEK_BUILD_DASHBOARD_DESIGNER']):
+        group += SConscript('designer/src/SConscript')
+    else:
+        group += SConscript(HONEYGUI_ROOT + '/example/SConscript')
 
 Return('group')

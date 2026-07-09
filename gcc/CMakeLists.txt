@@ -139,13 +139,26 @@ endif()
 #==============================================================================
 # Application Source Files
 #==============================================================================
+# Non-recursive glob: the designer project below owns the GUI app UI.
 file(GLOB APP_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../src/application/*.c)
-if(CONFIG_REALTEK_HONEYGUI_BUILD_SRC)
-    # Source mode pulls demo content from the gui sample, so drop the local example.
-    list(FILTER APP_SOURCES EXCLUDE REGEX "example_gui_img\\.c$")
-endif()
 target_sources(dashboard PRIVATE ${APP_SOURCES})
 target_include_directories(dashboard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/application)
+
+#==============================================================================
+# Designer UI Sources
+#==============================================================================
+# Mutually exclusive with the HoneyGUI example demos; disable those in defconfig when this is on.
+if(CONFIG_REALTEK_BUILD_DASHBOARD_DESIGNER)
+    file(GLOB_RECURSE DESIGNER_SOURCES CONFIGURE_DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/application/designer/src/*.c)
+    target_sources(dashboard PRIVATE ${DESIGNER_SOURCES})
+    # Expose subfolders too so bare includes resolve regardless of including file.
+    target_include_directories(dashboard PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/application/designer/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/application/designer/src/ui
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/application/designer/src/user
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src/application/designer/src/callbacks)
+endif()
 
 #==============================================================================
 # OTA Sources

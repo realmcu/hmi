@@ -55,6 +55,14 @@ SECTIONS
     __flash_start_exe_addr__ = ADDR(FLASH_TEXT);
     }AT > APP_FLASH
 
+    .ARM.extab   : { *(.ARM.extab* .gnu.linkonce.armextab.*) } >APP_FLASH
+    .ARM :
+    {
+      __exidx_start = .;
+      *(.ARM.exidx*)
+      __exidx_end = .;
+    } >APP_FLASH
+
     RAM_VECTOR_TABLE 0x280000:
     {
         __ram_vector_table_start__ = .;

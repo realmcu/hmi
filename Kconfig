@@ -29,6 +29,12 @@ config REALTEK_HONEYGUI_BUILD_SRC
       Build HoneyGUI from source code, allows selecting different demos.
 endchoice
 
+config REALTEK_BUILD_DASHBOARD_DESIGNER
+    bool "Use Dashboard Designer UI as the GUI app"
+    help
+      Use the designer-generated dashboard UI (src/application/designer/src).
+      Mutually exclusive with the HoneyGUI example demos in source-build mode.
+
 menu "HoneyGUI Configuration"
 rsource "../../../src/Kconfig"
 endmenu

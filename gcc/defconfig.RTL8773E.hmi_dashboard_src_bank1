@@ -30,9 +30,12 @@ CONFIG_REALTEK_GUI=y
 CONFIG_REALTEK_HONEYGUI=y
 CONFIG_REALTEK_HONEYGUI_BUILD_SRC=y
 
-# Demo Selection - Image Widget Demo (default)
-# Uncomment ONE of the following options:
-CONFIG_REALTEK_BUILD_EXAMPLE_IMAGE_WIDGET=y
+# App UI Source - Dashboard Designer (owns the sole GUI app_init entry)
+CONFIG_REALTEK_BUILD_DASHBOARD_DESIGNER=y
+
+# HoneyGUI example demos are mutually exclusive with the designer UI above.
+# Enable at most ONE of these ONLY after disabling DASHBOARD_DESIGNER:
+# CONFIG_REALTEK_BUILD_EXAMPLE_IMAGE_WIDGET=y
 # CONFIG_REALTEK_BUILD_EXAMPLE_SVG_WIDGET=y
 # CONFIG_REALTEK_BUILD_EXAMPLE_GIF_WIDGET=y
 # CONFIG_REALTEK_BUILD_EXAMPLE_TEXT_WIDGET=y

@@ -55,6 +55,8 @@
 // </h>
 
 // <o> HoneyGUI Build Mode
+// <i> Lib: link gui.lib; designer is the only UI (example demos unavailable).
+// <i> Src: build GUI from source; pick designer or one example demo below.
 //  <0=> Build Lib
 //  <1=> Build Source Code
 #define CONFIG_REALTEK_HONEYGUI_BUILD_MODE  0
@@ -67,7 +69,18 @@
 #endif
 
 #if (CONFIG_REALTEK_BUILD_HONEYGUI_SRC == 1)
-// <o> HoneyGUI Demo Select
+
+// <c> Use Dashboard Designer UI as the app (Lib/Src default UI)
+<i> Only effective in Src mode. In Lib mode the designer is always
+<i> used(no example tree to replace it), so this checkbox is ignored there.
+#define CONFIG_REALTEK_BUILD_DASHBOARD_DESIGNER
+// </c>
+//  When defined, the app SConscript loads src/application/designer/src and
+//  skips the HoneyGUI example tree, so the demo selection below is ignored.
+
+// <o> HoneyGUI Demo Select (Src mode & Designer off only)
+// <i> Effective only in Src mode with the Designer option above off.
+// <i> Ignored in Lib mode, or whenever the Designer option is enabled.
 //  <0=> Base Widget Demo
 //  <1=> SVG Widget Demo
 //  <2=> GIF Widget Demo
@@ -182,11 +195,7 @@
 
 #endif
 
-// <h> HoneyGUI Config Function
-
-// <c> Enable RTK GUI ROMFS
-#define CONFIG_REALTEK_ROMFS
-// </c>
+// <h> HoneyGUI Config Function (Src mode only)
 
 #if (CONFIG_REALTEK_BUILD_HONEYGUI_SRC == 1)
 #define CONFIG_REALTEK_HONEYGUI
@@ -231,6 +240,15 @@
 // </c>
 
 #endif
+// </h>
+
+// <h> Other Configuration (independent of GUI build mode)
+
+// <c> Enable RTK GUI ROMFS
+// <i> GUI resource filesystem. Effective in both Lib and Src modes.
+#define CONFIG_REALTEK_ROMFS
+// </c>
+
 // </h>
 
 // <<< end of configuration section >>>
