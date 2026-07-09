@@ -55,7 +55,7 @@ extern stp_transport_t *app_stream_transport_get(void);
 #define T_RETX_MS               250u    /* discard frame if gap still open this long after KS_REPORT    */
 #define MAX_GAPS                8u      /* max number of tracked byte-range gaps per frame              */
 
-/* Max KS_REPORT value: session_id(1) + frame_seq(2) + gap_count(1) + gaps × 6 */
+/* Max KS_REPORT value: session_id(1) + frame_seq(2) + gap_count(1) + gaps x 6 */
 #define STREAM_REPORT_MAX_VAL   52u
 
 /* Timer IDs for os_timer */

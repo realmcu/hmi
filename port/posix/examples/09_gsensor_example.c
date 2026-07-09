@@ -1,10 +1,10 @@
 // Zephyr Shell test: uart:~$ posix_gsensor
 /* ================================================================
- * G-sensor 使用示例
+ * G-sensor usage example
  *
- * 功能：打开 G-sensor → 配置量程 → 读三轴数据 → 读温度 → 关闭
+ * Function: Open G-sensor -> configure range -> read 3-axis data -> read temperature -> close
  *
- * 编译要求：需要 posix.h + posix_ioctl_gsensor.h
+ * Build requirements: posix.h + posix_ioctl_gsensor.h
  * ================================================================ */
 
 #include "posix.h"
@@ -23,11 +23,11 @@ SHELL_CMD_REGISTER(posix_gsensor, NULL, "POSIX gsensor test (stub)", cmd_gsensor
 
 void example_gsensor(void)
 {
-    /* === 1. 打开 === */
+    /* === 1. Open === */
     posix_fd_t gs = posix_open("/dev/gsensor0");
     if (!gs) { return; }
 
-    /* === 2. 配置量程 ±2G，100Hz === */
+    /* === 2. Configure range +/-2G, 100Hz === */
     posix_gsensor_config_t cfg =
     {
         .range     = POSIX_GSENSOR_RANGE_2G,
@@ -36,21 +36,21 @@ void example_gsensor(void)
     };
     posix_ioctl(gs, POSIX_GSENSOR_IOCTL_SET_CONFIG, &cfg);
 
-    /* === 3. 读三轴加速度 === */
+    /* === 3. Read 3-axis acceleration === */
     posix_gsensor_axis_t accel;
     posix_read(gs, &accel, sizeof(accel));
-    /* accel.x/y/z 单位 mg（千分之一 g） */
+    /* accel.x/y/z unit mg (1/1000 g) */
 
-    /* === 4. 读芯片温度 === */
+    /* === 4. Read chip temperature === */
     int temp;
     posix_ioctl(gs, POSIX_GSENSOR_IOCTL_READ_TEMP, &temp);
-    /* temp 单位 0.1°C，如 250 = 25.0°C */
+    /* temp unit 0.1 deg C, e.g. 250 = 25.0 deg C */
 
-    /* === 5. 自检 === */
+    /* === 5. Self-test === */
     int ret = posix_ioctl(gs, POSIX_GSENSOR_IOCTL_SELF_TEST, NULL);
-    /* ret == 0 表示正常 */
+    /* ret == 0 means normal */
 
-    /* === 6. 关闭 === */
+    /* === 6. Close === */
     posix_close(gs);
     (void)ret;
 }
