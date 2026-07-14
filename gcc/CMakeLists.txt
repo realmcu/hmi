@@ -186,6 +186,14 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/protocol
 target_sources(dashboard PRIVATE
     ${REALTEK_SDK_BASE_PATH}/src/mcu/io_hal/common/hw_tim.c)
 
+#==============================================================================
+# RTC Calendar Module (used by application/app_rtc_time.c to retarget time())
+#==============================================================================
+target_sources(dashboard PRIVATE
+    ${REALTEK_SDK_BASE_PATH}/src/mcu/module/rtc_calendar/rtc_calendar.c)
+target_include_directories(dashboard PRIVATE
+    ${REALTEK_SDK_BASE_PATH}/src/mcu/module/rtc_calendar)
+
 file(GLOB PORT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../src/ports/realgui_port/*.c)
 target_sources(dashboard PRIVATE ${PORT_SOURCES})
 target_include_directories(dashboard PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/ports/realgui_port)

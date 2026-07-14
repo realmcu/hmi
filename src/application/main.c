@@ -9,6 +9,7 @@
 #include "os_sched.h"
 #include "app_panel_init.h"
 #include "app_lower_init.h"
+#include "app_rtc_time.h"
 #include "hmi_bt_task.h"
 #ifdef ENABLE_HONEYGUI
 #include "gui_server.h"
@@ -20,28 +21,14 @@ int main(void)
 
     system_lower_init();
 
+    app_rtc_time_init();
+
     extern void rtk_lcd_hal_init(void);
     rtk_lcd_hal_init();
 
 #ifdef ENABLE_HONEYGUI
     app_task_init();
     gui_set_keep_active_time(1000000);
-#ifdef __cplusplus
-    {
-        typedef void PROC();
-        extern const unsigned long SHT$$INIT_ARRAY$$Base[];
-        extern const unsigned long SHT$$INIT_ARRAY$$Limit[];
-
-        const unsigned long *base = SHT$$INIT_ARRAY$$Base;
-        const unsigned long *lim  = SHT$$INIT_ARRAY$$Limit;
-
-        for (; base != lim; base++)
-        {
-            PROC *proc = (PROC *)((const char *)base + *base);
-            (*proc)();
-        }
-    }
-#endif
 #endif
 
     hmi_bt_task_init();

@@ -63,5 +63,10 @@ path = [SDK_ROOT + '/inc/hal/io']
 IO_HAL_CPPDEFINES = []
 io_hal = DefineGroup('io_hal', io_hal_src, depend = [''], CPPPATH = path, CPPDEFINES = IO_HAL_CPPDEFINES)
 
-objs = bsp + lib + io_hal
+rtc_calendar_src = []
+rtc_calendar_src += [SDK_ROOT + '/src/mcu/module/rtc_calendar/rtc_calendar.c']
+path = [SDK_ROOT + '/src/mcu/module/rtc_calendar']
+rtc_calendar = DefineGroup('rtc_calendar', rtc_calendar_src, depend = [''], CPPPATH = path)
+
+objs = bsp + lib + io_hal + rtc_calendar
 Return('objs')
