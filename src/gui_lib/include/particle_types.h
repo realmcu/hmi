@@ -73,8 +73,8 @@ typedef struct particle
     float vy;               /**< Y velocity in pixels/second */
 
     /* Acceleration */
-    float ax;               /**< X acceleration in pixels/second² */
-    float ay;               /**< Y acceleration in pixels/second² */
+    float ax;               /**< X acceleration in pixels/second^2 */
+    float ay;               /**< Y acceleration in pixels/second^2 */
 
     /* Visual properties */
     float scale;            /**< Scale factor (1.0 = original size) */

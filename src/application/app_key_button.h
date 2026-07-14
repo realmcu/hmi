@@ -11,10 +11,11 @@ extern "C" {
 #endif
 
 /**
- * @brief 初始化板级物理按键（ADC_2 -> Power，P3_5 -> Home）。
+ * @brief Initialize the board-level physical buttons (ADC_2 -> Power, P3_5 -> Home).
  *
- * 将两个引脚配置为数字输入 + 电平中断 + 软件消抖，按下/松开时更新
- * GUI keyboard 输入设备（gui_kb_create）所订阅的状态与时间戳全局变量。
+ * Configures both pins as digital input + level interrupt + software debounce.
+ * On press/release, updates the state and timestamp globals subscribed by the
+ * GUI keyboard input device (gui_kb_create).
  */
 void app_key_button_init(void);
 

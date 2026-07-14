@@ -63,7 +63,7 @@ static bool     s_rx_active    = false;
  *                              Helpers
  *============================================================================*/
 
-/* CRC-16/KERMIT: poly=0x1021 reflected, init=0x0000 — same as btxfcs */
+/* CRC-16/KERMIT: poly=0x1021 reflected, init=0x0000 -- same as btxfcs */
 static uint16_t crc16_update(uint16_t crc, const uint8_t *data, uint16_t len)
 {
     while (len--)

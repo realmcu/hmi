@@ -29,7 +29,7 @@ extern "C" {
 #define HMI_L2_CMD_LOG          0x0au   /* log transfer */
 
 /*============================================================================*
- *                              Keys — settings (0x02)
+ *                              Keys -- settings (0x02)
  *============================================================================*/
 
 #define HMI_L2_SET_TIME         0x01u
@@ -46,7 +46,7 @@ extern "C" {
 #define HMI_L2_SET_CALL_SWITCH  0x25u
 
 /*============================================================================*
- *                              Keys — bind (0x03)
+ *                              Keys -- bind (0x03)
  *============================================================================*/
 
 #define HMI_L2_BIND_REQ         0x01u
@@ -58,7 +58,7 @@ extern "C" {
 #define HMI_L2_SUPER_BIND_RSP   0x07u
 
 /*============================================================================*
- *                              Keys — notify (0x04)
+ *                              Keys -- notify (0x04)
  *============================================================================*/
 
 #define HMI_L2_CALL_RING        0x01u
@@ -66,7 +66,7 @@ extern "C" {
 #define HMI_L2_CALL_REJECT      0x03u
 
 /*============================================================================*
- *                              Keys — sport (0x05)
+ *                              Keys -- sport (0x05)
  *============================================================================*/
 
 #define HMI_L2_SPORT_REQ        0x01u
@@ -83,7 +83,7 @@ extern "C" {
 #define HMI_L2_CALIBRATE_RSP    0x0cu
 
 /*============================================================================*
- *                              Keys — control (0x07)
+ *                              Keys -- control (0x07)
  *============================================================================*/
 
 #define HMI_L2_CTRL_PHOTO       0x01u
@@ -92,7 +92,7 @@ extern "C" {
 #define HMI_L2_CTRL_CAMERA_ST   0x11u
 
 /*============================================================================*
- *                              Keys — log (0x0a)
+ *                              Keys -- log (0x0a)
  *============================================================================*/
 
 #define HMI_L2_LOG_OPEN         0x01u
@@ -100,16 +100,16 @@ extern "C" {
 #define HMI_L2_LOG_SEND         0x03u
 
 /*============================================================================*
- *                              Keys — file transfer (0x0b)
+ *                              Keys -- file transfer (0x0b)
  *============================================================================*/
 
 #define HMI_L2_CMD_FILE_XFER        0x0bu   /* file transfer */
 
-#define HMI_L2_XFER_BEGIN_REQ       0x01u   /* session open request  (phone → device) */
-#define HMI_L2_XFER_BEGIN_RSP       0x02u   /* session open response (device → phone) */
-#define HMI_L2_XFER_DATA            0x03u   /* data chunk            (phone → device) */
-#define HMI_L2_XFER_END_REQ         0x05u   /* transfer end request  (phone → device) */
-#define HMI_L2_XFER_END_RSP         0x06u   /* transfer end response (device → phone) */
+#define HMI_L2_XFER_BEGIN_REQ       0x01u   /* session open request  (phone -> device) */
+#define HMI_L2_XFER_BEGIN_RSP       0x02u   /* session open response (device -> phone) */
+#define HMI_L2_XFER_DATA            0x03u   /* data chunk            (phone -> device) */
+#define HMI_L2_XFER_END_REQ         0x05u   /* transfer end request  (phone -> device) */
+#define HMI_L2_XFER_END_RSP         0x06u   /* transfer end response (device -> phone) */
 #define HMI_L2_XFER_ABORT           0x07u   /* abort (either direction) */
 
 /* file_type values (XFER_BEGIN_REQ) */

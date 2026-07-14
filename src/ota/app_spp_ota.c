@@ -85,7 +85,7 @@ static void dispatch_frames(uint8_t *p_data, uint16_t data_len, uint8_t app_idx)
 
         if (data_len < cmd_len)
         {
-            break; /* incomplete frame — caller will buffer the remainder */
+            break; /* incomplete frame -- caller will buffer the remainder */
         }
 
         /* payload starts at p_data[4], length = payload_len (includes cmd_id) */

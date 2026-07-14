@@ -77,7 +77,7 @@ const T_ATTRIB_APPL hmi_ctrl_service_tbl[] =
         GATT_PERM_READ
     },
 
-    /* <<Characteristic>>, index 1 — CMD (Write) */
+    /* <<Characteristic>>, index 1 -- CMD (Write) */
     {
         ATTRIB_FLAG_VALUE_INCL,
         {
@@ -114,7 +114,7 @@ const T_ATTRIB_APPL hmi_ctrl_service_tbl[] =
         GATT_PERM_READ
     },
 
-    /* <<Characteristic>>, index 4 — Event (Notify) */
+    /* <<Characteristic>>, index 4 -- Event (Notify) */
     {
         ATTRIB_FLAG_VALUE_INCL,
         {
@@ -165,7 +165,7 @@ const T_ATTRIB_APPL hmi_ctrl_service_tbl[] =
         GATT_PERM_READ
     },
 
-    /* <<Characteristic>>, index 8 — Status (Read) */
+    /* <<Characteristic>>, index 8 -- Status (Read) */
     {
         ATTRIB_FLAG_VALUE_INCL,
         {

@@ -190,10 +190,10 @@ typedef struct particle_shape_config
 typedef struct particle_trajectory_config
 {
     particle_trajectory_type_t type;    /**< Trajectory type */
-    float gravity;                      /**< Gravity: [-1000, 1000] px/s² */
+    float gravity;                      /**< Gravity: [-1000, 1000] px/s^2 */
     float damping;                      /**< Damping: [0.0, 1.0] */
-    float wind_x;                       /**< Wind X force: px/s² */
-    float wind_y;                       /**< Wind Y force: px/s² */
+    float wind_x;                       /**< Wind X force: px/s^2 */
+    float wind_y;                       /**< Wind Y force: px/s^2 */
     float orbit_cx;                     /**< Orbit center X */
     float orbit_cy;                     /**< Orbit center Y */
     float orbit_speed;                  /**< Orbit angular speed: rad/s */
@@ -474,7 +474,7 @@ typedef struct particle_effect_config
  *                           Parameter Limits
  *============================================================================*/
 
-/** Gravity limits (px/s²) */
+/** Gravity limits (px/s^2) */
 #define PARTICLE_GRAVITY_MIN    (-1000.0f)
 #define PARTICLE_GRAVITY_MAX    (1000.0f)
 
