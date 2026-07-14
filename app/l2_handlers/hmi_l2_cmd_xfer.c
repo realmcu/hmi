@@ -55,6 +55,7 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
     static fdb_bf_file_t file = NULL;
     static uint32_t     crc = 0;
     static char name[64];
+    static uint32_t res_info[2];
 
     for (uint8_t i = 0; i < n; i++)
     {
@@ -93,17 +94,12 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                           s_xfer_type, (unsigned long)s_xfer_total,
                           s_xfer_chunk, fname_len);
 
-                uint8_t rsp[3];
-                rsp[0] = HMI_L2_XFER_BEGIN_OK;
-                rsp[1] = (uint8_t)(s_xfer_chunk >> 8);
-                rsp[2] = (uint8_t)(s_xfer_chunk & 0xFFu);
-                xfer_send(HMI_L2_XFER_BEGIN_RSP, rsp, sizeof(rsp));
-
                 do
                 {
                     memset((void *)name, 0, sizeof(name));
                     sprintf(name, "bf_%u", id);
                     id++;
+                    PROTO_LOG("fdb_bf_exists %s?", name);
                 }
                 while (fdb_bf_exists(app_get_bf(), name));
 
@@ -114,6 +110,12 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                 {
                     APP_PRINT_ERROR2("[bf] create '%s' failed (%d)", name, (int)rc);
                 }
+
+                uint8_t rsp[3];
+                rsp[0] = HMI_L2_XFER_BEGIN_OK;
+                rsp[1] = (uint8_t)(s_xfer_chunk >> 8);
+                rsp[2] = (uint8_t)(s_xfer_chunk & 0xFFu);
+                xfer_send(HMI_L2_XFER_BEGIN_RSP, rsp, sizeof(rsp));
                 break;
             }
 
@@ -176,11 +178,12 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                     else
                     {
                         extern void ui_add_resource(uint32_t payload);
-                        uint32_t addr = 0;
-                        uint32_t sz = 0;
-                        int grc = fdb_bf_get_addr(app_get_bf(), name, &addr, &sz);
-                        PROTO_LOG("[bf]  rc %d grc %d file %s 0x%x %d", rc, grc, name, addr, sz);
-                        ui_add_resource(addr);
+                        res_info[0] = 0;
+                        res_info[1] = 0;
+
+                        int grc = fdb_bf_get_addr(app_get_bf(), name, &res_info[0], &res_info[1]);
+                        PROTO_LOG("[bf]  rc %d grc %d file %s 0x%x %d", rc, grc, name, res_info[0], res_info[1]);
+                        ui_add_resource(res_info);
                     }
                 }
 

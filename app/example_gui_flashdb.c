@@ -38,7 +38,8 @@ static bool bf_boot_enum_cb(const char *key, const struct fdb_bf_dirent *ent,
     (void)arg;
     void **array = (void **)(arg);
     uint32_t n = (uint32_t)array[0];
-    array[n + 1] = (void *)xip_addr;
+    array[2 * n + 1] = (void *)xip_addr;
+    array[2 * n + 2] = (void *)(ent->size);
     array[0] = (void *)(n + 1);
     printf("[bf] n=%u   '%-24s'  size=%-8u  xip=0x%08X  flags=0x%08X\n",
            n, key, ent->size, xip_addr, ent->flags);
@@ -84,11 +85,11 @@ int flashdb_prepare(void)
     printf("[db] big file directory:");
 
     // construct resouce list
-    uint32_t file_num = 20;
+    uint32_t file_num = 32;
     void **file_array = NULL;
 
-    file_array = malloc(sizeof(void *) * file_num);
-    memset((void *)file_array, 0, file_num * 4);
+    file_array = malloc(sizeof(void *) * file_num * 2); // addr + size
+    memset((void *)file_array, 0, file_num * 4 * 2);
     fdb_bf_foreach(&s_bf, bf_boot_enum_cb, (void *)file_array);
     file_num = (uint32_t)file_array[0];
 

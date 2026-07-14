@@ -84,6 +84,22 @@
 				<RTL87X3G_PSEL(SW_MODE, P4_3, DIR_IN, DRV_LOW, PULL_UP)>;
 		};
 	};
+
+	/* I2C0 (Gsensor): SCL=P3_5, SDA=P3_4 —— 对齐 eBadge_8773g_dev */
+	i2c0_default: i2c0_default {
+		group1 {
+			psels =
+				<RTL87X3G_PSEL(I2C0_CLK, P3_5, DIR_OUT, DRV_HIGH, PULL_NONE)>,
+				<RTL87X3G_PSEL(I2C0_DAT, P3_4, DIR_OUT, DRV_HIGH, PULL_NONE)>;
+		};
+	};
+	i2c0_sleep: i2c0_sleep {
+		group1 {
+			psels =
+				<RTL87X3G_PSEL(SW_MODE, P3_5, DIR_IN, DRV_LOW, PULL_UP)>,
+				<RTL87X3G_PSEL(SW_MODE, P3_4, DIR_IN, DRV_LOW, PULL_UP)>;
+		};
+	};
 };
 
 &i2c2 {
@@ -100,4 +116,12 @@
 		gesture-release-timeout-ms = <30>;
 		status = "okay";
 	};
+};
+
+&i2c0 {
+	status = "okay";
+	clock-frequency = <400000>;
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-1 = <&i2c0_sleep>;
+	pinctrl-names = "default", "sleep";
 };
