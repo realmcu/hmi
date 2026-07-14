@@ -49,9 +49,6 @@
 // <q> TOUCH_LW
 #define CONFIG_REALTEK_TOUCH_LW 0
 
-// <q> KEY_BUTTON_8773E
-#define CONFIG_REALTEK_KEY_BUTTON_8773E 1
-
 // </h>
 
 // <o> HoneyGUI Build Mode
