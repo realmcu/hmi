@@ -80,13 +80,32 @@ west flash -p COM5
 # 烧录 bank1 镜像（必须与之前 west build -m 的 mode 对应）
 west flash -m src_bank1
 west flash -m lib_bank1 -p COM5
-
-# 同时烧录 userdata 分区
-west flash -p COM3 --userdata path/to/userdata.bin --userdata-addr 0x00A00000
 ```
 
 > `-m` 决定从哪个 `bin/RTL8773E.hmi_dashboard_<mode>/` 目录捞取 `dashboard_<bank>_MP-*.bin`。
 > 依赖 `download/mpcli/mpcli.exe`，烧录完成后会有 `[DONE]` 或 `[FAILED]` 提示。
+> 只烧 app，不涉及 userdata 分区——需要烧 userdata 用 `west userdata`（见下）。
+
+### `west userdata`
+
+给一份 userdata（user_data1）bin 加上真实的 RTL8773E MP header 并通过 `mpcli` 独立烧录——
+**完全不碰 app**，也不需要先 `west build`。默认目标是 designer UI 的
+`src/application/designer/build/app_romfs.bin`（源文件本身不会被修改）。
+
+```bash
+# 打包并烧录 designer UI 的 ROMFS 资源（默认串口 COM3，地址取 flash_map.h 的 USER_DATA1_ADDR）
+west userdata
+
+# 指定其他 bin / 串口 / 地址
+west userdata path/to/userdata.bin -p COM5 --addr 0x00A00000
+
+# 只加 header、生成 record 文件，不碰串口（没接板子时用）
+west userdata --package-only
+```
+
+> 打包会生成两份文件：完整的 MP-tagged `record`（含 BinID/Version/PartNumber，落在源文件同目录，
+> 供生产追溯用）和临时的 `flash_ready`（剥掉 512 字节 MP 生产头，只保留 1024 字节 ctrl header，
+> 这才是实际写入 flash 的内容，用完即删）。
 
 ### `west size`
 

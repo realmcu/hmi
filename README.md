@@ -74,9 +74,19 @@ west build -m lib_bank0 # Library mode, bank0 (links precompiled libgui.a, faste
 west flash                  # default port COM3, flashes src_bank0 image
 west flash -p COM5          # specify a different port
 west flash -m src_bank1     # flash bank1 image (must match west build -m)
+west userdata               # flash the designer UI's ROMFS resources, app untouched (see below)
 ```
 
 > `-m` must match the mode used at build time; a mismatch flashes the wrong OTA slot.
+>
+> **UI not showing up?** The app image only contains program logic — the designer UI's
+> images/fonts live in a separate ROMFS partition. Run `west userdata` once (and again
+> whenever the UI resources change) to flash it. This command is standalone — it does
+> **not** flash the app — and automatically prepends the RTL8773E MP header required by
+> `src/application/designer/build/app_romfs.bin`, flashing it to the correct address
+> without modifying the source file. A different bin can be packaged and flashed instead:
+> `west userdata <path> [--addr <addr>]`. Add `--package-only` to just generate the
+> header without touching the serial port.
 
 ## Build Command Reference
 

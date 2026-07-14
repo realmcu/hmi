@@ -2,8 +2,10 @@
 """RTL8773E Dashboard West extension commands."""
 
 import os
+import re
 import shutil
 import subprocess
+import tempfile
 
 from west.commands import WestCommand
 from west import log
@@ -65,6 +67,128 @@ _MODE_CHOICES = list(DEFCONFIGS.keys()) + list(_MODE_ALIASES.keys())
 def _resolve_mode(mode: str) -> str:
     """Apply alias map; return the canonical mode name used to index DEFCONFIGS."""
     return _MODE_ALIASES.get(mode, mode)
+
+
+IC_TYPE = '8773E'
+
+
+def _designer_romfs_bin(cmake_src: str) -> str:
+    return os.path.join(cmake_src, 'board', 'evb', 'hmi_dashboard', 'src',
+                         'application', 'designer', 'build', 'app_romfs.bin')
+
+
+def _flash_map_h(cmake_src: str) -> str:
+    return os.path.join(cmake_src, 'bin', 'rtl87x3ep', 'flash_map_config',
+                         '16M', 'flash_16M', 'flash_map.h')
+
+
+def _parse_flash_map_define(cmake_src: str, name: str) -> str:
+    """Read a `#define NAME 0x...` value out of the SDK's flash_map.h."""
+    flash_map = _flash_map_h(cmake_src)
+    if not os.path.exists(flash_map):
+        log.die(f'flash_map.h not found: {flash_map}')
+    with open(flash_map, 'r') as f:
+        text = f.read()
+    m = re.search(rf'#define\s+{re.escape(name)}\s+(0x[0-9A-Fa-f]+)', text)
+    if not m:
+        log.die(f'Cannot find {name} in {flash_map}')
+    return m.group(1)
+
+
+def _gadgets_dir(cmake_src: str) -> str:
+    return os.path.join(cmake_src, 'tool', 'Gadgets')
+
+
+def _mpcli_flash(cmake_src: str, port: str, bin_path: str, addr: str):
+    """Flash bin_path to addr directly via mpcli, bypassing gcc/download.bat
+    (which always insists on resolving and flashing an app image first).
+    """
+    mpcli_dir = os.path.join(cmake_src, 'board', 'evb', 'hmi_dashboard',
+                             'download', 'mpcli')
+    mpcli_exe = os.path.join(mpcli_dir, 'mpcli.exe')
+    if not os.path.exists(mpcli_exe):
+        log.die(f'mpcli.exe not found: {mpcli_exe}')
+
+    cmd = [mpcli_exe, '-c', port, '-p', '-A', addr, '-F', bin_path,
+           '-b', '3000000', '-M', '5', '-r', '-u', '-d', '-T', 'RTL87X3EP']
+    log.dbg(' '.join(cmd))
+    r = subprocess.run(cmd, cwd=mpcli_dir)
+    if r.returncode != 0:
+        log.die('userdata flash failed')
+
+
+def _package_userdata(cmake_src: str, bin_path: str):
+    """Prepend a real RTL8773E user_data1 header to bin_path.
+
+    Returns (record_bin, flash_ready_bin, workdir):
+
+    - record_bin: the full official MP-tagged image — 1024-byte ctrl
+      header + 512-byte MP production header (BinID/Version/PartNumber
+      from mp_data1.ini) + payload — copied next to bin_path for
+      production traceability. Mirrors
+      tool/Gadgets/gui_package_tool/8773E/gen_root_image.bat.
+    - flash_ready_bin: the same image with the leading 512-byte MP
+      production header stripped back off, leaving just [1024B ctrl
+      header][payload]. mpcli does a raw byte-for-byte flash write with
+      no header-aware stripping (unlike e.g. MPPGTool), so record_bin
+      would misalign the mount address by 0x200 bytes if flashed
+      directly — flash_ready_bin is what must actually be written at
+      USER_DATA1_ADDR for the payload to land at the +0x400 offset
+      gui_vfs_mount_romfs() expects. Lives inside workdir.
+    - workdir: scratch temp dir backing flash_ready_bin; caller must
+      shutil.rmtree() it once done flashing.
+
+    bin_path itself is never modified — designer/'s committed
+    app_romfs.bin must stay header-free.
+    """
+    gadgets = _gadgets_dir(cmake_src)
+    prepend_header = os.path.join(gadgets, 'prepend_header.exe')
+    md5_tool = os.path.join(gadgets, 'md5.exe')
+    mp_ini = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          '..', 'download', 'mp_data1.ini')
+    for tool in (prepend_header, md5_tool, mp_ini):
+        if not os.path.exists(tool):
+            log.die(f'Required tool/config not found: {tool}')
+
+    workdir = tempfile.mkdtemp(prefix='hmi_userdata_')
+    basename = os.path.basename(bin_path)
+    work_bin = os.path.join(workdir, basename)
+    shutil.copy2(bin_path, work_bin)
+
+    r = subprocess.run([prepend_header, '/user_data1', work_bin,
+                        '/ic_type', IC_TYPE], cwd=workdir)
+    if r.returncode != 0:
+        log.die('prepend_header (raw header) failed')
+
+    # work_bin now holds [1024B ctrl header][payload] — exactly what
+    # needs to land on flash. Snapshot it before the next step, which
+    # creates a new *_MP.bin file rather than touching work_bin.
+    flash_ready = os.path.join(workdir, 'flash_ready.bin')
+    shutil.copy2(work_bin, flash_ready)
+
+    r = subprocess.run([prepend_header, '/user_data1', work_bin,
+                        '/mp_ini', mp_ini, '/ic_type', IC_TYPE], cwd=workdir)
+    if r.returncode != 0:
+        log.die('prepend_header (mp_ini) failed')
+
+    stem, ext = os.path.splitext(basename)
+    mp_bin = os.path.join(workdir, f'{stem}_MP{ext}')
+    if not os.path.exists(mp_bin):
+        log.die(f'prepend_header did not produce {mp_bin}')
+
+    r = subprocess.run([md5_tool, mp_bin], cwd=workdir,
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        log.die('md5 tagging failed')
+    m = re.search(r'Output Image:\s*(\S+)', r.stdout)
+    if not m:
+        log.die(f'Could not parse md5 tool output: {r.stdout!r}')
+
+    record_name = os.path.basename(m.group(1))
+    record_dst = os.path.join(os.path.dirname(bin_path), record_name)
+    shutil.copy2(os.path.join(workdir, record_name), record_dst)
+
+    return record_dst, flash_ready, workdir
 
 
 class ProjectInfo(WestCommand):
@@ -245,20 +369,9 @@ class FlashCommand(WestCommand):
             '-m', '--mode', choices=_MODE_CHOICES, default='src_bank0',
             help='which build to flash (default: src_bank0)'
         )
-        parser.add_argument(
-            '--userdata', metavar='FILE',
-            help='optional userdata binary to flash'
-        )
-        parser.add_argument(
-            '--userdata-addr', metavar='ADDR',
-            help='flash address for userdata (required when --userdata is given)'
-        )
         return parser
 
     def do_run(self, args, unknown_args):
-        if args.userdata and not args.userdata_addr:
-            log.die('--userdata-addr is required when --userdata is given')
-
         cmake_src = _cmake_src(self.manifest)
         download_bat = os.path.join(
             cmake_src, 'board', 'evb', 'hmi_dashboard', 'gcc', 'download.bat'
@@ -266,15 +379,64 @@ class FlashCommand(WestCommand):
         if not os.path.exists(download_bat):
             log.die(f'download.bat not found: {download_bat}')
 
-        # download.bat now takes [COM] [MODE] [USERDATA_FILE USERDATA_ADDR]
-        # — both COM and MODE are positional, supply defaults if not given.
         mode = _resolve_mode(args.mode)
         port = args.port if args.port else 'COM3'
         cmd = ['cmd', '/c', download_bat, port, mode]
-        if args.userdata:
-            cmd += [args.userdata, args.userdata_addr]
-
         subprocess.run(cmd)
+
+
+class UserdataCommand(WestCommand):
+    def __init__(self):
+        super().__init__(
+            'userdata', 'package and flash a userdata (user_data1) binary',
+            'Prepend a real RTL8773E MP header to a userdata binary and '
+            'flash it standalone via mpcli — the app image is never '
+            'touched (use `west flash` for that). Defaults to the '
+            'designer UI\'s src/application/designer/build/app_romfs.bin.'
+        )
+
+    def do_add_parser(self, parser_adder, **kwargs):
+        parser = parser_adder.add_parser(self.name, help=self.help,
+                                         description=self.description)
+        parser.add_argument(
+            'file', metavar='FILE', nargs='?', default=None,
+            help=('userdata binary to package/flash (default: the '
+                  'designer UI\'s src/application/designer/build/app_romfs.bin). '
+                  'Source file is never modified.')
+        )
+        parser.add_argument(
+            '-p', '--port', default='',
+            help='serial COM port (default: COM3)'
+        )
+        parser.add_argument(
+            '--addr', metavar='ADDR',
+            help='flash address (default: USER_DATA1_ADDR from the SDK flash_map.h)'
+        )
+        parser.add_argument(
+            '--package-only', action='store_true',
+            help=('only add the MP header and write the record bin next '
+                  'to the source file — do not touch the serial port at all')
+        )
+        return parser
+
+    def do_run(self, args, unknown_args):
+        cmake_src = _cmake_src(self.manifest)
+        userdata_bin = args.file or _designer_romfs_bin(cmake_src)
+        if not os.path.exists(userdata_bin):
+            log.die(f'userdata bin not found: {userdata_bin}')
+
+        log.inf(f'Packaging userdata: {userdata_bin}')
+        record, flash_ready, workdir = _package_userdata(cmake_src, userdata_bin)
+        log.inf(f'Record (MP-tagged, for reference) -> {record}')
+        try:
+            if args.package_only:
+                return
+            addr = args.addr or _parse_flash_map_define(cmake_src, 'USER_DATA1_ADDR')
+            port = args.port if args.port else 'COM3'
+            log.inf(f'Flashing userdata -> {addr} (app is not touched)')
+            _mpcli_flash(cmake_src, port, flash_ready, addr)
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
 
 
 # Both toolchains share the same bulidRTL8773E.bat / install layout

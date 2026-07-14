@@ -84,14 +84,38 @@ west flash -p COM5
 # Flash the bank1 image (must match the mode used at west build -m time)
 west flash -m src_bank1
 west flash -m lib_bank1 -p COM5
-
-# Also flash the userdata partition
-west flash -p COM3 --userdata path/to/userdata.bin --userdata-addr 0x00A00000
 ```
 
 > `-m` determines which `bin/RTL8773E.hmi_dashboard_<mode>/` directory to pull
 > `dashboard_<bank>_MP-*.bin` from. Depends on `download/mpcli/mpcli.exe`; prints
 > `[DONE]` or `[FAILED]` when flashing completes.
+> App only — does not touch the userdata partition; use `west userdata` for that (see below).
+
+### `west userdata`
+
+Prepends a real RTL8773E MP header to a userdata (user_data1) bin and flashes it
+standalone via `mpcli` — **the app is never touched**, and no `west build` is required.
+Defaults to the designer UI's `src/application/designer/build/app_romfs.bin` (source
+file is never modified).
+
+```bash
+# Package and flash the designer UI's ROMFS resources (default port COM3,
+# address from flash_map.h's USER_DATA1_ADDR)
+west userdata
+
+# Specify a different bin / port / address
+west userdata path/to/userdata.bin -p COM5 --addr 0x00A00000
+
+# Only add the header and write the record bin — don't touch the serial port
+# (useful when no board is connected)
+west userdata --package-only
+```
+
+> Produces two files: the full MP-tagged `record` (BinID/Version/PartNumber included,
+> saved next to the source file for production traceability) and a transient
+> `flash_ready` copy (the 512-byte MP production header stripped back off, leaving just
+> the 1024-byte ctrl header) — the latter is what actually gets written to flash, and is
+> deleted afterward.
 
 ### `west size`
 

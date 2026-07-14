@@ -15,6 +15,9 @@ west-commands:
       - name: flash
         class: FlashCommand
         help: Download firmware to device via serial port (mpcli)
+      - name: userdata
+        class: UserdataCommand
+        help: Package (add MP header) and flash a userdata binary, standalone from the app
       - name: size
         class: SizeCommand
         help: Show firmware memory usage via arm-none-eabi-size

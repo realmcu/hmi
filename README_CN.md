@@ -70,9 +70,16 @@ west build -m lib_bank0 # 库模式，bank0（链接预编译 libgui.a，迭代�
 west flash                  # 默认串口 COM3，烧录 src_bank0 镜像
 west flash -p COM5          # 指定串口
 west flash -m src_bank1     # 烧录 bank1 镜像（须与 west build -m 保持一致）
+west userdata               # 烧录 designer UI 的 ROMFS 资源，不烧 app（见下）
 ```
 
 > `-m` 须与构建时的 mode 保持一致，否则将烧录错误槽位的固件。
+>
+> **看不到 UI 效果？** app 固件只包含程序逻辑，designer UI 的图片/字体等资源是单独的 ROMFS 分区，
+> 首次烧录（或资源更新后）需要额外执行一次 `west userdata`。该命令是独立的命令，**不会**触发 app 烧录，
+> 会自动给 `src/application/designer/build/app_romfs.bin` 加上 RTL8773E 要求的 MP header 并烧录到正确地址，
+> 源文件本身不会被修改。也可指定其他 bin：`west userdata <path> [--addr <addr>]`；
+> 只想加 header 不想碰串口时加 `--package-only`。
 
 ## 构建命令参考
 
