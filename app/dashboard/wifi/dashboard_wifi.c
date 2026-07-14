@@ -14,41 +14,39 @@
  */
 
 /* ============================================================================
- * Dashboard WiFi dispatcher implementation.
+ * Dashboard WiFi dispatcher implementation
  *
- * Overall architecture. See the top of dashboard_wifi.h for details:
+ * Architecture (see dashboard_wifi.h for details):
  *
- *   +----------------------+                  +----------------------+
- *   | SDK internal WiFi    |                  | Shell task           |
- *   | task (driver/stack)  |                  | (user commands)      |
- *   +----------+-----------+                  +----------+-----------+
- *              | calls event_external_hdl[]              | calls cmd handler
- *              |                                         |
- *              v                                         v
+ *   ┌──────────────────────┐                  ┌──────────────────────┐
+ *   │ SDK internal WiFi    │                  │ shell task           │
+ *   │ (driver / stack)     │                  │ (user commands)      │
+ *   └──────────┬───────────┘                  └──────────┬───────────┘
+ *              │ call event_external_hdl[]                │ call cmd handler
+ *              │                                          │
+ *              ▼                                          ▼
  *   on_join_status / on_dhcp_status            cmd_dashboard_ota_http
- *              |                                         |
- *              | build dashboard_wifi_msg_t              | build dashboard_wifi_msg_t
- *              | rtos_queue_send                         | rtos_queue_send
- *              |                                         |
- *              +-------------+---------------------------+
- *                            v
- *                  +--------------------+
- *                  | g_wifi_msg_queue   | <- shared queue
- *                  +---------+----------+
- *                            | rtos_queue_receive
- *                            v
- *                +-------------------------+
- *                | dash_board_wifi_task    | <- sole consumer, ordered
- *                |   switch (msg.type)     |
- *                +-------------------------+
+ *              │                                          │
+ *              │ build dashboard_wifi_msg_t               │ build dashboard_wifi_msg_t
+ *              │ rtos_queue_send                          │ rtos_queue_send
+ *              │                                          │
+ *              └─────────────┬────────────────────────────┘
+ *                            ▼
+ *                  ┌────────────────────┐
+ *                  │ g_wifi_msg_queue   │ ← single queue
+ *                  └─────────┬──────────┘
+ *                            │ rtos_queue_receive
+ *                            ▼
+ *                ┌─────────────────────────┐
+ *                │ dash_board_wifi_task    │ ← sole consumer, single-threaded serial
+ *                │   switch (msg.type)     │
+ *                └─────────────────────────┘
  *
- * --- About the SDK's own WiFi event callbacks -------------------------------
- * This module overrides the `__weak event_external_hdl[]` in
- * component/soc/usrcfg/amebagreen2/ameba_wificfg.c, which is the hook the SDK
- * leaves for application code. SDK-internal authentication, association, DHCP,
- * auto-reconnect, and related logic use independent paths such as
- * wifi_event_handle_internal / wifi_event_handle_common, so they are not
- * affected. This module only subscribes to notifications.
+ * --- About SDK WiFi event callbacks ---
+ * We override the `__weak event_external_hdl[]` in
+ * component/soc/usrcfg/amebagreen2/ameba_wificfg.c -- the hook SDK leaves
+ * for applications. SDK's internal auth, association, DHCP, auto-reconnect
+ * logic runs through independent paths and is **unaffected**.
  * ============================================================================ */
 
 #include <stdlib.h>
@@ -63,38 +61,37 @@
 #include "lwip_netconf.h"
 
 #include "dashboard_wifi.h"
-/* The dispatcher needs the run_xxx() interface for each service plugin.
- * Add #include "dashboard_<feature>.h" here when adding a service. */
+/* run_xxx()
+ * #include "dashboard_<feature>.h" */
 #include "dashboard_ota_http.h"
 
 #define LOG_TAG "DASHBOARD-WIFI"
 
 /* ============================================================================
- * Message definitions. They are private to this file and are not exposed to
- * other modules.
  *
- * A type-tagged union distinguishes message kinds. To add a service:
- *   1) Add a MSG_CMD_xxx enum value.
- *   2) Add a union member carrying that service's parameters.
- *   3) Add a dashboard_wifi_request_xxx() wrapper in the header.
- *   4) Add a case in dispatch_msg().
+ *
+ * type-tagged union
+ * 1) MSG_CMD_xxx
+ * 2) union
+ * 3) .h dashboard_wifi_request_xxx() wrapper
+ * 4) dispatch_msg() case
  * ============================================================================ */
 typedef enum {
-	/* Events posted asynchronously by the SDK. */
+	/* SDK */
 	DASHBOARD_WIFI_MSG_EVT_JOIN_STATUS,
 	DASHBOARD_WIFI_MSG_EVT_DHCP_STATUS,
 
-	/* User commands triggered by the shell or GUI. */
+	/* shell / GUI */
 	DASHBOARD_WIFI_MSG_CMD_OTA_HTTP,
-	/* Future extension placeholders:
+	/*
 	 * DASHBOARD_WIFI_MSG_CMD_STREAM_IMG,
 	 * DASHBOARD_WIFI_MSG_CMD_FILE_DOWNLOAD,
 	 * ...
 	 */
 } dashboard_wifi_msg_type_t;
 
-/* OTA service parameters. They must be copyable by value into a queue message.
- * run_ota_http() in dashboard_ota_http.c also consumes this structure's fields. */
+/* OTA
+ * dashboard_ota_http.c run_ota_http() */
 typedef struct {
 	char host[64];
 	u16  port;
@@ -120,27 +117,23 @@ typedef struct {
 } dashboard_wifi_msg_t;
 
 /* ============================================================================
- * Module state.
+ *
  * ============================================================================ */
 static rtos_queue_t  g_wifi_msg_queue = NULL;
-static volatile bool g_wifi_online    = false;  /* Single writer (task) + multiple readers; volatile is enough. */
+static volatile bool g_wifi_online    = false;  /* task+ volatile */
 static u8            g_join_state     = RTW_JOINSTATUS_UNKNOWN;
 
-/* run_ota_http() is declared in dashboard_ota_http.h with a plain parameter
- * list that does not depend on any service-specific struct. The dispatcher only
- * unpacks fields from the union and passes them through. Use the same principle
- * for new services: one run_xxx(plain types...) function per service. */
+/* run_ota_http() dashboard_ota_http.h
+ * struct union
+ * run_xxx(...) */
 
 /* ============================================================================
- * Public API helper: post a message, used by command handlers.
+ * API cmd handler
  *
- * wait_ms semantics:
- *   - 0          = Do not wait for queue space; fail immediately if full. This
- *                  suits event callbacks, which must not block the SDK.
- *   - 100 ms     = Wait briefly. This suits command handlers and gives the
- *                  service task time to consume older messages.
- *   - 0xFFFFFFFF = Wait forever. This is not recommended because it blocks the
- *                  shell.
+ * wait_ms
+ * - 0 = SDK
+ * - 100ms = cmd handler task
+ * - 0xFFFFFFFF = shell
  * ============================================================================ */
 static int post_msg(const dashboard_wifi_msg_t *msg, uint32_t wait_ms)
 {
@@ -158,7 +151,7 @@ int dashboard_wifi_request_ota_http(const char *host, u16 port, const char *reso
 	dashboard_wifi_msg_t msg = {0};
 	msg.type = DASHBOARD_WIFI_MSG_CMD_OTA_HTTP;
 
-	const char *h = host     ? host     : "";  /* Empty string lets run_ota_http use defaults. */
+	const char *h = host     ? host     : "";  /* run_ota_http */
 	const char *r = resource ? resource : "";
 
 	strncpy(msg.u.ota.host,     h, sizeof(msg.u.ota.host)     - 1);
@@ -174,12 +167,10 @@ bool dashboard_wifi_is_online(void)
 }
 
 /* ============================================================================
- * SDK event callbacks.
+ * SDK
  *
- * Important: these functions run in the SDK's internal thread context and must
- * not block. They only package fields and enqueue messages; detailed handling
- * is left to the dispatcher thread. Enqueue with a 0 timeout, dropping the
- * event and logging a warning if the queue is full.
+ * SDK ****" +
+ * " 0 warn
  * ============================================================================ */
 static void on_join_status(u8 *evt_info)
 {
@@ -218,16 +209,14 @@ static void on_dhcp_status(u8 *evt_info)
 }
 
 /* ----------------------------------------------------------------------------
- * Strong symbol definition for event_external_hdl[].
+ * event_external_hdl[]
  *
- * The SDK provides a __weak default value in ameba_wificfg.c as a placeholder.
- * This module provides the same symbol as a strong definition, so the linker
- * selects this one. After the SDK receives events, it iterates this table and
- * dispatches them to our handlers.
+ * SDK ameba_wificfg.c __weak
+ * SDK
+ * handler
  *
- * To subscribe to a new event, append {EVT_ID, your_callback} to the array and
- * update array_len as well. For example, to listen for STA association in
- * SoftAP mode: {RTW_EVENT_AP_STA_ASSOC, on_ap_sta_assoc}.
+ * {EVT_ID, your_callback} array_len
+ * SoftAP STA {RTW_EVENT_AP_STA_ASSOC, on_ap_sta_assoc}
  * ---------------------------------------------------------------------------- */
 struct rtw_event_hdl_func_t event_external_hdl[2] = {
 	{RTW_EVENT_JOIN_STATUS, on_join_status},
@@ -237,7 +226,7 @@ u16 array_len_of_event_external_hdl =
 	sizeof(event_external_hdl) / sizeof(struct rtw_event_hdl_func_t);
 
 /* ============================================================================
- * Dispatcher internals: event handling.
+ *
  * ============================================================================ */
 static const char *join_status_str(u8 s)
 {
@@ -265,7 +254,7 @@ static void handle_join_status(const dashboard_wifi_msg_t *msg)
 	case RTW_JOINSTATUS_SUCCESS:
 		RTK_LOGI(LOG_TAG, "Join SUCCESS, ch=%u rssi=%d (waiting DHCP...)\n",
 				 msg->u.join.channel, msg->u.join.rssi);
-		/* Intentionally do not mark online here. Wait for DHCP_ADDRESS_ASSIGNED. */
+		/* online DHCP_ADDRESS_ASSIGNED */
 		break;
 	case RTW_JOINSTATUS_FAIL:
 		g_wifi_online = false;
@@ -275,7 +264,7 @@ static void handle_join_status(const dashboard_wifi_msg_t *msg)
 	case RTW_JOINSTATUS_DISCONNECT:
 		g_wifi_online = false;
 		RTK_LOGW(LOG_TAG, "DISCONNECTED, reason=%u\n", msg->u.join.disconn_reason);
-		/* The SDK default auto-reconnect tries reconnecting itself; hook here to customize it. */
+		/* SDK auto-reconnect hook */
 		break;
 	default:
 		RTK_LOGD(LOG_TAG, "Join state: %s\n", join_status_str(msg->u.join.status));
@@ -302,19 +291,16 @@ static void handle_dhcp_status(const dashboard_wifi_msg_t *msg)
 }
 
 /* ============================================================================
- * Dispatcher main loop.
  *
- * A single consumer handles messages in order. Event handle_xxx functions are
- * usually quick: update flags and log. Command run_xxx functions may block for
- * a long time, such as OTA for 30s+ or a future image stream for 60s. This is by
- * design: new messages queue up while OTA runs and are handled afterward, with
- * no mutex required.
  *
- * Queue capacity is set when the task starts (default 16):
- *   - One connection attempt produces about 7 join status changes.
- *   - DHCP produces 1 or 2 events.
- *   - With a few additional commands, 16 is enough for one handshake plus a few
- *     commands.
+ * handle_xxx + log
+ * run_xxx OTA 30s+ 60s by
+ * design queue OTA
+ *
+ * task 16
+ * - ~7 join
+ * - DHCP 1~2
+ * - 16 + cmd
  * ============================================================================ */
 static void dispatch_msg(const dashboard_wifi_msg_t *msg)
 {
@@ -326,8 +312,8 @@ static void dispatch_msg(const dashboard_wifi_msg_t *msg)
 		handle_dhcp_status(msg);
 		break;
 	case DASHBOARD_WIFI_MSG_CMD_OTA_HTTP:
-		/* If WiFi is offline here, run_ota_http aborts internally and logs it.
-		 * Unpack OTA parameters from the union and pass them to the service function. */
+		/* WiFi run_ota_http abort log
+		 * union OTA */
 		(void)run_ota_http(msg->u.ota.host, msg->u.ota.port, msg->u.ota.resource);
 		break;
 	default:
@@ -340,8 +326,8 @@ void dash_board_wifi_task(void *param)
 {
 	UNUSED(param);
 
-	/* The queue must be created before the first WiFi event can arrive.
-	 * app_example() starts this task early enough, before wifi_init. */
+	/* WiFi queue app_example()
+	 * task wifi_init */
 	if (rtos_queue_create(&g_wifi_msg_queue, 16, sizeof(dashboard_wifi_msg_t)) != RTK_SUCCESS) {
 		RTK_LOGE(LOG_TAG, "create wifi msg queue failed\n");
 		rtos_task_delete(NULL);

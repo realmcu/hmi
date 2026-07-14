@@ -14,27 +14,20 @@
  */
 
 /* ============================================================================
- * Dashboard OTA HTTP service module, implemented as a service plugin on top
- * of the dashboard_wifi dispatcher.
+ * Dashboard OTA HTTP module (business plugin on top of dashboard_wifi dispatcher)
  *
- * This file does exactly two things:
- *   1) Provides run_ota_http(), the blocking download/flash workflow called
+ * This file **only** does two things:
+ *   1) Provides run_ota_http() -- the blocking download/flash flow, called
  *      by the WiFi dispatcher in its own task context.
- *   2) Provides the "ota_http" shell command. The handler only packages the
- *      request and submits it to dashboard_wifi_request_ota_http(), then
- *      returns immediately without blocking the shell.
+ *   2) Provides shell command "ota_http" -- handler just encapsulates the
+ *      request and calls dashboard_wifi_request_ota_http(), returns immediately.
  *
- * Simplifications compared with the previous version:
- *   - No private task is spawned; the service runs on the dispatcher task,
- *     saving one stack allocation.
- *   - No g_ota_busy single-instance guard is needed; the dispatcher queue has
- *     a single consumer, so requests are naturally serialized.
- *   - No ota_http_args_t is shared across files; the module boundary is kept
- *     minimal with plain (host, port, resource) arguments.
+ * Simplifications vs earlier versions:
+ *   - No longer spawns its own task: runs on the dispatcher task.
+ *   - No g_ota_busy guard: dispatcher queue is single-consumer, naturally serial.
+ *   - No ota_http_args_t struct across files: plain (host, port, resource) params.
  *
- * Reference: example/ota/ota_http/example_ota_http.c. The workflow is almost
- * identical; only the entry point differs (the example uses ota_task, while
- * this module is called synchronously through run_ota_http).
+ * Reference: example/ota/ota_http/example_ota_http.c
  * ============================================================================ */
 
 #include <stdlib.h>
@@ -44,9 +37,8 @@
 #include "os_wrapper.h"
 #include "section_config.h"
 
-/* Used for a defensive second check: the dispatcher verifies online state when
- * queuing the request, but the link may drop before the socket is opened.
- * run_ota_http checks connectivity again after it starts. */
+/* Defensive double-check: dispatcher checks online on enqueue, but connection may
+ * briefly drop before socket creation; re-check inside run_ota_http. */
 #include "lwip_netconf.h"
 
 #include "ota_api.h"
@@ -59,30 +51,27 @@
 extern void sys_reset(void);
 
 /* ============================================================================
- * run_ota_http - the function that does the real work. It blocks for tens of
- * seconds depending on download and flash time.
+ * run_ota_http -- the actual blocking function (tens of seconds)
  *
- * Calling convention: execute from the dashboard_wifi dispatcher task context.
- * While this function runs, that task does not handle other queued messages,
- * so WiFi events raised during OTA remain queued until OTA finishes. This is
- * the intended serialized behavior.
+ * Calling convention: runs in dashboard_wifi dispatcher task context. During
+ * OTA, other queue messages are queued and processed after OTA completes.
+ * This is the desired "serial" semantics.
  *
- * Workflow, matching example_ota_http.c::ota_task():
- *   1) Re-check that IP connectivity is online, otherwise abort.
- *   2) Create the secure context when TrustZone mode requires it.
- *   3) Allocate ota_context_t, then call ota_init and ota_start.
- *   4) On success, call sys_reset to boot the new firmware.
- *   5) Clean up ctx and return.
+ * Flow (see example_ota_http.c::ota_task()):
+ *   1) Double-check IP online -> abort if not
+ *   2) (TrustZone only) secure context
+ *   3) Alloc ota_context_t, ota_init, ota_start
+ *   4) Success -> sys_reset into new firmware
+ *   5) Cleanup ctx, return
  *
- * @return 0 on success (normally this does not return because success resets
- *         the system), <0 on failure.
+ * @return 0 success (usually doesn't return due to reset), <0 failure
  * ============================================================================ */
 int run_ota_http(const char *host, u16 port, const char *resource)
 {
 	ota_context_t *ctx = NULL;
 	int            ret = -1;
 
-	/* Treat NULL or empty strings as defaults to keep caller logic simple. */
+	/* /NULL */
 	if (host == NULL || host[0] == '\0') {
 		host = DASHBOARD_OTA_HTTP_DEFAULT_HOST;
 	}
@@ -113,7 +102,7 @@ int run_ota_http(const char *host, u16 port, const char *resource)
 	}
 	memset(ctx, 0, sizeof(ota_context_t));
 
-	/* Cast away const because the lower SDK API is not const-correct; it does not write. */
+	/* const → const SDK const */
 	ret = ota_init(ctx, (char *)host, port, (char *)resource, OTA_HTTP);
 	if (ret != OTA_OK) {
 		RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[OTA] ota_init failed\n");
@@ -124,9 +113,8 @@ int run_ota_http(const char *host, u16 port, const char *resource)
 
 	if (ret == OTA_OK) {
 		RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[OTA] success, rebooting...\n");
-		rtos_time_delay_ms(20);  /* Give UART time to flush the log. */
+		rtos_time_delay_ms(20);  /* UART log */
 		sys_reset();
-		/* Does not return. */
 	} else {
 		RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[OTA] ota_start failed: %d\n", ret);
 	}
@@ -141,12 +129,11 @@ cleanup:
  * Shell command handler
  *
  * Signature convention: u32 func(u16 argc, u8 *argv[])
- *   argc = number of user-provided arguments, excluding the command name.
- *   argv[0..argc-1] = argument strings.
+ *   argc = number of user arguments (excluding command name)
+ *   argv[0..argc-1] = argument strings
  *
- * This version only parses arguments, calls dashboard_wifi_request_ota_http(),
- * and returns immediately. The actual download runs on the dispatcher task, so
- * the shell is not blocked.
+ * This version parses args -> calls dashboard_wifi_request_ota_http() -> returns immediately.
+ * Actual download runs on the dispatcher task, shell is not blocked.
  * ============================================================================ */
 static void usage(void)
 {
@@ -170,8 +157,8 @@ static u32 cmd_dashboard_ota_http(u16 argc, u8 *argv[])
 		return TRUE;
 	}
 
-	/* Check online state early using dashboard_wifi state. Reject offline requests
-	 * before enqueueing so the user gets a direct message instead of a later fail. */
+	/* Check online status upfront (from dashboard_wifi status).
+	 * Reject offline immediately to give the user direct feedback. */
 	if (!dashboard_wifi_is_online()) {
 		RTK_LOGS(NOTAG, RTK_LOG_ALWAYS,
 				 "[OTA] WiFi not online yet, please connect first.\n");
@@ -188,7 +175,7 @@ static u32 cmd_dashboard_ota_http(u16 argc, u8 *argv[])
 		resource = (const char *)argv[2];
 	}
 
-	/* The dispatcher copies strings into the queue message, so stack or argv pointers are safe here. */
+	/* /argv */
 	if (dashboard_wifi_request_ota_http(host, port, resource) != 0) {
 		RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[OTA] enqueue request failed\n");
 		return FALSE;
@@ -198,9 +185,8 @@ static u32 cmd_dashboard_ota_http(u16 argc, u8 *argv[])
 	return TRUE;
 }
 
-/* CMD_TABLE_DATA_SECTION places the command table in .cmd.table.data. The shell
- * scans that section at startup and collects every command it finds. Each
- * module registers its own commands without depending on other modules. */
+/* CMD_TABLE_DATA_SECTION .cmd.table.data shell
+ * */
 CMD_TABLE_DATA_SECTION
 const COMMAND_TABLE dashboard_ota_http_cmd_table[] = {
 	{"ota_http", cmd_dashboard_ota_http},

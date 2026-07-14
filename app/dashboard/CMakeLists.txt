@@ -8,11 +8,11 @@ get_filename_component(HONEYGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../.. ABSOLUTE)
 
 set(private_sources)
 ameba_list_append(private_sources
+    src/dashboard_main.c
     ui_design/src/dashboardEntry.c
     ui_design/src/callbacks/DashboardMain_callbacks.c
     ui_design/src/ui/DashboardMain_ui.c
     ui_design/src/user/DashboardMain_user.c
-    src/dashboard_main.c
 )
 
 if(CONFIG_BT)
@@ -50,17 +50,22 @@ if(CONFIG_WLAN)
     ameba_list_append(private_sources
         wifi/dashboard_wifi.c
         wifi/dashboard_ota_http.c
+        wifi/dashboard_img_rx.c
+        wifi/dashboard_img_display.c
     )
 endif()
 
 set(private_includes)
 ameba_list_append(private_includes
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/ui_design/src
     ${CMAKE_CURRENT_SOURCE_DIR}/ui_design/src/callbacks
     ${CMAKE_CURRENT_SOURCE_DIR}/ui_design/src/ui
     ${CMAKE_CURRENT_SOURCE_DIR}/ui_design/src/user
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui_design/callbacks
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui_design/ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui_design/user
     ${CMAKE_CURRENT_SOURCE_DIR}/ble
     ${CMAKE_CURRENT_SOURCE_DIR}/ble/dashboard_hid_service
     ${CMAKE_CURRENT_SOURCE_DIR}/io_peripheral

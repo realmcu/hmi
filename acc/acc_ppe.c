@@ -316,7 +316,7 @@ void hw_acc_clear(uint8_t *addr, gui_color_t color, uint32_t len/*pixel count*/)
     target.win_y_min = 0;
     target.win_y_max = target.height - 1;
     ppe_rect_t rect1 = {.x = 0, .y = 0, .w = target.width, .h = target.height};
-    uint32_t ppe_color = color.color.rgba.a << 24 | color.color.rgba.b << 16 | color.color.rgba.g << 8 | color.color.rgba.r << 8;
+    uint32_t ppe_color = color.color.rgba.a << 24 | color.color.rgba.b << 16 | color.color.rgba.g << 8 | color.color.rgba.r;
     PPE_DISP_err err = PPE_DISP_Mask(&target, ppe_color, &rect1);
     if(err != PPE_DISP_SUCCESS)
     {

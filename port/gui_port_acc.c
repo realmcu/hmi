@@ -24,6 +24,7 @@ extern void sw_acc_init(void);
 extern void sw_acc_blit(draw_img_t *image, struct gui_dispdev *dc, gui_rect_t *rect);
 extern void hw_acc_init(void);
 extern void hw_acc_blit(draw_img_t *image, struct gui_dispdev *dc, gui_rect_t *rect);
+extern void hw_acc_clear(uint8_t *addr, gui_color_t color, uint32_t len);
 extern void *hw_acc_idu_decode(void *input);
 
 // Hardware JPEG decoder (acc_jpeg.c)
@@ -37,6 +38,7 @@ extern void *gui_acc_decode(void *in);
 static acc_engine_t acc =
 {
     .blit = hw_acc_blit,
+    .fb_clear = hw_acc_clear,
     .jpeg_load = gui_hw_jpeg_load,
     .jpeg_free = gui_hw_jpeg_free,
     .enable_async = false,

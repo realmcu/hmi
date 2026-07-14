@@ -17,35 +17,29 @@
 #define DASHBOARD_OTA_HTTP_H
 
 /* ============================================================================
- * Public interface for the Dashboard OTA HTTP module.
+ * Dashboard OTA HTTP module public interface
  *
- * This is a service plugin on top of the dashboard_wifi dispatcher. It exposes
- * only:
- *   - Default parameter macros (DASHBOARD_OTA_HTTP_DEFAULT_*).
- *   - run_ota_http(), called by the dispatcher only. Do not call it directly
- *     from other code.
+ * A business plugin on top of the dashboard_wifi dispatcher. Exposes only:
+ *   - Default parameter macros (DASHBOARD_OTA_HTTP_DEFAULT_*)
+ *   - run_ota_http() -- called by dispatcher, **do not** call directly
  *
- * The "ota_http" shell command self-registers in the .c file through
- * CMD_TABLE_DATA_SECTION. The linker collects it automatically, so users of
- * this header do not need to see it.
+ * Shell command "ota_http" auto-registers via CMD_TABLE_DATA_SECTION in .c file.
  *
  * Usage:
- *   - The user enters "ota_http [host] [port] [resource]" on the serial shell.
- *   - The command handler calls dashboard_wifi_request_ota_http(...) to enqueue
- *     the request into the WiFi dispatcher queue.
- *   - The dispatcher calls run_ota_http() in its own task context, where the
- *     service actually runs.
+ *   - User types "ota_http [host] [port] [resource]" on serial console
+ *   - cmd handler calls dashboard_wifi_request_ota_http(...)
+ *   - Dispatcher calls run_ota_http() in its task context
  *
- * Default parameters, shared with dashboard_ota_http.c:
- *   HOST     - HTTP server IP, preset to the PC WLAN adapter IP.
- *   PORT     - Realtek DownloadServer (HTTP) listens on 8082 by default.
- *   RESOURCE - Firmware name served by the server, matching built ota_all.bin.
+ * Defaults:
+ *   HOST     -- HTTP server IP. Preset to PC WLAN adapter IP.
+ *   PORT     -- Realtek DownloadServer(HTTP) default 8082.
+ *   RESOURCE -- Firmware name, matches ota_all.bin.
  *
- * Users can override all defaults from the shell:
- *   ota_http                              use all defaults
- *   ota_http 192.168.1.100                override host only
- *   ota_http 192.168.1.100 8080           override host and port
- *   ota_http 192.168.1.100 8080 a.bin     override all parameters
+ * Shell overrides:
+ *   ota_http                              all defaults
+ *   ota_http 192.168.1.100               override host only
+ *   ota_http 192.168.1.100 8080          override host + port
+ *   ota_http 192.168.1.100 8080 a.bin    override all
  *   ota_http ?                            print usage
  * ============================================================================ */
 
@@ -60,22 +54,19 @@ extern "C" {
 #define DASHBOARD_OTA_HTTP_DEFAULT_RESOURCE "ota_all.bin"
 
 /**
- * @brief Blocking function that performs one OTA HTTP upgrade.
+ * @brief Blocking OTA HTTP upgrade function.
  *
- * This should only be called by the dashboard_wifi dispatcher. Normal callers
- * should use dashboard_wifi_request_ota_http() to enqueue the request
- * asynchronously. Calling this function directly blocks the caller task for
- * tens of seconds while HTTP download and flash writing run.
+ * **Should only be called by dashboard_wifi dispatcher**. Normal callers should
+ * use dashboard_wifi_request_ota_http() to enqueue async. Calling this directly
+ * blocks the caller for tens of seconds (HTTP download + flash write).
  *
- * Passing NULL, an empty string, or 0 for any parameter falls back to the
- * corresponding DASHBOARD_OTA_HTTP_DEFAULT_* value.
+ * NULL/empty/0 params fall back to DASHBOARD_OTA_HTTP_DEFAULT_*.
  *
- * @param host      HTTP server address as an IP string.
- * @param port      Port.
- * @param resource  HTTP resource path.
- * @retval 0    Success. The function usually does not return on success
- *              because it calls sys_reset internally.
- * @retval <0   Failure: IP not ready, malloc failed, or ota_start failed.
+ * @param host      HTTP server address (IP string)
+ * @param port      port number
+ * @param resource  HTTP resource path
+ * @retval 0    success (note: function usually does not return due to sys_reset)
+ * @retval <0   failure (IP not ready / malloc failed / ota_start failed)
  */
 int run_ota_http(const char *host, u16 port, const char *resource);
 
