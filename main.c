@@ -40,8 +40,8 @@ int main(void)
     hmi_l2_handlers_register();
 
 
-    extern void rtk_lcd_hal_init(void);
-    rtk_lcd_hal_init();
+    // extern void rtk_lcd_hal_init(void);
+    // rtk_lcd_hal_init();
 
 
 
