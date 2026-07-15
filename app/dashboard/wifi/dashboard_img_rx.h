@@ -17,22 +17,10 @@
 #define DASHBOARD_IMG_RX_H
 
 /* ============================================================================
- * Dashboard image stream receiver
+ * Dashboard image stream receiver (TCP server, 3-slot frame pool)
  *
- * Peer (Android app, see android/NaviJpgTcpSender.kt) encodes 400x480
- * navigation frames as JPEG and sends them over a persistent TCP connection.
- * This module runs a TCP **server**, receives frames into a 3-slot pool,
- * and wraps each frame as gui_jpeg_file_head_t for HoneyGUI consumption.
- *
- * Wire format (ASCII header + binary body, per frame):
- *     JPG <size> <seq>\n
- *     <size bytes of JPEG data>
- *
- * Design:
- *   - Independent task (dash_board_img_rx_task), not on wifi dispatcher.
- *   - **3-slot frame pool, two indices**: g_display (being decoded/painted)
- *     + g_ready (latest complete frame). Rx thread never picks the slot
- *     GUI is using, so the decoding frame is never released/overwritten.
+ * Wire: JPG <size> <seq>\n + <size bytes JPEG>
+ * Design: independent task, 3-slot pool with g_display/g_ready indices
  * ============================================================================ */
 
 #include <stdbool.h>
@@ -42,73 +30,34 @@
 extern "C" {
 #endif
 
-/** Listening port, must match Android side NaviCaptureService.DEFAULT_TCP_PORT. */
+/** Must match Android NaviCaptureService.DEFAULT_TCP_PORT. */
 #define DASHBOARD_IMG_RX_PORT       5004
 
-/** Per-frame JPEG size limit: **defensive cap** to reject abnormally large headers;
- *  buffers are lazy-allocated (malloc) per frame. 400x480 q60 is ~tens of KB. */
+/** Defensive JPEG size cap; buffers lazy-allocated per frame. */
 #define DASHBOARD_IMG_RX_MAX_JPEG   (256 * 1024)
 
-/**
- * @brief Frame-ready callback type: called once on the **rx thread** after a frame is fully received.
- *
- * Callback should **not** do heavy work or block -- typical implementation just
- * posts a GUI event to the GUI thread (see dashboard_img_display.c). Events don't
- * need slot/sequence numbers; the GUI thread calls dashboard_img_rx_take_display()
- * to get the latest ready frame.
- */
+/** Frame-ready callback called on rx thread after a frame is received. */
 typedef void (*dashboard_img_rx_notify_t)(void);
 
 /**
- * @brief Image stream receiver task entry, called from app_example() in dashboard_main.c.
- *
- * Flow: create mutex -> wait for WiFi -> start TCP server (socket/bind/listen/accept)
- * -> parse frames, allocate buffers, build JPEG headers, publish to pool -> accept next.
- * Never returns.
- *
- * @param param  unused, pass NULL.
+ * @brief Image stream receiver task entry. Never returns.
+ * @param param  unused
  */
 void dash_board_img_rx_task(void *param);
 
-/**
- * @brief Register frame-ready callback (see dashboard_img_rx_notify_t).
- *
- * Called once by the display glue module during GUI init (GUI_INIT_APP_EXPORT).
- * Pass NULL to unregister. When unregistered, reception continues but no
- * notification is sent.
- */
+/** Register frame-ready callback. Pass NULL to unregister. */
 void dashboard_img_rx_register_notify(dashboard_img_rx_notify_t cb);
 
 /**
- * @brief [GUI thread only] Take the latest ready frame for display. Returns buffer
- *        address directly usable with gui_img_set_src() (IMG_SRC_MEMADDR,
- *        gui_jpeg_file_head_t layout).
- *
- * Semantics (atomic under internal lock):
- *   1. Take current latest ready frame (g_ready); return NULL if none.
- *   2. Set it as display slot (g_display) -- rx thread will never write/release it.
- *   3. Previous display slot auto-returns to free for rx thread reuse.
- *
- * **Must only be called from GUI thread** (render and message processing are
- * serial, so transfer never races with draw).
- *
- * @retval !=NULL  latest ready frame buffer (gui_jpeg_file_head_t layout)
- * @retval NULL    no new frame to display
+ * @brief [GUI thread] Take latest ready frame for display.
+ * @return buffer (gui_jpeg_file_head_t layout) or NULL if none
  */
 const uint8_t *dashboard_img_rx_take_display(void);
 
-/**
- * @brief [GUI thread only] Release current display slot, return to free pool.
- *
- * Call when display no longer needs received frames (e.g., carplay_map destroyed
- * or view switched out), to avoid permanent slot occupation. No-op if no display slot.
- */
+/** [GUI thread] Release current display slot back to pool. */
 void dashboard_img_rx_release_display(void);
 
-/**
- * @brief Total number of fully received frames (for link verification).
- * @return Total frames successfully received since startup.
- */
+/** @return total frames received since startup. */
 uint32_t dashboard_img_rx_frame_count(void);
 
 #ifdef __cplusplus

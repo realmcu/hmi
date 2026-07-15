@@ -17,30 +17,9 @@
 #define DASHBOARD_OTA_HTTP_H
 
 /* ============================================================================
- * Dashboard OTA HTTP module public interface
- *
- * A business plugin on top of the dashboard_wifi dispatcher. Exposes only:
- *   - Default parameter macros (DASHBOARD_OTA_HTTP_DEFAULT_*)
- *   - run_ota_http() -- called by dispatcher, **do not** call directly
- *
- * Shell command "ota_http" auto-registers via CMD_TABLE_DATA_SECTION in .c file.
- *
- * Usage:
- *   - User types "ota_http [host] [port] [resource]" on serial console
- *   - cmd handler calls dashboard_wifi_request_ota_http(...)
- *   - Dispatcher calls run_ota_http() in its task context
- *
- * Defaults:
- *   HOST     -- HTTP server IP. Preset to PC WLAN adapter IP.
- *   PORT     -- Realtek DownloadServer(HTTP) default 8082.
- *   RESOURCE -- Firmware name, matches ota_all.bin.
- *
- * Shell overrides:
- *   ota_http                              all defaults
- *   ota_http 192.168.1.100               override host only
- *   ota_http 192.168.1.100 8080          override host + port
- *   ota_http 192.168.1.100 8080 a.bin    override all
- *   ota_http ?                            print usage
+ * Dashboard OTA HTTP (dispatcher plugin)
+ * cmd: ota_http [host] [port] [resource]
+ * Use dashboard_wifi_request_ota_http() to enqueue async.
  * ============================================================================ */
 
 #include "basic_types.h"   /* u16 */
@@ -54,19 +33,11 @@ extern "C" {
 #define DASHBOARD_OTA_HTTP_DEFAULT_RESOURCE "ota_all.bin"
 
 /**
- * @brief Blocking OTA HTTP upgrade function.
- *
- * **Should only be called by dashboard_wifi dispatcher**. Normal callers should
- * use dashboard_wifi_request_ota_http() to enqueue async. Calling this directly
- * blocks the caller for tens of seconds (HTTP download + flash write).
- *
- * NULL/empty/0 params fall back to DASHBOARD_OTA_HTTP_DEFAULT_*.
- *
- * @param host      HTTP server address (IP string)
- * @param port      port number
- * @param resource  HTTP resource path
- * @retval 0    success (note: function usually does not return due to sys_reset)
- * @retval <0   failure (IP not ready / malloc failed / ota_start failed)
+ * @brief Blocking OTA HTTP upgrade.
+ * Call via dashboard_wifi_request_ota_http() (async). Direct call blocks ~30s.
+ * NULL/0 params fall back to DASHBOARD_OTA_HTTP_DEFAULT_*.
+ * @retval 0  success (usually calls sys_reset)
+ * @retval <0 failure
  */
 int run_ota_http(const char *host, u16 port, const char *resource);
 

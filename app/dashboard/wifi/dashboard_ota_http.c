@@ -14,20 +14,9 @@
  */
 
 /* ============================================================================
- * Dashboard OTA HTTP module (business plugin on top of dashboard_wifi dispatcher)
- *
- * This file **only** does two things:
- *   1) Provides run_ota_http() -- the blocking download/flash flow, called
- *      by the WiFi dispatcher in its own task context.
- *   2) Provides shell command "ota_http" -- handler just encapsulates the
- *      request and calls dashboard_wifi_request_ota_http(), returns immediately.
- *
- * Simplifications vs earlier versions:
- *   - No longer spawns its own task: runs on the dispatcher task.
- *   - No g_ota_busy guard: dispatcher queue is single-consumer, naturally serial.
- *   - No ota_http_args_t struct across files: plain (host, port, resource) params.
- *
- * Reference: example/ota/ota_http/example_ota_http.c
+ * Dashboard OTA HTTP (dispatcher plugin)
+ * Provides run_ota_http() + shell command "ota_http".
+ * Runs on dispatcher task (blocking ~30s for download+flash).
  * ============================================================================ */
 
 #include <stdlib.h>
@@ -37,8 +26,6 @@
 #include "os_wrapper.h"
 #include "section_config.h"
 
-/* Defensive double-check: dispatcher checks online on enqueue, but connection may
- * briefly drop before socket creation; re-check inside run_ota_http. */
 #include "lwip_netconf.h"
 
 #include "ota_api.h"
@@ -46,32 +33,13 @@
 #include "dashboard_wifi.h"
 #include "dashboard_ota_http.h"
 
-#define LOG_TAG "DASHBOARD-OTA"
-
 extern void sys_reset(void);
 
-/* ============================================================================
- * run_ota_http -- the actual blocking function (tens of seconds)
- *
- * Calling convention: runs in dashboard_wifi dispatcher task context. During
- * OTA, other queue messages are queued and processed after OTA completes.
- * This is the desired "serial" semantics.
- *
- * Flow (see example_ota_http.c::ota_task()):
- *   1) Double-check IP online -> abort if not
- *   2) (TrustZone only) secure context
- *   3) Alloc ota_context_t, ota_init, ota_start
- *   4) Success -> sys_reset into new firmware
- *   5) Cleanup ctx, return
- *
- * @return 0 success (usually doesn't return due to reset), <0 failure
- * ============================================================================ */
 int run_ota_http(const char *host, u16 port, const char *resource)
 {
 	ota_context_t *ctx = NULL;
 	int            ret = -1;
 
-	/* /NULL */
 	if (host == NULL || host[0] == '\0') {
 		host = DASHBOARD_OTA_HTTP_DEFAULT_HOST;
 	}
@@ -102,7 +70,6 @@ int run_ota_http(const char *host, u16 port, const char *resource)
 	}
 	memset(ctx, 0, sizeof(ota_context_t));
 
-	/* const → const SDK const */
 	ret = ota_init(ctx, (char *)host, port, (char *)resource, OTA_HTTP);
 	if (ret != OTA_OK) {
 		RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[OTA] ota_init failed\n");
@@ -113,7 +80,7 @@ int run_ota_http(const char *host, u16 port, const char *resource)
 
 	if (ret == OTA_OK) {
 		RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[OTA] success, rebooting...\n");
-		rtos_time_delay_ms(20);  /* UART log */
+		rtos_time_delay_ms(20);
 		sys_reset();
 	} else {
 		RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[OTA] ota_start failed: %d\n", ret);
@@ -125,16 +92,6 @@ cleanup:
 	return (ret == OTA_OK) ? 0 : -3;
 }
 
-/* ============================================================================
- * Shell command handler
- *
- * Signature convention: u32 func(u16 argc, u8 *argv[])
- *   argc = number of user arguments (excluding command name)
- *   argv[0..argc-1] = argument strings
- *
- * This version parses args -> calls dashboard_wifi_request_ota_http() -> returns immediately.
- * Actual download runs on the dispatcher task, shell is not blocked.
- * ============================================================================ */
 static void usage(void)
 {
 	RTK_LOGS(NOTAG, RTK_LOG_ALWAYS,
@@ -157,8 +114,6 @@ static u32 cmd_dashboard_ota_http(u16 argc, u8 *argv[])
 		return TRUE;
 	}
 
-	/* Check online status upfront (from dashboard_wifi status).
-	 * Reject offline immediately to give the user direct feedback. */
 	if (!dashboard_wifi_is_online()) {
 		RTK_LOGS(NOTAG, RTK_LOG_ALWAYS,
 				 "[OTA] WiFi not online yet, please connect first.\n");
@@ -175,7 +130,6 @@ static u32 cmd_dashboard_ota_http(u16 argc, u8 *argv[])
 		resource = (const char *)argv[2];
 	}
 
-	/* /argv */
 	if (dashboard_wifi_request_ota_http(host, port, resource) != 0) {
 		RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[OTA] enqueue request failed\n");
 		return FALSE;
@@ -185,8 +139,6 @@ static u32 cmd_dashboard_ota_http(u16 argc, u8 *argv[])
 	return TRUE;
 }
 
-/* CMD_TABLE_DATA_SECTION .cmd.table.data shell
- * */
 CMD_TABLE_DATA_SECTION
 const COMMAND_TABLE dashboard_ota_http_cmd_table[] = {
 	{"ota_http", cmd_dashboard_ota_http},

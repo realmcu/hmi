@@ -14,123 +14,67 @@
  */
 
 /* ============================================================================
- * Dashboard image stream receiver implementation
+ * Dashboard image stream receiver (TCP server, 3-slot frame pool)
  *
- * Role: TCP **server** (Android app connects actively, see
- * android/NaviJpgTcpSender.kt / NaviCaptureService.kt).
+ * Independent task (not on wifi dispatcher) to avoid starving join/dhcp events.
  *
- * Why an independent task instead of riding on the dashboard_wifi dispatcher:
- *   OTA is a "block-30s-then-done" task; image receiving is a **permanently**
- *   blocking accept/recv loop that would starve WiFi join/dhcp events.
- *   So this module has its own persistent task (like dashboard_ble).
- *   It only uses dashboard_wifi_is_online() to check network readiness.
+ * Frame pool (3 slots, 2 indices):
+ *   g_display : slot being decoded/painted by GUI (-1=none)
+ *   g_ready   : latest complete frame, not yet displayed (-1=none)
+ *   Remaining = free/writable. Rx thread never touches g_display.
  *
- * -------------------------- Frame pool (3 slots, 2 indices) --------------------------
- * 3 slots, two indices describe all state (under g_lock):
- *
- *     g_display : slot pointed to by carplay_map, being decoded/painted by GUI (-1=none)
- *     g_ready   : latest complete frame, not yet displayed (-1=none)
- *
- *   Remaining slots (neither g_display nor g_ready) are "free/writable".
- *   3 slots cover the worst case: 1 displaying + 1 ready + 1 receiving.
- *
- *   - rx thread: claim_write_slot() picks the slot that is neither g_display nor
- *     g_ready. It **never** touches g_display, ensuring the frame being decoded/
- *     painted is never released or overwritten.
- *   - GUI thread: take_display() sets g_ready as g_display and clears g_ready.
- *     Previous g_display auto-returns to free.
- *     Rendering and message processing are serial on the GUI thread.
- *
- *   Safety invariant: the slot w being written by the rx thread is never
- *   g_display or g_ready, so the receiving buffer never overlaps with the
- *   display buffer.
- *
- * Each frame is in-place formatted as gui_jpeg_file_head_t: first 16 bytes
- * hold header (type=JPEG + dimensions + size), raw JPEG follows at offset 16.
- * The take_display return value can be fed directly to gui_img_set_src(MEMADDR).
+ * Each frame: gui_jpeg_file_head_t header (16B) + raw JPEG.
  * ============================================================================ */
 
 #include <stddef.h>     /* offsetof */
 #include <stdio.h>      /* sscanf */
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>      /* errno (LWIP_ERRNO_STDINCLUDE is set in lwipopts, socket layer uses this) */
+#include <errno.h>
 
 #include "ameba_soc.h"
 #include "os_wrapper.h"
 #include "section_config.h"
 
-/* Defensive double-check for online status. */
 #include "lwip_netconf.h"
 #include <lwip/sockets.h>
 
-/* HoneyGUI image data format (gui_jpeg_file_head_t / gui_rgb_data_head_t / JPEG enum).
- * This file only depends on the "data format" header, not widget/server.
- * Those are in dashboard_img_display.c, decoupled via dashboard_img_rx_notify_t. */
 #include "def_file.h"
 #include "draw_img.h"
 
 #include "dashboard_wifi.h"
 #include "dashboard_img_rx.h"
 
-#define LOG_TAG "DASHBOARD-IMGRX"
-
-/* recv_line "JPG <size> <seq>\n" 64
- * '\n' */
 #define IMG_RX_LINE_MAX     64
-
-/* Per-client receive timeout (ms). Peer is 5fps (~200ms between frames), WiFi power save
- * may cause second-level pauses; 15s is generous. Real dead connections are reclaimed within 15s. */
 #define IMG_RX_RECV_TIMEOUT_MS  15000
 
-/* ---------------------------------------------------------------------------
- * Frame pool (3 slots, 2 indices)
- * ------------------------------------------------------------------------- */
-/* Fixed at 3 slots: 1 displaying + 1 ready + 1 receiving, exactly enough.
- * claim always gets a slot that is neither g_display nor g_ready. */
 #define IMG_RX_SLOT_NUM     3
-
-/* JPEG raw stream offset in slot buffer: fixed prefix before jpeg[] in gui_jpeg_file_head_t
- * (gui_rgb_data_head_t 8B + size 4B + dummy 4B = 16B). Use offsetof to avoid manual calc. */
 #define IMG_RX_HDR_OFFSET   ((uint32_t)offsetof(gui_jpeg_file_head_t, jpeg))
 
-/* Fallback dimensions when SOF parsing fails (peer always sends 400x480 nav frame). */
 #define IMG_RX_DEF_W        400
 #define IMG_RX_DEF_H        480
 
-/* Slot buffers are **lazy-allocated** (malloc), not pre-allocated at boot. Grow-to-fit:
- * free+malloc only when a larger frame arrives. 400x480 q60 is ~tens of KB.
- * Note: g_cap records total capacity including the 16B header prefix. */
-static uint8_t     *g_buf[IMG_RX_SLOT_NUM];             /* +JPEG */
+static uint8_t     *g_buf[IMG_RX_SLOT_NUM];
 static uint32_t     g_cap[IMG_RX_SLOT_NUM];
-static uint32_t     g_len[IMG_RX_SLOT_NUM];            /* JPEG */
-static uint32_t     g_seq[IMG_RX_SLOT_NUM];            /* / */
+static uint32_t     g_len[IMG_RX_SLOT_NUM];
+static uint32_t     g_seq[IMG_RX_SLOT_NUM];
 
-static int          g_display   = -1;                  /* carplay_map -1= */
-static int          g_ready     = -1;                  /* -1= */
+static int          g_display   = -1;
+static int          g_ready     = -1;
 static uint32_t     g_frame_cnt = 0;
-static uint32_t     g_drop_cnt  = 0;                   /* 3 0 */
+static uint32_t     g_drop_cnt  = 0;
 
-static rtos_mutex_t g_lock      = NULL;                /* g_display / g_ready */
+static rtos_mutex_t g_lock      = NULL;
 
 static dashboard_img_rx_notify_t g_notify = NULL;
 
-/* ===========================================================================
- * socket
- * =========================================================================== */
+/* ---------------------------------------------------------------------------
+ * Socket helpers
+ * ------------------------------------------------------------------------- */
 
-/**
- * @brief Read one byte at a time until '\n', return the line (without trailing newline, '\r' stripped).
- *
- * Why byte-by-byte instead of recv in bulk: header length is variable and followed
- * immediately by binary JPEG data. Reading too much would eat into JPEG bytes.
- * Byte-by-byte is fine since there is only one header line per frame.
- *
- * @param fd    connected socket
- * @param line  output buffer
- * @param cap   line buffer capacity (incl. trailing '\0')
- * @retval >=0  line length (excl. '\0')
- * @retval -1   connection closed / error / line too long
+/*
+ * Byte-by-byte read until '\n' (not recv-bulk: header length is variable,
+ * followed by binary JPEG, so bulk read would eat into JPEG bytes).
  */
 static int recv_line(int fd, char *line, int cap)
 {
@@ -139,7 +83,6 @@ static int recv_line(int fd, char *line, int cap)
 		char c;
 		int r = recv(fd, &c, 1, 0);
 		if (r <= 0) {
-			/* r==0(FIN)r<0/(errno=11 EWOULDBLOCK RCVTIMEO) */
 			RTK_LOGS(NOTAG, RTK_LOG_WARN,
 					 "[IMGRX] recv_line end r=%d errno=%d after %d bytes\n", r, errno, n);
 			return -1;
@@ -149,18 +92,14 @@ static int recv_line(int fd, char *line, int cap)
 			return n;
 		}
 		if (c == '\r') {
-			continue;                  /* CRLF */
+			continue;
 		}
 		line[n++] = c;
 	}
 	return -1;
 }
 
-/**
- * @brief Receive exactly want bytes from socket into buf.
- * @retval 0   success
- * @retval -1  connection closed / error
- */
+/* Receive exactly want bytes */
 static int recv_full(int fd, uint8_t *buf, uint32_t want)
 {
 	uint32_t got = 0;
@@ -177,18 +116,11 @@ static int recv_full(int fd, uint8_t *buf, uint32_t want)
 	return 0;
 }
 
-/**
- * @brief [rx thread] Pick a writable slot (neither g_display nor g_ready), return slot index.
- *
- * Reads g_display/g_ready under lock. With 3 slots total, at most 2 are taken,
- * so at least 1 is writable. **Never** selects g_display.
- *
- * No need to mark the selected slot: rx is single-writer and serial, won't
- * claim again until publish. GUI thread only touches g_display/g_ready.
- *
- * @retval >=0  writable slot index
- * @retval -1   should not happen (SLOT_NUM>=3 guarantees a free slot)
- */
+/* ---------------------------------------------------------------------------
+ * Frame pool
+ * ------------------------------------------------------------------------- */
+
+/* Pick a writable slot (neither g_display nor g_ready). Under lock. */
 static int claim_write_slot(void)
 {
 	rtos_mutex_take(g_lock, MUTEX_WAIT_TIMEOUT);
@@ -196,7 +128,7 @@ static int claim_write_slot(void)
 	int slot = -1;
 	for (int i = 0; i < IMG_RX_SLOT_NUM; i++) {
 		if (i != g_display && i != g_ready) {
-			slot = i;                  /* → */
+			slot = i;
 			break;
 		}
 	}
@@ -205,17 +137,7 @@ static int claim_write_slot(void)
 	return slot;
 }
 
-/**
- * @brief [rx thread] Ensure writable slot has at least need bytes of capacity.
- *
- * Only called on a claimed writable slot (rx-exclusive, GUI only touches
- * g_display slot), so modifying g_buf[slot] pointer needs **no lock**.
- * Grow-to-fit: only increases; uses free+malloc instead of realloc since
- * old content is immediately overwritten.
- *
- * @retval 0   ready
- * @retval -1  allocation failed (slot remains free, caller disconnects)
- */
+/* Grow-to-fit: free+malloc on demand (old content overwritten, no realloc needed). */
 static int ensure_capacity(int slot, uint32_t need)
 {
 	if (g_buf[slot] != NULL && g_cap[slot] >= need) {
@@ -236,31 +158,24 @@ static int ensure_capacity(int slot, uint32_t need)
 	return 0;
 }
 
-/**
- * @brief Parse real dimensions from JPEG stream (read first SOF segment).
- *
- * gui_img uses w/h from header as draw area dimensions (draw_img_load_scale
- * reads head.w/h directly), so **real** dimensions must be provided. On
- * parse failure returns false, caller falls back to 400x480.
- */
+/* Parse JPEG dimensions from first SOF segment. Fallback to 400x480 on failure. */
 static bool jpeg_get_dimensions(const uint8_t *d, uint32_t n, uint16_t *pw, uint16_t *ph)
 {
 	if (d == NULL || n < 4 || d[0] != 0xFF || d[1] != 0xD8) {
-		return false;                  /* JPEG SOI */
+		return false;
 	}
 
 	uint32_t i = 2;
 	while (i + 4 <= n) {
-		if (d[i] != 0xFF) {            /* 0xFF */
+		if (d[i] != 0xFF) {
 			i++;
 			continue;
 		}
 		uint8_t m = d[i + 1];
-		if (m == 0xFF) {               /* 0xFF... */
+		if (m == 0xFF) {
 			i++;
 			continue;
 		}
-		/* SOI/EOI/RSTn/TEM 2 */
 		if (m == 0xD8 || m == 0xD9 || (m >= 0xD0 && m <= 0xD7) || m == 0x01) {
 			i += 2;
 			continue;
@@ -269,7 +184,6 @@ static bool jpeg_get_dimensions(const uint8_t *d, uint32_t n, uint16_t *pw, uint
 		if (seglen < 2) {
 			return false;
 		}
-		/* SOF0..SOF15 DHT(C4)/JPG(C8)/DAC(CC) */
 		if ((m >= 0xC0 && m <= 0xC3) || (m >= 0xC5 && m <= 0xC7) ||
 			(m >= 0xC9 && m <= 0xCB) || (m >= 0xCD && m <= 0xCF)) {
 			if (i + 9 > n) {
@@ -284,7 +198,7 @@ static bool jpeg_get_dimensions(const uint8_t *d, uint32_t n, uint16_t *pw, uint
 			*ph = h;
 			return true;
 		}
-		if (m == 0xDA) {               /* SOS SOF */
+		if (m == 0xDA) {
 			return false;
 		}
 		i += 2 + seglen;
@@ -292,12 +206,7 @@ static bool jpeg_get_dimensions(const uint8_t *d, uint32_t n, uint16_t *pw, uint
 	return false;
 }
 
-/**
- * @brief [rx thread] Write gui_jpeg_file_head_t header in-place at slot buffer prefix.
- *
- * JPEG stream is already at g_buf[slot] + IMG_RX_HDR_OFFSET; this only fills
- * the first 16 header bytes, making the buffer a valid IMG_SRC_MEMADDR/JPEG source.
- */
+/* Write gui_jpeg_file_head_t header (16B) in slot prefix. */
 static void build_jpeg_header(int slot, uint32_t size)
 {
 	gui_jpeg_file_head_t *wh = (gui_jpeg_file_head_t *)g_buf[slot];
@@ -306,35 +215,32 @@ static void build_jpeg_header(int slot, uint32_t size)
 	jpeg_get_dimensions(g_buf[slot] + IMG_RX_HDR_OFFSET, size, &w, &h);
 
 	memset(&wh->img_header, 0, sizeof(gui_rgb_data_head_t));
-	wh->img_header.type = JPEG;        /* draw_img_cache head->type==JPEG */
+	wh->img_header.type = JPEG;
 	wh->img_header.jpeg = 1;
 	wh->img_header.w    = (short)w;
 	wh->img_header.h    = (short)h;
-	wh->size            = size;        /* gui_acc_jpeg_load */
+	wh->size            = size;
 	wh->dummy           = 0;
 }
 
-/* ===========================================================================
- * slot ""g_ready
- * =========================================================================== */
+/* Publish: mark slot as latest ready frame (g_ready). */
 static void publish_frame(int slot, uint32_t size, uint32_t seq)
 {
 	rtos_mutex_take(g_lock, MUTEX_WAIT_TIMEOUT);
 	g_len[slot] = size;
 	g_seq[slot] = seq;
-	g_ready     = slot;                /* g_ready */
+	g_ready     = slot;
 	g_frame_cnt++;
 	rtos_mutex_give(g_lock);
 
-	/* post */
 	if (g_notify) {
 		g_notify();
 	}
 }
 
-/* ===========================================================================
- *
- * =========================================================================== */
+/* ---------------------------------------------------------------------------
+ * Per-client frame loop
+ * ------------------------------------------------------------------------- */
 static void serve_client(int cfd)
 {
 	struct timeval tv;
@@ -342,7 +248,6 @@ static void serve_client(int cfd)
 	tv.tv_usec = (IMG_RX_RECV_TIMEOUT_MS % 1000) * 1000;
 	setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv));
 
-	/* greeting NaviJpgTcpSender.readReadyGreeting */
 	const char *greeting = "READY\n";
 	if (send(cfd, greeting, strlen(greeting), 0) < 0) {
 		return;
@@ -351,9 +256,8 @@ static void serve_client(int cfd)
 	for (;;) {
 		char line[IMG_RX_LINE_MAX];
 		if (recv_line(cfd, line, sizeof(line)) < 0) {
-			return;                    /* → accept */
+			return;
 		}
-		RTK_LOGS(NOTAG, RTK_LOG_INFO, "[IMGRX] rx header: '%s'\n", line);
 
 		unsigned int size = 0, seq = 0;
 		if (sscanf(line, "JPG %u %u", &size, &seq) != 2) {
@@ -366,59 +270,44 @@ static void serve_client(int cfd)
 			return;
 		}
 
-		/* g_display g_ready GUI */
 		int slot = claim_write_slot();
 		if (slot < 0) {
-			/* SLOT_NUM>=3 */
 			g_drop_cnt++;
 			RTK_LOGS(NOTAG, RTK_LOG_WARN, "[IMGRX] no writable slot, drop frame\n");
 			return;
 		}
 
-		/* + JPEG 16B
-		 * / publish g_display/g_ready
-		 * */
 		if (ensure_capacity(slot, IMG_RX_HDR_OFFSET + size) < 0) {
 			return;
 		}
 
-		/* JPEG buf+16GUI */
 		if (recv_full(cfd, g_buf[slot] + IMG_RX_HDR_OFFSET, size) < 0) {
 			return;
 		}
 
-		/* gui_jpeg_file_head_t + */
 		build_jpeg_header(slot, size);
 		publish_frame(slot, size, seq);
-
-		RTK_LOGS(NOTAG, RTK_LOG_INFO,
-				 "[IMGRX] frame #%u seq=%u size=%u -> slot%d\n",
-				 (unsigned int)g_frame_cnt, seq, size, slot);
 	}
 }
 
-/* ===========================================================================
- *
- * =========================================================================== */
+/* ---------------------------------------------------------------------------
+ * Task entry
+ * ------------------------------------------------------------------------- */
 void dash_board_img_rx_task(void *param)
 {
 	(void)param;
 
-	/* 1) ensure_capacity
-	 * */
 	if (rtos_mutex_create(&g_lock) != RTK_SUCCESS) {
 		RTK_LOGS(NOTAG, RTK_LOG_ERROR, "[IMGRX] mutex create failed\n");
 		goto fail;
 	}
 
-	/* 2) WiFi WiFishell/ */
 	while (!dashboard_wifi_is_online()) {
 		rtos_time_delay_ms(500);
 	}
 	RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[IMGRX] wifi online, start server :%d\n",
 			 DASHBOARD_IMG_RX_PORT);
 
-	/* 3) TCP socket accept serve_client */
 	for (;;) {
 		int lfd = socket(AF_INET, SOCK_STREAM, 0);
 		if (lfd < 0) {
@@ -455,16 +344,12 @@ void dash_board_img_rx_task(void *param)
 			socklen_t clilen = sizeof(cli);
 			int cfd = accept(lfd, (struct sockaddr *)&cli, &clilen);
 			if (cfd < 0) {
-				/* accept socket */
 				break;
 			}
-			RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[IMGRX] client connected\n");
 
 			serve_client(cfd);
 
 			closesocket(cfd);
-			RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[IMGRX] client disconnected\n");
-			/* acceptNaviJpgTcpSender */
 		}
 
 		closesocket(lfd);
@@ -481,12 +366,12 @@ fail:
 	rtos_task_delete(NULL);
 }
 
-/* ===========================================================================
- * API +
- * =========================================================================== */
+/* ---------------------------------------------------------------------------
+ * Public API
+ * ------------------------------------------------------------------------- */
 void dashboard_img_rx_register_notify(dashboard_img_rx_notify_t cb)
 {
-	g_notify = cb;                     /* GUI */
+	g_notify = cb;
 }
 
 const uint8_t *dashboard_img_rx_take_display(void)
@@ -502,17 +387,13 @@ const uint8_t *dashboard_img_rx_take_display(void)
 		return NULL;
 	}
 
-	/*
-	 * 1. target = g_ready
-	 * 2. g_display = target
-	 * 3. g_display */
 	int target  = g_ready;
 	g_display   = target;
 	g_ready     = -1;
 
 	const uint8_t *buf = g_buf[target];
 	rtos_mutex_give(g_lock);
-	return buf;                        /* gui_jpeg_file_head_t gui_img_set_src */
+	return buf;
 }
 
 void dashboard_img_rx_release_display(void)
@@ -530,9 +411,9 @@ uint32_t dashboard_img_rx_frame_count(void)
 	return g_frame_cnt;
 }
 
-/* ===========================================================================
- * shell "img_rx" +
- * =========================================================================== */
+/* ---------------------------------------------------------------------------
+ * Shell command "img_rx": print frame pool status
+ * ------------------------------------------------------------------------- */
 static u32 cmd_dashboard_img_rx(u16 argc, u8 *argv[])
 {
 	(void)argc;

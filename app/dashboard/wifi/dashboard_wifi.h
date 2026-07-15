@@ -17,22 +17,14 @@
 #define DASHBOARD_WIFI_H
 
 /* ============================================================================
- * Dashboard WiFi subsystem -- unified dispatcher pattern
+ * Dashboard WiFi dispatcher
  *
- * Role (parallel to ble/dashboard_ble.h):
- *   - A persistent thread dash_board_wifi_task acts as "WiFi worker".
- *   - All work enters via a shared queue:
- *       * SDK WiFi events (join_status / dhcp_status) -> internal callback enqueue
- *       * Shell commands (ota_http / future stream_img) -> cmd handler enqueue
- *   - Thread consumes queue sequentially, **naturally serial**: OTA runs
- *     without interruption; new commands queue up. No multi-task socket/flash race.
+ * Single worker thread consuming a shared queue:
+ *   - SDK events (join_status / dhcp_status) -> internal callback enqueue
+ *   - Shell commands (ota_http, ...) -> cmd handler enqueue
+ *   - Dispatcher thread executes sequentially (no concurrency issues)
  *
- * Adding a new feature:
- *   1) Write a run_xxx(args) function in the feature module (runs in wifi task context).
- *   2) Shell cmd handler calls dashboard_wifi_request_xxx() to enqueue.
- *   3) wifi task dispatches by msg.type -> calls run_xxx.
- *
- * Only two places to change: feature file + one case in dashboard_wifi.c.
+ * Adding a feature: implement run_xxx() + one case in dispatch switch.
  * ============================================================================ */
 
 #include <stdbool.h>
@@ -43,59 +35,30 @@ extern "C" {
 #endif
 
 /**
- * @brief WiFi dispatcher thread entry.
- *
- * Created by app_example() via rtos_task_create at startup. Internally:
- *   1) Create message queue (must precede event callback registration)
- *   2) Wait for WiFi subsystem to start (wifi_is_running)
- *   3) Enter while(1), blocking-receive dashboard_wifi_msg_t, dispatch by type
- *
- * Never returns. Recommended stack: 4KB (to support blocking OTA operations).
- *
- * @param param  unused, pass NULL.
+ * @brief WiFi dispatcher thread entry. Never returns.
+ * @param param  unused
  */
 void dash_board_wifi_task(void *param);
 
 /**
- * @brief Check if WiFi/IP is currently available.
- *
- * Maintained by wifi task on DHCP_ADDRESS_ASSIGNED / DISCONNECT events.
- * Single writer (wifi task) / multi-reader (any task) -- volatile is sufficient.
- *
- * Note: returns **last observed** state, may not reflect instant disconnection.
- * On critical paths (e.g., before OTA socket), call LwIP_Check_Connectivity
- * for a double-check.
- *
- * @retval true   STA associated with AP and LwIP has an IP
- * @retval false  otherwise
+ * @brief Check if WiFi/IP is available.
+ * @retval true  STA associated + IP assigned
+ * @retval false otherwise
  */
 bool dashboard_wifi_is_online(void);
 
 /* ----------------------------------------------------------------------------
- * Business request API: enqueue work requests to the wifi task's queue.
- *
- * These functions return immediately (non-blocking). Actual work runs
- * asynchronously on the wifi task. Return value only indicates whether
- * the enqueue succeeded. Business results are logged via RTK_LOG.
- *
- * Adding a new feature:
- *   - Add dashboard_wifi_request_<feature>() declaration here
- *   - Add case in dashboard_wifi.c dispatch switch
- *   - Implement run_<feature>(args) blocking function in feature .c
+ * Business request API: enqueue work to wifi task (non-blocking).
+ * Return value only indicates enqueue success. Results logged via RTK_LOG.
  * --------------------------------------------------------------------------- */
 
 /**
- * @brief Request wifi task to run an OTA HTTP upgrade in its context.
- *
- * Caller (typically cmd handler) provides server address/port/resource.
- * The function copies them into the queue message, so they remain valid
- * even if the caller's stack strings become invalid.
- *
- * @param host     HTTP server host (IP string), NULL for default
+ * @brief Request OTA HTTP upgrade on wifi task.
+ * @param host     IP string, NULL for default
  * @param port     port number
- * @param resource resource path (filename), NULL for default
- * @retval 0       enqueue success (async execution follows)
- * @retval <0      enqueue failed (queue full / not initialized)
+ * @param resource filename, NULL for default
+ * @retval 0       enqueued
+ * @retval <0      queue full / not initialized
  */
 int dashboard_wifi_request_ota_http(const char *host, u16 port, const char *resource);
 

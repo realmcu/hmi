@@ -14,85 +14,50 @@
  */
 
 /* ============================================================================
- * Dashboard image display glue: bridge between img_rx and HoneyGUI carplay_map
+ * Bridge: img_rx (TCP + frame pool) -> HoneyGUI carplay_map widget
  *
- *   rx thread                          GUI thread (gui server)
- *   ─────────                         ─────────────────────
- *   frame complete → publish_frame()
- *      └─ g_notify = on_frame_ready()
- *            └─ gui_send_msg_to_server(USER_DEFINE, cb=carplay_map_apply_cb)
- *                                        │  (16-depth msg queue, cross-thread, no payload)
- *                                        ▼
- *                              gui_recv_msg_to_server()  ← called after each frame render
- *                                └─ gui_server_msg_handler(USER_DEFINE)
- *                                     └─ carplay_map_apply_cb()
- *                                          ├─ dashboard_img_rx_take_display()
- *                                          │     (take latest ready frame as display slot,
- *                                          │      previous display slot auto returns to free)
- *                                          ├─ gui_img_set_src(carplay_map, buf, MEMADDR)
- *                                          ├─ gui_img_refresh_size(carplay_map)
- *                                          └─ gui_fb_change()  → trigger next redraw
- *
- * take_display always gets the latest ready frame, so multiple events naturally merge.
- * The display slot being decoded/painted (g_display) is never touched by the rx thread.
+ *   rx thread: frame done -> publish_frame()
+ *     -> g_notify=on_frame_ready() -> gui_send_msg_to_server(USER_DEFINE)
+ *   GUI thread: gui_recv_msg_to_server() -> carplay_map_apply_cb()
+ *     -> take_display() -> gui_img_set_src() -> gui_fb_change()
  * ============================================================================ */
 
-#include "gui_message.h"          /* gui_msg_t / GUI_EVENT_USER_DEFINE / gui_send_msg_to_server */
-#include "gui_img.h"              /* gui_img_t / gui_img_set_src / gui_img_refresh_size / IMG_SRC_MEMADDR */
-#include "gui_view.h"             /* gui_view_switch_direct / gui_view_get_current */
-#include "gui_components_init.h"  /* GUI_INIT_APP_EXPORT */
+#include "gui_message.h"
+#include "gui_img.h"
+#include "gui_view.h"
+#include "gui_components_init.h"
 
 #include "dashboard_img_rx.h"
 
-/* Force redraw via extern (see example/map platform_honeygui.c). */
 extern void gui_fb_change(void);
 
-/* carplay_map is created by DashboardMain_ui.c in carplay_view_switch_in (global,
- * non-static). View switch_out sets it to NULL, so check for NULL here. */
+/* carplay_map: created by DashboardMain_ui.c, NULL when view switched out. */
 extern gui_img_t *carplay_map;
 
-/* ---------------------------------------------------------------------------
- * [GUI thread] USER_DEFINE event handler: update carplay_map image source
- * to the latest ready frame.
- *
- * If not on carplay page (carplay_map == NULL), auto-switch to carplay_view
- * (its switch_in will create carplay_map), then display the frame.
- * ------------------------------------------------------------------------- */
 static void carplay_map_apply_cb(void *param)
 {
-	(void)param;                       /* event carries no payload, just take the latest frame */
+	(void)param;
 
-	/* If not on carplay page: auto-switch (no animation). carplay_view's
-	 * switch_in will create carplay_map. */
 	if (carplay_map == NULL) {
 		gui_view_switch_direct(gui_view_get_current(), "carplay_view",
 		                       SWITCH_OUT_NONE_ANIMATION, SWITCH_IN_NONE_ANIMATION);
-		/* After switching, carplay_map should have been created by switch_in */
 		if (carplay_map == NULL) {
 			return;
 		}
 	}
 
-	/* Take latest ready frame: set as display slot, previous slot auto-returns to free.
-	 * Returns a gui_jpeg_file_head_t layout buffer, usable directly as MEMADDR src. */
 	const uint8_t *buf = dashboard_img_rx_take_display();
 	if (buf == NULL) {
-		return;                        /* no new frame (merged events) -- discard */
+		return;
 	}
 
-	gui_img_set_src(carplay_map, buf, IMG_SRC_MEMADDR);   /* param is const uint8_t*, pass directly */
-	gui_img_refresh_size(carplay_map);    /* refresh widget size from header dimensions */
-	gui_fb_change();                   /* trigger next redraw */
+	gui_img_set_src(carplay_map, buf, IMG_SRC_MEMADDR);
+	gui_img_refresh_size(carplay_map);
+	gui_fb_change();
 }
 
-/* ---------------------------------------------------------------------------
- * [rx thread] Frame ready callback: lightweight post, actual display in GUI thread
- * ------------------------------------------------------------------------- */
 static void on_frame_ready(void)
 {
-	/* Post a "new frame" event to GUI server queue. If queue is full,
-	 * gui_send_msg_to_server drops this one -- next frame will re-post.
-	 * take_display always gets the latest, so no stale frame is shown. */
 	gui_msg_t msg = {
 		.event = GUI_EVENT_USER_DEFINE,
 		.cb    = carplay_map_apply_cb,
@@ -100,9 +65,6 @@ static void on_frame_ready(void)
 	gui_send_msg_to_server(&msg);
 }
 
-/* ---------------------------------------------------------------------------
- * Startup registration: runs once on GUI thread when gui_components_init starts
- * ------------------------------------------------------------------------- */
 static int dashboard_img_display_init(void)
 {
 	dashboard_img_rx_register_notify(on_frame_ready);
