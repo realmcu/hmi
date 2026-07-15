@@ -164,23 +164,6 @@ u16 array_len_of_event_external_hdl =
 /* ---------------------------------------------------------------------------
  * Dispatcher internal: event handlers
  * ------------------------------------------------------------------------- */
-static const char *join_status_str(u8 s)
-{
-	switch (s) {
-	case RTW_JOINSTATUS_STARTING:           return "STARTING";
-	case RTW_JOINSTATUS_SCANNING:           return "SCANNING";
-	case RTW_JOINSTATUS_AUTHENTICATING:     return "AUTHENTICATING";
-	case RTW_JOINSTATUS_AUTHENTICATED:      return "AUTHENTICATED";
-	case RTW_JOINSTATUS_ASSOCIATING:        return "ASSOCIATING";
-	case RTW_JOINSTATUS_ASSOCIATED:         return "ASSOCIATED";
-	case RTW_JOINSTATUS_4WAY_HANDSHAKING:   return "4WAY_HANDSHAKING";
-	case RTW_JOINSTATUS_4WAY_HANDSHAKE_DONE:return "4WAY_DONE";
-	case RTW_JOINSTATUS_SUCCESS:            return "SUCCESS";
-	case RTW_JOINSTATUS_FAIL:               return "FAIL";
-	case RTW_JOINSTATUS_DISCONNECT:         return "DISCONNECT";
-	default:                                return "UNKNOWN";
-	}
-}
 
 static void handle_join_status(const dashboard_wifi_msg_t *msg)
 {
