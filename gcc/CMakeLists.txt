@@ -97,10 +97,14 @@ else()
         -Wl,--whole-archive
         ${CMAKE_CURRENT_SOURCE_DIR}/../src/gui_lib/gcc/libgui.a
         -Wl,--no-whole-archive
+        stdc++
+        supc++
         )
     target_compile_definitions(dashboard PRIVATE
         ENABLE_HONEYGUI
     )
+    # Force CXX link driver, else missing libstdc++ symbols (see rvd board)
+    set_target_properties(dashboard PROPERTIES LINKER_LANGUAGE CXX)
     # display lib links `guiLib` when GUI_ACC is on; provide a header-only stub
     # so acc_ppe.c finds the GUI headers (symbols come from libgui.a above).
     if(NOT TARGET guiLib)
