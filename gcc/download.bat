@@ -8,6 +8,7 @@ rem    MODE in: src_bank0 (default) | src_bank1 | lib_bank0 | lib_bank1
 set SCRIPT_DIR=%~dp0
 set DOWNLOAD_BAT=%SCRIPT_DIR%..\download\download.bat
 
+rem  Default applies only when run directly; west overrides via commands.py.
 set COM=%1
 if "%COM%"=="" set COM=COM3
 

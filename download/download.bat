@@ -13,6 +13,7 @@ rem ============================================================
 
 rem ============================================================
 rem  CONFIG: set your COM port here (leave blank to prompt)
+rem  Applies only when run directly; west overrides via commands.py.
 set DEFAULT_COM=COM3
 rem ============================================================
 

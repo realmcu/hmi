@@ -11,6 +11,11 @@ from west.commands import WestCommand
 from west import log
 
 
+# Default serial port for all west download commands (flash/userdata).
+# The only place to edit the west default; override with `-p COMx`.
+DEFAULT_COM = 'COM3'
+
+
 def _cmake_src(manifest) -> str:
     """Return the CMake source root: the directory containing board/evb/hmi_dashboard/.
 
@@ -202,7 +207,7 @@ class ProjectInfo(WestCommand):
         return parser_adder.add_parser(self.name, help=self.help,
                                        description=self.description)
 
-    def do_run(self, args, unknown_args):
+    def do_run(self, args, unknown):
         topdir = self.manifest.topdir
         cmake_src = _cmake_src(self.manifest)
         build_root = _build_root(self.manifest)
@@ -269,7 +274,7 @@ class BuildCommand(WestCommand):
         )
         return parser
 
-    def do_run(self, args, unknown_args):
+    def do_run(self, args, unknown):
         cmake_src = _cmake_src(self.manifest)
         mode = _resolve_mode(args.mode)
         build_dir = _build_dir(self.manifest, mode)
@@ -326,7 +331,7 @@ class CleanCommand(WestCommand):
         )
         return parser
 
-    def do_run(self, args, unknown_args):
+    def do_run(self, args, unknown):
         cmake_src = _cmake_src(self.manifest)
 
         if args.mode:
@@ -363,7 +368,7 @@ class FlashCommand(WestCommand):
                                          description=self.description)
         parser.add_argument(
             '-p', '--port', default='',
-            help='serial COM port (default: COM3, as defined in download.bat)'
+            help=f'serial COM port (default: {DEFAULT_COM})'
         )
         parser.add_argument(
             '-m', '--mode', choices=_MODE_CHOICES, default='src_bank0',
@@ -371,7 +376,7 @@ class FlashCommand(WestCommand):
         )
         return parser
 
-    def do_run(self, args, unknown_args):
+    def do_run(self, args, unknown):
         cmake_src = _cmake_src(self.manifest)
         download_bat = os.path.join(
             cmake_src, 'board', 'evb', 'hmi_dashboard', 'gcc', 'download.bat'
@@ -380,7 +385,7 @@ class FlashCommand(WestCommand):
             log.die(f'download.bat not found: {download_bat}')
 
         mode = _resolve_mode(args.mode)
-        port = args.port if args.port else 'COM3'
+        port = args.port if args.port else DEFAULT_COM
         cmd = ['cmd', '/c', download_bat, port, mode]
         subprocess.run(cmd)
 
@@ -406,7 +411,7 @@ class UserdataCommand(WestCommand):
         )
         parser.add_argument(
             '-p', '--port', default='',
-            help='serial COM port (default: COM3)'
+            help=f'serial COM port (default: {DEFAULT_COM})'
         )
         parser.add_argument(
             '--addr', metavar='ADDR',
@@ -419,7 +424,7 @@ class UserdataCommand(WestCommand):
         )
         return parser
 
-    def do_run(self, args, unknown_args):
+    def do_run(self, args, unknown):
         cmake_src = _cmake_src(self.manifest)
         userdata_bin = args.file or _designer_romfs_bin(cmake_src)
         if not os.path.exists(userdata_bin):
@@ -432,7 +437,7 @@ class UserdataCommand(WestCommand):
             if args.package_only:
                 return
             addr = args.addr or _parse_flash_map_define(cmake_src, 'USER_DATA1_ADDR')
-            port = args.port if args.port else 'COM3'
+            port = args.port if args.port else DEFAULT_COM
             log.inf(f'Flashing userdata -> {addr} (app is not touched)')
             _mpcli_flash(cmake_src, port, flash_ready, addr)
         finally:
@@ -461,7 +466,7 @@ class GuiLibCommand(WestCommand):
         return parser_adder.add_parser(self.name, help=self.help,
                                        description=self.description)
 
-    def do_run(self, args, unknown_args):
+    def do_run(self, args, unknown):
         # cmake_src is the sdk root (computed relative to hmi_dashboard's own
         # abspath), so it transparently absorbs the extra honeycomb/ wrapper
         # directory that only exists in this dev workspace.
@@ -530,7 +535,7 @@ class SyncCommand(WestCommand):
         return parser_adder.add_parser(self.name, help=self.help,
                                        description=self.description)
 
-    def do_run(self, args, unknown_args):
+    def do_run(self, args, unknown):
         topdir = self.manifest.topdir
 
         # Step 0: force-update the manifest repo itself
@@ -556,7 +561,7 @@ class SyncCommand(WestCommand):
                 log.wrn('Manifest repo is in detached HEAD state, skipping reset')
 
         # Step 1: delegate to the real west update, forwarding any extra flags
-        cmd = ['west', 'update'] + list(unknown_args)
+        cmd = ['west', 'update'] + list(unknown)
         log.inf('Running: ' + ' '.join(cmd))
         r = subprocess.run(cmd, cwd=topdir)
         if r.returncode != 0:
@@ -607,7 +612,7 @@ class SizeCommand(WestCommand):
                     elfs.append(os.path.join(root, f))
         return elfs
 
-    def do_run(self, args, unknown_args):
+    def do_run(self, args, unknown):
         cmake_src = _cmake_src(self.manifest)
         elfs = self._find_elfs(cmake_src)
 

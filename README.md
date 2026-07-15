@@ -77,6 +77,10 @@ west flash -m src_bank1     # flash bank1 image (must match west build -m)
 west userdata               # flash the designer UI's ROMFS resources, app untouched (see below)
 ```
 
+> **The default port is COM3.** Use `-p COMx` for a one-off override; to change the
+> default, edit `DEFAULT_COM` at the top of `west_commands_extention/commands.py`
+> (affects west commands only).
+>
 > `-m` must match the mode used at build time; a mismatch flashes the wrong OTA slot.
 >
 > **UI not showing up?** The app image only contains program logic — the designer UI's

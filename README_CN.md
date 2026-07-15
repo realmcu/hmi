@@ -73,6 +73,9 @@ west flash -m src_bank1     # 烧录 bank1 镜像（须与 west build -m 保持�
 west userdata               # 烧录 designer UI 的 ROMFS 资源，不烧 app（见下）
 ```
 
+> **默认串口为 COM3。** 板子不在 COM3 时用 `-p COMx` 临时指定；要修改默认值，
+> 编辑 `west_commands_extention/commands.py` 顶部的 `DEFAULT_COM`（仅影响 west 命令）。
+>
 > `-m` 须与构建时的 mode 保持一致，否则将烧录错误槽位的固件。
 >
 > **看不到 UI 效果？** app 固件只包含程序逻辑，designer UI 的图片/字体等资源是单独的 ROMFS 分区，

@@ -24,6 +24,7 @@ rem ============================================================
 
 rem ============================================================
 rem  CONFIG: set your COM port and romfs address here
+rem  Applies only when run directly; `west userdata` bypasses this script.
 set DEFAULT_COM=COM3
 rem  Must match romfsBaseAddr in src\application\designer\project.json
 rem  (= USER_DATA1_ADDR + IMG_HDR_SIZE from the SDK flash_map.h)
