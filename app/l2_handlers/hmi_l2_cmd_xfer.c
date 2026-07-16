@@ -112,7 +112,7 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                 }
 
                 uint8_t rsp[3];
-                rsp[0] = HMI_L2_XFER_BEGIN_OK;
+                rsp[0] = (rc == FDB_NO_ERR) ? HMI_L2_XFER_BEGIN_OK : HMI_L2_XFER_BEGIN_NO_SPACE;
                 rsp[1] = (uint8_t)(s_xfer_chunk >> 8);
                 rsp[2] = (uint8_t)(s_xfer_chunk & 0xFFu);
                 xfer_send(HMI_L2_XFER_BEGIN_RSP, rsp, sizeof(rsp));
