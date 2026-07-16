@@ -42,10 +42,17 @@ void dash_board_wifi_task(void *param);
 
 /**
  * @brief Check if WiFi/IP is available.
- * @retval true  STA associated + IP assigned
+ * @retval true  ready to serve (STA associated + IP assigned, or SoftAP up)
  * @retval false otherwise
  */
 bool dashboard_wifi_is_online(void);
+
+/**
+ * @brief Report whether the device runs as SoftAP (phone connects to us).
+ * @retval true  SoftAP mode (data path on the AP netif, IP 192.168.43.1)
+ * @retval false STA mode (device joined an external AP)
+ */
+bool dashboard_wifi_is_ap_mode(void);
 
 /* ----------------------------------------------------------------------------
  * Business request API: enqueue work to wifi task (non-blocking).

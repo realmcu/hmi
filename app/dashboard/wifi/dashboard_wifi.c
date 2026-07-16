@@ -35,6 +35,7 @@
 
 #include "wifi_api.h"
 #include "wifi_api_types.h"
+#include "wifi_api_ext.h"
 #include "wifi_api_event.h"
 #include "lwip_netconf.h"
 
@@ -42,6 +43,21 @@
 #include "dashboard_ota_http.h"
 
 #define LOG_TAG "DASHBOARD-WIFI"
+
+/* ---------------------------------------------------------------------------
+ * Message types (type-tagged union)
+ * ------------------------------------------------------------------------- */
+#define DASHBOARD_AP_SSID     "Dashboard_RTL8721F"
+#define DASHBOARD_AP_PASSWORD "12345678"
+#define DASHBOARD_AP_CHANNEL  6
+
+#ifndef CONCAT_TO_UINT32
+#define CONCAT_TO_UINT32(b4, b3, b2, b1) \
+	(((u32)((b4) & 0xFF) << 24) | ((u32)((b3) & 0xFF) << 16) | \
+	 ((u32)((b2) & 0xFF) << 8) | ((u32)((b1) & 0xFF)))
+#endif
+extern void dhcps_init(struct netif *pnetif);
+extern void wifi_fast_connect_enable(unsigned char enable);
 
 /* ---------------------------------------------------------------------------
  * Message types (type-tagged union)
@@ -83,6 +99,10 @@ static rtos_queue_t  g_wifi_msg_queue = NULL;
 static volatile bool g_wifi_online    = false;
 static u8            g_join_state     = RTW_JOINSTATUS_UNKNOWN;
 
+/* true 表示本机已作为 SoftAP 运行（车机做 AP、手机来连）。此模式下 g_wifi_online
+ * 由 AP 拉起流程直接置位，STA 侧的 join/dhcp 事件不再改写它（见 handle_* 里的守卫）。*/
+static volatile bool g_ap_mode        = false;
+
 static int post_msg(const dashboard_wifi_msg_t *msg, uint32_t wait_ms)
 {
 	if (g_wifi_msg_queue == NULL) {
@@ -112,6 +132,11 @@ int dashboard_wifi_request_ota_http(const char *host, u16 port, const char *reso
 bool dashboard_wifi_is_online(void)
 {
 	return g_wifi_online;
+}
+
+bool dashboard_wifi_is_ap_mode(void)
+{
+	return g_ap_mode;
 }
 
 /* ---------------------------------------------------------------------------
@@ -175,12 +200,16 @@ static void handle_join_status(const dashboard_wifi_msg_t *msg)
 				 msg->u.join.channel, msg->u.join.rssi);
 		break;
 	case RTW_JOINSTATUS_FAIL:
-		g_wifi_online = false;
+		if (!g_ap_mode) {
+			g_wifi_online = false;
+		}
 		RTK_LOGE(LOG_TAG, "Join FAIL, reason=%d code=%u\n",
 				 (int)msg->u.join.fail_reason, msg->u.join.reason_or_status_code);
 		break;
 	case RTW_JOINSTATUS_DISCONNECT:
-		g_wifi_online = false;
+		if (!g_ap_mode) {
+			g_wifi_online = false;
+		}
 		RTK_LOGW(LOG_TAG, "DISCONNECTED, reason=%u\n", msg->u.join.disconn_reason);
 		break;
 	default:
@@ -190,6 +219,10 @@ static void handle_join_status(const dashboard_wifi_msg_t *msg)
 
 static void handle_dhcp_status(const dashboard_wifi_msg_t *msg)
 {
+	if (g_ap_mode) {
+		return;
+	}
+
 	switch (msg->u.dhcp.dhcp_status) {
 	case DHCP_ADDRESS_ASSIGNED:
 		g_wifi_online = true;
@@ -227,6 +260,75 @@ static void dispatch_msg(const dashboard_wifi_msg_t *msg)
 	}
 }
 
+static int dashboard_wifi_softap_up(void)
+{
+	struct rtw_softap_info ap;
+	int ret;
+
+	wifi_fast_connect_enable(0);
+	wifi_set_autoreconnect(0);
+	wifi_disconnect();
+
+	if (wifi_is_running(SOFTAP_WLAN_INDEX)) {
+		RTK_LOGI(LOG_TAG, "SoftAP already running\n");
+		return 0;
+	}
+
+	memset(&ap, 0, sizeof(ap));
+	ap.ssid.len = (u8)strlen(DASHBOARD_AP_SSID);
+	strncpy((char *)ap.ssid.val, DASHBOARD_AP_SSID, sizeof(ap.ssid.val) - 1);
+	ap.password      = (u8 *)DASHBOARD_AP_PASSWORD;
+	ap.password_len  = (u8)strlen(DASHBOARD_AP_PASSWORD);
+	ap.security_type = RTW_SECURITY_WPA2_AES_PSK;
+	ap.channel       = DASHBOARD_AP_CHANNEL;
+
+	wifi_stop_ap();
+
+	ret = wifi_start_ap(&ap);
+	{
+		int busy_retry = 20;
+		while (ret == -RTK_ERR_BUSY && busy_retry-- > 0) {
+			wifi_disconnect();
+			rtos_time_delay_ms(500);
+			ret = wifi_start_ap(&ap);
+		}
+	}
+	if (ret != RTK_SUCCESS) {
+		RTK_LOGE(LOG_TAG, "wifi_start_ap failed: %d\n", ret);
+		return -1;
+	}
+
+	{
+		struct rtw_wifi_setting setting;
+		int timeout = 20;
+		while (timeout-- > 0) {
+			memset(&setting, 0, sizeof(setting));
+			wifi_get_setting(SOFTAP_WLAN_INDEX, &setting);
+			if (strcmp((char *)setting.ssid, DASHBOARD_AP_SSID) == 0) {
+				break;
+			}
+			rtos_time_delay_ms(500);
+		}
+		if (timeout <= 0) {
+			RTK_LOGE(LOG_TAG, "SoftAP start timeout\n");
+		}
+	}
+
+#ifdef CONFIG_LWIP_LAYER
+	{
+		u32 ip = CONCAT_TO_UINT32(AP_IP_ADDR0, AP_IP_ADDR1, AP_IP_ADDR2, AP_IP_ADDR3);
+		u32 nm = CONCAT_TO_UINT32(AP_NETMASK_ADDR0, AP_NETMASK_ADDR1, AP_NETMASK_ADDR2, AP_NETMASK_ADDR3);
+		u32 gw = CONCAT_TO_UINT32(AP_GW_ADDR0, AP_GW_ADDR1, AP_GW_ADDR2, AP_GW_ADDR3);
+		LwIP_SetIP(NETIF_WLAN_AP_INDEX, ip, nm, gw);
+		dhcps_init(pnetif_ap);
+	}
+#endif
+
+	RTK_LOGI(LOG_TAG, "SoftAP up: ssid=%s pw=%s ip=192.168.43.1 (phone connects here)\n",
+			 DASHBOARD_AP_SSID, DASHBOARD_AP_PASSWORD);
+	return 0;
+}
+
 void dash_board_wifi_task(void *param)
 {
 	UNUSED(param);
@@ -239,6 +341,13 @@ void dash_board_wifi_task(void *param)
 
 	while (!(wifi_is_running(STA_WLAN_INDEX) || wifi_is_running(SOFTAP_WLAN_INDEX))) {
 		rtos_time_delay_ms(500);
+	}
+
+	if (dashboard_wifi_softap_up() == 0) {
+		g_ap_mode     = true;
+		g_wifi_online = true;
+	} else {
+		RTK_LOGE(LOG_TAG, "SoftAP bring-up failed; phone will not be able to connect\n");
 	}
 
 	while (1) {

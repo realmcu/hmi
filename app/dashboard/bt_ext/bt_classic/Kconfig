@@ -1,5 +1,7 @@
 menu "BT Classic Profile Configuration"
-    depends on HONEYGUI_APP_DASHBOARD
+    # These profiles live in the dashboard bt_ext code (compiled under CONFIG_BT_EXT),
+    # so hide the whole menu (A2DP/AVRCP/HFP/SPP/HID) unless BT EXT is enabled.
+    depends on HONEYGUI_APP_DASHBOARD && BT_EXT
 
 config BT_CLASSIC_ENABLE_A2DP
     bool "A2DP (Advanced Audio Distribution Profile)"

@@ -39,11 +39,7 @@ static void carplay_map_apply_cb(void *param)
 	(void)param;
 
 	if (carplay_map == NULL) {
-		gui_view_switch_direct(gui_view_get_current(), "carplay_view",
-		                       SWITCH_OUT_NONE_ANIMATION, SWITCH_IN_NONE_ANIMATION);
-		if (carplay_map == NULL) {
-			return;
-		}
+		return;
 	}
 
 	const uint8_t *buf = dashboard_img_rx_take_display();

@@ -27,6 +27,9 @@
 #if defined(CONFIG_WLAN) && CONFIG_WLAN
 #include "dashboard_wifi.h"
 #include "dashboard_img_rx.h"
+#ifdef DASHBOARD_USE_THIRD_PARTY_NAV
+#include "dashboard_third_party_nav.h"
+#endif
 #endif
 #include <stdlib.h>
 #include <string.h>
@@ -83,11 +86,15 @@ void app_example(void)
 	}
 #endif
 #if defined(CONFIG_WLAN) && CONFIG_WLAN
+#ifdef DASHBOARD_USE_THIRD_PARTY_NAV
+	dashboard_third_party_nav_start();
+#else
 	if (rtos_task_create(NULL, "wifi_task", dash_board_wifi_task, NULL, 1024 * 4, 1) != RTK_SUCCESS) {
 		RTK_LOGE(TAG, "Failed to create dash_board_wifi_task\n");
 	}
 	if (rtos_task_create(NULL, "img_rx_task", dash_board_img_rx_task, NULL, 1024 * 4, 1) != RTK_SUCCESS) {
 		RTK_LOGE(TAG, "Failed to create dash_board_img_rx_task\n");
 	}
+#endif
 #endif
 }

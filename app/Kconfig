@@ -13,5 +13,27 @@ config HONEYGUI_APP_DASHBOARD
 endchoice
 
 if HONEYGUI_APP_DASHBOARD
+
+config DASHBOARD_THIRD_PARTY_NAV
+    bool "Third-party navigation mirror"
+    depends on WLAN
+    default n
+    help
+      Route the dashboard screen-cast path through the third-party navigation
+      mirror SDK instead of the built-in WiFi SoftAP + carplay image receiver.
+
+      When this is enabled AND a prebuilt SDK static library is present under
+      the dashboard app's third_party_nav/lib/ directory, the two screen-cast
+      paths are mutually exclusive:
+        * on boot the device brings up the third-party SDK's own SoftAP + mirror
+          (instead of the built-in wifi SoftAP / img_rx TCP receiver), and
+        * the menu enter key switches to "third_party_nav_view" (instead of
+          "carplay_view").
+
+      When disabled (or when the third_party_nav/ SDK library is absent) the
+      dashboard uses the built-in WiFi SoftAP + carplay_view image-receiver
+      path, and the third-party sources/static library are not compiled or
+      linked at all.
+
 rsource "dashboard/bt_ext/bt_classic/Kconfig"
 endif

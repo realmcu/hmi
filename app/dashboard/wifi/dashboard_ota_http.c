@@ -50,7 +50,9 @@ int run_ota_http(const char *host, u16 port, const char *resource)
 		port = DASHBOARD_OTA_HTTP_DEFAULT_PORT;
 	}
 
-	if (LwIP_Check_Connectivity(NETIF_WLAN_STA_INDEX) != CONNECTION_VALID) {
+	if (LwIP_Check_Connectivity(dashboard_wifi_is_ap_mode()
+								? NETIF_WLAN_AP_INDEX : NETIF_WLAN_STA_INDEX)
+		!= CONNECTION_VALID) {
 		RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[OTA] WiFi/IP not ready, abort\n");
 		return -1;
 	}

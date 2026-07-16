@@ -46,6 +46,13 @@ if(CONFIG_BT OR CONFIG_BT_EXT)
     )
 endif()
 
+set(THIRD_PARTY_NAV_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party_nav)
+file(GLOB THIRD_PARTY_NAV_LIBS ${THIRD_PARTY_NAV_DIR}/lib/*.a)
+set(DASHBOARD_USE_THIRD_PARTY_NAV FALSE)
+if(CONFIG_DASHBOARD_THIRD_PARTY_NAV AND THIRD_PARTY_NAV_LIBS)
+    set(DASHBOARD_USE_THIRD_PARTY_NAV TRUE)
+endif()
+
 if(CONFIG_WLAN)
     ameba_list_append(private_sources
         wifi/dashboard_wifi.c
@@ -53,6 +60,16 @@ if(CONFIG_WLAN)
         wifi/dashboard_img_rx.c
         wifi/dashboard_img_display.c
     )
+    if(DASHBOARD_USE_THIRD_PARTY_NAV)
+        ameba_list_append(private_sources
+            third_party_nav/dashboard_third_party_nav.c
+            third_party_nav/dashboard_third_party_nav_view.c
+        )
+        set_source_files_properties(
+            third_party_nav/dashboard_third_party_nav.c
+            PROPERTIES COMPILE_OPTIONS "-Wno-error;-Wno-strict-prototypes"
+        )
+    endif()
 endif()
 
 set(private_includes)
@@ -77,13 +94,29 @@ ameba_list_append(private_includes
     ${honeygui_includes}
 )
 
+if(DASHBOARD_USE_THIRD_PARTY_NAV)
+    ameba_list_append(private_includes
+        ${THIRD_PARTY_NAV_DIR}
+        ${THIRD_PARTY_NAV_DIR}/inc
+    )
+    foreach(_tpnav_lib ${THIRD_PARTY_NAV_LIBS})
+        ameba_global_library(${_tpnav_lib})
+    endforeach()
+endif()
+
 set(private_compile_options)
 ameba_list_append(private_compile_options
     -include ${HONEYGUI_DIR}/port/gui_port_init.h
 )
 
+set(private_definitions)
+if(DASHBOARD_USE_THIRD_PARTY_NAV)
+    ameba_list_append(private_definitions DASHBOARD_USE_THIRD_PARTY_NAV)
+endif()
+
 ameba_add_internal_library(honeygui_app_dashboard
     p_SOURCES ${private_sources}
     p_INCLUDES ${private_includes}
+    p_DEFINITIONS ${private_definitions}
     p_COMPILE_OPTIONS ${private_compile_options}
 )
