@@ -27,7 +27,7 @@
         "-A",
         "0x7009E000",
         "-F",
-        "Z:\\home\\howie_wang\\workspace\\eBadge\\zephyrproject\\realtek-app\\applications\\eBadge\\bin\\app.bin",
+        "Z:\\home\\howie_wang\\hmi\\rtl8773g-simple-test\\zephyrproject\\realtek-app\\applications\\eBadge\\bin\\app.bin",
         "-b",
         "3000000",
         "-M",

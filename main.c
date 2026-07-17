@@ -35,18 +35,18 @@ int main(void)
            k_thread_name_get(k_current_get()),
            k_thread_priority_get(k_current_get()));
 
-    hmi_bt_task_init();
-    hmi_proto_task_init();
-    extern void hmi_l2_handlers_register(void);
-    hmi_l2_handlers_register();
+    // hmi_bt_task_init();
+    // hmi_proto_task_init();
+    // extern void hmi_l2_handlers_register(void);
+    // hmi_l2_handlers_register();
 
 
-    extern void rtk_lcd_hal_init(void);
-    rtk_lcd_hal_init();
+    // extern void rtk_lcd_hal_init(void);
+    // rtk_lcd_hal_init();
 
 
 
-    gui_server_init();
+    // gui_server_init();
 
     return 0;
 }
