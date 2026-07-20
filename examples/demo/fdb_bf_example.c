@@ -79,12 +79,28 @@ static int cmd_fdb_bf(const struct shell *sh, size_t argc, char **argv)
     posix_fdb_bf_create_t c = { .key = "demo/hello", .max_size = plen };
     int rc = posix_ioctl(fd, POSIX_FDB_BF_IOCTL_CREATE, &c);
     shell_print(sh, "create: rc=%d", rc);
+    if (rc != POSIX_OK)
+    {
+        posix_close(fd);
+        return -1;
+    }
 
     posix_ssize_t wn = posix_write(fd, payload, plen);
     shell_print(sh, "write: %d bytes", (int)wn);
+    if (wn != (posix_ssize_t)plen)
+    {
+        posix_ioctl(fd, POSIX_FDB_BF_IOCTL_ABORT, NULL);
+        posix_close(fd);
+        return -1;
+    }
 
     rc = posix_ioctl(fd, POSIX_FDB_BF_IOCTL_COMMIT, NULL);
     shell_print(sh, "commit: rc=%d", rc);
+    if (rc != POSIX_OK)
+    {
+        posix_close(fd);
+        return -1;
+    }
 
     posix_ioctl(fd, POSIX_FDB_BF_IOCTL_SELECT_READ, (void *)"demo/hello");
     char buf[128] = {0};

@@ -4,11 +4,16 @@
  * 功能：open → append (write/ioctl 两种) → 时间区间游标查询
  *      → query_count → clean → 关闭
  * 编译要求：posix.h + ioctls/posix_ioctl_fdb.h, FDB_USING_TSDB
+ *
+ * 注意：本文件只演示 TSDB 抽象层能力。业务语义（pedo/health 等）
+ *      的存储示例见 component/gsensor-algorithm/pedo_logger.c。
  * ================================================================ */
 
 #include "posix.h"
 #include "ioctls/posix_ioctl_fdb.h"
 #include <string.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 struct env_record
 {
@@ -82,11 +87,16 @@ static int cmd_fdb_ts(const struct shell *sh, size_t argc, char **argv)
         return -1;
     }
 
+    int failures = 0;
     for (int i = 0; i < 3; i++)
     {
         struct env_record r = { .temp = 25 + i, .humi = 60 + i };
         posix_ssize_t n = posix_write(fd, &r, sizeof(r));
         shell_print(sh, "append #%d (rc=%d)", i, (int)n);
+        if (n != sizeof(r))
+        {
+            failures++;
+        }
     }
 
     posix_fdb_ts_iter_init_t cfg = {0};
@@ -103,6 +113,12 @@ static int cmd_fdb_ts(const struct shell *sh, size_t argc, char **argv)
     }
 
     posix_close(fd);
+    if (failures != 0 || n < 3)
+    {
+        shell_error(sh, "POSIX FDB TS test FAILED (writes=%d records=%d)",
+                    3 - failures, n);
+        return -1;
+    }
     shell_print(sh, "POSIX FDB TS test PASSED (%d records)", n);
     return 0;
 }

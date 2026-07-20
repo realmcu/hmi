@@ -1,6 +1,7 @@
 #include "posix_port_fdb_priv.h"
 #include "posix_init.h"
 #include <string.h>
+#include <zephyr/kernel.h>
 
 #ifdef FDB_USING_TSDB
 
@@ -13,7 +14,7 @@ static bool ts_collect_cb(fdb_tsl_t tsl, void *arg)
         f->ts_iter_overflow = true;
         return true;
     }
-    f->ts_addr_cache[f->ts_cache_count++] = tsl->addr.index;
+    f->ts_cache[f->ts_cache_count++] = *tsl;
     return false;
 }
 
@@ -89,9 +90,7 @@ int ts_ioctl(fdb_inst_t *inst, fdb_file_t *f, unsigned long cmd, void *arg)
                 f->ts_iter_active = false;
                 return POSIX_ERR_NODEV;
             }
-            struct fdb_tsl tsl;
-            memset(&tsl, 0, sizeof(tsl));
-            tsl.addr.index = f->ts_addr_cache[f->ts_cache_pos++];
+            struct fdb_tsl tsl = f->ts_cache[f->ts_cache_pos++];
             struct fdb_blob blob;
             fdb_blob_make(&blob, out->buf, out->buf_len);
             size_t got = fdb_blob_read((fdb_db_t)inst->u.ts,
@@ -166,10 +165,21 @@ posix_ssize_t ts_write(fdb_inst_t *inst, const void *buf, size_t count)
     return (posix_ssize_t)count;
 }
 
-/* Application supplies the time source. If absent, the weak fallback below
- * returns 0 so TSDB still works but all records share the same timestamp. */
+/* Application may override the time source. The fallback is monotonic and is
+ * seeded from TSDB's persisted last timestamp during initialization. */
+static fdb_time_t s_posix_fdb_ts_time;
+
 extern fdb_time_t posix_fdb_ts_get_time(void) __attribute__((weak));
-fdb_time_t posix_fdb_ts_get_time(void) { return 0; }
+fdb_time_t posix_fdb_ts_get_time(void)
+{
+    fdb_time_t now = (fdb_time_t)k_uptime_get_32();
+    if (now <= s_posix_fdb_ts_time)
+    {
+        now = s_posix_fdb_ts_time + 1;
+    }
+    s_posix_fdb_ts_time = now;
+    return now;
+}
 
 static struct fdb_tsdb s_tsdb_log;
 static fdb_inst_t s_inst_tsdb_log =
@@ -187,6 +197,8 @@ static int fdb_ts_init(void)
     {
         return POSIX_ERR_IO;
     }
+    fdb_tsdb_control(&s_tsdb_log, FDB_TSDB_CTRL_GET_LAST_TIME,
+                     &s_posix_fdb_ts_time);
     return posix_device_register(s_inst_tsdb_log.path, &g_fdb_ops, &s_inst_tsdb_log);
 }
 POSIX_INIT_DEVICE_EXPORT(fdb_ts_init);

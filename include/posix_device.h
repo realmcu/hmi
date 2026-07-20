@@ -51,7 +51,8 @@
 #define POSIX_DEVICE_MAGIC_GSENSOR 0x09
 #define POSIX_DEVICE_MAGIC_FDB     0x0A   /* FlashDB (KV/TS/BF, path-multiplexed) */
 #define POSIX_DEVICE_MAGIC_I2C     0x0B
-/* 0x0C~0xEF 保留给将来设备类型 */
+#define POSIX_DEVICE_MAGIC_RTC     0x0C
+/* 0x0D~0xEF 保留给将来设备类型 */
 /* 0xF0~0xFF 保留给用户自定义设备 */
 
 /* ---------- 驱动虚函数表 ---------- */

@@ -13,7 +13,7 @@
 #endif
 
 #ifndef CONFIG_POSIX_FDB_TS_ITER_CACHE_MAX
-#define CONFIG_POSIX_FDB_TS_ITER_CACHE_MAX  128
+#define CONFIG_POSIX_FDB_TS_ITER_CACHE_MAX  32
 #endif
 
 #ifndef CONFIG_POSIX_FDB_BF_FOREACH_CACHE_MAX
@@ -43,7 +43,7 @@ typedef struct
     struct fdb_kv_iterator  kv_iter;
     bool                    kv_iter_active;
 
-    uint32_t        ts_addr_cache[CONFIG_POSIX_FDB_TS_ITER_CACHE_MAX];
+    struct fdb_tsl  ts_cache[CONFIG_POSIX_FDB_TS_ITER_CACHE_MAX];
     uint16_t        ts_cache_count;
     uint16_t        ts_cache_pos;
     bool            ts_iter_active;

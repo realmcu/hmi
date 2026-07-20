@@ -69,7 +69,9 @@ static void *fdb_open(void *drv_data, const char *path)
     {
         return POSIX_OPEN_ERR;
     }
+    posix_lock();
     fdb_file_t *f = alloc_file();
+    posix_unlock();
     if (f == NULL)
     {
         return POSIX_OPEN_ERR;
@@ -86,6 +88,7 @@ static int fdb_close(void *drv_data, void *file_priv)
     {
         return POSIX_OK;
     }
+    posix_lock();
 #ifdef FDB_USING_BF
     if (f->bf_write_file != NULL)
     {
@@ -94,6 +97,7 @@ static int fdb_close(void *drv_data, void *file_priv)
     }
 #endif
     free_file(f);
+    posix_unlock();
     return POSIX_OK;
 }
 
@@ -110,14 +114,18 @@ static int fdb_ioctl(void *drv_data, void *file_priv, unsigned long cmd, void *a
         return POSIX_ERR_INVAL;
     }
 
+    posix_lock();
+
     /* Cross-subtype check: only 0x0 (generic) commands are allowed
      * on any instance; 0x1/0x2/0x3 must match the instance's subtype. */
     uint8_t want = POSIX_FDB_NR_SUBTYPE(POSIX_IOC_NR(cmd));
     if (want != 0x0 && want != inst->subtype)
     {
+        posix_unlock();
         return POSIX_ERR_INVAL;
     }
 
+    int ret;
     if (want == 0x0)
     {
         switch (cmd)
@@ -125,39 +133,52 @@ static int fdb_ioctl(void *drv_data, void *file_priv, unsigned long cmd, void *a
         case POSIX_FDB_IOCTL_GET_SUBTYPE:
             if (arg == NULL)
             {
-                return POSIX_ERR_INVAL;
+                ret = POSIX_ERR_INVAL;
+                break;
             }
             *(uint8_t *)arg = inst->subtype;
-            return POSIX_OK;
+            ret = POSIX_OK;
+            break;
         case POSIX_FDB_IOCTL_GET_NAME:
             if (arg == NULL)
             {
-                return POSIX_ERR_INVAL;
+                ret = POSIX_ERR_INVAL;
+                break;
             }
             *(const char **)arg = inst->name;
-            return POSIX_OK;
+            ret = POSIX_OK;
+            break;
         default:
-            return POSIX_ERR_NOSUPP;
+            ret = POSIX_ERR_NOSUPP;
+            break;
         }
+        posix_unlock();
+        return ret;
     }
 
     switch (inst->subtype)
     {
 #ifdef FDB_USING_KVDB
     case POSIX_FDB_SUBTYPE_KV:
-        return kv_ioctl(inst, f, cmd, arg);
+        ret = kv_ioctl(inst, f, cmd, arg);
+        break;
 #endif
 #ifdef FDB_USING_TSDB
     case POSIX_FDB_SUBTYPE_TS:
-        return ts_ioctl(inst, f, cmd, arg);
+        ret = ts_ioctl(inst, f, cmd, arg);
+        break;
 #endif
 #ifdef FDB_USING_BF
     case POSIX_FDB_SUBTYPE_BF:
-        return bf_ioctl(inst, f, cmd, arg);
+        ret = bf_ioctl(inst, f, cmd, arg);
+        break;
 #endif
     default:
-        return POSIX_ERR_NOSUPP;
+        ret = POSIX_ERR_NOSUPP;
+        break;
     }
+    posix_unlock();
+    return ret;
 }
 
 static posix_ssize_t fdb_read(void *drv_data, void *file_priv,
@@ -173,15 +194,21 @@ static posix_ssize_t fdb_read(void *drv_data, void *file_priv,
     {
         return POSIX_ERR_INVAL;
     }
+    posix_lock();
+    posix_ssize_t ret;
     switch (inst->subtype)
     {
 #ifdef FDB_USING_BF
     case POSIX_FDB_SUBTYPE_BF:
-        return bf_read(f, buf, count);
+        ret = bf_read(f, buf, count);
+        break;
 #endif
     default:
-        return POSIX_ERR_NOSUPP;
+        ret = POSIX_ERR_NOSUPP;
+        break;
     }
+    posix_unlock();
+    return ret;
 }
 
 static posix_ssize_t fdb_write(void *drv_data, void *file_priv,
@@ -197,20 +224,27 @@ static posix_ssize_t fdb_write(void *drv_data, void *file_priv,
     {
         return POSIX_ERR_INVAL;
     }
+    posix_lock();
+    posix_ssize_t ret;
     switch (inst->subtype)
     {
 #ifdef FDB_USING_TSDB
     case POSIX_FDB_SUBTYPE_TS:
         (void)f;
-        return ts_write(inst, buf, count);
+        ret = ts_write(inst, buf, count);
+        break;
 #endif
 #ifdef FDB_USING_BF
     case POSIX_FDB_SUBTYPE_BF:
-        return bf_write(f, buf, count);
+        ret = bf_write(f, buf, count);
+        break;
 #endif
     default:
-        return POSIX_ERR_NOSUPP;
+        ret = POSIX_ERR_NOSUPP;
+        break;
     }
+    posix_unlock();
+    return ret;
 }
 
 const posix_driver_ops_t g_fdb_ops =

@@ -10,6 +10,8 @@
 
 /* RTK OS mutex handle（底层是 Zephyr k_mutex，owner 递归） */
 static void *s_posix_mutex = NULL;
+static bool  s_posix_init_attempted = false;
+static int   s_posix_init_result = POSIX_ERR;
 
 /* os_mutex_take 的“永久等待”哨兵值（osif_zephyr 映射为 K_FOREVER） */
 #define OS_WAIT_FOREVER 0xFFFFFFFFU
@@ -38,7 +40,10 @@ int posix_port_in_isr(void)
 
 void posix_port_lock_init(void)
 {
-    os_mutex_create(&s_posix_mutex);
+    if (s_posix_mutex == NULL)
+    {
+        os_mutex_create(&s_posix_mutex);
+    }
 }
 
 void *posix_sem_create(const char *name, uint32_t init_count, uint32_t max_count)
@@ -77,12 +82,20 @@ int posix_port_init_all(void)
 {
     posix_port_lock_init();
 
-    int ret = posix_auto_init();
-    if (ret != POSIX_OK)
+    posix_lock();
+    if (!s_posix_init_attempted)
     {
-        /* 某个驱动 init 注册失败：上报并把错误码透传给调用方，
-         * 避免初始化失败被静默吞掉（否则要等到后续 open 才暴露）。 */
-        printk("[posix] auto_init failed: some device init returned error (ret=%d)\n", ret);
+        s_posix_init_attempted = true;
+        s_posix_init_result = posix_auto_init();
+        if (s_posix_init_result != POSIX_OK)
+        {
+            /* 初始化函数可能已经注册了部分设备，禁止自动重试，避免重复初始化
+             * FlashDB 或重复注册设备。重试应由显式的恢复流程完成。 */
+            printk("[posix] auto_init failed: some device init returned error (ret=%d)\n",
+                   s_posix_init_result);
+        }
     }
+    int ret = s_posix_init_result;
+    posix_unlock();
     return ret;
 }

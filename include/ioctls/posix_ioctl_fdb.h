@@ -62,21 +62,24 @@ extern "C" {
  *   posix_ioctl(fd, KV_ITER_INIT, NULL);
  *   while (posix_ioctl(fd, KV_ITER_NEXT, &entry) == POSIX_OK) { ... }
  * ================================================================ */
-typedef struct {
+typedef struct
+{
     const char  *key;
     void        *buf;
     size_t       buf_len;
     size_t       got;
 } posix_fdb_kv_io_t;
 
-typedef struct {
+typedef struct
+{
     const char  *key;
     char        *buf;
     size_t       buf_len;
     size_t       got;
 } posix_fdb_kv_str_t;
 
-typedef struct {
+typedef struct
+{
     const char  *key;
     bool         exists;
 } posix_fdb_kv_exists_t;
@@ -85,7 +88,8 @@ typedef struct {
 #define POSIX_FDB_KV_NAME_MAX  64
 #endif
 
-typedef struct {
+typedef struct
+{
     char         name[POSIX_FDB_KV_NAME_MAX];
     size_t       value_len;
 } posix_fdb_kv_entry_t;
@@ -109,7 +113,7 @@ typedef struct {
  *
  * 游标实现 (TS 原生只有回调 iter)：
  *   ITER_INIT 时驱动会一次性把命中区间的 TSL addr 缓存到 file_priv 的
- *   静态数组里（上限 CONFIG_POSIX_FDB_TS_ITER_CACHE_MAX，默认 128）。
+ *   静态数组里（上限 CONFIG_POSIX_FDB_TS_ITER_CACHE_MAX，默认 32）。
  *   ITER_NEXT 按缓存数组顺序逐条读出。超出缓存上限返回 POSIX_ERR_NOMEM。
  *
  *   posix_fdb_ts_iter_init_t cfg = { .from = t0, .to = t1, .reverse = false };
@@ -121,20 +125,23 @@ typedef int64_t posix_fdb_time_t;
 
 #define POSIX_FDB_TS_AUTO_TIME   ((posix_fdb_time_t)0)
 
-typedef struct {
+typedef struct
+{
     const void       *buf;
     size_t            len;
     posix_fdb_time_t  ts;
 } posix_fdb_ts_append_t;
 
-typedef struct {
+typedef struct
+{
     posix_fdb_time_t  from;
     posix_fdb_time_t  to;
     bool              by_time;
     bool              reverse;
 } posix_fdb_ts_iter_init_t;
 
-typedef struct {
+typedef struct
+{
     void             *buf;
     size_t            buf_len;
     size_t            got;
@@ -143,14 +150,16 @@ typedef struct {
     uint32_t          addr;
 } posix_fdb_ts_entry_t;
 
-typedef struct {
+typedef struct
+{
     posix_fdb_time_t  from;
     posix_fdb_time_t  to;
     uint8_t           status;
     size_t            count;
 } posix_fdb_ts_count_t;
 
-typedef struct {
+typedef struct
+{
     uint32_t          addr;
     uint8_t           new_status;
 } posix_fdb_ts_set_status_t;
@@ -186,12 +195,14 @@ typedef struct {
 #define POSIX_FDB_BF_KEY_MAX  32
 #endif
 
-typedef struct {
+typedef struct
+{
     const char  *key;
     size_t       max_size;
 } posix_fdb_bf_create_t;
 
-typedef struct {
+typedef struct
+{
     uint32_t  offset;
     uint32_t  capacity;
     uint32_t  size;
@@ -199,23 +210,27 @@ typedef struct {
     uint32_t  flags;
 } posix_fdb_bf_dirent_t;
 
-typedef struct {
+typedef struct
+{
     const char            *key;
     posix_fdb_bf_dirent_t  ent;
 } posix_fdb_bf_stat_t;
 
-typedef struct {
+typedef struct
+{
     const char  *key;
     bool         exists;
 } posix_fdb_bf_exists_t;
 
-typedef struct {
+typedef struct
+{
     const char  *key;
     uint32_t     xip_addr;
     size_t       size;
 } posix_fdb_bf_xip_t;
 
-typedef struct {
+typedef struct
+{
     char                   key[POSIX_FDB_BF_KEY_MAX];
     posix_fdb_bf_dirent_t  ent;
     uint32_t               xip_addr;

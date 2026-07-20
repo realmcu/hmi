@@ -196,7 +196,7 @@ int bf_ioctl(fdb_inst_t *inst, fdb_file_t *f, unsigned long cmd, void *arg)
             {
                 return POSIX_ERR_INVAL;
             }
-            if (f->bf_write_file != NULL)
+            if (f->bf_write_file != NULL || f->bf_read_active)
             {
                 return POSIX_ERR_BUSY;
             }
@@ -309,6 +309,10 @@ int bf_ioctl(fdb_inst_t *inst, fdb_file_t *f, unsigned long cmd, void *arg)
             if (arg == NULL)
             {
                 return POSIX_ERR_INVAL;
+            }
+            if (f->bf_write_file != NULL)
+            {
+                return POSIX_ERR_BUSY;
             }
             const char *key = (const char *)arg;
             uint32_t addr = 0;
