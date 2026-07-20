@@ -9,7 +9,22 @@ generate_version()
 #===========post build===========
 # post build should be called before find_package
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/post_build.cmake)
-rtk_post_build()
+# Extract bank name from snippet list (e.g. "flash_16M_bank0" -> "bank0") so
+# `west build --snippet flash_16M_bank0/bank1` outputs to bin/<bank>/  (mirrors sample/ota).
+set(RTK_BANK "")
+foreach(snippet ${SNIPPET})
+    if(snippet MATCHES "bank[0-9]+")
+        string(REGEX MATCH "bank[0-9]+" RTK_BANK "${snippet}")
+        break()
+    endif()
+endforeach()
+if(RTK_BANK)
+    # bank build -> bin/<bank>/app_<bank>.bin (+ _MP.bin)
+    rtk_post_build(APP_NAME app BANK ${RTK_BANK})
+else()
+    # default (no snippet) -> bin/app.bin, unchanged
+    rtk_post_build()
+endif()
 #===========post build===========
 
 # FlashDB 以 West project 方式引入，其 module.yml 声明了 kconfig-ext: True，

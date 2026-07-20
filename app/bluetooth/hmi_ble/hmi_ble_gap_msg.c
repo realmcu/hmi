@@ -13,6 +13,7 @@
 #include "hmi_ble_gap_init.h"
 #include "hmi_ble_gap_msg.h"
 #include "hmi_ble_conn.h"
+#include "app_ota_service.h"
 
 static T_GAP_DEV_STATE gap_dev_state = {0, 0, 0, 0};                 /**< GAP device state */
 static T_GAP_CONN_STATE gap_conn_state = GAP_CONN_STATE_DISCONNECTED; /**< GAP connection state */
@@ -113,6 +114,7 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
             {
                 APP_PRINT_ERROR1("app_handle_conn_state_evt: connection lost cause 0x%x", disc_cause);
             }
+            app_ota_glue_link_disconnected(conn_id, disc_cause);
             memset(&hmi_conn_info, 0, sizeof(hmi_conn_info));
             le_adv_start();
         }
@@ -135,6 +137,7 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
                             conn_interval, conn_latency, conn_supervision_timeout);
 
             update_conn_info(conn_id);
+            app_ota_glue_link_connected(conn_id, 0, remote_bd);
 
             /* update connection interval to 30ms */
             uint16_t interval_min = 24;   /* 24 * 1.25ms = 30ms */
