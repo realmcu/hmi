@@ -23,7 +23,7 @@
       "type": "shell",
       "command": "/mnt/d/mpcli_meta_tool_v4.0.0.6_win/mpcli.exe",
       "args": [
-        "-c", "com7",
+        "-c", "com13",
         "-p",
         "-A", "0x7009E000",
         "-F", "\"$(wslpath -w '${workspaceFolder}/bin/app.bin')\"",
