@@ -1,4 +1,4 @@
-set(POSIX_DEVICE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../component/posix)
+set(POSIX_DEVICE_ROOT ${HMI_COMPONENT_ROOT}/posix)
 set(POSIX_DEVICE_PORT_COMMON ${POSIX_DEVICE_ROOT}/examples/port/common)
 set(POSIX_DEVICE_PORT ${POSIX_DEVICE_ROOT}/examples/port/zephyr-rtk)
 set(POSIX_DEVICE_DEMO ${POSIX_DEVICE_ROOT}/examples/demo)

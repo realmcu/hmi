@@ -28,7 +28,7 @@ if(1) #set to 1 to enable or variable to for depnedency
     if(SOURCES AND HEADERS)
         target_sources(${APP_TARGET_NAME} PRIVATE ${SOURCES})
         target_include_directories(${APP_TARGET_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-        target_include_directories(${APP_TARGET_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../../key_button)
+        target_include_directories(${APP_TARGET_NAME} PUBLIC ${HMI_APP_ROOT}/key_button)
         target_include_directories(${APP_TARGET_NAME} PUBLIC ${ZEPHYR_BASE}/../modules/display/device/key_button/8773G)
     endif()
 

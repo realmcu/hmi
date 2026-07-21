@@ -13,8 +13,8 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
-# FlashDB West project 路径（port/flashdb/ → eBadge/ → FlashDB/）
-set(FLASHDB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../component/FlashDB)
+# FlashDB West project 路径（由顶层 CMakeLists.txt 的 HMI_COMPONENT_ROOT 锚点定位，位置无关）
+set(FLASHDB_DIR ${HMI_COMPONENT_ROOT}/FlashDB)
 
 # ============================================================
 # 1. FlashDB 核心源码（仓库本身，只读，不修改）

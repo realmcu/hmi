@@ -2,13 +2,31 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
+# ============================================================
+# HMI 应用位置无关锚点
+#   HMI_APP_ROOT       — 本应用根目录（hmi repo checkout 位置）
+#   HMI_COMPONENT_ROOT — 应用组件目录（posix / FlashDB / tflite-micro / cmsis-nn 等 west project 的挂载点）
+#   REALTEK_APP_ROOT   — realtek-app SDK 根目录
+#
+# REALTEK_APP_ROOT 必须在 find_package(Zephyr) 之前可用（version_generate /
+# post_build 依赖它），因此不能用 Zephyr module 系统的 ZEPHYR_<name>_MODULE_DIR
+# 变量（那些要 find_package 之后才注入）。此处用 $ENV{ZEPHYR_BASE} 派生 ——
+# west 在调用 CMake 前保证 ZEPHYR_BASE 已设置为 zephyrproject/zephyr，
+# realtek-app 作为 SDK 一部分固定在 zephyrproject/realtek-app，
+# 因此 $ENV{ZEPHYR_BASE}/../realtek-app 是稳定路径。
+# 所有跨 hmi 边界的引用都必须通过这三个变量，禁止 ../../ 相对路径。
+# ============================================================
+set(HMI_APP_ROOT       ${CMAKE_CURRENT_SOURCE_DIR})
+set(HMI_COMPONENT_ROOT ${HMI_APP_ROOT}/component)
+set(REALTEK_APP_ROOT   $ENV{ZEPHYR_BASE}/../realtek-app)
+
 #===========version generation===========
-include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/version_generate.cmake)
+include(${REALTEK_APP_ROOT}/cmake/version_generate.cmake)
 generate_version()
 #===========version generation===========
 #===========post build===========
 # post build should be called before find_package
-include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/post_build.cmake)
+include(${REALTEK_APP_ROOT}/cmake/post_build.cmake)
 rtk_post_build()
 #===========post build===========
 
