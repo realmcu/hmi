@@ -2,14 +2,14 @@
  * Copyright (c) 2024, Realtek Semiconductor Corporation.
  * SPDX-License-Identifier: Apache-2.0
  *
- * FAL configuration file -- eBadge platform
- * Defines Flash device table and partition table; this file is maintained by the application project.
+ * FAL Configuration File — eBadge Platform
+ * Defines Flash device table and partition table. This file is maintained by the application project.
  *
- * Partition plan (base APP_DEFINED_SECTION_ADDR = 0x704C2000, total 60K):
+ * Partition layout (base APP_DEFINED_SECTION_ADDR = 0x704C2000, total 60K):
  *   offset 0x0000  size 0x3000 (12K)  kvdb       (env + BF directory)
  *   offset 0x3000  size 0x5000 (20K)  fdb_tsdb1  (log)
  *   offset 0x8000  size 0x7000 (28K)  bf_data    (BF large file data area)
- * All offsets/sizes are 4K aligned (Flash sector boundary).
+ * All offset/size are 4K aligned (Flash sector boundary).
  */
 
 #ifndef _FAL_CFG_H_
@@ -17,16 +17,16 @@
 
 #include "flash_map.h"
 
- /* Flash device name, consistent with fal_flash_rtk_port.c */
+/* Flash device name, must match fal_flash_rtk_port.c */
 #define RTK_ONCHIP_FLASH_DEV_NAME  "onchip_flash"
 
- /* Flash physical parameters, referenced by fal_flash_rtk_port.c to eliminate duplicate definitions */
- #define RTK_FLASH_START_ADDR  0x70000000UL  /* NOR Flash XIP physical base address */
-#define RTK_FLASH_SIZE        0x01000000UL  /* 16MB */
- #define RTK_FLASH_BLOCK_SIZE  0x1000        /* 4KB sector */
- #define RTK_FLASH_WRITE_GRAN  1             /* NOR Flash write granularity */
+/* Flash physical parameters, referenced by fal_flash_rtk_port.c to eliminate duplicate definitions */
+#define RTK_FLASH_START_ADDR  0x70000000UL  /* NOR Flash XIP physical base address */
+#define RTK_FLASH_SIZE        0x01000000UL  /* 16 MB */
+#define RTK_FLASH_BLOCK_SIZE  0x1000        /* 4 KB sector */
+#define RTK_FLASH_WRITE_GRAN  1             /* NOR Flash bit write granularity */
 
- /* ===================== FAL Flash device table ===================== */
+/* ===================== FAL Flash Device Table ===================== */
 extern const struct fal_flash_dev rtk_onchip_flash;
 
 #define FAL_FLASH_DEV_TABLE  \
@@ -34,12 +34,12 @@ extern const struct fal_flash_dev rtk_onchip_flash;
         &rtk_onchip_flash,       \
     }
 
- /* ===================== FAL partition table (static configuration mode) ===================== */
- /* Define this macro to tell fal_partition.c to use the static partition table below, not the dynamic one */
+/* ===================== FAL Partition Table (Static Config Mode) ===================== */
+/* Define this macro to tell fal_partition.c to use the static partition table below instead of dynamic partition table */
 #define FAL_PART_HAS_TABLE_CFG
 
- /* offset is relative to the Flash device base address (RTK_FLASH_START_ADDR)
-  * the three partitions are tightly packed within APP_DEFINED_SECTION, total = 12K+20K+28K = 60K */
+/* offset is relative to Flash device start address (RTK_FLASH_START_ADDR)
+ * Three partitions tightly packed within APP_DEFINED_SECTION, total = 12K+20K+28K = 60K */
 #define _APP_SEC_BASE_OFFSET   (APP_DEFINED_SECTION_ADDR - RTK_FLASH_START_ADDR)
 
 #define KVDB_PART_OFFSET       (_APP_SEC_BASE_OFFSET + 0x0000)

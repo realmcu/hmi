@@ -22,10 +22,16 @@ serial_term —— 一个"打开时绝不拉低 RTS/DTR"的串口终端工具
 命令菜单里:
     o   打开串口(连接) —— 关闭状态下用
     c   关闭串口(断开,释放端口给别的程序,如 mpcli 下载) —— 不退出程序
-    l   开始/停止 记录 log(把接收到的数据原样存到文件)
+    l   暂停/继续 记录 log(默认启动就开始记录,文件名 = 启动时间_COMx.log)
     i   打印当前状态
     q   退出
     回车 返回终端继续收发
+
+log 行为:
+    程序启动时自动创建 <脚本目录>/log/<YYYYMMDD_HHMMSS>_<COMx>.log,整个 session 只
+    写这一个文件(log 目录不存在会自动创建)。c 关闭串口再 o 打开、下载完再继续看
+    log —— 都追加到同一个文件里,方便回看一整段过程。l 是"暂停/继续 写入",不会切
+    新文件。
 
 典型用法 —— 看 log 与下载共用一个端口:
     1) 终端里看芯片 log
@@ -82,8 +88,11 @@ class SerialTerm(object):
         self._running = False     # 程序主循环是否在跑(q 退出才置 False)
         self._connected = False   # 串口当前是否打开
         self._rx_thread = None
-        self._log_file = None     # 正在记录的 log 文件句柄(None=未记录)
+        self._log_file = None     # 正在记录的 log 文件句柄(None=已暂停)
         self._log_path = None
+        # 整个 session 只用启动时的时间戳,c/o 反复开关串口都追加到同一个文件。
+        # 这样"看 log -> 关端口下载 -> 继续看 log"能连成一条完整时间线。
+        self._session_stamp = time.strftime("%Y%m%d_%H%M%S")
 
     # ---- 连接:打开串口 + 启动接收线程,全程不 assert RTS/DTR ----
     def connect(self):
@@ -141,23 +150,46 @@ class SerialTerm(object):
         sys.stdout.write("[已关闭 %s,端口已释放]\r\n" % self.port)
         sys.stdout.flush()
 
-    # ---- 开始/停止记录 log ----
+    # ---- log 相关 ----
+    def _start_log(self):
+        r"""按 <脚本目录>/log/<启动时间戳>_<COMx>.log 打开日志文件。
+
+        log 目录跟着 serial_term.py 走,不受调用者 cwd 影响 —— 用 __file__ 而不是
+        os.getcwd(),这样在 D:\ 下随手 python .../scripts/serial_term.py COM7 也能
+        把 log 老老实实落到脚本旁边的 log/。
+        启动时调用一次;l 恢复也用它。
+        """
+        if self._log_file is not None:
+            return True
+        # COM 口名一般是 "COM7" 没问题,但 pyserial 也接受 "\\.\COM27"
+        # 这种带反斜杠的写法,直接拿来拼文件名会炸,先 sanitize 一下。
+        safe_port = self.port.replace('\\', '_').replace('/', '_').replace(':', '_')
+        # 打包成 exe 后 __file__ 会不存在,兜底一下,不然就直接崩了
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+        except NameError:
+            script_dir = os.getcwd()
+        log_dir = os.path.join(script_dir, "log")
+        fname = "%s_%s.log" % (self._session_stamp, safe_port)
+        fpath = os.path.join(log_dir, fname)
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+            # append 模式:c/o 反复开关串口、甚至 l 暂停再恢复,都续写到同一个文件。
+            # buffering=0:无缓冲,每块直接落盘 —— 即使直接关窗口也几乎不丢 log
+            f = open(fpath, "ab", buffering=0)
+        except OSError as err:
+            sys.stdout.write("[创建 log 文件失败: %s]\r\n" % err)
+            sys.stdout.flush()
+            return False
+        self._log_file = f
+        self._log_path = os.path.abspath(fpath)
+        return True
+
     def toggle_log(self):
+        """l 键:暂停/继续 写 log。文件名不变,始终是启动时那个。"""
         if self._log_file is None:
-            # COM 口名一般是 "COM7" 没问题,但 pyserial 也接受 "\\.\COM27"
-            # 这种带反斜杠的写法,直接拿来拼文件名会炸,先 sanitize 一下。
-            safe_port = self.port.replace('\\', '_').replace('/', '_').replace(':', '_')
-            fname = "serial_%s_%s.log" % (safe_port, time.strftime("%Y%m%d_%H%M%S"))
-            try:
-                # buffering=0:无缓冲,每块直接落盘 —— 即使直接关窗口也几乎不丢 log
-                f = open(fname, "ab", buffering=0)
-            except OSError as err:
-                sys.stdout.write("[创建 log 文件失败: %s]\r\n" % err)
-                sys.stdout.flush()
-                return
-            self._log_file = f
-            self._log_path = os.path.abspath(fname)
-            sys.stdout.write("[开始记录 log -> %s]\r\n" % self._log_path)
+            if self._start_log():
+                sys.stdout.write("[继续记录 log -> %s]\r\n" % self._log_path)
         else:
             f = self._log_file
             self._log_file = None     # 先断开引用,接收线程不再写
@@ -166,8 +198,8 @@ class SerialTerm(object):
                 f.close()
             except OSError:
                 pass
-            sys.stdout.write("[停止记录 log,已保存 -> %s]\r\n" % self._log_path)
-            self._log_path = None
+            # 保留 self._log_path,让 status 里还能看到"上一次写到哪个文件"
+            sys.stdout.write("[暂停记录 log(文件已 flush): %s]\r\n" % self._log_path)
         sys.stdout.flush()
 
     # ---- 接收线程 ----
@@ -203,7 +235,12 @@ class SerialTerm(object):
                     pass
 
     def status(self):
-        log_state = ("记录中 -> %s" % self._log_path) if self._log_file else "未记录"
+        if self._log_file is not None:
+            log_state = "记录中 -> %s" % self._log_path
+        elif self._log_path is not None:
+            log_state = "已暂停(%s)" % self._log_path
+        else:
+            log_state = "未开启"
         if not self._connected or self.ser is None:
             return "[端口=%s 波特率=%d  未连接(Ctrl+] -> o 打开)  log:%s]" % (
                 self.port, self.baud, log_state)
@@ -212,7 +249,7 @@ class SerialTerm(object):
     # ---- 命令菜单(按 Ctrl+] 进入)----
     def _command_menu(self):
         sys.stdout.write(
-            "\r\n--- 命令: [o]打开 [c]关闭 [l]记录log [i]状态 [q]退出 [回车]返回 ---\r\n")
+            "\r\n--- 命令: [o]打开 [c]关闭 [l]暂停/继续log [i]状态 [q]退出 [回车]返回 ---\r\n")
         sys.stdout.flush()
         ch = msvcrt.getwch()
         if ch in ('o', 'O'):
@@ -233,10 +270,11 @@ class SerialTerm(object):
     # ---- 主循环 ----
     def run(self):
         self._running = True
+        self._start_log()  # 启动就自动开 log,文件名 = 启动时间_COMx.log
         self.connect()  # 启动时自动连接一次(失败也进入终端,可 Ctrl+] -> o 重试)
 
         sys.stdout.write(self.status() + "\r\n")
-        sys.stdout.write("按 Ctrl+] 进入命令菜单(o打开 / c关闭 / l记录log / q退出)。\r\n")
+        sys.stdout.write("按 Ctrl+] 进入命令菜单(o打开 / c关闭 / l暂停log / q退出)。\r\n")
         sys.stdout.flush()
 
         while self._running:

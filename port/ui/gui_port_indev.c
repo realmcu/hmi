@@ -10,12 +10,10 @@
 #include "trace.h"
 #include "gui_message.h"
 
-#include "touch_CHSC6417_zephyr.h"
+/* TODO: 旧的 Zephyr touch driver 已停用（CONFIG_REALTEK_TOUCH_CHSC6417_ZEPHYR=n，
+ * DT node touch_device 也已从 overlay 移除）。这里暂时 stub，等 component/posix
+ * 里 CHSC6417 的新封装完成后，把 touch 数据源切过来。 */
 #include "key_button_8773g_zephyr.h"
-
-#define TOUCH_DEV_NODE  DT_NODELABEL(touch_device)
-
-static const struct device *touch_dev = DEVICE_DT_GET(TOUCH_DEV_NODE);
 
 static gui_touch_port_data_t raw_data = {0};
 
@@ -30,35 +28,10 @@ static uint32_t home_timestamp_ms_release = 0;
 /***touch device***/
 gui_touch_port_data_t *port_touchpad_get_data()
 {
-    TOUCH_DATA touch_raw_data;
-    bool pressing = 0;
-    /*get touch data*/
-    uint32_t s = os_lock();
-    touch_raw_data = get_raw_touch_data(touch_dev);
-    os_unlock(s);
-
-    raw_data.x_coordinate_start = touch_raw_data.x_start;
-    raw_data.y_coordinate_start = touch_raw_data.y_start;
-    raw_data.timestamp_ms_start = touch_raw_data.timestamp_ms_start;
-
-    raw_data.x_coordinate = touch_raw_data.x;
-    raw_data.y_coordinate = touch_raw_data.y;
-    raw_data.timestamp_ms = touch_raw_data.timestamp_ms_pressing;
-
-    raw_data.width = 0;
-    pressing = touch_raw_data.is_press;
-
-    //gui_log("x %d y %d time %d press %d",raw_data.x_coordinate, raw_data.y_coordinate, raw_data.timestamp_ms, pressing);
-    if (pressing == true)
-    {
-        raw_data.event = GUI_TOUCH_EVENT_DOWN;
-    }
-    else
-    {
-        raw_data.event = GUI_TOUCH_EVENT_UP;
-    }
+    /* TODO: 接回 component/posix 的 touch 封装后，在这里读取 X/Y/pressing。
+     * 目前返回上一次（全 0）数据，等价于永远 UP。 */
+    raw_data.event = GUI_TOUCH_EVENT_UP;
     return &raw_data;
-
 }
 
 /***kb device***/
@@ -79,7 +52,8 @@ static struct gui_indev indev =
     .tp_get_data = port_touchpad_get_data,
     .wheel_get_port_data = port_wheel_get_data,
 
-    .touch_timeout_ms = DT_PROP(TOUCH_DEV_NODE, gesture_release_timeout_ms),
+    .touch_timeout_ms = 30,  /* TODO: 原来取自 DT touch_device.gesture-release-timeout-ms，
+                              *       posix 封装接回来后改成从新配置读取 */
     .long_button_time_ms = 800,
     .short_button_time_ms = 300,
     .quick_slide_time_ms = 50,

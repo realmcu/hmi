@@ -30,6 +30,7 @@ int main(void)
 #endif
     app_system_lower_init();
     printf("Hello World! %s\n", CONFIG_BOARD_TARGET);
+    printf("[APP] build: %s %s\n", __DATE__, __TIME__);
     printf("[main] thread id: %p, name: %s, priority: %d\n",
            k_current_get(),
            k_thread_name_get(k_current_get()),

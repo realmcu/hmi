@@ -4,10 +4,9 @@
  *
  * FlashDB KVDB functional test interface
  *
- * Generic interface, does not depend on any OS / RTOS, can be called from any platform.
+ * Generic interface, independent of any OS/RTOS, can be called on any platform.
  * Zephyr Shell commands (fdb test / fdb boot_count / fdb init) are
- * automatically registered by flashdb_test.c under CONFIG_SHELL
- * conditional compilation; no explicit call required.
+ * automatically registered by flashdb_test.c under CONFIG_SHELL conditional compilation.
  */
 
 #ifndef _FLASHDB_TEST_H_
@@ -18,13 +17,13 @@ extern "C" {
 #endif
 
 /**
- * @brief Initialize FAL + KVDB (idempotent, safe to call repeatedly)
+ * @brief Initialize FAL + KVDB (idempotent, safe for repeated calls)
  * @return 0 on success, -1 on failure
  */
 int  flashdb_test_init(void);
 
 /**
- * @brief Read boot count, increment, and write back
+ * @brief Read boot count and increment it back
  */
 void flashdb_test_boot_count(void);
 

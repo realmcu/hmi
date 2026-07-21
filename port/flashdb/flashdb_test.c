@@ -2,9 +2,9 @@
  * Copyright (c) 2024, Realtek Semiconductor Corporation.
  * SPDX-License-Identifier: Apache-2.0
  *
- * FlashDB KVDB functional test -- generic implementation
+ * FlashDB KVDB Functional Test — Generic Implementation
  *
- * Core test logic does not depend on any OS; logs are output via FDB_PRINT (defined in fdb_cfg.h).
+ * Core test logic does not depend on any OS. Logs are output via FDB_PRINT (defined in fdb_cfg.h).
  * Zephyr Shell command registration is wrapped by CONFIG_SHELL conditional compilation;
  * other platforms can directly call the flashdb_test_run() entry function.
  */
@@ -19,20 +19,20 @@
 #define LOGE(fmt, ...)  FDB_PRINT(LOG_TAG " [ERR] " fmt "\n", ##__VA_ARGS__)
 
 /* ------------------------------------------------------------------ */
- /* KVDB instance (static, shared within module)                          */
+/* KVDB instance (static, shared within module) */
 /* ------------------------------------------------------------------ */
 static struct fdb_kvdb s_kvdb;
 static bool            s_kvdb_ready = false;
 
- /* Struct type KV example */
+/* Struct type KV example */
 typedef struct
 {
-    int temperature;  /* Unit: 0.1 degC, e.g. 253 = 25.3 degC */
-    int humidity;     /* Unit: 0.1%,   e.g. 601 = 60.1% */
+    int temperature;  /* Unit: 0.1°C, e.g., 253 = 25.3°C */
+    int humidity;     /* Unit: 0.1%,   e.g., 601 = 60.1% */
 } sensor_data_t;
 
 /* ------------------------------------------------------------------ */
- /* Internal: ensure FAL + KVDB are initialized                          */
+/* Internal: ensure FAL + KVDB are initialized */
 /* ------------------------------------------------------------------ */
 static int ensure_init(void)
 {
@@ -61,7 +61,7 @@ static int ensure_init(void)
 }
 
 /* ------------------------------------------------------------------ */
- /* Sub-test: integer KV (boot count)                                    */
+/* Sub-test: integer KV (boot count) */
 /* ------------------------------------------------------------------ */
 static void test_boot_count(void)
 {
@@ -90,7 +90,7 @@ static void test_boot_count(void)
 }
 
 /* ------------------------------------------------------------------ */
- /* Sub-test: string KV                                                  */
+/* Sub-test: string KV */
 /* ------------------------------------------------------------------ */
 static void test_string_kv(void)
 {
@@ -104,7 +104,7 @@ static void test_string_kv(void)
 }
 
 /* ------------------------------------------------------------------ */
- /* Sub-test: struct blob KV (write / read / delete / verify)            */
+/* Sub-test: struct blob KV (write / read / delete / verify) */
 /* ------------------------------------------------------------------ */
 static void test_struct_kv(void)
 {
@@ -133,7 +133,7 @@ static void test_struct_kv(void)
 }
 
 /* ------------------------------------------------------------------ */
- /* Public interface: full test, can be called directly from any platform */
+/* Public interface: full test, can be called directly on any platform */
 /* ------------------------------------------------------------------ */
 int flashdb_test_init(void)
 {
@@ -166,7 +166,7 @@ void flashdb_test_run(void)
 }
 
 /* ------------------------------------------------------------------ */
- /* Zephyr Shell command registration (Zephyr + CONFIG_SHELL environment only) */
+/* Zephyr Shell command registration (Zephyr + CONFIG_SHELL only) */
 /* ------------------------------------------------------------------ */
 #ifdef CONFIG_SHELL
 

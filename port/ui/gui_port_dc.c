@@ -16,18 +16,9 @@
 #include "lcd_sh8601z_410_502_qspi.h"
 
 
-#define DRV_LCD_WIDTH   410
-#define DRV_LCD_HIGHT   502
+#define DRV_LCD_WIDTH   360
+#define DRV_LCD_HIGHT   360
 
-#ifdef DRV_LCD_WIDTH
-#undef DRV_LCD_WIDTH
-#define DRV_LCD_WIDTH   410
-#endif
-
-#ifdef DRV_LCD_HIGHT
-#undef DRV_LCD_HIGHT
-#define DRV_LCD_HIGHT   502
-#endif
 
 #define LCD_SECTION_HEIGHT                      20
 
@@ -169,7 +160,7 @@ static uint8_t __attribute__((aligned(4))) __attribute__((
 
 void gui_port_dc_init(void)
 {
-    rtk_lcd_hal_init();
+    // rtk_lcd_hal_init();
     dc.frame_buf = NULL;
     dc.fb_height = LCD_SECTION_HEIGHT;
     dc.fb_width = rtk_lcd_hal_get_width();
