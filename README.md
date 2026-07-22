@@ -79,9 +79,6 @@ posix-io-abstraction/
     │   ├── 07_lcd_example.c              ← LCD 刷屏
     │   ├── 08_touch_example.c            ← Touch 触摸点读取
     │   ├── 09_gsensor_example.c          ← G-sensor 三轴加速度
-    │   ├── 11_fdb_kv_example.c           ← FlashDB KVDB
-    │   ├── 12_fdb_ts_example.c           ← FlashDB TSDB
-    │   └── 13_fdb_bf_example.c           ← FlashDB BigFile
     └── port/                             ← 平台移植实现
         ├── posix_init_zephyr.ld          ← Zephyr 链接脚本参考
         ├── custom-rtos/                  ← 移植模板（新 RTOS 参照此目录）
