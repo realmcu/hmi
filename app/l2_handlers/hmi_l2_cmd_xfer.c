@@ -20,6 +20,12 @@ static uint32_t s_xfer_total    = 0;
 static uint16_t s_xfer_chunk    = 0;
 static uint16_t s_xfer_next_seq = 0;
 
+/* FlashDB BigFile handle for the in-progress receive.  File-scope (not local to
+ * on_cmd_xfer) so a link disconnect can abort a half-written file via
+ * hmi_l2_xfer_reset(). */
+static fdb_err_t     rc   = 0;
+static fdb_bf_file_t file = NULL;
+
 static void xfer_send(uint8_t key, const uint8_t *val, uint16_t val_len)
 {
     uint8_t buf[2 + 3 + 8];
@@ -49,10 +55,8 @@ static void xfer_reset(void)
 static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
 {
     static uint32_t id = 0;
-    /* flash db file */
-
-    static fdb_err_t    rc = 0;
-    static fdb_bf_file_t file = NULL;
+    /* flash db file: `rc` and `file` are file-scope (see top) so the disconnect
+     * hook can abort a half-written file. */
     static uint32_t     crc = 0;
     static char name[64];
     static uint32_t res_info[2];
@@ -200,7 +204,7 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                 PROTO_LOG("L2 XFER ABORT reason=%d", reason);
                 xfer_reset();
 
-                if (rc == 0)
+                if (rc == 0 && file != NULL)
                 {
                     fdb_bf_abort(file);
                     file = NULL;
@@ -213,6 +217,22 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
             break;
         }
     }
+}
+
+void hmi_l2_xfer_reset(void)
+{
+    /* Called on link disconnect: abort a half-written file and clear session
+     * state so the next transfer isn't rejected with BEGIN_BUSY.  Only abort
+     * when a transfer was actually in progress (after a clean END, s_xfer_active
+     * is already false and `file` may be a stale committed handle). */
+    if (s_xfer_active && file != NULL)
+    {
+        PROTO_LOG("L2 XFER reset: link lost mid-transfer, aborting file");
+        fdb_bf_abort(file);
+    }
+    file = NULL;
+    rc   = 0;
+    xfer_reset();
 }
 
 void hmi_l2_xfer_register(void)

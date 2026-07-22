@@ -15,10 +15,14 @@ extern "C" {
 /* 128-bit Service UUID */
 extern const uint8_t GATT_UUID128_HMI_SERVICE[16];
 
-/* Characteristic UUIDs (16-bit, vendor specific) */
-#define BLE_UUID_HMI_CMD                0xFFD1  /* Write: peer -> display */
-#define BLE_UUID_HMI_EVENT              0xFFD2  /* Notify: display -> peer */
-#define BLE_UUID_HMI_STATUS             0xFFD3  /* Read: display status   */
+/* Characteristic UUIDs (16-bit, vendor specific).
+ * NOTE: kept in the 0xFFCx range, NOT 0xFFDx.  The Realtek OTA/DFU service
+ * occupies 0xFFD0~0xFFD4 (app/ota/ota_service.h: OTA=0xFFD1, MAC=0xFFD2,
+ * PATCH=0xFFD3, APP_VER=0xFFD4).  Overlapping there makes a BLE client resolve
+ * these characteristics to the OTA copy and mis-route writes -- do not move. */
+#define BLE_UUID_HMI_CMD                0xFFC1  /* Write: peer -> display */
+#define BLE_UUID_HMI_EVENT              0xFFC2  /* Notify: display -> peer */
+#define BLE_UUID_HMI_STATUS             0xFFC3  /* Read: display status   */
 
 #define HMI_CMD_MAX_LEN                 512
 #define HMI_STATUS_MAX_LEN              32

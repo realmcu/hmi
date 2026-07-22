@@ -7,6 +7,10 @@ extern "C" {
 
 void hmi_l2_xfer_register(void);
 
+/* Reset the receive session on link disconnect: aborts a half-written FlashDB
+ * BigFile and clears state so the next transfer isn't rejected with BEGIN_BUSY. */
+void hmi_l2_xfer_reset(void);
+
 #ifdef __cplusplus
 }
 #endif
