@@ -26,8 +26,8 @@ static void *port_thread_create(const char *name, void (*entry)(void *param), vo
                                 uint32_t stack_size, uint8_t priority)
 {
     rtos_task_t task_handle = NULL;
-
-    if (rtos_task_create(&task_handle, name, entry, param, stack_size, priority) != RTK_SUCCESS) {
+    (void)priority;
+    if (rtos_task_create(&task_handle, name, entry, param, stack_size, 3) != RTK_SUCCESS) {
         return NULL;
     }
 
