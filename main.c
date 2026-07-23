@@ -14,6 +14,7 @@
 #include "rtl876x_pinmux.h"
 #include "app_lower_init.h"
 #include "gui_server.h"
+#include "app_core.h"
 
 
 
@@ -37,6 +38,8 @@ int main(void)
            k_thread_priority_get(k_current_get()));
     gui_server_init();
     gui_set_keep_active_time(10000000);
+
+    app_core_init();
 
     return 0;
 }

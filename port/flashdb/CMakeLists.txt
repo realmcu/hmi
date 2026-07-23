@@ -55,7 +55,14 @@ target_include_directories(${APP_TARGET_NAME} PUBLIC
 # ============================================================
 target_sources(${APP_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/fal_flash_rtk_port.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/fdb_time_rtc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/flashdb_registry.c
     ${CMAKE_CURRENT_SOURCE_DIR}/flashdb_test.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/flashdb_test_kv_blob.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/flashdb_test_kv_string.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/flashdb_test_ts_auto.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/flashdb_test_ts_with_ts.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/flashdb_test_bf.c
 )
 
 # fmc_api.h 路径（Realtek HAL 模块）
