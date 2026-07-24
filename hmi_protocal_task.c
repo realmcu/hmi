@@ -3,11 +3,10 @@
 #include <string.h>
 #include <os_task.h>
 #include <os_msg.h>
-#include "hmi_ble_ctrl.h"
 #include "hmi_proto.h"
 #include "hmi_l2.h"
 #include "hmi_protocal_task.h"
-#include "trace.h"
+#include "proto_log.h"
 #include <os_sched.h>
 
 #define PROTO_TASK_STACK_SIZE   4096
@@ -72,8 +71,7 @@ static void l2_task(void *p_param)
 
 void hmi_on_proto_frame(const uint8_t *data, uint16_t len)
 {
-    APP_PRINT_INFO2("hmi_on_proto_frame: len %d, payload %b",
-                    len, TRACE_BINARY(len, data));
+    PROTO_LOG_HEX("hmi_on_proto_frame", data, len);
 
     l2_msg_t msg;
     msg.type = L2_MSG_FRAME;
@@ -81,7 +79,7 @@ void hmi_on_proto_frame(const uint8_t *data, uint16_t len)
     msg.u.frame.p_data = malloc(len);
     if (msg.u.frame.p_data == NULL)
     {
-        APP_PRINT_ERROR1("hmi_on_proto_frame: malloc failed, len %d", len);
+        PROTO_LOG("hmi_on_proto_frame: malloc failed, len %d", len);
         return;
     }
     memcpy(msg.u.frame.p_data, data, len);
@@ -89,7 +87,7 @@ void hmi_on_proto_frame(const uint8_t *data, uint16_t len)
 
     if (os_msg_send(s_l2_queue_handle, &msg, 0) != true)
     {
-        APP_PRINT_ERROR0("hmi_on_proto_frame: l2 queue full, drop");
+        PROTO_LOG("hmi_on_proto_frame: l2 queue full, drop");
         free(msg.u.frame.p_data);
     }
 }
@@ -108,15 +106,15 @@ bool hmi_proto_post_call(l2_msg_cb_t cb, void *buf)
 
     if (os_msg_send(s_l2_queue_handle, &msg, 0) != true)
     {
-        APP_PRINT_ERROR0("hmi_proto_post_call: l2 queue full, drop");
+        PROTO_LOG("hmi_proto_post_call: l2 queue full, drop");
         return false;
     }
     return true;
 }
 
-void hmi_proto_task_init(void)
+void hmi_proto_task_init(proto_send_fn_t send, proto_receive_fn_t receive)
 {
-    proto_init(hmi_ble_ctrl_send, hmi_ble_ctrl_receive, hmi_on_proto_frame);
+    proto_init(send, receive, hmi_on_proto_frame);
 
     os_msg_queue_create(&s_l2_queue_handle, "l2Q",
                         L2_QUEUE_SIZE, sizeof(l2_msg_t));

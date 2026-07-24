@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "hmi_proto.h"          /* proto_send_fn_t / proto_receive_fn_t */
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,7 +39,22 @@ struct l2_msg
     } u;
 };
 
-void hmi_proto_task_init(void);
+/**
+ * @brief  Bring up the protocol layer.
+ *
+ * The caller (app layer) injects the transport primitives, so this
+ * component stays independent of any specific transport (BLE, SPP, UART).
+ * Creates the l2 queue, then spawns @c proto_task (drains the transport
+ * receive path into @c proto_handle ) and @c l2_task (dispatches L2 frames
+ * and cross-task callbacks).
+ *
+ * @param send     Transport send: int fn(const uint8_t *data, uint16_t len).
+ *                 Returns bytes sent on success, -1 on failure.
+ * @param receive  Blocking transport receive:
+ *                 int fn(uint8_t *buf, uint16_t max_len).
+ *                 Returns bytes received, -1 on failure.
+ */
+void hmi_proto_task_init(proto_send_fn_t send, proto_receive_fn_t receive);
 
  /* Post a callback to be executed in l2_task context from another task (e.g. wifi_task).
   * Thread-safe (uses os_msg_send). If buf is a heap pointer, cb is responsible for freeing it.
