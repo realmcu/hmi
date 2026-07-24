@@ -72,9 +72,10 @@ west build -m lib_bank0 # Library mode, bank0 (links precompiled libgui.a, faste
 
 ```bash
 west flash                  # default port COM3, flashes src_bank0 image
-west flash -p COM5          # specify a different port
+west flash -p COM5          # specify flashing port COM5
 west flash -m src_bank1     # flash bank1 image (must match west build -m)
 west userdata               # flash the designer UI's ROMFS resources, app untouched (see below)
+west userdata -p COM5       # specify flashing port COM5
 ```
 
 > **The default port is COM3.** Use `-p COMx` for a one-off override; to change the
@@ -89,8 +90,10 @@ west userdata               # flash the designer UI's ROMFS resources, app untou
 > **not** flash the app — and automatically prepends the RTL8773E MP header required by
 > `src/application/designer/build/app_romfs.bin`, flashing it to the correct address
 > without modifying the source file. A different bin can be packaged and flashed instead:
-> `west userdata <path> [--addr <addr>]`. Add `--package-only` to just generate the
-> header without touching the serial port.
+> `west userdata <path> [--addr <addr>]`. When overriding `--addr`, first consult
+> `flash_map.h` to confirm the target partition's start address and ensure the bin fits
+> within that partition. Add `--package-only` to generate only the MP header without a
+> serial connection.
 
 ## Build Command Reference
 
@@ -171,8 +174,8 @@ repository. It is not fetched automatically by `west update` — download it sep
 | OTA (Android / iOS) | OTA update package generation and test apps |
 | AudioConnect (Android / iOS) | Audio connectivity test apps |
 
-> The chip firmware package lives under `sdk/bin/` (e.g. `sdk/bin/rtl87x3ep/default_bin/`)
-> and must be flashed using `MPPGTool`.
+> The chip firmware package lives under `sdk/bin/` (e.g.
+> `sdk/bin/rtl87x3ep/default_bin/RTL8773EWP/`) and must be flashed using `MPPGTool`.
 
 ## Directory Structure
 

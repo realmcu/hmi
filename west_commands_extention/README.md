@@ -103,10 +103,10 @@ file is never modified).
 # address from flash_map.h's USER_DATA1_ADDR)
 west userdata
 
-# Specify a different bin / port / address
-west userdata path/to/userdata.bin -p COM5 --addr 0x00A00000
+# Specify another bin to flash / port / address
+west userdata <path>/userdata.bin -p COM5 --addr 0x00A00000
 
-# Only add the header and write the record bin — don't touch the serial port
+# Only add the header and write the record bin — no serial connection required
 # (useful when no board is connected)
 west userdata --package-only
 ```

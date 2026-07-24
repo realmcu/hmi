@@ -96,10 +96,10 @@ west flash -m lib_bank1 -p COM5
 # 打包并烧录 designer UI 的 ROMFS 资源（默认串口 COM3，地址取 flash_map.h 的 USER_DATA1_ADDR）
 west userdata
 
-# 指定其他 bin / 串口 / 地址
-west userdata path/to/userdata.bin -p COM5 --addr 0x00A00000
+# 指定烧写其他 bin / 串口 / 地址
+west userdata <path>/userdata.bin -p COM5 --addr 0x00A00000
 
-# 只加 header、生成 record 文件，不碰串口（没接板子时用）
+# 只加 header、生成 record 文件，不接串口（没接板子时用）
 west userdata --package-only
 ```
 
