@@ -24,8 +24,9 @@ extern "C" {
 enum
 {
     /* BLE (0x100~) */
-    EVT_BLE_CONNECTED        = 0x0100, /* payload: none */
-    EVT_BLE_DISCONNECTED     = 0x0101, /* payload: none */
+    EVT_BLE_CONNECTED        = 0x0100, /* payload: app_evt_ble_connected_t */
+    EVT_BLE_DISCONNECTED     = 0x0101, /* payload: app_evt_ble_disconnected_t */
+    EVT_BLE_CONN_PARAM       = 0x0102, /* payload: app_evt_ble_conn_param_t */
 
     /* Power (0x200~) */
     EVT_POWER_LEVEL          = 0x0200, /* payload: app_evt_power_level_t */
@@ -62,6 +63,34 @@ enum
 };
 
 /* -------- Payload structs -------- */
+
+typedef struct
+{
+    uint8_t  conn_id;      /* Realtek GAP conn_id assigned by the stack */
+    uint16_t conn_handle;  /* ATT/HCI connection handle */
+} app_evt_ble_connected_t;
+
+typedef struct
+{
+    uint8_t  conn_id;
+    uint16_t reason;       /* HCI disc_cause, e.g. HCI_ERR | HCI_ERR_REMOTE_USER_TERMINATE */
+} app_evt_ble_disconnected_t;
+
+/**
+ * @brief  Latest negotiated BLE connection parameters.
+ *
+ * Published on every successful parameter update (initial connection and
+ * subsequent GAP_MSG_LE_CONN_PARAM_UPDATE), NOT on disconnect — subscribers
+ * that need "disconnected" semantics should listen to @c EVT_BLE_DISCONNECTED
+ * instead of watching for zeroed params here.
+ */
+typedef struct
+{
+    uint16_t conn_interval;             /* units: 1.25 ms */
+    uint16_t conn_latency;              /* slave latency  */
+    uint16_t conn_supervision_timeout;  /* units: 10 ms   */
+    uint16_t conn_mtu_size;             /* ATT MTU, bytes */
+} app_evt_ble_conn_param_t;
 
 typedef struct { uint8_t percent;  } app_evt_power_level_t;
 typedef struct { bool    charging; } app_evt_power_charging_t;

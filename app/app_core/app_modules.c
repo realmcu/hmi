@@ -11,26 +11,25 @@
 
 #include "app_module.h"
 
-#include "app_ble.h"
 #include "app_time.h"
 #include "app_power.h"
 #include "app_setting.h"
 #include "app_health.h"
 #include "app_media.h"
-#include "app_phone.h"
 #include "app_notify.h"
 
 #include <stddef.h>
+
+extern const app_module_t app_bluetooth_module;
 
 const app_module_t *const app_module_list[] =
 {
     &app_time_module,       /* clock/timezone, others timestamp against it */
     &app_power_module,      /* battery monitor, come up early */
     &app_setting_module,    /* KV backing, others read defaults during init */
-    &app_ble_module,        /* stack ready before higher profiles */
+    &app_bluetooth_module,        /* stack ready before higher profiles */
     &app_health_module,     /* depends on time + setting */
     &app_media_module,      /* depends on ble */
-    &app_phone_module,      /* depends on ble */
     &app_notify_module,     /* depends on ble */
 };
 
