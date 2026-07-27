@@ -57,6 +57,10 @@ bool    hmi_ble_central_disconnect(void);
  *  @param type  HMI_L2_XFER_TYPE_* ; @param src XIP-mapped source bytes. */
 bool    hmi_ble_central_send_file(uint8_t type, const uint8_t *src, uint32_t total,
                                   const char *fname, xfer_client_done_cb_t done_cb);
+/** Snapshot the in-progress send (for a UI progress bar); out-params optional.
+ *  @return true if a transfer is active.  See hmi_l2_xfer_client_get_progress(). */
+bool    hmi_ble_central_get_send_progress(uint32_t *bytes_sent, uint32_t *total,
+                                          T_XFER_CLIENT_PHASE *phase);
 /** True while in central (send) mode -- used by the GAP layer to route events. */
 bool    hmi_ble_central_is_active(void);
 
@@ -67,6 +71,9 @@ bool    hmi_ble_central_is_active(void);
 void hmi_ble_central_handle_scan_info(T_LE_SCAN_INFO *p_info);
 /** From GAP_MSG_LE_DEV_STATE_CHANGE: drives the serialized adv-stop -> scan-start. */
 void hmi_ble_central_handle_adv_state(uint8_t adv_state);
+/** From GAP_MSG_LE_DEV_STATE_CHANGE: defers the fresh le_scan_start() of a
+ *  re-scan until the previous scan session has fully stopped (IDLE). */
+void hmi_ble_central_handle_scan_state(uint8_t scan_state);
 /** From GAP_MSG_LE_CONN_STATE_CHANGE == CONNECTED, when we initiated the link. */
 void hmi_ble_central_handle_connected(uint8_t conn_id);
 /** From GAP_MSG_LE_CONN_STATE_CHANGE == DISCONNECTED, when we owned the link. */

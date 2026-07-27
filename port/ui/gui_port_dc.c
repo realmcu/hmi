@@ -13,11 +13,13 @@
 #include "system_status_api.h"
 #include "fmc_api_ext.h"
 #include "section.h"
-#include "lcd_st77916_360_360_qspi.h"
 
 
 #define DRV_LCD_WIDTH   360
 #define DRV_LCD_HIGHT   360
+#if 1
+#include "lcd_st77916_360_360_qspi.h"
+
 
 #ifdef DRV_LCD_WIDTH
 #undef DRV_LCD_WIDTH
@@ -28,6 +30,26 @@
 #undef DRV_LCD_HIGHT
 #define DRV_LCD_HIGHT   360
 #endif
+
+#else
+
+#include "lcd_icna3310_466_466_qspi.h"
+
+#ifdef DRV_LCD_WIDTH
+#undef DRV_LCD_WIDTH
+#define DRV_LCD_WIDTH   466
+#endif
+
+#ifdef DRV_LCD_HIGHT
+#undef DRV_LCD_HIGHT
+#define DRV_LCD_HIGHT   466
+#endif
+
+#endif
+
+
+
+
 
 #define LCD_SECTION_HEIGHT                      20
 

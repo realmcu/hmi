@@ -494,6 +494,26 @@ bool hmi_l2_xfer_client_busy(void)
     return s_state != XC_IDLE;
 }
 
+bool hmi_l2_xfer_client_get_progress(uint32_t *bytes_sent, uint32_t *total,
+                                     T_XFER_CLIENT_PHASE *phase)
+{
+    T_XC_STATE st = s_state;   /* one read; fields advance on BT-stack ctx */
+
+    if (bytes_sent != NULL) { *bytes_sent = (st == XC_IDLE) ? 0 : s_sent;  }
+    if (total != NULL)      { *total      = (st == XC_IDLE) ? 0 : s_total; }
+    if (phase != NULL)
+    {
+        switch (st)
+        {
+        case XC_BEGIN_WAIT: *phase = XFER_CLIENT_PHASE_HANDSHAKE; break;
+        case XC_SENDING:    *phase = XFER_CLIENT_PHASE_SENDING;   break;
+        case XC_END_WAIT:   *phase = XFER_CLIENT_PHASE_FINISHING; break;
+        default:            *phase = XFER_CLIENT_PHASE_IDLE;      break;
+        }
+    }
+    return (st != XC_IDLE);
+}
+
 void hmi_l2_xfer_client_on_notify(const uint8_t *data, uint16_t len)
 {
     if (s_state == XC_IDLE || data == NULL)

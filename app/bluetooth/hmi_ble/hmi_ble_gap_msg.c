@@ -174,6 +174,10 @@ static void app_handle_dev_state_evt(T_GAP_DEV_STATE new_state, uint16_t cause)
         {
             APP_PRINT_INFO0("GAP scan stop");
         }
+        /* Second half of a re-scan: le_scan_start() the fresh session only once
+         * the old one has fully stopped (IDLE).  Issuing it back-to-back with
+         * le_scan_stop() drops the start -> the second scan finds 0 devices. */
+        hmi_ble_central_handle_scan_state(new_state.gap_scan_state);
     }
 
     /* Let the central module sequence its adv-stop -> scan-start transition

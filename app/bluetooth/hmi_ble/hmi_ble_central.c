@@ -35,7 +35,8 @@
 typedef enum
 {
     CEN_IDLE = 0,     /* not in send mode (peripheral/advertising default) */
-    CEN_ADV_STOPPING, /* stopping advertising before scan (exclusive mode)  */
+    CEN_ADV_STOPPING, /* (unused) stopping advertising before scan          */
+    CEN_SCAN_STOPPING,/* stopping the previous scan before a fresh re-scan  */
     CEN_SCANNING,
     CEN_CONNECTING,
     CEN_DISCOVERING,
@@ -52,6 +53,13 @@ typedef struct
 
 static T_CEN_STATE s_state   = CEN_IDLE;
 static uint8_t     s_conn_id = 0xFF;
+/* le_scan_start() has physically started the scan.  On this single-link stack
+ * the scan then wedges at GAP_SCAN_STATE_START(1) and keeps running forever --
+ * connect and disconnect never reset it -- so once this is set, every later
+ * start_scan reuses the running scan instead of calling le_scan_start() again
+ * (which would return "invalid state 1").  Kept independent of s_state, which
+ * handle_disconnected resets to CEN_IDLE even though the scan is still running. */
+static bool        s_scan_started = false;
 
 static T_CEN_DEV   s_devs[HMI_CENTRAL_MAX_DEVS];
 static uint8_t     s_dev_cnt = 0;
@@ -294,7 +302,12 @@ void hmi_ble_central_init(void)
     uint16_t scan_interval      = 0x50;   /* 0x50 * 0.625ms = 50ms  */
     uint16_t scan_window        = 0x30;   /* 0x30 * 0.625ms = 30ms  */
     uint8_t  scan_filter_policy = GAP_SCAN_FILTER_ANY;
-    uint8_t  scan_filter_dup    = GAP_SCAN_FILTER_DUPLICATE_ENABLE;
+    /* Duplicate filtering DISABLED on purpose: on this single-link stack a
+     * running scan cannot be stopped/restarted (it wedges at GAP_SCAN_STATE_
+     * START(1); see hmi_ble_central_start_scan), so a rescan must REUSE the one
+     * running scan and merely clear the list.  For the list to refill, devices
+     * still in range must keep re-reporting -- which dup-filtering would block. */
+    uint8_t  scan_filter_dup    = GAP_SCAN_FILTER_DUPLICATE_DISABLE;
 
     le_scan_set_param(GAP_PARAM_SCAN_MODE, sizeof(scan_mode), &scan_mode);
     le_scan_set_param(GAP_PARAM_SCAN_INTERVAL, sizeof(scan_interval), &scan_interval);
@@ -336,12 +349,27 @@ static void cen_begin_scan(void)
         hmi_ble_gap_start_adv();
         return;
     }
+    s_scan_started = true;   /* scan is now physically running for the session */
     APP_PRINT_INFO0("[central] scanning, filter = name contains 'eBadge'");
 }
 
 bool hmi_ble_central_start_scan(void)
 {
-    if (s_state != CEN_IDLE)
+    /* The RTL87x3 single-link stack (le_gap_init(1)) never advances scan past
+     * GAP_SCAN_STATE_START(1) while advertising runs concurrently: the
+     * controller does scan (scan_info arrives) but the host's START->SCANNING
+     * completion event never comes, so gap_scan_state is wedged at START(1)
+     * forever -- the same temporary-state deadlock as adv wedged at STOP(3).
+     * Once wedged, le_scan_stop()/le_scan_start() both return "invalid state 1",
+     * and connect/disconnect never reset it either: the scan opened by the very
+     * first le_scan_start() just keeps running for the whole session.  So start
+     * it exactly once (s_scan_started) and, on EVERY later scan -- a UI rescan
+     * or a rescan after connect/disconnect -- REUSE that running scan: clear the
+     * software list and re-arm s_state so handle_scan_info() accepts reports
+     * again.  Duplicate filtering is DISABLED (see init) so in-range devices
+     * re-report within a few advertising intervals and refill the list; gone
+     * devices stay gone.  A link being set up / up must not be disturbed. */
+    if (s_state == CEN_CONNECTING || s_state == CEN_DISCOVERING || s_state == CEN_READY)
     {
         APP_PRINT_WARN1("[central] start_scan rejected, state %d", s_state);
         return false;
@@ -350,14 +378,28 @@ bool hmi_ble_central_start_scan(void)
     s_dev_cnt = 0;
     memset(s_devs, 0, sizeof(s_devs));
 
-    /* Do NOT stop advertising here.  Connecting as master while adv is already
-     * IDLE wedges adv in GAP_ADV_STATE_STOP(3): the connection's implicit
-     * adv-disable finds nothing advertising and never completes, so adv can
-     * never be restarted afterwards.  Keeping adv ADVERTISING lets the master
-     * connection auto-stop it cleanly (ADVERTISING->IDLE, GAP_ADV_TO_IDLE_CAUSE_CONN),
-     * exactly like an incoming/peripheral connection -- then le_adv_start()
-     * works after disconnect.  Scanning runs concurrently (observer+broadcaster). */
-    APP_PRINT_INFO1("[central] start_scan: adv_state=%d (kept advertising)",
+    if (s_scan_started)
+    {
+        /* Scan is already physically running (wedged at START) -- do NOT call
+         * le_scan_start() again (returns invalid state 1).  Just re-arm the
+         * state so incoming scan_info repopulates the freshly-cleared list.
+         * This is what recovers a rescan after connect/disconnect, where
+         * handle_disconnected reset s_state to CEN_IDLE while the scan kept
+         * running (scan_info still arriving). */
+        s_state = CEN_SCANNING;
+        APP_PRINT_INFO1("[central] rescan: reuse running scan (adv_state=%d), list cleared",
+                        hmi_ble_gap_get_adv_state());
+        return true;
+    }
+
+    /* First scan of the session: actually start the scanner.  Do NOT stop
+     * advertising here -- connecting as master while adv is already IDLE wedges
+     * adv in GAP_ADV_STATE_STOP(3) (the connection's implicit adv-disable finds
+     * nothing advertising and never completes).  Keeping adv ADVERTISING lets
+     * the master connection auto-stop it cleanly (ADVERTISING->IDLE,
+     * GAP_ADV_TO_IDLE_CAUSE_CONN), then le_adv_start() works after disconnect.
+     * Scanning runs concurrently (observer+broadcaster). */
+    APP_PRINT_INFO1("[central] start_scan: adv_state=%d (first scan, kept advertising)",
                     hmi_ble_gap_get_adv_state());
     cen_begin_scan();
     return true;
@@ -464,6 +506,12 @@ bool hmi_ble_central_send_file(uint8_t type, const uint8_t *src, uint32_t total,
                                     type, src, total, fname, done_cb);
 }
 
+bool hmi_ble_central_get_send_progress(uint32_t *bytes_sent, uint32_t *total,
+                                       T_XFER_CLIENT_PHASE *phase)
+{
+    return hmi_l2_xfer_client_get_progress(bytes_sent, total, phase);
+}
+
 bool hmi_ble_central_is_active(void)
 {
     return (s_state != CEN_IDLE);
@@ -479,6 +527,20 @@ void hmi_ble_central_handle_adv_state(uint8_t adv_state)
     if (s_state == CEN_ADV_STOPPING && adv_state == GAP_ADV_STATE_IDLE)
     {
         cen_begin_scan();
+    }
+}
+
+void hmi_ble_central_handle_scan_state(uint8_t scan_state)
+{
+    /* Defensive self-heal.  On this single-link stack the scan never leaves
+     * START(1) once running while advertising (see hmi_ble_central_start_scan),
+     * so this is effectively never taken.  But should the scan ever genuinely
+     * return to IDLE (a different stack, or firmware that really stops it), drop
+     * the "started" flag so the next start_scan re-issues le_scan_start()
+     * instead of reusing a scan that is no longer physically running. */
+    if (scan_state == GAP_SCAN_STATE_IDLE)
+    {
+        s_scan_started = false;
     }
 }
 

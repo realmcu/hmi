@@ -39,6 +39,15 @@ typedef enum
     XFER_CLIENT_ERR_STATE,    /* protocol/state error                     */
 } T_XFER_CLIENT_RESULT;
 
+/** Coarse phase of an active transfer, for a UI progress display. */
+typedef enum
+{
+    XFER_CLIENT_PHASE_IDLE = 0,   /* no transfer in progress                 */
+    XFER_CLIENT_PHASE_HANDSHAKE,  /* BEGIN sent, peer preparing (erasing)    */
+    XFER_CLIENT_PHASE_SENDING,    /* streaming DATA chunks                   */
+    XFER_CLIENT_PHASE_FINISHING,  /* all data sent, awaiting peer END_RSP    */
+} T_XFER_CLIENT_PHASE;
+
 /** Completion callback (optional).  progress = bytes sent when result != OK. */
 typedef void (*xfer_client_done_cb_t)(T_XFER_CLIENT_RESULT result, uint32_t bytes_sent);
 
@@ -64,6 +73,21 @@ void hmi_l2_xfer_client_abort(void);
 
 /** True while a transfer is active. */
 bool hmi_l2_xfer_client_busy(void);
+
+/**
+ * @brief  Snapshot the current send progress (for a UI progress bar).
+ *
+ * All out-params are optional (pass NULL to skip).  When idle they are set to
+ * 0 / XFER_CLIENT_PHASE_IDLE.  bytes_sent counts bytes CONFIRMED delivered
+ * (ATT write-done), so it lags total slightly during streaming.
+ *
+ * @param bytes_sent  [out,opt] bytes confirmed-sent so far.
+ * @param total       [out,opt] total bytes to send.
+ * @param phase       [out,opt] coarse phase (handshake/sending/finishing).
+ * @return true if a transfer is active, false if idle.
+ */
+bool hmi_l2_xfer_client_get_progress(uint32_t *bytes_sent, uint32_t *total,
+                                     T_XFER_CLIENT_PHASE *phase);
 
 /*----------------------------------------------------------------------------*
  *  Hooks driven by the central (GATT-client) layer
