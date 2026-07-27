@@ -13,6 +13,7 @@
 #include "trace.h"
 #include "hmi_bt_task.h"
 #include "hmi_protocal_task.h"
+#include "hmi_ble_ctrl.h"      /* proto transport: hmi_ble_ctrl_send / _receive */
 #include "gui_server.h"
 #include "rtl876x_pinmux.h"
 #include "app_lower_init.h"
@@ -35,7 +36,8 @@ int main(void)
            k_thread_priority_get(k_current_get()));
 
     hmi_bt_task_init();
-    hmi_proto_task_init();
+    /* proto is transport-agnostic now: inject the BLE peripheral transport. */
+    hmi_proto_task_init(hmi_ble_ctrl_send, hmi_ble_ctrl_receive);
     extern void hmi_l2_handlers_register(void);
     hmi_l2_handlers_register();
 

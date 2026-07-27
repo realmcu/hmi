@@ -125,3 +125,9 @@
 	pinctrl-1 = <&i2c0_sleep>;
 	pinctrl-names = "default", "sleep";
 };
+
+/* RTC：posix-device 的 /dev/rtc0（posix_port_rtc.c）编译期用
+ * DEVICE_DT_GET(DT_NODELABEL(rtc))，需节点 status=okay 才会被实例化。 */
+&rtc {
+	status = "okay";
+};
