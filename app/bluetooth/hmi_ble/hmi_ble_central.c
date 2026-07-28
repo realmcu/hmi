@@ -517,6 +517,15 @@ bool hmi_ble_central_is_active(void)
     return (s_state != CEN_IDLE);
 }
 
+bool hmi_ble_central_is_ready(void)
+{
+    /* Only CEN_READY means: link up, HMI ctrl service discovered, CMD/EVENT
+     * handles resolved and EVENT notifications enabled -- i.e. the only state
+     * in which hmi_ble_central_send_file() will be accepted.  CEN_CONNECTING /
+     * CEN_DISCOVERING are "almost ready" but a send there is still rejected. */
+    return (s_state == CEN_READY);
+}
+
 /*============================================================================*
  *                       Hooks from the GAP layer
  *============================================================================*/

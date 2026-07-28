@@ -63,6 +63,11 @@ bool    hmi_ble_central_get_send_progress(uint32_t *bytes_sent, uint32_t *total,
                                           T_XFER_CLIENT_PHASE *phase);
 /** True while in central (send) mode -- used by the GAP layer to route events. */
 bool    hmi_ble_central_is_active(void);
+/** True once the link is fully READY (connected, HMI service discovered, notify
+ *  enabled) -- the only state in which hmi_ble_central_send_file() is accepted.
+ *  The UI must gate the send button / file-list entry on this, NOT on connect()
+ *  returning true (which only means "connecting"). */
+bool    hmi_ble_central_is_ready(void);
 
 /*----------------------------------------------------------------------------*
  *  Hooks invoked from the GAP callback / message layer
