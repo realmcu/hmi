@@ -65,9 +65,9 @@ uint8_t adv_data[] =
     GAP_ADTYPE_FLAGS_GENERAL | GAP_ADTYPE_FLAGS_BREDR_NOT_SUPPORTED,
 
     /* Local name */
-    0x07,           /* length     */
+    0x06,           /* length     */
     GAP_ADTYPE_LOCAL_NAME_COMPLETE, /* type="Complete local name" */
-    'e', 'B', 'a', 'd', 'g', 'e', /* eBadge */
+    'W', 'a', 't', 'c', 'h', /* Watch */
 
     /* Service */
     0x03,           /* length     */
@@ -93,7 +93,7 @@ uint8_t adv_data[] =
 void hmi_ble_gap_init(void)
 {
     /* Device name and device appearance */
-    uint8_t  device_name[GAP_DEVICE_NAME_LEN] = "eBadge";
+    uint8_t  device_name[GAP_DEVICE_NAME_LEN] = "Watch";
     uint16_t appearance = GAP_GATT_APPEARANCE_WRIST_WORN;
     uint8_t  slave_init_mtu_req = true;
 
@@ -146,12 +146,12 @@ void hmi_ble_gap_init(void)
     /* fill MAC address into manufacturer specific data at runtime */
     uint8_t bt_bd_addr[6];
     gap_get_param(GAP_PARAM_BD_ADDR, bt_bd_addr);
-    adv_data[19] = bt_bd_addr[5];
-    adv_data[20] = bt_bd_addr[4];
-    adv_data[21] = bt_bd_addr[3];
-    adv_data[22] = bt_bd_addr[2];
-    adv_data[23] = bt_bd_addr[1];
-    adv_data[24] = bt_bd_addr[0];
+    adv_data[18] = bt_bd_addr[5];
+    adv_data[19] = bt_bd_addr[4];
+    adv_data[20] = bt_bd_addr[3];
+    adv_data[21] = bt_bd_addr[2];
+    adv_data[22] = bt_bd_addr[1];
+    adv_data[23] = bt_bd_addr[0];
 
     le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(adv_data), adv_data);
     le_adv_set_param(GAP_PARAM_SCAN_RSP_DATA, sizeof(scan_rsp_data), (void *)scan_rsp_data);

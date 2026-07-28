@@ -13,7 +13,8 @@
 #include "gui_message.h"
 #include "flashdb.h"
 #include "trace.h"
-extern fdb_bf_t   app_get_bf(void);
+/* TODO: app_get_bf() / ui_add_resource() 尚未实现，暂时桩化以便链接通过。
+ *       等 app 侧 BF 实例 getter + UI 资源注入接口就绪后，恢复相关调用。 */
 extern bool      fdb_bf_exists(fdb_bf_t db, const char *key);
 
 
@@ -109,10 +110,11 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                     id++;
                     PROTO_LOG("fdb_bf_exists %s?", name);
                 }
-                while (fdb_bf_exists(app_get_bf(), name));
+                while (0 /* fdb_bf_exists(app_get_bf(), name) — TODO restore */);
 
-                PROTO_LOG("fdb_bf_create");
-                rc = fdb_bf_create(app_get_bf(), name, s_xfer_total, &file);
+                PROTO_LOG("fdb_bf_create (stubbed — app_get_bf() unavailable)");
+                /* rc = fdb_bf_create(app_get_bf(), name, s_xfer_total, &file); */
+                rc = FDB_NO_ERR;
                 PROTO_LOG("fdb_bf_create done");
                 if (rc != FDB_NO_ERR)
                 {
@@ -185,13 +187,12 @@ static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
                     }
                     else
                     {
-                        extern void ui_add_resource(uint32_t payload);
+                        /* TODO: 恢复 app_get_bf() / ui_add_resource() 后重新启用
+                         *       资源地址查询与 UI 注入。 */
                         res_info[0] = 0;
                         res_info[1] = 0;
-
-                        int grc = fdb_bf_get_addr(app_get_bf(), name, &res_info[0], &res_info[1]);
-                        PROTO_LOG("[bf]  rc %d grc %d file %s 0x%x %d", rc, grc, name, res_info[0], res_info[1]);
-                        ui_add_resource(res_info);
+                        PROTO_LOG("[bf] commit ok, addr lookup stubbed (name=%s)", name);
+                        (void)res_info;
                     }
                 }
 

@@ -9,7 +9,6 @@ extern "C" {
  * @brief  Register all application-layer L2 command handlers.
  *         Must be called during system init, before any BLE data arrives.
  */
-void hmi_l2_handlers_register(void);
 
 #ifdef __cplusplus
 }

@@ -34,7 +34,7 @@ enum
     EVT_POWER_CHARGING       = 0x0202, /* payload: app_evt_power_charging_t */
 
     /* Time (0x300~) */
-    EVT_TIME_SYNCED          = 0x0300, /* payload: none, wall clock has been set from phone */
+    EVT_TIME_SYNCED          = 0x0300, /* payload: app_evt_time_synced_t, wall clock has been set from phone */
     EVT_TIME_TICK_MIN        = 0x0301, /* payload: none, one tick per local minute */
 
     /* Setting (0x400~) */
@@ -94,6 +94,27 @@ typedef struct
 
 typedef struct { uint8_t percent;  } app_evt_power_level_t;
 typedef struct { bool    charging; } app_evt_power_charging_t;
+
+/**
+ * @brief  New wall-clock value published on EVT_TIME_SYNCED.
+ *
+ * Producers (BLE settings command, shell "date" style helpers, ...) fill
+ * this in and publish; @c app_time is the sole subscriber that actually
+ * writes the hardware RTC. Other modules (UI, health windows, alarms)
+ * may listen to snap their own state to the new wall clock.
+ *
+ * Only calendar fields are carried; @c weekday is derived by whoever
+ * needs it.
+ */
+typedef struct
+{
+    uint16_t year;
+    uint8_t  month;    /* 1..12 */
+    uint8_t  day;      /* 1..31 */
+    uint8_t  hour;     /* 0..23 */
+    uint8_t  min;      /* 0..59 */
+    uint8_t  sec;      /* 0..59 */
+} app_evt_time_synced_t;
 
 /**
  * @brief Setting key id.

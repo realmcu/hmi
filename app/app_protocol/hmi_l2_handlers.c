@@ -30,7 +30,7 @@
  *    encode that dependency INSIDE the subscriber (e.g. via state it
  *    reads back), NOT via the order of these calls.
  */
-void hmi_l2_handlers_register(void)
+static int hmi_l2_handlers_register(void)
 {
     hmi_l2_ota_register();
     hmi_l2_settings_register();
@@ -42,4 +42,13 @@ void hmi_l2_handlers_register(void)
     hmi_l2_log_register();
     hmi_l2_xfer_register();
     hmi_l2_conn_param_register();
+    return 0;
 }
+
+#include "app_module.h"
+
+const app_module_t app_l2_handlers_module =
+{
+    .name  = "l2_handlers",
+    .init  = hmi_l2_handlers_register,
+};

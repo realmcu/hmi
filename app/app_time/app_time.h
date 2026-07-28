@@ -46,6 +46,9 @@ typedef struct
     uint8_t  weekday;  /* 0 = Sunday */
 } app_time_local_t;
 
+/** Store a validated local calendar value in the hardware RTC. */
+int app_time_set_local(const app_time_local_t *time);
+
 /** Fill @p out with the current local time (applying the timezone offset). */
 void app_time_local_now(app_time_local_t *out);
 
