@@ -315,6 +315,35 @@ void hmi_ble_central_init(void)
     le_scan_set_param(GAP_PARAM_SCAN_FILTER_POLICY, sizeof(scan_filter_policy), &scan_filter_policy);
     le_scan_set_param(GAP_PARAM_SCAN_FILTER_DUPLICATES, sizeof(scan_filter_dup), &scan_filter_dup);
 
+    /* Connection parameters for the initiator.  The RTL87x3G stack requires
+     * le_set_conn_param() to have been called before le_connect(); without it
+     * le_connect_int returns cause 2 (GAP_CAUSE_INVALID_STATE) even when link
+     * count is 0 and no prior initiator is pending.
+     *
+     * Values tuned for MAXIMUM THROUGHPUT (file push over the HMI L2 xfer):
+     *   - conn_interval 7.5 ms..15 ms  (min = spec floor, max gives the peer a
+     *     little accept margin; a smaller interval => more LL events per second
+     *     => more MTU-sized packets per second)
+     *   - conn_latency 0               (slave must never skip events during a
+     *     transfer -- skipping is throughput loss, not power savings)
+     *   - supv_tout 5 s                (spec: > (1+latency)*interval_max*2 =
+     *     30 ms; 5 s is comfortably above and lets a real link loss surface fast)
+     *   - ce_len 0xFFFF                (let the controller consume the full
+     *     event; the header's example formula 2*(interval-1) collapses to 10
+     *     at interval=6, throttling each event to a handful of packets) */
+    {
+        T_GAP_LE_CONN_REQ_PARAM cp;
+        cp.scan_interval     = 0x60;                             /* 0x60 * 0.625 ms = 60 ms   */
+        cp.scan_window       = 0x60;                             /* 100 % duty during initiate */
+        cp.conn_interval_min = 6;                                /* 6  * 1.25 ms = 7.5 ms      */
+        cp.conn_interval_max = 12;                               /* 12 * 1.25 ms = 15  ms      */
+        cp.conn_latency      = 0;                                /* MUST be 0 for throughput   */
+        cp.supv_tout         = 500;                              /* 500 * 10 ms = 5 s          */
+        cp.ce_len_min        = 0xFFFF;                           /* controller picks max useful */
+        cp.ce_len_max        = 0xFFFF;
+        le_set_conn_param(GAP_CONN_PARAM_1M, &cp);
+    }
+
     /* GATT client: reserve 1 specific client and register our callbacks. */
     client_init(1);
     if (client_register_spec_client_cb(&s_hmi_client, &s_hmi_client_cbs) == false)
