@@ -84,10 +84,13 @@ static void on_cmd_settings(const hmi_l2_kv_t *kvs, uint8_t n)
             continue;
         }
 
-        /* Fan out to app_time (and any future listeners) via the event
-         * bus rather than reaching into app_time_set_local() directly.
-         * The protocol layer's job ends at "decode + validate"; owning
-         * the hardware RTC is app_time's concern. */
+        if (app_time_set_local(&time) != 0)
+        {
+            PROTO_LOG("L2 SETTINGS failed to set RTC");
+            continue;
+        }
+
+        /* EVT_TIME_SYNCED means the RTC has already accepted this value. */
         ev.year  = time.year;
         ev.month = time.month;
         ev.day   = time.day;

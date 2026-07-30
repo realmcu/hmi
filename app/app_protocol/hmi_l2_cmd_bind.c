@@ -3,6 +3,9 @@
 #include "hmi_proto.h"
 #include "proto_log.h"
 
+#include "app_event.h"
+#include "app_event_defs.h"
+
 #include <stdbool.h>
 
 #define BIND_USER_ID_LEN       32u
@@ -29,6 +32,16 @@ static void on_cmd_bind(const hmi_l2_kv_t *kvs, uint8_t n)
     {
         PROTO_LOG("L2 BIND    key=0x%02x val_len=%d", kvs[i].key, kvs[i].val_len);
 
+        if (kvs[i].key == HMI_L2_UNBIND)
+        {
+            int rc = app_event_publish(EVT_USER_UNBOUND, NULL, 0);
+            if (rc != 0)
+            {
+                PROTO_LOG("L2 BIND failed to publish EVT_USER_UNBOUND rc=%d", rc);
+            }
+            return;
+        }
+
         if (kvs[i].key != HMI_L2_BIND_REQ)
         {
             continue;
@@ -43,6 +56,19 @@ static void on_cmd_bind(const hmi_l2_kv_t *kvs, uint8_t n)
 
         bool sent = send_bind_response(status);
         PROTO_LOG("L2 BIND response status=0x%02x sent=%d", status, sent);
+
+        /* Publish EVT_USER_BOUND only on a successful handshake. The
+         * event carries no payload — subscribers that need the user ID
+         * read it from KVDB (TODO: still needs to be persisted from here
+         * into a well-known KV key once app_setting exposes a setter). */
+        if (status == BIND_STATUS_SUCCESS)
+        {
+            int rc = app_event_publish(EVT_USER_BOUND, NULL, 0);
+            if (rc != 0)
+            {
+                PROTO_LOG("L2 BIND failed to publish EVT_USER_BOUND rc=%d", rc);
+            }
+        }
         return;
     }
 }

@@ -19,13 +19,13 @@
  */
 
 #include "app_time.h"
-#include "app_event.h"
-#include "app_event_defs.h"
 #include "app_log.h"
 
-#include <stddef.h>
+#include "posix.h"
+#include "posix_port.h"
+#include "ioctls/posix_ioctl_rtc.h"
+
 #include <stdint.h>
-#include <string.h>
 
 APP_LOG_MODULE_REGISTER(app_time);
 
@@ -36,10 +36,35 @@ int app_time_set_local(const app_time_local_t *time)
         return -1;
     }
 
-    /* TODO: write the hardware RTC through the platform driver.
-     * app_time is the sole writer of the RTC; keep that ownership
-     * here when the real implementation lands. */
-    APP_LOGI("app_time_set_local %04u-%02u-%02u %02u:%02u:%02u (stub)",
+    (void)posix_port_init_all();
+    posix_fd_t rtc = posix_open("/dev/rtc0");
+    if (rtc == POSIX_FD_NULL)
+    {
+        APP_LOGE("open /dev/rtc0 failed");
+        return -1;
+    }
+
+    posix_rtc_time_t rtc_time =
+    {
+        .year = time->year,
+        .month = time->month,
+        .mday = time->day,
+        .hour = time->hour,
+        .minute = time->min,
+        .second = time->sec,
+        .wday = time->weekday,
+        .yday = 0xFFFFu,
+        .nsec = 0u,
+    };
+    int rc = posix_ioctl(rtc, POSIX_RTC_IOCTL_SET_TIME, &rtc_time);
+    posix_close(rtc);
+    if (rc != POSIX_OK)
+    {
+        APP_LOGE("RTC SET_TIME failed rc=%d", rc);
+        return -1;
+    }
+
+    APP_LOGI("wall clock set %04u-%02u-%02u %02u:%02u:%02u",
              (unsigned)time->year, (unsigned)time->month,
              (unsigned)time->day, (unsigned)time->hour,
              (unsigned)time->min, (unsigned)time->sec);
@@ -48,35 +73,9 @@ int app_time_set_local(const app_time_local_t *time)
 
 
 
-static void on_evt_time_synced(app_event_id_t id, const void *payload,
-                               size_t len, void *user)
-{
-    (void)id; (void)user;
-
-    if (payload == NULL || len != sizeof(app_evt_time_synced_t))
-    {
-        APP_LOGE("EVT_TIME_SYNCED bad payload len=%u", (unsigned)len);
-        return;
-    }
-
-    const app_evt_time_synced_t *ev = payload;
-    app_time_local_t time;
-
-    time.year    = ev->year;
-    time.month   = ev->month;
-    time.day     = ev->day;
-    time.hour    = ev->hour;
-    time.min     = ev->min;
-    time.sec     = ev->sec;
-    time.weekday = 0u;
-
-    (void)app_time_set_local(&time);
-}
-
 static int time_init(void)
 {
     APP_LOGI("app time module init! \n");
-    (void)app_event_subscribe(EVT_TIME_SYNCED, on_evt_time_synced, NULL);
     return 0;
 }
 
@@ -85,4 +84,3 @@ const app_module_t app_time_module =
     .name  = "time",
     .init  = time_init,
 };
-

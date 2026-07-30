@@ -60,6 +60,18 @@ enum
     EVT_NOTIFY_CLEARED       = 0x0802, /* payload: none */
 
     /* 0x900~ reserved for future OTA */
+
+    /* User binding / login (0xA00~)
+     *
+     * Published by the L2 protocol layer once the phone has completed the
+     * bind handshake (EVT_USER_BOUND) or explicitly asked the watch to
+     * forget the account (EVT_USER_UNBOUND). Neither event carries the
+     * user ID in the payload — subscribers that need it read it from the
+     * KVDB via app_setting. Keeping the wire narrow lets us stay well
+     * under APP_EVENT_MAX_PAYLOAD (32B).
+     */
+    EVT_USER_BOUND           = 0x0A00, /* payload: none */
+    EVT_USER_UNBOUND         = 0x0A01, /* payload: none */
 };
 
 /* -------- Payload structs -------- */
