@@ -390,6 +390,7 @@ L2 版本号：**0**
 | `0x0a` | 最近一次运动状态同步（手机→设备）|
 | `0x0b` | 当天总运动数据校准（设备→手机）|
 | `0x0c` | 当天总运动数据校准返回（手机→设备）|
+| `0x0d` | 心率数据返回（设备→手机）|
 
 #### 0x01 — 请求数据
 
@@ -497,6 +498,24 @@ L2 版本号：**0**
 | delta_steps | 16 bits | 与前一个 offset 的步数差值 |
 | delta_calories | 16 bits | 差值（0.001 卡）|
 | delta_distance | 16 bits | 差值（米）|
+
+#### 0x0d — 心率数据返回
+
+**Value**：Heart rate data header（4 bytes）+ N × Heart rate item（4 bytes）
+
+**Heart rate data header（32 bits）**：
+
+| 字段 | 宽度 | 说明 |
+|------|------|------|
+| Date | 16 bits | 见 Date 定义 |
+| Heart rate item count | 16 bits | 后续 Heart rate item 的个数 |
+
+**Heart rate item（32 bits）**：
+
+| 字段 | 宽度 | 说明 |
+|------|------|------|
+| Seconds | 24 bits | 从 Date 当天 0 点起的秒数，`0~86399` |
+| Heart rate | 8 bits | 心率，单位 bpm |
 
 ---
 
