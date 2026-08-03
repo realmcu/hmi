@@ -100,7 +100,6 @@ static rtos_queue_t  g_wifi_msg_queue = NULL;
 static volatile bool g_wifi_online    = false;
 static u8            g_join_state     = RTW_JOINSTATUS_UNKNOWN;
 
-
 static volatile bool g_ap_mode        = false;
 
 static int post_msg(const dashboard_wifi_msg_t *msg, uint32_t wait_ms)

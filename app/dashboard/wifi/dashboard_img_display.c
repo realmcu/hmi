@@ -14,12 +14,10 @@
  */
 
 /* ============================================================================
- * Bridge: img_rx (TCP + frame pool) -> HoneyGUI carplay_map widget
+ * Bridge: img_rx state -> HoneyGUI carplay stream/placeholder/QR visibility
  *
- *   rx thread: frame done -> publish_frame()
- *     -> g_notify=on_frame_ready() -> gui_send_msg_to_server(USER_DEFINE)
- *   GUI thread: gui_recv_msg_to_server() -> carplay_map_apply_cb()
- *     -> take_display() -> gui_img_set_src() -> gui_fb_change()
+ * JPEG frames flow directly from dashboard_img_rx into stream_transport. This
+ * module only marshals connection-state changes onto the GUI thread.
  * ============================================================================ */
 
 #include "gui_message.h"
@@ -27,6 +25,7 @@
 #include "gui_view.h"
 #include "gui_components_init.h"
 #include "gui_qbcode.h"
+#include "gui_stream.h"
 
 #include "ameba_soc.h"
 #include "dashboard_wifi.h"
@@ -36,6 +35,7 @@ extern void gui_fb_change(void);
 
 /* carplay_map: created by DashboardMain_ui.c, NULL when view switched out. */
 extern gui_img_t *carplay_map;
+extern gui_stream_t *map_streaming;
 
 #define STRINGIFY_VALUE_(value) #value
 #define STRINGIFY_VALUE(value)  STRINGIFY_VALUE_(value)
@@ -53,8 +53,8 @@ static gui_qbcode_t *g_carplay_qr = NULL;
 
 static void carplay_display_apply_state(dashboard_img_rx_state_t state)
 {
-	RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[IMGDISPLAY] apply state=%d map=%p\n",
-			 (int)state, carplay_map);
+	RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[IMGDISPLAY] apply state=%d map=%p stream=%p\n",
+			 (int)state, carplay_map, map_streaming);
 	if (carplay_map == NULL) {
 		g_carplay_qr = NULL;
 		return;
@@ -62,6 +62,7 @@ static void carplay_display_apply_state(dashboard_img_rx_state_t state)
 
 	bool show_qr = (state == DASHBOARD_IMG_RX_STATE_INITIALIZING ||
 				state == DASHBOARD_IMG_RX_STATE_WAITING);
+	bool show_stream = (state == DASHBOARD_IMG_RX_STATE_STREAMING);
 	gui_obj_t *parent = GUI_BASE(carplay_map)->parent;
 	if (show_qr && g_carplay_qr == NULL) {
 		gui_obj_hidden(GUI_BASE(carplay_map), true);
@@ -77,17 +78,22 @@ static void carplay_display_apply_state(dashboard_img_rx_state_t state)
 				 (unsigned int)(sizeof(HONEYBOX_QR_URL) - 1));
 	}
 
-	gui_obj_hidden(GUI_BASE(carplay_map), show_qr);
+	gui_obj_hidden(GUI_BASE(carplay_map), show_qr || show_stream);
+	if (map_streaming != NULL) {
+		gui_obj_hidden(GUI_BASE(map_streaming), !show_stream);
+		gui_stream_set_state(map_streaming, show_stream ?
+						 GUI_VIDEO_STATE_PLAYING : GUI_VIDEO_STATE_PAUSE);
+	}
 	if (g_carplay_qr != NULL) {
 		gui_obj_hidden(GUI_BASE(g_carplay_qr), !show_qr);
 	}
 	RTK_LOGS(NOTAG, RTK_LOG_ALWAYS,
-			 "[IMGDISPLAY] state=%d show_qr=%d map_hidden=%d qr=%p qr_hidden=%d\n",
-			 (int)state, (int)show_qr, (int)GUI_BASE(carplay_map)->hidden,
+			 "[IMGDISPLAY] state=%d show_qr=%d show_stream=%d map_hidden=%d qr=%p qr_hidden=%d\n",
+			 (int)state, (int)show_qr, (int)show_stream,
+			 (int)GUI_BASE(carplay_map)->hidden,
 			 g_carplay_qr, g_carplay_qr ? (int)GUI_BASE(g_carplay_qr)->hidden : -1);
 
 	if (state == DASHBOARD_IMG_RX_STATE_CONNECTED) {
-		dashboard_img_rx_release_display();
 		gui_img_set_src(carplay_map, (const uint8_t *)"/resource/carplay/carplay_map_00.bin",
 						IMG_SRC_FILESYS);
 		gui_img_refresh_size(carplay_map);
@@ -122,40 +128,8 @@ void dashboard_img_display_view_released(void)
 	g_carplay_qr = NULL;
 }
 
-static void carplay_map_apply_cb(void *param)
-{
-	(void)param;
-
-	if (carplay_map == NULL) {
-		return;
-	}
-
-	const uint8_t *buf = dashboard_img_rx_take_display();
-	if (buf == NULL) {
-		return;
-	}
-
-	gui_img_set_src(carplay_map, buf, IMG_SRC_MEMADDR);
-	gui_img_refresh_size(carplay_map);
-	gui_obj_hidden(GUI_BASE(carplay_map), false);
-	if (g_carplay_qr != NULL) {
-		gui_obj_hidden(GUI_BASE(g_carplay_qr), true);
-	}
-	gui_fb_change();
-}
-
-static void on_frame_ready(void)
-{
-	gui_msg_t msg = {
-		.event = GUI_EVENT_USER_DEFINE,
-		.cb    = carplay_map_apply_cb,
-	};
-	gui_send_msg_to_server(&msg);
-}
-
 static int dashboard_img_display_init(void)
 {
-	dashboard_img_rx_register_notify(on_frame_ready);
 	dashboard_img_rx_register_state_notify(on_state_changed);
 	return 0;
 }

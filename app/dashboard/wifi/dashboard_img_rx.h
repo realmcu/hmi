@@ -17,10 +17,10 @@
 #define DASHBOARD_IMG_RX_H
 
 /* ============================================================================
- * Dashboard image stream receiver (TCP server, 3-slot frame pool)
+ * Dashboard image stream receiver (TCP server -> stream transport)
  *
  * Wire: JPG <size> <seq>\n + <size bytes JPEG>
- * Design: independent task, 3-slot pool with g_display/g_ready indices
+ * Design: independent task, one complete JPEG per stream-transport buffer
  * ============================================================================ */
 
 #include <stdbool.h>
@@ -33,11 +33,8 @@ extern "C" {
 /** Must match Android NaviCaptureService.DEFAULT_TCP_PORT. */
 #define DASHBOARD_IMG_RX_PORT       5004
 
-/** Defensive JPEG size cap; buffers lazy-allocated per frame. */
+/** Defensive JPEG size cap; must match the stream transport buffer size. */
 #define DASHBOARD_IMG_RX_MAX_JPEG   (256 * 1024)
-
-/** Frame-ready callback called on rx thread after a frame is received. */
-typedef void (*dashboard_img_rx_notify_t)(void);
 
 typedef enum {
 	DASHBOARD_IMG_RX_STATE_INITIALIZING,
@@ -55,9 +52,6 @@ typedef void (*dashboard_img_rx_state_notify_t)(dashboard_img_rx_state_t state);
  */
 void dash_board_img_rx_task(void *param);
 
-/** Register frame-ready callback. Pass NULL to unregister. */
-void dashboard_img_rx_register_notify(dashboard_img_rx_notify_t cb);
-
 /** Register state callback. The current state is delivered immediately. */
 void dashboard_img_rx_register_state_notify(dashboard_img_rx_state_notify_t cb);
 
@@ -66,15 +60,6 @@ dashboard_img_rx_state_t dashboard_img_rx_get_state(void);
 
 /** Update whether a phone is associated with the dashboard SoftAP. */
 void dashboard_img_rx_set_phone_connected(bool connected);
-
-/**
- * @brief [GUI thread] Take latest ready frame for display.
- * @return buffer (gui_jpeg_file_head_t layout) or NULL if none
- */
-const uint8_t *dashboard_img_rx_take_display(void);
-
-/** [GUI thread] Release current display slot back to pool. */
-void dashboard_img_rx_release_display(void);
 
 /** @return total frames received since startup. */
 uint32_t dashboard_img_rx_frame_count(void);

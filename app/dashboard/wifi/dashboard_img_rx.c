@@ -14,21 +14,15 @@
  */
 
 /* ============================================================================
- * Dashboard image stream receiver (TCP server, 3-slot frame pool)
+ * Dashboard image stream receiver (TCP server -> stream transport)
  *
  * Independent task (not on wifi dispatcher) to avoid starving join/dhcp events.
  *
- * Frame pool (3 slots, 2 indices):
- *   g_display : slot being decoded/painted by GUI (-1=none)
- *   g_ready   : latest complete frame, not yet displayed (-1=none)
- *   Remaining = free/writable. Rx thread never touches g_display.
- *
- * Each frame: gui_jpeg_file_head_t header (16B) + raw JPEG.
+ * The receiver is the single producer. It receives each JPEG directly into a
+ * transport-owned buffer and commits it for the gui_stream consumer.
  * ============================================================================ */
 
-#include <stddef.h>     /* offsetof */
 #include <stdio.h>      /* sscanf */
-#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 
@@ -39,8 +33,7 @@
 #include "lwip_netconf.h"
 #include <lwip/sockets.h>
 
-#include "def_file.h"
-#include "draw_img.h"
+#include "stream_transport.h"
 
 #include "dashboard_wifi.h"
 #include "dashboard_img_rx.h"
@@ -48,29 +41,14 @@
 #define IMG_RX_LINE_MAX     64
 #define IMG_RX_RECV_TIMEOUT_MS  15000
 
-#define IMG_RX_SLOT_NUM     3
-#define IMG_RX_HDR_OFFSET   ((uint32_t)offsetof(gui_jpeg_file_head_t, jpeg))
-
-#define IMG_RX_DEF_W        400
-#define IMG_RX_DEF_H        480
-
-static uint8_t     *g_buf[IMG_RX_SLOT_NUM];
-static uint32_t     g_cap[IMG_RX_SLOT_NUM];
-static uint32_t     g_len[IMG_RX_SLOT_NUM];
-static uint32_t     g_seq[IMG_RX_SLOT_NUM];
-
-static int          g_display   = -1;
-static int          g_ready     = -1;
 static uint32_t     g_frame_cnt = 0;
 static uint32_t     g_drop_cnt  = 0;
-
-static rtos_mutex_t g_lock      = NULL;
-
-static dashboard_img_rx_notify_t g_notify = NULL;
 static dashboard_img_rx_state_notify_t g_state_notify = NULL;
 static volatile dashboard_img_rx_state_t g_state = DASHBOARD_IMG_RX_STATE_INITIALIZING;
 static volatile bool g_phone_connected = false;
 static volatile bool g_streaming = false;
+
+extern stp_transport_t *gui_stream_transport_get(void);
 
 static void set_state(dashboard_img_rx_state_t state)
 {
@@ -142,128 +120,17 @@ static int recv_full(int fd, uint8_t *buf, uint32_t want)
 	return 0;
 }
 
-/* ---------------------------------------------------------------------------
- * Frame pool
- * ------------------------------------------------------------------------- */
-
-/* Pick a writable slot (neither g_display nor g_ready). Under lock. */
-static int claim_write_slot(void)
+static int recv_discard(int fd, uint32_t want)
 {
-	rtos_mutex_take(g_lock, MUTEX_WAIT_TIMEOUT);
-
-	int slot = -1;
-	for (int i = 0; i < IMG_RX_SLOT_NUM; i++) {
-		if (i != g_display && i != g_ready) {
-			slot = i;
-			break;
+	uint8_t scratch[512];
+	while (want > 0) {
+		uint32_t chunk = want < sizeof(scratch) ? want : sizeof(scratch);
+		if (recv_full(fd, scratch, chunk) < 0) {
+			return -1;
 		}
+		want -= chunk;
 	}
-
-	rtos_mutex_give(g_lock);
-	return slot;
-}
-
-/* Grow-to-fit: free+malloc on demand (old content overwritten, no realloc needed). */
-static int ensure_capacity(int slot, uint32_t need)
-{
-	if (g_buf[slot] != NULL && g_cap[slot] >= need) {
-		return 0;
-	}
-	if (g_buf[slot]) {
-		rtos_heap_types_free(g_buf[slot]);
-		g_buf[slot] = NULL;
-		g_cap[slot] = 0;
-	}
-	g_buf[slot] = (uint8_t *)rtos_heap_types_malloc(need, TYPE_DRAM);
-	if (g_buf[slot] == NULL) {
-		RTK_LOGS(NOTAG, RTK_LOG_ERROR, "[IMGRX] alloc %u for slot%d failed\n",
-				 (unsigned int)need, slot);
-		return -1;
-	}
-	g_cap[slot] = need;
 	return 0;
-}
-
-/* Parse JPEG dimensions from first SOF segment. Fallback to 400x480 on failure. */
-static bool jpeg_get_dimensions(const uint8_t *d, uint32_t n, uint16_t *pw, uint16_t *ph)
-{
-	if (d == NULL || n < 4 || d[0] != 0xFF || d[1] != 0xD8) {
-		return false;
-	}
-
-	uint32_t i = 2;
-	while (i + 4 <= n) {
-		if (d[i] != 0xFF) {
-			i++;
-			continue;
-		}
-		uint8_t m = d[i + 1];
-		if (m == 0xFF) {
-			i++;
-			continue;
-		}
-		if (m == 0xD8 || m == 0xD9 || (m >= 0xD0 && m <= 0xD7) || m == 0x01) {
-			i += 2;
-			continue;
-		}
-		uint32_t seglen = ((uint32_t)d[i + 2] << 8) | d[i + 3];
-		if (seglen < 2) {
-			return false;
-		}
-		if ((m >= 0xC0 && m <= 0xC3) || (m >= 0xC5 && m <= 0xC7) ||
-			(m >= 0xC9 && m <= 0xCB) || (m >= 0xCD && m <= 0xCF)) {
-			if (i + 9 > n) {
-				return false;
-			}
-			uint16_t h = ((uint16_t)d[i + 5] << 8) | d[i + 6];
-			uint16_t w = ((uint16_t)d[i + 7] << 8) | d[i + 8];
-			if (w == 0 || h == 0) {
-				return false;
-			}
-			*pw = w;
-			*ph = h;
-			return true;
-		}
-		if (m == 0xDA) {
-			return false;
-		}
-		i += 2 + seglen;
-	}
-	return false;
-}
-
-/* Write gui_jpeg_file_head_t header (16B) in slot prefix. */
-static void build_jpeg_header(int slot, uint32_t size)
-{
-	gui_jpeg_file_head_t *wh = (gui_jpeg_file_head_t *)g_buf[slot];
-
-	uint16_t w = IMG_RX_DEF_W, h = IMG_RX_DEF_H;
-	jpeg_get_dimensions(g_buf[slot] + IMG_RX_HDR_OFFSET, size, &w, &h);
-
-	memset(&wh->img_header, 0, sizeof(gui_rgb_data_head_t));
-	wh->img_header.type = JPEG;
-	wh->img_header.jpeg = 1;
-	wh->img_header.w    = (short)w;
-	wh->img_header.h    = (short)h;
-	wh->size            = size;
-	wh->dummy           = 0;
-}
-
-/* Publish: mark slot as latest ready frame (g_ready). */
-static void publish_frame(int slot, uint32_t size, uint32_t seq)
-{
-	rtos_mutex_take(g_lock, MUTEX_WAIT_TIMEOUT);
-	g_len[slot] = size;
-	g_seq[slot] = seq;
-	g_ready     = slot;
-	g_frame_cnt++;
-	rtos_mutex_give(g_lock);
-	g_streaming = true;
-	update_connection_state();
-
-	if (g_notify) {
-		g_notify();
-	}
 }
 
 /* ---------------------------------------------------------------------------
@@ -304,23 +171,30 @@ static void serve_client(int cfd)
 			return;
 		}
 
-		int slot = claim_write_slot();
-		if (slot < 0) {
+		stp_transport_t *transport = gui_stream_transport_get();
+		stp_frame_t frame;
+		if (transport == NULL || !stp_acquire_free(transport, (uint32_t)size, &frame)) {
 			g_drop_cnt++;
-			RTK_LOGS(NOTAG, RTK_LOG_WARN, "[IMGRX] no writable slot, drop frame\n");
+			if (recv_discard(cfd, (uint32_t)size) < 0) {
+				return;
+			}
+			continue;
+		}
+
+		if (recv_full(cfd, (uint8_t *)frame.addr, (uint32_t)size) < 0) {
+			stp_release(transport, &frame);
 			return;
 		}
 
-		if (ensure_capacity(slot, IMG_RX_HDR_OFFSET + size) < 0) {
-			return;
+		if (!stp_commit(transport, &frame, (uint32_t)size, true)) {
+			g_drop_cnt++;
+			continue;
 		}
 
-		if (recv_full(cfd, g_buf[slot] + IMG_RX_HDR_OFFSET, size) < 0) {
-			return;
-		}
-
-		build_jpeg_header(slot, size);
-		publish_frame(slot, size, seq);
+		(void)seq;
+		g_frame_cnt++;
+		g_streaming = true;
+		update_connection_state();
 	}
 }
 
@@ -330,11 +204,6 @@ static void serve_client(int cfd)
 void dash_board_img_rx_task(void *param)
 {
 	(void)param;
-
-	if (rtos_mutex_create(&g_lock) != RTK_SUCCESS) {
-		RTK_LOGS(NOTAG, RTK_LOG_ERROR, "[IMGRX] mutex create failed\n");
-		goto fail;
-	}
 
 	while (!dashboard_wifi_is_online()) {
 		rtos_time_delay_ms(500);
@@ -393,24 +262,11 @@ void dash_board_img_rx_task(void *param)
 		rtos_time_delay_ms(1000);
 	}
 
-fail:
-	for (int i = 0; i < IMG_RX_SLOT_NUM; i++) {
-		if (g_buf[i]) {
-			rtos_heap_types_free(g_buf[i]);
-			g_buf[i] = NULL;
-		}
-	}
-	rtos_task_delete(NULL);
 }
 
 /* ---------------------------------------------------------------------------
  * Public API
  * ------------------------------------------------------------------------- */
-void dashboard_img_rx_register_notify(dashboard_img_rx_notify_t cb)
-{
-	g_notify = cb;
-}
-
 void dashboard_img_rx_register_state_notify(dashboard_img_rx_state_notify_t cb)
 {
 	g_state_notify = cb;
@@ -433,38 +289,6 @@ void dashboard_img_rx_set_phone_connected(bool connected)
 	update_connection_state();
 }
 
-const uint8_t *dashboard_img_rx_take_display(void)
-{
-	if (g_lock == NULL) {
-		return NULL;
-	}
-
-	rtos_mutex_take(g_lock, MUTEX_WAIT_TIMEOUT);
-
-	if (g_ready < 0) {
-		rtos_mutex_give(g_lock);
-		return NULL;
-	}
-
-	int target  = g_ready;
-	g_display   = target;
-	g_ready     = -1;
-
-	const uint8_t *buf = g_buf[target];
-	rtos_mutex_give(g_lock);
-	return buf;
-}
-
-void dashboard_img_rx_release_display(void)
-{
-	if (g_lock == NULL) {
-		return;
-	}
-	rtos_mutex_take(g_lock, MUTEX_WAIT_TIMEOUT);
-	g_display = -1;
-	rtos_mutex_give(g_lock);
-}
-
 uint32_t dashboard_img_rx_frame_count(void)
 {
 	return g_frame_cnt;
@@ -478,24 +302,13 @@ static u32 cmd_dashboard_img_rx(u16 argc, u8 *argv[])
 	(void)argc;
 	(void)argv;
 
-	if (g_lock == NULL) {
-		RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[IMGRX] not initialized yet\n");
-		return TRUE;
-	}
-
-	rtos_mutex_take(g_lock, MUTEX_WAIT_TIMEOUT);
 	RTK_LOGS(NOTAG, RTK_LOG_ALWAYS,
-			 "[IMGRX] frames=%u drops=%u display=%d ready=%d\n",
-			 (unsigned int)g_frame_cnt, (unsigned int)g_drop_cnt, g_display, g_ready);
-	for (int i = 0; i < IMG_RX_SLOT_NUM; i++) {
-		const char *role = (i == g_display) ? "DISP" :
-						   (i == g_ready)   ? "RDY " : "free";
-		RTK_LOGS(NOTAG, RTK_LOG_ALWAYS,
-				 "[IMGRX]   slot%d %s seq=%u size=%u cap=%u\n",
-				 i, role, (unsigned int)g_seq[i],
-				 (unsigned int)g_len[i], (unsigned int)g_cap[i]);
+			 "[IMGRX] frames=%u drops=%u state=%d\n",
+			 (unsigned int)g_frame_cnt, (unsigned int)g_drop_cnt, (int)g_state);
+	stp_transport_t *transport = gui_stream_transport_get();
+	if (transport != NULL) {
+		stp_dump_usage(transport);
 	}
-	rtos_mutex_give(g_lock);
 	return TRUE;
 }
 
