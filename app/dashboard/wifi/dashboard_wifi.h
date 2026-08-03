@@ -34,6 +34,10 @@
 extern "C" {
 #endif
 
+#define DASHBOARD_AP_SSID     "Dashboard_RTL8721F"
+#define DASHBOARD_AP_PASSWORD "12345678"
+#define DASHBOARD_AP_IP       "192.168.43.1"
+
 /**
  * @brief WiFi dispatcher thread entry. Never returns.
  * @param param  unused

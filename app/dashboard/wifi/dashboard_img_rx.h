@@ -39,6 +39,16 @@ extern "C" {
 /** Frame-ready callback called on rx thread after a frame is received. */
 typedef void (*dashboard_img_rx_notify_t)(void);
 
+typedef enum {
+	DASHBOARD_IMG_RX_STATE_INITIALIZING,
+	DASHBOARD_IMG_RX_STATE_WAITING,
+	DASHBOARD_IMG_RX_STATE_CONNECTED,
+	DASHBOARD_IMG_RX_STATE_STREAMING,
+} dashboard_img_rx_state_t;
+
+/** Connection/stream state callback, invoked from the image receiver task. */
+typedef void (*dashboard_img_rx_state_notify_t)(dashboard_img_rx_state_t state);
+
 /**
  * @brief Image stream receiver task entry. Never returns.
  * @param param  unused
@@ -47,6 +57,15 @@ void dash_board_img_rx_task(void *param);
 
 /** Register frame-ready callback. Pass NULL to unregister. */
 void dashboard_img_rx_register_notify(dashboard_img_rx_notify_t cb);
+
+/** Register state callback. The current state is delivered immediately. */
+void dashboard_img_rx_register_state_notify(dashboard_img_rx_state_notify_t cb);
+
+/** @return current phone connection/stream state. */
+dashboard_img_rx_state_t dashboard_img_rx_get_state(void);
+
+/** Update whether a phone is associated with the dashboard SoftAP. */
+void dashboard_img_rx_set_phone_connected(bool connected);
 
 /**
  * @brief [GUI thread] Take latest ready frame for display.

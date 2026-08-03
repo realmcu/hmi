@@ -110,6 +110,9 @@ ameba_list_append(private_compile_options
 )
 
 set(private_definitions)
+if(CONFIG_WLAN)
+    ameba_list_append(private_definitions DASHBOARD_USE_WIFI_DISPLAY)
+endif()
 if(DASHBOARD_USE_THIRD_PARTY_NAV)
     ameba_list_append(private_definitions DASHBOARD_USE_THIRD_PARTY_NAV)
 endif()

@@ -40,6 +40,7 @@
 #include "lwip_netconf.h"
 
 #include "dashboard_wifi.h"
+#include "dashboard_img_rx.h"
 #include "dashboard_ota_http.h"
 
 #define LOG_TAG "DASHBOARD-WIFI"
@@ -47,8 +48,6 @@
 /* ---------------------------------------------------------------------------
  * Message types (type-tagged union)
  * ------------------------------------------------------------------------- */
-#define DASHBOARD_AP_SSID     "Dashboard_RTL8721F"
-#define DASHBOARD_AP_PASSWORD "12345678"
 #define DASHBOARD_AP_CHANNEL  6
 
 #ifndef CONCAT_TO_UINT32
@@ -65,6 +64,8 @@ extern void wifi_fast_connect_enable(unsigned char enable);
 typedef enum {
 	DASHBOARD_WIFI_MSG_EVT_JOIN_STATUS,
 	DASHBOARD_WIFI_MSG_EVT_DHCP_STATUS,
+	DASHBOARD_WIFI_MSG_EVT_AP_STA_ASSOC,
+	DASHBOARD_WIFI_MSG_EVT_AP_STA_DISASSOC,
 	DASHBOARD_WIFI_MSG_CMD_OTA_HTTP,
 } dashboard_wifi_msg_type_t;
 
@@ -99,8 +100,7 @@ static rtos_queue_t  g_wifi_msg_queue = NULL;
 static volatile bool g_wifi_online    = false;
 static u8            g_join_state     = RTW_JOINSTATUS_UNKNOWN;
 
-/* true 表示本机已作为 SoftAP 运行（车机做 AP、手机来连）。此模式下 g_wifi_online
- * 由 AP 拉起流程直接置位，STA 侧的 join/dhcp 事件不再改写它（见 handle_* 里的守卫）。*/
+
 static volatile bool g_ap_mode        = false;
 
 static int post_msg(const dashboard_wifi_msg_t *msg, uint32_t wait_ms)
@@ -178,8 +178,28 @@ static void on_dhcp_status(u8 *evt_info)
 	(void)post_msg(&msg, 0);
 }
 
+static void on_ap_sta_assoc(u8 *evt_info)
+{
+	struct rtw_event_ap_sta_assoc *info = (struct rtw_event_ap_sta_assoc *)evt_info;
+	dashboard_wifi_msg_t msg = {0};
+	msg.type = DASHBOARD_WIFI_MSG_EVT_AP_STA_ASSOC;
+	RTK_LOGI(LOG_TAG, "Phone associated: " MAC_FMT "\n", MAC_ARG(info->sta_mac));
+	(void)post_msg(&msg, 0);
+}
+
+static void on_ap_sta_disassoc(u8 *evt_info)
+{
+	struct rtw_event_ap_sta_disassoc *info = (struct rtw_event_ap_sta_disassoc *)evt_info;
+	dashboard_wifi_msg_t msg = {0};
+	msg.type = DASHBOARD_WIFI_MSG_EVT_AP_STA_DISASSOC;
+	RTK_LOGI(LOG_TAG, "Phone disassociated: " MAC_FMT "\n", MAC_ARG(info->sta_mac));
+	(void)post_msg(&msg, 0);
+}
+
 /* Strong symbol overrides weak default in ameba_wificfg.c */
-struct rtw_event_hdl_func_t event_external_hdl[2] = {
+struct rtw_event_hdl_func_t event_external_hdl[4] = {
+	{RTW_EVENT_AP_STA_ASSOC, on_ap_sta_assoc},
+	{RTW_EVENT_AP_STA_DISASSOC, on_ap_sta_disassoc},
 	{RTW_EVENT_JOIN_STATUS, on_join_status},
 	{RTW_EVENT_DHCP_STATUS, on_dhcp_status},
 };
@@ -250,6 +270,12 @@ static void dispatch_msg(const dashboard_wifi_msg_t *msg)
 		break;
 	case DASHBOARD_WIFI_MSG_EVT_DHCP_STATUS:
 		handle_dhcp_status(msg);
+		break;
+	case DASHBOARD_WIFI_MSG_EVT_AP_STA_ASSOC:
+		dashboard_img_rx_set_phone_connected(true);
+		break;
+	case DASHBOARD_WIFI_MSG_EVT_AP_STA_DISASSOC:
+		dashboard_img_rx_set_phone_connected(false);
 		break;
 	case DASHBOARD_WIFI_MSG_CMD_OTA_HTTP:
 		(void)run_ota_http(msg->u.ota.host, msg->u.ota.port, msg->u.ota.resource);

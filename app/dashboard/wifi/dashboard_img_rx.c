@@ -67,6 +67,29 @@ static uint32_t     g_drop_cnt  = 0;
 static rtos_mutex_t g_lock      = NULL;
 
 static dashboard_img_rx_notify_t g_notify = NULL;
+static dashboard_img_rx_state_notify_t g_state_notify = NULL;
+static volatile dashboard_img_rx_state_t g_state = DASHBOARD_IMG_RX_STATE_INITIALIZING;
+static volatile bool g_phone_connected = false;
+static volatile bool g_streaming = false;
+
+static void set_state(dashboard_img_rx_state_t state)
+{
+	if (g_state == state) {
+		return;
+	}
+	RTK_LOGS(NOTAG, RTK_LOG_ALWAYS, "[IMGRX] state %d -> %d\n", (int)g_state, (int)state);
+	g_state = state;
+	if (g_state_notify) {
+		g_state_notify(state);
+	}
+}
+
+static void update_connection_state(void)
+{
+	set_state(g_streaming ? DASHBOARD_IMG_RX_STATE_STREAMING :
+			  (g_phone_connected ? DASHBOARD_IMG_RX_STATE_CONNECTED :
+			   DASHBOARD_IMG_RX_STATE_WAITING));
+}
 
 /* ---------------------------------------------------------------------------
  * Socket helpers
@@ -83,6 +106,9 @@ static int recv_line(int fd, char *line, int cap)
 		char c;
 		int r = recv(fd, &c, 1, 0);
 		if (r <= 0) {
+			if (r < 0 && n == 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+				return -2;
+			}
 			RTK_LOGS(NOTAG, RTK_LOG_WARN,
 					 "[IMGRX] recv_line end r=%d errno=%d after %d bytes\n", r, errno, n);
 			return -1;
@@ -232,6 +258,8 @@ static void publish_frame(int slot, uint32_t size, uint32_t seq)
 	g_ready     = slot;
 	g_frame_cnt++;
 	rtos_mutex_give(g_lock);
+	g_streaming = true;
+	update_connection_state();
 
 	if (g_notify) {
 		g_notify();
@@ -255,7 +283,13 @@ static void serve_client(int cfd)
 
 	for (;;) {
 		char line[IMG_RX_LINE_MAX];
-		if (recv_line(cfd, line, sizeof(line)) < 0) {
+		int line_len = recv_line(cfd, line, sizeof(line));
+		if (line_len == -2) {
+			g_streaming = false;
+			update_connection_state();
+			continue;
+		}
+		if (line_len < 0) {
 			return;
 		}
 
@@ -338,6 +372,7 @@ void dash_board_img_rx_task(void *param)
 			rtos_time_delay_ms(1000);
 			continue;
 		}
+		update_connection_state();
 
 		for (;;) {
 			struct sockaddr_in cli;
@@ -350,6 +385,8 @@ void dash_board_img_rx_task(void *param)
 			serve_client(cfd);
 
 			closesocket(cfd);
+			g_streaming = false;
+			update_connection_state();
 		}
 
 		closesocket(lfd);
@@ -372,6 +409,28 @@ fail:
 void dashboard_img_rx_register_notify(dashboard_img_rx_notify_t cb)
 {
 	g_notify = cb;
+}
+
+void dashboard_img_rx_register_state_notify(dashboard_img_rx_state_notify_t cb)
+{
+	g_state_notify = cb;
+	if (cb) {
+		cb(g_state);
+	}
+}
+
+dashboard_img_rx_state_t dashboard_img_rx_get_state(void)
+{
+	return g_state;
+}
+
+void dashboard_img_rx_set_phone_connected(bool connected)
+{
+	g_phone_connected = connected;
+	if (!connected) {
+		g_streaming = false;
+	}
+	update_connection_state();
 }
 
 const uint8_t *dashboard_img_rx_take_display(void)
