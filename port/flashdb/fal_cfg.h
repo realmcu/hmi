@@ -37,7 +37,7 @@
 #define RTK_NOR_FLASH_XIP_BASE      0x70536000UL    /* FIXME: set to actual base */
 
 // #define MOUNT_DB_SIZE  (0x0240f400u + 0x00998000u - MOUNT_DB)
-#define RTK_NOR_FLASH_TOTAL_SIZE    (8UL * 1024 * 1024)   /* 8 MB total flash */
+#define RTK_NOR_FLASH_TOTAL_SIZE    (10UL * 1024 * 1024)   /* 10 MB total flash */
 
 /* ──────────────────────────────────────────────────────────────
  * 2.  FlashDB region layout (offsets from RTK_NOR_FLASH_XIP_BASE)
@@ -50,10 +50,10 @@
  *   MOUNT_DB           = 0x2B0F400  (base of the former file_db region)
  *   MOUNT_DB + 256 KB  = 0x2B4F400  (start of BF data area)
  * ────────────────────────────────────────────────────────────── */
-#define FDB_REGION_OFFSET           (0x600000UL - 0x1000UL)     /* FIXME: adjust to your layout */
+#define FDB_REGION_OFFSET           (0x800000UL - 0x1000UL)     /* FIXME: adjust to your layout */
 
 #define FDB_KVDB_SIZE               (256UL  * 1024)           /* 256 KB for KV + BF directory */
-#define FDB_BF_DATA_SIZE            ((0x300000UL ))           /* ~2.25 MB for big-file data   */
+#define FDB_BF_DATA_SIZE            ((0x200000UL ))           /* ~2.25 MB for big-file data   */
 
 /* Derived: partition offsets from the start of the flash device */
 #define FDB_KVDB_PART_OFFSET        (FDB_REGION_OFFSET)
