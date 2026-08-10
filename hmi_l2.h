@@ -214,6 +214,48 @@ extern "C" {
 #define HMI_L2_KS_CREDITS_UNLIMITED 0xFFFFu
 
 /*============================================================================*
+ *                       Keys - remote control (0x0f)  (spec v2)
+ *============================================================================*
+ * Bidirectional camera control (see hmi-android-apk spec
+ * 2026-07-30-remote-control-protocol-design.md).
+ *   0x01-0x0F  control requests (Dev -> App;  app is authority, may clamp/reject)
+ *   0x10-0x1F  state facts      (App -> Dev;  weathervane -- device only consumes)
+ *   0x20-0x2F  preview pull triggers (not in P0)
+ *
+ * Device rules (spec section 8 -- loopback / consistency):
+ *   - never optimistically update local UI on outbound control; wait for STATE_REPORT
+ *   - drop any inbound key in 0x01-0x0F (app never sends control to device)
+ *   - unknown TLV tags in STATE_REPORT are silently skipped (forward compat)
+ *
+ * P0 covers CAPTURE + SET_ZOOM + a minimal STATE/CTRL_RESULT/LAST_SHOT_READY set. */
+
+#define HMI_L2_CMD_REMOTE               0x0fu
+
+/* Control requests (Dev -> App) */
+#define HMI_L2_RC_CAPTURE               0x01u   /* vlen=0                             */
+#define HMI_L2_RC_SET_ZOOM              0x04u   /* 4B: zoom_x100 u16be + reserved u16 */
+
+/* State facts (App -> Dev) */
+#define HMI_L2_RC_STATE_REPORT          0x10u   /* TLV (see spec 5.2)                 */
+#define HMI_L2_RC_CTRL_RESULT           0x11u   /* 3B: key + code + detail            */
+#define HMI_L2_RC_LAST_SHOT_READY       0x12u   /* 3B: shot_id u16be + reserved       */
+
+/* CTRL_RESULT error codes (spec section 7 -- authoritative byte values) */
+#define HMI_L2_RC_ERR_UNSUPPORTED       0x01u
+#define HMI_L2_RC_ERR_BUSY              0x02u
+#define HMI_L2_RC_ERR_OUT_OF_RANGE      0x03u   /* spec 12 writes "INVALID_VALUE" but
+                                                 * the byte value matches section 7 */
+#define HMI_L2_RC_ERR_NOT_READY         0x04u
+#define HMI_L2_RC_ERR_UNKNOWN           0xffu
+
+/* STATE_REPORT TLV tags -- P0 recognizes these five; others silently skipped */
+#define HMI_L2_RC_TAG_RECORDING         0x01u   /* 1B  */
+#define HMI_L2_RC_TAG_FACING            0x03u   /* 1B  */
+#define HMI_L2_RC_TAG_ZOOM_X100         0x04u   /* 2B be */
+#define HMI_L2_RC_TAG_HAS_LAST_SHOT     0x0fu   /* 1B  */
+#define HMI_L2_RC_TAG_LAST_SHOT_ID      0x10u   /* 2B be */
+
+/*============================================================================*
  *                              KV entry (exposed for handlers)
  *============================================================================*/
 
