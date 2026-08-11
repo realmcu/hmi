@@ -68,7 +68,7 @@ int health_db_init(void)
     return 0;
 }
 
-int health_db_append_pedo(const health_pedo_record_t *rec)
+int health_db_append_pedo(health_pedo_record_t *rec)
 {
     if (rec == NULL)
     {
@@ -84,6 +84,19 @@ int health_db_append_pedo(const health_pedo_record_t *rec)
 
     struct fdb_blob blob;
     db_lock();
+    fdb_time_t last_time = 0;
+    fdb_tsdb_control(tsdb, FDB_TSDB_CTRL_GET_LAST_TIME, &last_time);
+    if ((fdb_time_t)rec->ts_utc < last_time || last_time >= INT32_MAX)
+    {
+        db_unlock();
+        APP_LOGE("pedo timestamp rollback now=%u last=%d",
+                 (unsigned)rec->ts_utc, (int)last_time);
+        return -ERANGE;
+    }
+    if ((fdb_time_t)rec->ts_utc == last_time)
+    {
+        rec->ts_utc++;
+    }
     fdb_err_t e = fdb_tsl_append_with_ts(tsdb,
                                          fdb_blob_make(&blob, rec, sizeof(*rec)),
                                          (fdb_time_t)rec->ts_utc);
@@ -251,16 +264,7 @@ size_t health_db_iter(uint32_t from, uint32_t to,
 
 size_t health_db_count(uint32_t from, uint32_t to)
 {
-    fdb_tsdb_t tsdb = flashdb_registry_get_pedo_tsdb();
-    if (tsdb == NULL)
-    {
-        return 0;
-    }
-    fdb_time_t hi = (to == 0) ? (fdb_time_t)0x7FFFFFFF : (fdb_time_t)to;
-    db_lock();
-    size_t count = fdb_tsl_query_count(tsdb, (fdb_time_t)from, hi, FDB_TSL_WRITE);
-    db_unlock();
-    return count;
+    return health_db_iter(from, to, NULL, NULL);
 }
 
 int health_db_clean(void)

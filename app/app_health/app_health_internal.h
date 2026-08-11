@@ -71,9 +71,12 @@ typedef struct
     uint8_t  bucket_min;    /* always HEALTH_BUCKET_MIN today, kept for     */
     /*  forward-compat if product ever changes it   */
     uint8_t  mode;          /* 0=walk 1=run 2=invalid (gsa_pedo_info.mode)  */
-    uint8_t  flags;         /* bit0=has_hr, others reserved                 */
+    uint8_t  flags;         /* HEALTH_RECORD_FLAG_*                         */
     uint32_t reserved;      /* pad to 18 bytes; future field growth room    */
 } __attribute__((packed)) health_pedo_record_t;
+
+#define HEALTH_RECORD_FLAG_HAS_HR          (1u << 0)
+#define HEALTH_RECORD_FLAG_PARTIAL_BUCKET  (1u << 1)
 
 _Static_assert(sizeof(health_pedo_record_t) == 18,
                "health_pedo_record_t must stay 18 bytes; flash layout depends on it");
@@ -108,8 +111,10 @@ typedef struct
 int  health_db_init(void);
 
 /* Append one 18B pedometer record to the TSDB, using the record's ts_utc as
- * the time key. Returns 0 on success, negative on failure. */
-int  health_db_append_pedo(const health_pedo_record_t *rec);
+ * the time key. An equal-to-last timestamp is advanced by one second and
+ * reflected back into rec; a clock rollback is rejected with -ERANGE.
+ * Returns 0 on success, negative on failure. */
+int  health_db_append_pedo(health_pedo_record_t *rec);
 
 /* Load "health.today" from env KV. If no entry exists, or the stored day
  * doesn't match @c current_utc_day_index, zeros @c out and returns 0 anyway — the caller
@@ -133,7 +138,9 @@ typedef bool (*health_db_iter_cb_t)(const health_pedo_record_t *rec,
 size_t health_db_iter(uint32_t from, uint32_t to,
                       health_db_iter_cb_t cb, void *user);
 
-/* Count TSDB records with ts_utc in [from, to] and status = WRITE. */
+/* Count decodable health records with ts_utc in [from, to]. Uses the same
+ * payload validation as health_db_iter(), so count and list agree even when
+ * an older firmware left differently-sized records in the TSDB. */
 size_t health_db_count(uint32_t from, uint32_t to);
 
 /* Erase every record in the pedo TSDB. Does NOT touch the today-KV; caller
@@ -168,11 +175,19 @@ void health_worker_stop(health_stop_mode_t mode);
 /* True from successful start until the worker has completed cleanup. */
 bool health_worker_is_running(void);
 
-/* Force a flush of the current accumulator right now, independent of the
- * bucket deadline. Intended for the debug `health flush` shell command.
- * Returns true if a record was written (accumulator was non-empty),
- * false otherwise. Safe to call whether or not the worker is running. */
-bool health_worker_flush_now(void);
+typedef enum
+{
+    HEALTH_FLUSH_OK = 0,
+    HEALTH_FLUSH_EMPTY,
+    HEALTH_FLUSH_NOT_RUNNING,
+    HEALTH_FLUSH_INVALID_TIME,
+    HEALTH_FLUSH_DB_ERROR,
+} health_flush_result_t;
+
+/* Force a partial-bucket flush right now, independent of the bucket deadline.
+ * Intended for the debug `health flush` shell command. The result distinguishes
+ * an empty accumulator from lifecycle, clock, and persistence failures. */
+health_flush_result_t health_worker_flush_now(void);
 
 /* Read the current today-rollup snapshot (thread-safe copy). Used by
  * app_health to publish EVT_HEALTH_STEPS_UPDATED and by the shell for

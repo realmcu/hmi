@@ -22,6 +22,7 @@
  */
 
 #include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -67,10 +68,11 @@ static void dump_record(const struct shell *sh, int idx,
     shell_print(sh, "[%d] fdb_ts=%s rec_ts=%s addr=0x%08x",
                 idx, t_fdb, t_rec, (unsigned)addr);
     shell_print(sh,
-                "     steps=%u dist=%um cal=%u.%u kcal hr=%u bucket=%umin mode=%u flags=0x%02x",
+                "     steps=%u dist=%um cal=%u.%u kcal hr=%u bucket=%umin mode=%u flags=0x%02x%s",
                 r->steps, r->distance_m,
                 r->calories_dkcal / 10, r->calories_dkcal % 10,
-                r->hr_avg, r->bucket_min, r->mode, r->flags);
+                r->hr_avg, r->bucket_min, r->mode, r->flags,
+                (r->flags & HEALTH_RECORD_FLAG_PARTIAL_BUCKET) ? " partial" : "");
 }
 
 /* ----------------------------------------------------------------
@@ -96,20 +98,83 @@ static bool list_cb(const health_pedo_record_t *rec,
  * Command handlers.
  * ---------------------------------------------------------------- */
 
+static bool parse_timestamp(const struct shell *sh, const char *text,
+                            const char *name, uint32_t *out)
+{
+    if (text == NULL || out == NULL || text[0] == '\0' || text[0] == '-')
+    {
+        shell_error(sh, "%s must be an epoch timestamp in [0, %u]",
+                    name, (unsigned)INT32_MAX);
+        return false;
+    }
+
+    char *end = NULL;
+    errno = 0;
+    unsigned long value = strtoul(text, &end, 0);
+    if (errno == ERANGE || end == text || *end != '\0' || value > INT32_MAX)
+    {
+        shell_error(sh, "invalid %s '%s'; expected [0, %u]",
+                    name, text, (unsigned)INT32_MAX);
+        return false;
+    }
+
+    *out = (uint32_t)value;
+    return true;
+}
+
+static bool parse_range(const struct shell *sh, size_t argc, char **argv,
+                        uint32_t *from, uint32_t *to)
+{
+    *from = 0u;
+    *to = 0u;
+    if (argc >= 2 && !parse_timestamp(sh, argv[1], "from_ts", from))
+    {
+        return false;
+    }
+    if (argc >= 3 && !parse_timestamp(sh, argv[2], "to_ts", to))
+    {
+        return false;
+    }
+    if (*to != 0u && *from > *to)
+    {
+        shell_error(sh, "from_ts must not be greater than to_ts");
+        return false;
+    }
+    return true;
+}
+
 static int cmd_flush(const struct shell *sh, size_t argc, char **argv)
 {
     ARG_UNUSED(argc); ARG_UNUSED(argv);
     shell_warn(sh, "debug flush: bypassing 15-min bucket boundary");
-    bool wrote = health_worker_flush_now();
-    shell_print(sh, wrote ? "flushed one record"
-                : "accumulator empty, nothing to flush");
-    return 0;
+    switch (health_worker_flush_now())
+    {
+    case HEALTH_FLUSH_OK:
+        shell_print(sh, "flushed one partial-bucket record");
+        return 0;
+    case HEALTH_FLUSH_EMPTY:
+        shell_print(sh, "accumulator empty, nothing to flush");
+        return 0;
+    case HEALTH_FLUSH_NOT_RUNNING:
+        shell_error(sh, "health worker is not running");
+        return -EAGAIN;
+    case HEALTH_FLUSH_INVALID_TIME:
+        shell_error(sh, "RTC time is invalid; record was not flushed");
+        return -ENODATA;
+    case HEALTH_FLUSH_DB_ERROR:
+    default:
+        shell_error(sh, "TSDB append failed; accumulated data was retained");
+        return -EIO;
+    }
 }
 
 static int cmd_list(const struct shell *sh, size_t argc, char **argv)
 {
-    uint32_t from = (argc >= 2) ? (uint32_t)strtoul(argv[1], NULL, 0) : 0u;
-    uint32_t to   = (argc >= 3) ? (uint32_t)strtoul(argv[2], NULL, 0) : 0u;
+    uint32_t from, to;
+    if (!parse_range(sh, argc, argv, &from, &to))
+    {
+        return -EINVAL;
+    }
 
     list_ctx_t ctx = { .sh = sh, .n = 0 };
     (void)health_db_iter(from, to, list_cb, &ctx);
@@ -119,8 +184,11 @@ static int cmd_list(const struct shell *sh, size_t argc, char **argv)
 
 static int cmd_count(const struct shell *sh, size_t argc, char **argv)
 {
-    uint32_t from = (argc >= 2) ? (uint32_t)strtoul(argv[1], NULL, 0) : 0u;
-    uint32_t to   = (argc >= 3) ? (uint32_t)strtoul(argv[2], NULL, 0) : 0u;
+    uint32_t from, to;
+    if (!parse_range(sh, argc, argv, &from, &to))
+    {
+        return -EINVAL;
+    }
     size_t n = health_db_count(from, to);
     shell_print(sh, "count [%u..%u] : %zu",
                 (unsigned)from, (unsigned)to, n);
@@ -155,21 +223,21 @@ static int cmd_today(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_STATIC_SUBCMD_SET_CREATE(
     sub_health,
-    SHELL_CMD(flush, NULL,
-              "debug: force-flush accumulator to fdb, bypassing 15min boundary",
-              cmd_flush),
-    SHELL_CMD(list,  NULL,
-              "health list [from_ts] [to_ts] — dump TSDB records",
-              cmd_list),
-    SHELL_CMD(count, NULL,
-              "health count [from_ts] [to_ts] — count TSDB records",
-              cmd_count),
-    SHELL_CMD(clean, NULL,
-              "erase all pedo records in the pedo TSDB",
-              cmd_clean),
-    SHELL_CMD(today, NULL,
-              "print current-day rollup (steps/distance/calories)",
-              cmd_today),
+    SHELL_CMD_ARG(flush, NULL,
+                  "debug: force-flush accumulator to fdb, bypassing 15min boundary",
+                  cmd_flush, 1, 0),
+    SHELL_CMD_ARG(list,  NULL,
+                  "health list [from_ts] [to_ts] - dump TSDB records",
+                  cmd_list, 1, 2),
+    SHELL_CMD_ARG(count, NULL,
+                  "health count [from_ts] [to_ts] - count TSDB records",
+                  cmd_count, 1, 2),
+    SHELL_CMD_ARG(clean, NULL,
+                  "erase all pedo records in the pedo TSDB",
+                  cmd_clean, 1, 0),
+    SHELL_CMD_ARG(today, NULL,
+                  "print current-day rollup (steps/distance/calories)",
+                  cmd_today, 1, 0),
     SHELL_SUBCMD_SET_END
 );
 

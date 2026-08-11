@@ -215,9 +215,9 @@ static uint32_t next_bucket_delay_ms(uint32_t now_utc)
  *  - health_worker_flush_now(), from the shell (debug)
  *
  * Empty buckets are skipped so a static device doesn't burn flash on
- * zero-value records. Returns whether a record was actually written.
+ * zero-value records. Returns a status suitable for shell diagnostics.
  * -------------------------------------------------------------- */
-static bool flush_step_bucket(void)
+static health_flush_result_t flush_step_bucket(bool partial_bucket)
 {
     mutex_take(s_flush_mutex);
 
@@ -235,7 +235,7 @@ static bool flush_step_bucket(void)
     if (steps == 0 && dist_cm == 0 && calories_x100 == 0)
     {
         mutex_give(s_flush_mutex);
-        return false;
+        return HEALTH_FLUSH_EMPTY;
     }
 
     /* Clip to record field widths. Overflow is impossible in practice for a
@@ -249,6 +249,21 @@ static bool flush_step_bucket(void)
     if (calories_dkcal > 0xFFFF) { calories_dkcal = 0xFFFF; }
 
     uint32_t ts = rtc_utc_now();
+    if (ts == 0)
+    {
+        APP_LOGE("flush rejected: RTC time is invalid");
+        mutex_take(s_state_mutex);
+        s_bucket_acc.steps += steps;
+        s_bucket_acc.distance_cm += dist_cm;
+        s_bucket_acc.calories_x100 += calories_x100;
+        if (s_bucket_acc.sample_count == 0u)
+        {
+            s_bucket_acc.last_mode = mode;
+        }
+        mutex_give(s_state_mutex);
+        mutex_give(s_flush_mutex);
+        return HEALTH_FLUSH_INVALID_TIME;
+    }
 
     health_pedo_record_t rec =
     {
@@ -259,10 +274,11 @@ static bool flush_step_bucket(void)
         .hr_avg     = 0,
         .bucket_min = (uint8_t)HEALTH_BUCKET_MIN,
         .mode       = mode,
-        .flags      = 0,
+        .flags      = partial_bucket ? HEALTH_RECORD_FLAG_PARTIAL_BUCKET : 0u,
     };
 
-    if (health_db_append_pedo(&rec) != 0)
+    int append_rc = health_db_append_pedo(&rec);
+    if (append_rc != 0)
     {
         /* Merge the failed snapshot back with samples collected meanwhile. */
         mutex_take(s_state_mutex);
@@ -275,7 +291,8 @@ static bool flush_step_bucket(void)
         }
         mutex_give(s_state_mutex);
         mutex_give(s_flush_mutex);
-        return false;
+        return (append_rc == -ERANGE) ? HEALTH_FLUSH_INVALID_TIME
+               : HEALTH_FLUSH_DB_ERROR;
     }
 
     /* Update today rollup. Day rollover is detected here so we don't need a
@@ -283,7 +300,7 @@ static bool flush_step_bucket(void)
      * date, reset first, then add. */
     health_daily_rollup_t today_rollup_snapshot;
     uint32_t record_utc_day_index =
-        (ts != 0) ? (ts / 86400u) : s_today_rollup.utc_day_index;
+        rec.ts_utc / 86400u;
     mutex_take(s_state_mutex);
     if (record_utc_day_index != s_today_rollup.utc_day_index)
     {
@@ -306,7 +323,7 @@ static bool flush_step_bucket(void)
      * the worker task; app_health_on_flush must not block. */
     app_health_on_flush(&today_rollup_snapshot);
     mutex_give(s_flush_mutex);
-    return true;
+    return HEALTH_FLUSH_OK;
 }
 
 /* --------------------------------------------------------------
@@ -396,7 +413,7 @@ static void worker_fn(void *context)
 
         if (due)
         {
-            (void)flush_step_bucket();
+            (void)flush_step_bucket(false);
             next_flush_rel =
                 (uint32_t)os_sys_time_get() + next_bucket_delay_ms(rtc_utc_now());
         }
@@ -417,7 +434,7 @@ static void worker_fn(void *context)
     else
     {
         /* Stop path: one last flush so partial data isn't silently lost. */
-        (void)flush_step_bucket();
+        (void)flush_step_bucket(true);
     }
     posix_close(gs);
     APP_LOGI("worker stopped");
@@ -521,19 +538,25 @@ bool health_worker_is_running(void)
     return running;
 }
 
-bool health_worker_flush_now(void)
+health_flush_result_t health_worker_flush_now(void)
 {
     if (!health_worker_is_running())
     {
-        return false;
+        return HEALTH_FLUSH_NOT_RUNNING;
     }
-    return flush_step_bucket();
+    return flush_step_bucket(true);
 }
 
 void health_worker_get_today(health_daily_rollup_t *out)
 {
     if (out == NULL) { return; }
+    uint32_t now = rtc_utc_now();
     mutex_take(s_state_mutex);
+    if (now != 0u && s_today_rollup.utc_day_index != now / 86400u)
+    {
+        memset(&s_today_rollup, 0, sizeof(s_today_rollup));
+        s_today_rollup.utc_day_index = now / 86400u;
+    }
     *out = s_today_rollup;
     mutex_give(s_state_mutex);
 }
