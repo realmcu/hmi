@@ -19,21 +19,35 @@
       "group": "build"
     },
     {
-      "label": "West Flash",
+      "label": "West Flash (WSL)",
       "type": "shell",
-      "command": "/mnt/d/mpcli_meta_tool_v4.0.0.6_win/mpcli.exe",
-      "args": [
-        "-c", "com13",
-        "-p",
-        "-A", "0x7009E000",
-        "-F", "\"$(wslpath -w '${workspaceFolder}/bin/app.bin')\"",
-        "-b", "1000000",
-        "-M", "5",
-        "-r", "-u", "-d",
-        "-T", "RTL87X3G"
-      ],
+      "command": "${workspaceFolder}/scripts/flash-wsl.sh",
+      "args": ["COM13"],
       "options": {
-        "cwd": "/mnt/d/mpcli_meta_tool_v4.0.0.6_win"
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "West Flash (Native Linux)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/flash-linux.sh",
+      "args": ["/dev/ttyUSB0"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "West Flash (Windows)",
+      "type": "shell",
+      "command": "${workspaceFolder}\\scripts\\flash-win32.bat",
+      "args": ["COM13"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "NOPAUSE": "1"
+        }
       },
       "problemMatcher": []
     }
