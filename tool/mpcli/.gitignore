@@ -1,0 +1,7 @@
+# mpcli 运行时会在 mpcli 可执行文件同目录下生成 log/YYYY_MM_DD/，
+# 忽略掉避免污染仓库。
+log/
+
+# 上游源里可能带 tar.gz / zip 等打包中间产物，防手滑
+*.tar.gz
+*.zip
