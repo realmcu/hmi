@@ -6,9 +6,9 @@
 #       用 wslpath -w 把 WSL 里的固件路径转成 Windows 形式喂给 -F。
 #
 # 默认配置对齐 .vscode/tasks.json 里的 "West Flash"：
-#   - 工具：v4.0.0.6 Windows 版 mpcli.exe
+#   - 工具：v4.0.0.7 Windows 版 mpcli.exe（scripts/tool/mpcli/mpcli.exe，仓库自带）
 #   - 固件：bin/app.bin（无 MP 头）
-#   - 烧录：-p -A 0x7009E000 -b 3000000 -M 5 -r -u -d -T RTL87X3G
+#   - 烧录：-p -A 0x7009E000 -b 2000000 -M 5 -r -u -d -T RTL87X3G
 #
 # 用法：
 #   scripts/flash.sh                 # 默认 COM13
@@ -19,10 +19,11 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ---- 可通过位置参数或环境变量覆盖 ----
 PORT="${1:-${PORT:-COM13}}"
-MPCLI_EXE="${MPCLI_EXE:-/mnt/d/mpcli_meta_tool_v4.0.0.6_win/mpcli.exe}"
+MPCLI_EXE="${MPCLI_EXE:-$SCRIPT_DIR/tool/mpcli/mpcli.exe}"
 FW="${FW:-$REPO_ROOT/bin/app.bin}"
 ADDR="${ADDR:-0x7009E000}"
 BAUD="${BAUD:-2000000}"

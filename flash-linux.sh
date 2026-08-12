@@ -7,7 +7,7 @@
 #   - 串口是 /dev/ttyUSB* 而非 COMx，路径也无需 wslpath 转换。
 #
 # 默认配置对齐 flash-wsl.sh 的烧录参数：
-#   - 工具：mpcli v4.0.0.7（~/.local/mpcli/mpcli）
+#   - 工具：mpcli v4.0.0.7（scripts/tool/mpcli/mpcli，仓库自带）
 #   - 固件：bin/app.bin（无 MP 头）
 #   - 烧录：-p -A 0x7009E000 -b 2000000 -M 5 -r -u -d -T RTL87X3G
 #
@@ -23,10 +23,11 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ---- 可通过位置参数或环境变量覆盖 ----
 PORT="${1:-${PORT:-/dev/ttyUSB0}}"
-MPCLI="${MPCLI:-$HOME/.local/mpcli/mpcli}"
+MPCLI="${MPCLI:-$SCRIPT_DIR/tool/mpcli/mpcli}"
 FW="${FW:-$REPO_ROOT/bin/app.bin}"
 ADDR="${ADDR:-0x7009E000}"
 BAUD="${BAUD:-2000000}"

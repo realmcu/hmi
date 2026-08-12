@@ -5,6 +5,8 @@
 - `build.sh` —— `west build` 封装
 - `flash-linux.sh` —— 原生 Linux 下用 Linux 版 `mpcli` 烧录（本机当前用这个）
 - `flash-wsl.sh` —— WSL 里驱动 Windows 版 `mpcli.exe` 烧录（旧环境留档，Linux 下不用）
+- `flash-win32.bat` —— Windows 原生 cmd 下直接调 `mpcli.exe` 烧录（不进 WSL）
+- `tool/mpcli/` —— 随仓库自带的 mpcli v4.0.0.7；`mpcli`（ELF）与 `mpcli.exe`（Windows）并排放，`fw/` 和 `config/` 共用。三个 flash 脚本默认从这里取，不再依赖外部安装
 - `serial_term.py` —— **Windows 专用**串口终端（依赖 `msvcrt`，Linux 下跑不了）。Linux 下看 log 见「查看 LOG」章节，用现成命令即可
 
 ---
@@ -53,7 +55,7 @@ DRY=1 scripts/flash-linux.sh                    # 只打印将要执行的命令
 
 | 项 | 值 | 覆盖方式 |
 |---|---|---|
-| `mpcli` 路径 | `~/.local/mpcli/mpcli` | `MPCLI=` |
+| `mpcli` 路径 | `scripts/tool/mpcli/mpcli`（仓库自带 v4.0.0.7） | `MPCLI=` |
 | 固件 | `<repo>/bin/app.bin`（**无 MP 头**） | `FW=` |
 | 下载口 | `/dev/ttyUSB0` | 位置参数 或 `PORT=` |
 | 波特率 | `2000000` | `BAUD=` |
@@ -76,6 +78,34 @@ DRY=1 scripts/flash-linux.sh                    # 只打印将要执行的命令
 - **`mpcli 不存在或不可执行`**：改 `MPCLI=` 指到你实际的安装位置。
 - **`串口不存在` / `串口不可写`**：检查 USB 连接（`ls /dev/ttyUSB*`），或把用户加入 `dialout` 组后重新登录。
 - **端口占用 / 打不开**：多半是别的串口工具（如手动开的 `cat /dev/ttyUSB*`、`picocom`）还占着口，先关掉再 flash。
+
+### 在 Windows / WSL 下烧录
+
+如果开发环境不是原生 Linux，用下面两个脚本，参数集与 `flash-linux.sh` 完全一致（`-p -A 0x7009E000 -b 2000000 -M 5 -r -u -d -T RTL87X3G`），只是执行环境不同。两个脚本默认都从仓库自带的 `scripts/tool/mpcli/mpcli.exe`（v4.0.0.7）取工具，无需额外安装。
+
+#### WSL2 里驱动 Windows 版 `mpcli.exe`
+
+```bash
+scripts/flash-wsl.sh COM8                    # 位置参数指定 COM 口（默认 COM13）
+PORT=COM8 BAUD=2000000 scripts/flash-wsl.sh  # 环境变量覆盖
+DRY=1 scripts/flash-wsl.sh COM8              # 只打印将要执行的命令，不真正烧录
+```
+
+- 默认 `mpcli.exe` 路径：`scripts/tool/mpcli/mpcli.exe`（仓库自带），用 `MPCLI_EXE=` 覆盖。
+- 固件路径会用 `wslpath -w` 自动转成 Windows 形式喂给 `-F`。
+
+#### Windows 原生 cmd（不进 WSL）
+
+```bat
+scripts\flash-win32.bat COM8              :: COM 口必须传，没有默认值
+set BAUD=3000000 && scripts\flash-win32.bat COM8
+set DRY=1 && scripts\flash-win32.bat COM8       :: 干跑，只打印命令
+set NOPAUSE=1 && scripts\flash-win32.bat COM8   :: 结束不 pause（脚本 / tasks 调用用）
+```
+
+- 默认 `mpcli.exe` 路径：`scripts\tool\mpcli\mpcli.exe`（仓库自带），用 `set MPCLI_EXE=` 覆盖。
+- 双击也可跑：先 `set PORT=COMx`，再双击 `flash-win32.bat`；执行完自动 `pause`，方便看输出。CI / tasks.json 里调用时把 `NOPAUSE=1` 打开即可。
+- 可覆盖的环境变量：`PORT` / `BAUD` / `FW` / `ADDR` / `MPCLI_EXE` / `DRY` / `NOPAUSE`。
 
 ---
 
