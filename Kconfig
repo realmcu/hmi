@@ -1,7 +1,7 @@
 # Copyright (c) 2024, Realtek Semiconductor Corporation.
 # SPDX-License-Identifier: Apache-2.0
 
-menu "DeskMate Application"
+menu "Chargebox Application"
 
 config RTK_BT_BREDR
 	bool "Enable Classic Bluetooth (BR/EDR) support"
