@@ -6,7 +6,8 @@
 - `flash-linux.sh` —— 原生 Linux 下用 Linux 版 `mpcli` 烧录（本机当前用这个）
 - `flash-wsl.sh` —— WSL 里驱动 Windows 版 `mpcli.exe` 烧录（旧环境留档，Linux 下不用）
 - `flash-win32.bat` —— Windows 原生 cmd 下直接调 `mpcli.exe` 烧录（不进 WSL）
-- `tool/mpcli/` —— 随仓库自带的 mpcli v4.0.0.7；`mpcli`（ELF）与 `mpcli.exe`（Windows）并排放，`fw/` 和 `config/` 共用。三个 flash 脚本默认从这里取，不再依赖外部安装
+- `flash-runtime-linux.sh` / `flash-runtime-wsl.sh` / `flash-runtime-win32.bat` —— 烧录**整套 runtime**（boot patch / upperstack / stack & sys patch / DSP / Config，共 11 个镜像），与上面三个「只烧 app.bin」的脚本一一对应，见「2.5 烧录 runtime」
+- `tool/mpcli/` —— 随仓库自带的 mpcli v4.0.0.7；`mpcli`（ELF）与 `mpcli.exe`（Windows）并排放，`fw/` 和 `config/` 共用。所有 flash 脚本默认从这里取，不再依赖外部安装
 - `serial_term.py` —— **Windows 专用**串口终端（依赖 `msvcrt`，Linux 下跑不了）。Linux 下看 log 见「查看 LOG」章节，用现成命令即可
 
 ---
@@ -106,6 +107,67 @@ set NOPAUSE=1 && scripts\flash-win32.bat COM8   :: 结束不 pause（脚本 / ta
 - 默认 `mpcli.exe` 路径：`scripts\tool\mpcli\mpcli.exe`（仓库自带），用 `set MPCLI_EXE=` 覆盖。
 - 双击也可跑：先 `set PORT=COMx`，再双击 `flash-win32.bat`；执行完自动 `pause`，方便看输出。CI / tasks.json 里调用时把 `NOPAUSE=1` 打开即可。
 - 可覆盖的环境变量：`PORT` / `BAUD` / `FW` / `ADDR` / `MPCLI_EXE` / `DRY` / `NOPAUSE`。
+
+---
+
+## 2.5 烧录 runtime
+
+上面三个 `flash-*` 脚本只烧**单个 App 镜像**（`-p -A 0x7009E000 -F bin/app.bin`）。换板子、刷新 BT stack / DSP、或板子是空片时，还得先烧一套 **runtime**。这由 `flash-runtime-*` 三个脚本负责，内部调 mpcli 的 `--flash-runtime`，一条命令生成 `flash_image.json` 再 `-a` 全刷。
+
+### 常用命令
+
+```bash
+scripts/flash-runtime-linux.sh                        # 原生 Linux，默认 /dev/ttyUSB0
+scripts/flash-runtime-linux.sh /dev/ttyUSB1           # 位置参数指定下载口
+CHIP=RTL8783G scripts/flash-runtime-linux.sh          # 换芯片
+DRY=1 scripts/flash-runtime-linux.sh                  # 干跑，不接板子也能看命令
+
+scripts/flash-runtime-wsl.sh COM8                     # WSL 驱动 mpcli.exe（默认 COM13）
+```
+
+```bat
+scripts\flash-runtime-win32.bat COM8                  :: Windows 原生 cmd，COM 口必须传
+set CHIP=RTL8783G && scripts\flash-runtime-win32.bat COM8
+```
+
+### 默认配置
+
+| 项 | 值 | 覆盖方式 |
+|---|---|---|
+| 芯片 | `RTL8773G`（取 `tool/mpcli/fw/runtime_system_bin/` 下的目录名，可选 `RTL8773G` / `RTL8783G` / `RTL87X3EP`） | `CHIP=` |
+| 下载口 | `/dev/ttyUSB0`（linux）、`COM13`（wsl）、无默认（win32） | 位置参数 或 `PORT=` |
+| 波特率 | `2000000` | `BAUD=` |
+| 完整参数 | `--flash-runtime <CHIP> -c <port> -u -d -b 2000000` | — |
+
+`-T` 不用传，mpcli 从 `CHIP` 自动推导（`RTL8773G` → `RTL87X3G`）。
+
+### 注意事项
+
+- **runtime 不含 APP**。烧的 11 个镜像地址是 `0x70002000`(SYSTEM_Config) / `4000`+`7000`(boot patch0/1) / `a000`(upperstack) / `49000`(OTA header) / `4a000`(stack patch) / `7c000`(sys patch) / `21e000`+`2bc000`+`2fc000`(DSP sys/app/cfg) / `306000`(APP_Config)，**没有 APP 的 `0x7009E000`**。完整刷机要两步：
+  ```bash
+  scripts/flash-runtime-linux.sh          # 1. 先烧 runtime
+  scripts/flash-linux.sh                  # 2. 再烧 bin/app.bin
+  ```
+- **`-u -d` 是脚本显式加的，别去掉**。mpcli 的 `--flash-runtime` 只注入 `-M 5 -r -b 3000000`，而 `SYSTEM_Config` 落在受保护的 `0x70002000`（OEM_CFG 区），少了 `-u` 写不进去。
+- `--flash-runtime` **不支持** `--gen-output-dir`，生成的 `flash_image.json` / `flash_image_report.txt` 必然落在 `fw/runtime_system_bin/<CHIP>/`。已在 `tool/mpcli/.gitignore` 里忽略，不会污染仓库。
+- WSL 版走 UNC 路径（`\\wsl.localhost\...`）读固件，比原生 Linux 慢（扫 11 个 bin 约 2.5s vs 0.03s）。嫌慢就把 `fw/runtime_system_bin/<CHIP>` 拷到 Windows 盘，改用两步法：
+  ```bash
+  cd scripts/tool/mpcli
+  ./mpcli.exe --gen-json --bin-dir <Windows 盘上的固件目录> --gen-output-dir <输出目录>
+  ./mpcli.exe -f <输出目录>\flash_image.json -a -c COM8 -T RTL87X3G -b 2000000 -M 5 -r -u -d
+  ```
+
+### 烧其他固件目录 / 单个镜像
+
+- **烧 SDK 构建输出或第三方固件包**（目录里要有带 MP header 的 `.bin` 和 `flash_map.ini`）：
+  ```bash
+  cd scripts/tool/mpcli
+  ./mpcli --gen-json --bin-dir <固件目录> -T RTL87X3G -c /dev/ttyUSB0 -u -d -b 2000000
+  ```
+- **只烧某一个镜像**：现有 `flash-*` 脚本的 `ADDR=` / `FW=` 就够用，地址查上面列表或 `fw/runtime_system_bin/<CHIP>/flash_map.ini`：
+  ```bash
+  ADDR=0x7000A000 FW=/path/to/upperstack.bin scripts/flash-linux.sh
+  ```
 
 ---
 

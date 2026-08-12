@@ -2,6 +2,11 @@
 # 忽略掉避免污染仓库。
 log/
 
+# --flash-runtime / --gen-json 会把 JSON 和报告写进 fw/runtime_system_bin/<CHIP>/，
+# 这是每次烧录都重新生成的中间产物，不入库。
+fw/runtime_system_bin/*/flash_image.json
+fw/runtime_system_bin/*/flash_image_report.txt
+
 # 上游源里可能带 tar.gz / zip 等打包中间产物，防手滑
 *.tar.gz
 *.zip
