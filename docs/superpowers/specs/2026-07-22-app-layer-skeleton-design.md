@@ -22,7 +22,6 @@
 | 传感器算法 | `component/gsensor-algorithm/` 有计步 FSM + `pedo_logger` + 共享 worker slot |
 | 存储 | FlashDB 三种模式（KV / TS / Blob）已就绪，含 registry |
 | RTC | 开 |
-| NN | TFLite Micro + CMSIS-NN 编译期可选（当前关闭，预留） |
 | 输入 | 按键；触摸暂停用 |
 | OS 抽象 | Realtek OSIF（`os_task.h` / `os_msg.h` / `os_timer.h` / `os_sync.h` 等）——跨 Realtek SDK 通用 |
 
