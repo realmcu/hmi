@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.20.0)
 # ============================================================
 # HMI 应用位置无关锚点
 #   HMI_APP_ROOT       — 本应用根目录（hmi repo checkout 位置）
-#   HMI_COMPONENT_ROOT — 应用组件目录（posix / FlashDB / tflite-micro / cmsis-nn 等 west project 的挂载点）
+#   HMI_COMPONENT_ROOT — 应用组件目录（posix / FlashDB / protocol / gsensor-algorithm 等 west project 的挂载点）
 #   REALTEK_APP_ROOT   — realtek-app SDK 根目录
 #
 # REALTEK_APP_ROOT 必须在 find_package(Zephyr) 之前可用（version_generate /
