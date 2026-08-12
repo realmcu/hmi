@@ -12,6 +12,7 @@ extern "C"
 {
 #endif
 
+#include "stddef.h"
 #include "stdint.h"
 #include "stdbool.h"
 
@@ -163,6 +164,56 @@ typedef void (*navi_frame_ready_cb_t)(const uint8_t *p_jpeg, uint32_t jpeg_len, 
 typedef bool (*navi_gui_frame_cb_t)(const uint8_t *p_gui_src,
                                     uint32_t jpeg_len,
                                     uint16_t frame_seq);
+
+/* QR-code download URL helpers. */
+
+/** Base URL of the HoneyBox Android download page. */
+#define NAVI_QR_URL_BASE    "https://github.com/realmcu/HoneyBox/releases/latest/download/HoneyBox.apk"
+
+/** Model identifier embedded in the QR-code URL. */
+#define NAVI_QR_MODEL_ID    "RTL8773G"
+
+/** Serial-number field embedded in the QR-code URL. */
+#define NAVI_QR_SN          "0529"
+
+/** Minimum buffer size (bytes) for navi_projection_build_qr_url(), including the NUL terminator. */
+#define NAVI_QR_URL_MAX_LEN 256
+
+/** Placeholder BLE address used on simulator hosts (_WIN32 / __linux__), percent-encoded colons. */
+#define NAVI_QR_ADDR_SIM    "42%3A18%3A3F%3A91%3A72%3A44"
+
+/**
+ * @brief Build the HoneyBox download QR-code URL for this device.
+ *
+ * Produces a canonical URL of the form:
+ * @verbatim
+ *   https://github.com/realmcu/HoneyBox/releases/latest/download/HoneyBox.apk
+ *   ?modelid=RTL8773G&sn=0529&addr=AA%3ABB%3ACC%3ADD%3AEE%3AFF
+ * @endverbatim
+ *
+ * Colon separators in the BLE address are percent-encoded as %3A so the URL
+ * is valid without additional quoting in all QR-code contexts.  Address bytes
+ * are ordered most-significant first (standard display order).
+ *
+ * On simulator hosts (_WIN32 / __linux__) the address field is replaced by
+ * the compile-time placeholder #NAVI_QR_ADDR_SIM.
+ *
+ * Example:
+ * @code
+ *     char url[NAVI_QR_URL_MAX_LEN];
+ *     navi_projection_build_qr_url(url, sizeof(url));
+ *     gui_qbcode_config(qrcode, (uint8_t *)url, strlen(url), 3);
+ * @endcode
+ *
+ * @param[out] buf  Caller-supplied buffer that receives the null-terminated URL.
+ *                  Must be at least #NAVI_QR_URL_MAX_LEN bytes to avoid truncation.
+ * @param[in]  len  Size of @p buf in bytes.
+ *
+ * @return Number of characters that would have been written excluding the NUL
+ *         terminator, following the snprintf convention.  A return value >= @p len
+ *         indicates truncation.
+ */
+int navi_projection_build_qr_url(char *buf, size_t len);
 
 /* Public API. */
 

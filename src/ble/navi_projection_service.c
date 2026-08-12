@@ -1469,3 +1469,21 @@ void navi_projection_set_gui_frame_cb(navi_gui_frame_cb_t frame_cb)
 {
     pfn_gui_frame_cb = frame_cb;
 }
+
+int navi_projection_build_qr_url(char *buf, size_t len)
+{
+#if defined(_WIN32) || defined(__linux__)
+    return snprintf(buf, len,
+                    NAVI_QR_URL_BASE "?modelid=" NAVI_QR_MODEL_ID
+                    "&sn=" NAVI_QR_SN "&addr=" NAVI_QR_ADDR_SIM);
+#else
+    uint8_t bt_addr[6] = {0};
+    gap_get_param(GAP_PARAM_BD_ADDR, bt_addr);
+    return snprintf(buf, len,
+                    NAVI_QR_URL_BASE "?modelid=" NAVI_QR_MODEL_ID
+                    "&sn=" NAVI_QR_SN
+                    "&addr=%02X%%3A%02X%%3A%02X%%3A%02X%%3A%02X%%3A%02X",
+                    bt_addr[5], bt_addr[4], bt_addr[3],
+                    bt_addr[2], bt_addr[1], bt_addr[0]);
+#endif
+}
