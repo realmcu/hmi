@@ -33,30 +33,6 @@ config RTK_BR_PROFILE_PAN
 	depends on RTK_BT_BREDR
 	default n
 
-# ============================================================
-# TensorFlow Lite Micro + CMSIS-NN
-# ============================================================
-
-config APP_TFLITE_MICRO
-	bool "Enable TensorFlow Lite Micro (hello_world demo)"
-	default n
-	help
-	  Build the TFLite Micro runtime and the hello_world demo
-	  under port/tflite_micro/. Provides shell command `tflm`
-	  (subcommands: float / int8 / all) for on-device inference.
-
-config APP_CMSIS_NN
-	bool "Enable CMSIS-NN kernels (Cortex-M55 Helium/MVE)"
-	depends on APP_TFLITE_MICRO
-	default n
-	help
-	  Build the ARM CMSIS-NN v6.0.0 library from component/cmsis-nn/
-	  and use its optimized int8 kernels in TFLite Micro.
-	  On Cortex-M55 with Helium (MVE) this accelerates int8 GEMM/
-	  conv/depthwise significantly. Defining CMSIS_NN also switches
-	  TFLM's kernels/fully_connected.h dispatch to the external
-	  cmsis_nn/fully_connected.cc implementation.
-
 endmenu
 
 menu "Zephyr Kernel"
