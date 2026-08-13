@@ -374,7 +374,11 @@ L2 版本号：**0**
 
 ### 3.6 运动数据命令 (command id 0x05)
 
-L2 版本号：**0**
+L2 版本号：**1**
+
+> 版本 1 的运动历史记录与设备 FlashDB 中的 `health_pedo_record_t`
+> 字段一一对应。线上多字节整数统一使用大端序，不直接复制 MCU
+> 内存中的结构体字节。
 
 | Key | 定义 |
 |-----|------|
@@ -398,35 +402,29 @@ L2 版本号：**0**
 
 #### 0x02 — 运动数据返回
 
-**Value**：Sport data header（4 bytes）+ N × Sport item（8 bytes）
+**Value**：Record count（1 byte）+ N × Health record（18 bytes）
 
-**Sport data header（32 bits）**：
+每个 `Health record` 对应 FlashDB 中的一条运动记录。设备每次最多返回
+8 条记录；当还有数据时，随后发送 `0x04` More flag，手机应再次发送
+`0x01` 请求下一页。
 
-| 字段 | 宽度 | 说明 |
-|------|------|------|
-| Date | 16 bits | 见 Date 定义 |
-| Reserve | 8 bits | — |
-| Sport Item count | 8 bits | 后续 sport item 的个数 |
+**Health record（18 bytes）**：
 
-**Date（16 bits）**：
+| 偏移 | 字段 | 宽度 | 字节序 | 说明 |
+|------|------|------|--------|------|
+| 0 | Timestamp | 4 bytes | 大端 | Unix 时间戳（秒），与 FlashDB 记录时间一致 |
+| 4 | Steps | 2 bytes | 大端 | 该记录的步数 |
+| 6 | Distance | 2 bytes | 大端 | 距离，单位 m |
+| 8 | Calories | 2 bytes | 大端 | 卡路里，单位 0.1 kcal |
+| 10 | Heart rate | 1 byte | — | 平均心率，单位 bpm；`0` 表示无心率数据 |
+| 11 | Bucket minutes | 1 byte | — | 该记录覆盖的统计时长，单位分钟 |
+| 12 | Mode | 1 byte | — | `0`=步行，`1`=跑步，`2`=无效 |
+| 13 | Flags | 1 byte | — | bit0=`HAS_HR`，bit1=`PARTIAL_BUCKET`，其余保留 |
+| 14 | Reserved | 4 bytes | 大端 | 保留字段，当前发送 FlashDB 中保存的原值 |
 
-| 字段 | 宽度 | 说明 |
-|------|------|------|
-| Reserve | 1 bit | — |
-| Year | 6 bits | 0~63，从 2000 年起 |
-| Month | 4 bits | 1~12 |
-| Day | 5 bits | 1~31 |
-
-**Sport item（8 bytes = 64 bits）**：
-
-| 字段 | 宽度 | 说明 |
-|------|------|------|
-| Offset | 11 bits | 从每天 0 点起，每 15 分钟 +1 |
-| Mode | 2 bits | 运动模式 |
-| Step count | 12 bits | 步数 |
-| Active time | 4 bits | 活动时间 |
-| Calory | 19 bits | 卡路里 |
-| Distance | 16 bits | 距离 |
+`Timestamp` 直接使用 FlashDB 记录的时间，不转换成 `Date + Offset`，也不
+根据 `Bucket minutes` 前移或后移时间。满页 Value 长度为
+`1 + 8 × 18 = 145 bytes`。
 
 #### 0x03 — 睡眠数据返回
 
