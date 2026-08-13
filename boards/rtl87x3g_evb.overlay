@@ -108,8 +108,11 @@
 	pinctrl-0 = <&i2c2_default>;
 	pinctrl-1 = <&i2c2_sleep>;
 	pinctrl-names = "default", "sleep";
-	touch_device: touch_cst816d@15 {
-		compatible = "hynitron,cst816d";
+	/*touch_device: touch_cst816d@15 {
+	* compatible = "hynitron,cst816d";   
+	*/
+	touch_device: touch_cst820@15 {
+		compatible = "hynitron,cst820";
 		reg = <0x15>;
 		irq-gpios = <&gpioa 0 GPIO_ACTIVE_LOW>;		/* P0_0, falling edge */
 		rst-gpios = <&gpioa 3 GPIO_ACTIVE_HIGH>;	/* P0_3 */
