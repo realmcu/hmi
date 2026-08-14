@@ -1,0 +1,84 @@
+/**
+ * @file    ebadge_task.h
+ * @brief   Serialisation task (l2_task) for the eBadge V1.2 stack.
+ *
+ * All state-mutating protocol work happens on this one task, driven by an
+ * os_msg queue.  Message kinds:
+ *
+ *   RX_BYTES  -- opaque BLE payload from port_ble (caller frees on free_cb)
+ *   POST_CALL -- generic function pointer + arg, used to marshal from other
+ *                threads (softap / tcp / user UI) into the l2_task context
+ *   TIMER_TICK-- fired by a low-rate periodic tick (~100ms) so xfer_session
+ *                can time out without a dedicated OS timer  (see design)
+ *
+ * Everything else (frame reassembly, TLV parse, xfer_session state, notify
+ * emission) is single-threaded on this task -- no locks anywhere.
+ */
+#ifndef _EBADGE_TASK_H_
+#define _EBADGE_TASK_H_
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*----------------------------------------------------------------------------*
+ *  Startup
+ *----------------------------------------------------------------------------*/
+/**
+ * @brief  Create the l2_task, msg queue, register handler table.
+ *         Called from main.c after BLE stack is up.  Idempotent.
+ */
+int ebadge_task_init(void);
+
+/*----------------------------------------------------------------------------*
+ *  RX ingress  (from port_ble on ATT write)
+ *----------------------------------------------------------------------------*/
+/**
+ * @brief  Enqueue a BLE ATT write payload for framing.  Safe from BT stack
+ *         context.  We take a copy (malloc) -- port_ble may reuse its buffer.
+ *
+ * @return 0 on enqueue, negative on OOM / queue full (payload dropped).
+ */
+int ebadge_task_on_rx(const uint8_t *data, uint16_t len);
+
+/*----------------------------------------------------------------------------*
+ *  Cross-thread post_call
+ *----------------------------------------------------------------------------*/
+typedef void (*ebadge_post_fn_t)(void *arg);
+
+/**
+ * @brief  Ask the l2_task to invoke fn(arg) on its own context.  Safe from
+ *         any thread.  If @p arg was heap-allocated the callback is
+ *         responsible for freeing it.
+ */
+int ebadge_task_post_call(ebadge_post_fn_t fn, void *arg);
+
+/*----------------------------------------------------------------------------*
+ *  Tick timer  (mocked with OS timer feeding a POST_CALL each 100ms)
+ *----------------------------------------------------------------------------*/
+/**
+ * @brief  Register a periodic tick handler (called ~ every EBADGE_TICK_MS ms
+ *         on the l2_task).  xfer_session uses this for timeouts.
+ *
+ * NOTE: only ONE tick sink is supported for now.  Use post_call from within
+ *       the sink if fanout is needed later.
+ */
+typedef void (*ebadge_tick_fn_t)(uint32_t now_ms);
+void ebadge_task_set_tick(ebadge_tick_fn_t fn);
+
+/** Nominal tick period.  See xfer_session timeout constants. */
+#define EBADGE_TICK_MS   100
+
+/*----------------------------------------------------------------------------*
+ *  Wall-clock helper  (monotonic-ish, ms since boot; wraps uint32_t)
+ *----------------------------------------------------------------------------*/
+uint32_t ebadge_task_now_ms(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* _EBADGE_TASK_H_ */

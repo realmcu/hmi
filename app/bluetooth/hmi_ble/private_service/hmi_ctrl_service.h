@@ -12,17 +12,23 @@ extern "C" {
  *                              Macros
  *============================================================================*/
 
-/* 128-bit Service UUID */
+/* 128-bit UUIDs -- aligned with eBadge protocol V1.2 (eBadge-PROT-001):
+ *   Service : f48affc0-f69a-11e8-8eb2-f2801f1b9fd1
+ *   RX/CMD  : f48affc1-...  (Write / Write Without Response, H -> D)
+ *   TX/EVENT: f48affc2-...  (Notify, D -> H; CCCD required)
+ *   STATUS  : f48affc3-...  (Read, extension -- not in the spec's mandatory
+ *                            RX/TX list but retained for probing readiness.)
+ *
+ * The old 16-bit vendor aliases (0xFFC1..0xFFC3) are gone with this migration:
+ *   - they only existed to dodge the OTA 0xFFDx range on this SoC (16-bit
+ *     namespace collision, see note ebadge8773g-ota-ble-uuid-collision),
+ *   - 128-bit UUIDs live in a disjoint attribute-type space from OTA's 16-bit
+ *     ones, so no collision is possible with OTA (0xFFD1..0xFFD4) any more.
+ */
 extern const uint8_t GATT_UUID128_HMI_SERVICE[16];
-
-/* Characteristic UUIDs (16-bit, vendor specific).
- * NOTE: kept in the 0xFFCx range, NOT 0xFFDx.  The Realtek OTA/DFU service
- * occupies 0xFFD0~0xFFD4 (app/ota/ota_service.h: OTA=0xFFD1, MAC=0xFFD2,
- * PATCH=0xFFD3, APP_VER=0xFFD4).  Overlapping there makes a BLE client resolve
- * these characteristics to the OTA copy and mis-route writes -- do not move. */
-#define BLE_UUID_HMI_CMD                0xFFC1  /* Write: peer -> display */
-#define BLE_UUID_HMI_EVENT              0xFFC2  /* Notify: display -> peer */
-#define BLE_UUID_HMI_STATUS             0xFFC3  /* Read: display status   */
+extern const uint8_t GATT_UUID128_HMI_CMD[16];
+extern const uint8_t GATT_UUID128_HMI_EVENT[16];
+extern const uint8_t GATT_UUID128_HMI_STATUS[16];
 
 #define HMI_CMD_MAX_LEN                 512
 #define HMI_STATUS_MAX_LEN              32

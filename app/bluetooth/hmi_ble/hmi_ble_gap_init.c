@@ -34,16 +34,22 @@
 #define DEFAULT_ADVERTISING_INTERVAL_MAX            320
 
 
-#define GATT_UUID128_BWPS_ADV   0x12, 0xA2, 0x4D, 0x2E, 0xFE, 0x14, 0x48, 0x8e, 0x93, 0xD2, 0x17, 0x3C, 0xFF, 0x01, 0x00, 0x00
-#define GATT_UUID128_BEACON_SERVICE_ADV           0x12, 0xA2, 0x4D, 0x2E, 0xFE, 0x14, 0x48, 0x8e, 0x93, 0xD2, 0x17, 0x3C, 0xFF, 0x02, 0x00, 0x00
+/* Protocol V1.2 vendor Primary Service UUID advertised in scan-response:
+ * f48affc0-f69a-11e8-8eb2-f2801f1b9fd1, low-address = last hex byte of the
+ * string form (Bluetooth spec LE order -- matches asp_svc.c convention). */
+#define GATT_UUID128_HMI_SERVICE_ADV \
+    0xD1, 0x9F, 0x1B, 0x1F, 0x80, 0xF2, \
+    0xB2, 0x8E, 0xE8, 0x11, 0x9A, 0xF6, \
+    0xC0, 0xFF, 0x8A, 0xF4
 
 // GAP - SCAN RSP data (max size = 31 bytes)
 static uint8_t scan_rsp_data[] =
 {
-    /* Service */
+    /* Service: expose the protocol vendor Primary Service UUID so the peer
+     * (App / mini-program) can filter for eBadge devices on discovery. */
     17,             /* length     */
-    GAP_ADTYPE_128BIT_MORE,            /* type="Complete 128-bit UUIDs available" */
-    GATT_UUID128_BWPS_ADV,
+    GAP_ADTYPE_128BIT_COMPLETE,            /* type="Complete 128-bit UUIDs available" */
+    GATT_UUID128_HMI_SERVICE_ADV,
 
     /* place holder for Local Name, filled by BT stack. if not present */
     /* BT stack appends Local Name.                                    */
@@ -70,17 +76,17 @@ uint8_t adv_data[] =
     GAP_ADTYPE_LOCAL_NAME_COMPLETE, /* type="Complete local name" */
     'e', 'B', 'a', 'd', 'g', 'e', /* eBadge */
 
-    /* Service */
-    0x03,           /* length     */
-    GAP_ADTYPE_16BIT_COMPLETE, /* type="More 16-bit UUIDs available, service uuid 0xFEE7 0xA00A" */
-    0xE7,
-    0xFE,
     /* Manufacture specified data*/
     0x09,           /* length     */
-    0xFF,           /* type: manufacture specific data*/
+    GAP_ADTYPE_MANUFACTURER_SPECIFIC,
     0xC5, 0xFE,     /* company id */
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* mac address, filled at runtime */
 };
+
+/* The MAC occupies the final GAP_BD_ADDR_LEN bytes of adv_data[].  Deriving the
+ * offset from sizeof() keeps it correct if the Local Name above is ever
+ * re-sized -- hard-coded indices silently ran past the end of the array. */
+#define ADV_DATA_MAC_OFFSET     (sizeof(adv_data) - GAP_BD_ADDR_LEN)
 
 
 
@@ -144,15 +150,13 @@ void hmi_ble_gap_init(void)
     le_adv_set_param(GAP_PARAM_ADV_FILTER_POLICY, sizeof(adv_filter_policy), &adv_filter_policy);
     le_adv_set_param(GAP_PARAM_ADV_INTERVAL_MIN, sizeof(adv_int_min), &adv_int_min);
     le_adv_set_param(GAP_PARAM_ADV_INTERVAL_MAX, sizeof(adv_int_max), &adv_int_max);
-    /* fill MAC address into manufacturer specific data at runtime */
-    uint8_t bt_bd_addr[6];
+    /* fill MAC address into manufacturer specific data at runtime, big-endian */
+    uint8_t bt_bd_addr[GAP_BD_ADDR_LEN];
     gap_get_param(GAP_PARAM_BD_ADDR, bt_bd_addr);
-    adv_data[19] = bt_bd_addr[5];
-    adv_data[20] = bt_bd_addr[4];
-    adv_data[21] = bt_bd_addr[3];
-    adv_data[22] = bt_bd_addr[2];
-    adv_data[23] = bt_bd_addr[1];
-    adv_data[24] = bt_bd_addr[0];
+    for (uint8_t i = 0; i < GAP_BD_ADDR_LEN; i++)
+    {
+        adv_data[ADV_DATA_MAC_OFFSET + i] = bt_bd_addr[GAP_BD_ADDR_LEN - 1 - i];
+    }
 
     le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(adv_data), adv_data);
     le_adv_set_param(GAP_PARAM_SCAN_RSP_DATA, sizeof(scan_rsp_data), (void *)scan_rsp_data);

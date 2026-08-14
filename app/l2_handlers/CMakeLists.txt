@@ -1,29 +1,10 @@
 # Copyright (c) 2024 Realtek Semiconductor Corp.
 # SPDX-License-Identifier: Apache-2.0
+#
+# EXCLUDED FROM BUILD.  These L2 command handlers were bound to the old
+#百度 protocol stack (HMI_L2_CMD_* namespace, KV-list wire format).  V1.2
+# migration replaces them with app/protocol/handlers/*.  Source files are
+# retained for reference but not compiled.  See note eBadge8773g-p2p-xfer
+# for the P2P sender (hmi_l2_xfer_client.c) that also parks here.
 
 cmake_minimum_required(VERSION 3.10)
-
-if(1)
-
-    file(GLOB SOURCES "*.c" "*.cpp")
-    file(GLOB HEADERS "*.h" "*.hpp")
-
-    if((NOT HEADERS) AND (NOT SOURCES))
-        message(STATUS "No source or header files found in ${CMAKE_CURRENT_SOURCE_DIR}.")
-        target_include_directories(${APP_TARGET_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-    endif()
-
-    if(HEADERS AND (NOT SOURCES))
-        target_include_directories(${APP_TARGET_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-    endif()
-
-    if(SOURCES AND (NOT HEADERS))
-        target_sources(${APP_TARGET_NAME} PRIVATE ${SOURCES})
-    endif()
-
-    if(SOURCES AND HEADERS)
-        target_sources(${APP_TARGET_NAME} PRIVATE ${SOURCES})
-        target_include_directories(${APP_TARGET_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-    endif()
-
-endif()

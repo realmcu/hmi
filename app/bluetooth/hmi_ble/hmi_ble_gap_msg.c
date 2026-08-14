@@ -15,7 +15,9 @@
 #include "hmi_ble_gap_msg.h"
 #include "hmi_ble_conn.h"
 #include "app_ota_service.h"
+#if 0 /* V1.2 migration: P2P sender parked */
 #include "hmi_ble_central.h"
+#endif
 
 static T_GAP_DEV_STATE gap_dev_state = {0, 0, 0, 0};                 /**< GAP device state */
 static T_GAP_CONN_STATE gap_conn_state = GAP_CONN_STATE_DISCONNECTED; /**< GAP connection state */
@@ -177,12 +179,16 @@ static void app_handle_dev_state_evt(T_GAP_DEV_STATE new_state, uint16_t cause)
         /* Second half of a re-scan: le_scan_start() the fresh session only once
          * the old one has fully stopped (IDLE).  Issuing it back-to-back with
          * le_scan_stop() drops the start -> the second scan finds 0 devices. */
+#if 0 /* V1.2 migration: P2P sender parked */
         hmi_ble_central_handle_scan_state(new_state.gap_scan_state);
+#endif
     }
 
     /* Let the central module sequence its adv-stop -> scan-start transition
      * (starting a scan concurrently with an adv stop wedges adv in STOP). */
+#if 0 /* V1.2 migration: P2P sender parked */
     hmi_ble_central_handle_adv_state(new_state.gap_adv_state);
+#endif
 
     gap_dev_state = new_state;
 }
@@ -210,12 +216,14 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
             {
                 APP_PRINT_ERROR1("app_handle_conn_state_evt: connection lost cause 0x%x", disc_cause);
             }
+#if 0 /* V1.2 migration: P2P sender parked -- always take the receiver branch */
             if (hmi_ble_central_is_active())
             {
                 /* We owned this link as GATT client (file-send mode). */
                 hmi_ble_central_handle_disconnected(conn_id, disc_cause);
             }
             else
+#endif
             {
                 app_ota_glue_link_disconnected(conn_id, disc_cause);
             }
@@ -240,12 +248,14 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
                             TRACE_BDADDR(remote_bd), remote_bd_type,
                             conn_interval, conn_latency, conn_supervision_timeout);
 
+#if 0 /* V1.2 migration: P2P sender parked -- always take the receiver branch */
             if (hmi_ble_central_is_active())
             {
                 /* We initiated this link as GATT client -> start discovery. */
                 hmi_ble_central_handle_connected(conn_id);
             }
             else
+#endif
             {
                 update_conn_info(conn_id);
                 app_ota_glue_link_connected(conn_id, 0, remote_bd);

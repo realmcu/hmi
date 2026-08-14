@@ -45,12 +45,40 @@ static const uint8_t hmi_cmd_user_desc[]    = "HMI CMD";
 static const uint8_t hmi_event_user_desc[]  = "HMI Event";
 static const uint8_t hmi_status_user_desc[] = "HMI Status";
 
-/* 128-bit Service UUID: 484D4953-0000-1000-8000-00805F9B34FB */
+/* 128-bit UUIDs -- eBadge protocol V1.2 (eBadge-PROT-001 §2.2).
+ * String form (big-endian, as printed): f48affc0-f69a-11e8-8eb2-f2801f1b9fd1
+ *                                       f48affc1-...  CMD   (H -> D write)
+ *                                       f48affc2-...  EVENT (D -> H notify)
+ *                                       f48affc3-...  STATUS (read, extension)
+ * Byte arrays are stored little-endian, low-address = last hex byte of the
+ * string form (Realtek convention -- matches asp_svc.c).  Only byte 12 (the
+ * 4th-from-last of the string) differs between the four UUIDs. */
 const uint8_t GATT_UUID128_HMI_SERVICE[16] =
 {
-    0xFB, 0x34, 0x9B, 0x5F, 0x80, 0x00,
-    0x00, 0x80, 0x00, 0x10, 0x00, 0x00,
-    0x53, 0x49, 0x4D, 0x48
+    0xD1, 0x9F, 0x1B, 0x1F, 0x80, 0xF2,
+    0xB2, 0x8E, 0xE8, 0x11, 0x9A, 0xF6,
+    0xC0, 0xFF, 0x8A, 0xF4
+};
+
+const uint8_t GATT_UUID128_HMI_CMD[16] =
+{
+    0xD1, 0x9F, 0x1B, 0x1F, 0x80, 0xF2,
+    0xB2, 0x8E, 0xE8, 0x11, 0x9A, 0xF6,
+    0xC1, 0xFF, 0x8A, 0xF4
+};
+
+const uint8_t GATT_UUID128_HMI_EVENT[16] =
+{
+    0xD1, 0x9F, 0x1B, 0x1F, 0x80, 0xF2,
+    0xB2, 0x8E, 0xE8, 0x11, 0x9A, 0xF6,
+    0xC2, 0xFF, 0x8A, 0xF4
+};
+
+const uint8_t GATT_UUID128_HMI_STATUS[16] =
+{
+    0xD1, 0x9F, 0x1B, 0x1F, 0x80, 0xF2,
+    0xB2, 0x8E, 0xE8, 0x11, 0x9A, 0xF6,
+    0xC3, 0xFF, 0x8A, 0xF4
 };
 
 /*============================================================================*
@@ -84,12 +112,14 @@ const T_ATTRIB_APPL hmi_ctrl_service_tbl[] =
         GATT_PERM_READ
     },
 
-    /* CMD characteristic value, index 2 (HMI_SVC_CHAR_CMD_WRITE_INDEX) */
+    /* CMD characteristic value, index 2 (HMI_SVC_CHAR_CMD_WRITE_INDEX)
+     * 128-bit UUID: f48affc1-f69a-11e8-8eb2-f2801f1b9fd1 (protocol RX/CMD). */
     {
-        ATTRIB_FLAG_VALUE_APPL,
+        ATTRIB_FLAG_VALUE_APPL | ATTRIB_FLAG_UUID_128BIT,
         {
-            LO_WORD(BLE_UUID_HMI_CMD),
-            HI_WORD(BLE_UUID_HMI_CMD),
+            0xD1, 0x9F, 0x1B, 0x1F, 0x80, 0xF2,
+            0xB2, 0x8E, 0xE8, 0x11, 0x9A, 0xF6,
+            0xC1, 0xFF, 0x8A, 0xF4
         },
         0,
         NULL,
@@ -121,12 +151,14 @@ const T_ATTRIB_APPL hmi_ctrl_service_tbl[] =
         GATT_PERM_READ
     },
 
-    /* Event characteristic value, index 5 (HMI_SVC_CHAR_EVENT_NOTIFY_INDEX) */
+    /* Event characteristic value, index 5 (HMI_SVC_CHAR_EVENT_NOTIFY_INDEX)
+     * 128-bit UUID: f48affc2-f69a-11e8-8eb2-f2801f1b9fd1 (protocol TX/EVENT). */
     {
-        ATTRIB_FLAG_VALUE_APPL,
+        ATTRIB_FLAG_VALUE_APPL | ATTRIB_FLAG_UUID_128BIT,
         {
-            LO_WORD(BLE_UUID_HMI_EVENT),
-            HI_WORD(BLE_UUID_HMI_EVENT),
+            0xD1, 0x9F, 0x1B, 0x1F, 0x80, 0xF2,
+            0xB2, 0x8E, 0xE8, 0x11, 0x9A, 0xF6,
+            0xC2, 0xFF, 0x8A, 0xF4
         },
         0,
         NULL,
@@ -172,12 +204,15 @@ const T_ATTRIB_APPL hmi_ctrl_service_tbl[] =
         GATT_PERM_READ
     },
 
-    /* Status characteristic value, index 9 (HMI_SVC_CHAR_STATUS_READ_INDEX) */
+    /* Status characteristic value, index 9 (HMI_SVC_CHAR_STATUS_READ_INDEX)
+     * 128-bit UUID: f48affc3-f69a-11e8-8eb2-f2801f1b9fd1 (extension, not in
+     * the V1.2 spec's mandatory RX/TX list). */
     {
-        ATTRIB_FLAG_VALUE_APPL,
+        ATTRIB_FLAG_VALUE_APPL | ATTRIB_FLAG_UUID_128BIT,
         {
-            LO_WORD(BLE_UUID_HMI_STATUS),
-            HI_WORD(BLE_UUID_HMI_STATUS),
+            0xD1, 0x9F, 0x1B, 0x1F, 0x80, 0xF2,
+            0xB2, 0x8E, 0xE8, 0x11, 0x9A, 0xF6,
+            0xC3, 0xFF, 0x8A, 0xF4
         },
         0,
         NULL,

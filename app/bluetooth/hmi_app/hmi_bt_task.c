@@ -27,7 +27,9 @@
 #include "hmi_ble_gap_init.h"
 #include "hmi_ble_gap_msg.h"
 #include "hmi_ble_profile_init.h"
+#if 0 /* V1.2 migration: P2P sender (hmi_ble_central) parked -- see hmi_ble/CMakeLists.txt */
 #include "hmi_ble_central.h"
+#endif
 
 
 #ifdef CONFIG_RTK_BT_BREDR
@@ -160,7 +162,9 @@ void bt_task_entry(void *p_param)
 #endif
     hmi_ble_gap_init();
     hmi_ble_profile_init();
+#if 0 /* V1.2 migration: P2P sender (hmi_ble_central) parked -- see hmi_ble/CMakeLists.txt */
     hmi_ble_central_init();   /* GATT client for device-to-device file send */
+#endif
 
 #ifdef CONFIG_RTK_BT_BREDR
     framework_init();

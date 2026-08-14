@@ -25,7 +25,7 @@
 #include <gap_msg.h>            /* GAP_ADV_STATE_IDLE */
 #include <profile_client.h>
 
-#include "hmi_ctrl_service.h"   /* GATT_UUID128_HMI_SERVICE, BLE_UUID_HMI_CMD/EVENT */
+#include "hmi_ctrl_service.h"   /* GATT_UUID128_HMI_SERVICE / _CMD / _EVENT */
 #include "hmi_ble_gap_msg.h"    /* hmi_ble_gap_start_adv() -- deferral-safe adv restart */
 #include "hmi_l2_xfer_client.h" /* sender-side xfer state machine */
 
@@ -69,8 +69,8 @@ static T_CLIENT_ID s_hmi_client = CLIENT_PROFILE_GENERAL_ID;
 /* Discovered handles of the connected peer's HMI ctrl service. */
 static uint16_t s_srv_start;
 static uint16_t s_srv_end;
-static uint16_t s_cmd_handle;    /* 0xFFC1 value handle (write)   */
-static uint16_t s_event_handle;  /* 0xFFC2 value handle (notify)  */
+static uint16_t s_cmd_handle;    /* CMD (f48affc1-...) value handle (write)   */
+static uint16_t s_event_handle;  /* EVENT (f48affc2-...) value handle (notify) */
 static uint16_t s_event_cccd;    /* 0xFFC2 CCCD                   */
 
 /* Standard CCCD (Client Characteristic Configuration) 16-bit UUID. */
@@ -127,7 +127,7 @@ static void cen_reset_handles(void)
  *============================================================================*/
 static void cen_on_discovery_done(uint8_t conn_id)
 {
-    APP_PRINT_INFO3("[central] discovery done: cmd(FFC1)=0x%x event(FFC2)=0x%x cccd=0x%x",
+    APP_PRINT_INFO3("[central] discovery done: cmd=0x%x event=0x%x cccd=0x%x",
                     s_cmd_handle, s_event_handle, s_event_cccd);
 
     if (s_cmd_handle == 0 || s_event_handle == 0)
@@ -220,11 +220,23 @@ static void cen_discover_result_cb(uint8_t conn_id, T_DISCOVERY_RESULT_TYPE type
             uint16_t vh   = data.p_char_uuid16_disc_data->value_handle;
             uint16_t uuid = data.p_char_uuid16_disc_data->uuid16;
             APP_PRINT_INFO2("[central]   char uuid 0x%04x value_handle 0x%x", uuid, vh);
-            if (uuid == BLE_UUID_HMI_CMD)
+            /* Protocol V1.2 uses 128-bit UUIDs only; nothing to match here.
+             * Kept as a landing case in case the stack ever reports a 16-bit
+             * standard characteristic (e.g. Included services) inside the
+             * vendor primary service range. */
+        }
+        break;
+
+    case DISC_RESULT_CHAR_UUID128:
+        {
+            uint16_t       vh    = data.p_char_uuid128_disc_data->value_handle;
+            const uint8_t *uuid  = data.p_char_uuid128_disc_data->uuid128;
+            APP_PRINT_INFO1("[central]   char uuid128 value_handle 0x%x", vh);
+            if (memcmp(uuid, GATT_UUID128_HMI_CMD, 16) == 0)
             {
                 s_cmd_handle = vh;
             }
-            else if (uuid == BLE_UUID_HMI_EVENT)
+            else if (memcmp(uuid, GATT_UUID128_HMI_EVENT, 16) == 0)
             {
                 s_event_handle = vh;
             }
@@ -268,7 +280,7 @@ static T_APP_RESULT cen_notif_ind_result_cb(uint8_t conn_id, bool notify, uint16
 {
     (void)conn_id; (void)notify;
     APP_PRINT_INFO2("[central] notif handle 0x%x len %d", handle, value_size);
-    /* EVENT (0xFFC2) carries the peer's proto frames (xfer responses + ACKs). */
+    /* EVENT (f48affc2-...) carries the peer's proto frames (xfer responses + ACKs). */
     if (handle == s_event_handle)
     {
         hmi_l2_xfer_client_on_notify(p_value, value_size);

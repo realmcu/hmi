@@ -5,8 +5,8 @@
  * Mirror of the receiver (hmi_l2_cmd_xfer.c) but as the initiator.  Speaks the
  * SAME wire stack as the phone->device path so the peer eBadge needs no change:
  *
- *   BLE  : write proto frames to peer CMD char (0xFFC1); responses arrive as
- *          notifications on peer EVENT char (0xFFC2).
+ *   BLE  : write proto frames to peer CMD char (f48affc1-...); responses arrive
+ *          as notifications on peer EVENT char (f48affc2-...).
  *   proto: [0xAB][ver/flags][len BE][crc16 BE][seq BE][payload]  (+ ACK per frame)
  *   L2   : [HMI_L2_CMD_FILE_XFER][ver][key][len_hi][len_lo][value]
  *   xfer : BEGIN_REQ -> BEGIN_RSP -> DATA(seq)... -> END_REQ -> END_RSP
@@ -56,7 +56,7 @@ typedef void (*xfer_client_done_cb_t)(T_XFER_CLIENT_RESULT result, uint32_t byte
  *
  * @param conn_id     GATT-client connection id (from central).
  * @param client_id   Client id registered by central.
- * @param cmd_handle  Peer CMD char (0xFFC1) value handle.
+ * @param cmd_handle  Peer CMD char (f48affc1-...) value handle.
  * @param type        HMI_L2_XFER_TYPE_* (image/video/raw).
  * @param src         Pointer to source bytes (e.g. XIP-mapped FlashDB BigFile).
  * @param total       Total byte count.
@@ -92,7 +92,7 @@ bool hmi_l2_xfer_client_get_progress(uint32_t *bytes_sent, uint32_t *total,
 /*----------------------------------------------------------------------------*
  *  Hooks driven by the central (GATT-client) layer
  *----------------------------------------------------------------------------*/
-/** Peer notification on EVENT char (0xFFC2): proto frame bytes. */
+/** Peer notification on EVENT char (f48affc2-...): proto frame bytes. */
 void hmi_l2_xfer_client_on_notify(const uint8_t *data, uint16_t len);
 /** ATT write completion for the CMD char (paces DATA / confirms delivery).
  *  @param write_type  GATT_WRITE_TYPE_* of the completed write. */

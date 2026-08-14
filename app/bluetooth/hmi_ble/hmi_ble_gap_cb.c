@@ -22,7 +22,9 @@
 #include <gap_adv.h>
 #include <app_msg.h>
 #include "hmi_ble_gap_cb.h"
+#if 0 /* V1.2 migration: P2P sender parked */
 #include "hmi_ble_central.h"
+#endif
 #include "trace.h"
 
 /**
@@ -86,8 +88,11 @@ T_APP_RESULT hmi_ble_gap_callback(uint8_t cb_type, void *p_cb_data)
         break;
 
     case GAP_MSG_LE_SCAN_INFO:
-        /* Central (send) mode: advertising report from a scan started by us. */
+        /* Central (send) mode: advertising report from a scan started by us.
+         * V1.2 migration: P2P sender parked -- no scanner active. */
+#if 0
         hmi_ble_central_handle_scan_info(p_data->p_le_scan_info);
+#endif
         break;
     default:
         APP_PRINT_ERROR1("app_gap_callback: unhandled cb_type 0x%x", cb_type);

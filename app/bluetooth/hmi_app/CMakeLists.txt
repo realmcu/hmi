@@ -10,6 +10,12 @@ if(1) #set to 1 to enable or variable to for depnedency
     file(GLOB SOURCES "*.c" "*.cpp")
     file(GLOB HEADERS "*.h" "*.hpp")
 
+    # V1.2 migration: hmi_ble_ctrl.c was the BLE transport adapter for the
+    # OLD proto (blocking send-task + rx queue keyed by proto_send's ACK sem).
+    # New stack has a leaner shim in app/protocol/port/ebadge_port_ble.c that
+    # binds the same hmi_ctrl_service directly, without the intermediate
+    # queues.  Exclude the file from the build; keep it on disk for reference.
+    list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/hmi_ble_ctrl.c")
 
     # Determine if we should create a library
     if((NOT HEADERS) AND (NOT SOURCES))

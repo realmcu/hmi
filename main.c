@@ -12,8 +12,7 @@
 #include <zephyr/devicetree.h>
 #include "trace.h"
 #include "hmi_bt_task.h"
-#include "hmi_protocal_task.h"
-#include "hmi_ble_ctrl.h"      /* proto transport: hmi_ble_ctrl_send / _receive */
+#include "ebadge_task.h"      /* V1.2 protocol stack entry point            */
 #include "gui_server.h"
 #include "rtl876x_pinmux.h"
 #include "app_lower_init.h"
@@ -36,14 +35,15 @@ int main(void)
            k_thread_priority_get(k_current_get()));
 
     hmi_bt_task_init();
-    /* proto is transport-agnostic now: inject the BLE peripheral transport. */
-    hmi_proto_task_init(hmi_ble_ctrl_send, hmi_ble_ctrl_receive);
-    extern void hmi_l2_handlers_register(void);
-    hmi_l2_handlers_register();
 
+    /* V1.2 protocol stack -- one call spins up:
+     *   - l2_task (msg queue + tick timer)
+     *   - port_ble (binds hmi_ctrl_service RX/TX/CCCD)
+     *   - xfer_session (registers tick sink)
+     *   - all 0x01..0x1A command handlers
+     * See app/protocol/ebadge_task.c for the wiring order. */
+    ebadge_task_init();
 
-    // extern void rtk_lcd_hal_init(void);
-    // rtk_lcd_hal_init();
 
 
 
