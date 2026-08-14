@@ -211,7 +211,7 @@ li { margin: 4px 0; }
 <li><a href="#39-dump-stack-命令-command-id-0x08">3.9 Dump Stack 命令 (command id 0x08)</a></li>
 <li><a href="#310-测试-flash-读取命令-command-id-0x09">3.10 测试 Flash 读取命令 (command id 0x09)</a></li>
 <li><a href="#311-日志命令-command-id-0x0a">3.11 日志命令 (command id 0x0a)</a></li>
-<li><a href="#312-文件传输命令-command-id-0x0b">3.12 文件传输命令 (command id 0x0b)</a></li>
+<li><a href="#312-文件传输命令-command-id-0x0b">3.12 文件传输命令 (command id 0x10)</a></li>
 <li><a href="#313-ble-连接参数命令-command-id-0x0c">3.13 BLE 连接参数命令 (command id 0x0c)</a></li>
 <li><a href="#314-wifi-配网命令-command-id-0x0d">3.14 WiFi 配网命令 (command id 0x0d)</a></li>
 </ul>
@@ -233,6 +233,27 @@ li { margin: 4px 0; }
 <p>原文档：百度智能手环蓝牙私有通信协议（2014年8月）<br />
 模块负责人：陈喜雄 · 项目负责人：孙鹤飞<br />
 版权所有：百度在线网络技术（北京）有限公司</p>
+</blockquote>
+<blockquote>
+<p><strong>关于实现现状的说明</strong>（对照日期 2026-08-13，分支
+<code>rtl87x3-hmi-protocol</code>）</p>
+<p>本文档描述协议设计，其中部分内容设备端尚未实现或与实现存在差异。凡有差异之处
+均已在对应章节以引用块标注，联调前请留意：</p>
+<ul>
+<li><strong>L0 / L1 传输层</strong>：已完整实现，与本文档一致（帧头位域、大端序、
+CRC-16/ARC、ACK 与重传）。</li>
+<li><strong>L2 命令</strong>：13 个命令中仅 5 个有完整业务逻辑——设置
+（<code>0x02</code>，仅时间设置）、绑定（<code>0x03</code>）、运动数据
+（<code>0x05</code>，仅运动 Data type）、文件传输、BLE 连接参数
+（<code>0x0c</code>）。各命令逐一状态见 §3.1 的「实现状态」列。</li>
+<li><strong>运动数据命令</strong>（<code>0x05</code>）：运动历史同步（Data type
+<code>0x01</code>）双端已实现，可联调；睡眠（Data type <code>0x02</code>）设备端
+仍缺存储层，详见 §3.6 开头说明。</li>
+<li><strong>文件传输命令</strong>：命令 ID 已从 <code>0x0b</code> 改为
+<code>0x10</code>，详见 §3.12。</li>
+</ul>
+<p>「桩」指 handler 已注册但只打印日志：设备会在 L1 层回 ACK，但不产生任何 L2
+响应，手机端若等待 L2 响应将超时。</p>
 </blockquote>
 <hr />
 <h2 id="1-名词解释与约定">1 名词解释与约定</h2>
@@ -485,71 +506,101 @@ Key Header 固定占用 <strong>2 个字节</strong>，v-length = 0 时这 2 个
 <p>原设计 [15:9] 为 Reserve、[8:0] 为 v-length（9 bits，最大 511 bytes）。<br />
 已扩展为全 16 bits v-length 以支持大块传输（≥512 bytes）。双端实现须同步更新。</p>
 </blockquote>
+<blockquote>
+<p><strong>实现现状</strong>：接收侧（<code>hmi_l2.c</code> 的 <code>parse_kvs</code>）已按全 16 bits
+解析。发送侧多数命令按全 16 bits 写入，但文件传输命令
+（<code>hmi_l2_cmd_xfer.c</code> 的 <code>xfer_send</code>）仍保留
+<code>(val_len &gt;&gt; 8) &amp; 0x01</code> 的 9-bit 旧掩码。该命令当前所有响应的
+value 均 ≤ 3 bytes，故实际未触发截断；若将来该函数用于发送 ≥512 bytes 的
+value，需先移除此掩码。</p>
+</blockquote>
 <hr />
 <h2 id="3-l2-command-详解">3 L2 Command 详解</h2>
 <h3 id="31-command-列表">3.1 Command 列表</h3>
+<p><strong>实现状态</strong>一列反映设备端固件当前实况：<strong>已实现</strong>=有完整业务逻辑；
+<strong>桩</strong>=handler 已注册但仅打印日志，收到指令不做任何处理、不回响应
+（L1 层仍会 ACK，手机端若等待 L2 响应会超时）；<strong>未实现</strong>=未注册 handler。</p>
 <table>
 <thead>
 <tr>
 <th>Command ID</th>
 <th>命令</th>
+<th>实现状态</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>0x01</code></td>
 <td>固件升级命令</td>
+<td>桩</td>
 </tr>
 <tr>
 <td><code>0x02</code></td>
 <td>设置命令</td>
+<td>已实现（仅 <code>0x01</code> 时间设置）</td>
 </tr>
 <tr>
 <td><code>0x03</code></td>
 <td>绑定命令</td>
+<td>已实现（<code>0x01</code>/<code>0x05</code>）</td>
 </tr>
 <tr>
 <td><code>0x04</code></td>
 <td>提醒命令</td>
+<td>桩</td>
 </tr>
 <tr>
 <td><code>0x05</code></td>
 <td>运动数据命令</td>
+<td>已实现（运动 <code>0x01</code>；睡眠 <code>0x02</code> 待补存储层，详见 §3.6）</td>
 </tr>
 <tr>
 <td><code>0x06</code></td>
 <td>工厂测试命令</td>
+<td>桩</td>
 </tr>
 <tr>
 <td><code>0x07</code></td>
 <td>控制命令</td>
+<td>桩</td>
 </tr>
 <tr>
 <td><code>0x08</code></td>
 <td>Dump Stack 命令</td>
+<td>未实现</td>
 </tr>
 <tr>
 <td><code>0x09</code></td>
 <td>测试 Flash 读取命令</td>
+<td>未实现</td>
 </tr>
 <tr>
 <td><code>0x0a</code></td>
 <td>日志命令</td>
+<td>桩</td>
 </tr>
 <tr>
-<td><code>0x0b</code></td>
-<td>文件传输命令</td>
+<td><code>0x10</code></td>
+<td>文件传输命令（<strong>注意</strong>：原定 <code>0x0b</code>，见 §3.12）</td>
+<td>已实现</td>
 </tr>
 <tr>
 <td><code>0x0c</code></td>
 <td>BLE 连接参数命令</td>
+<td>已实现</td>
 </tr>
 <tr>
 <td><code>0x0d</code></td>
 <td>WiFi 配网命令</td>
+<td>未实现</td>
 </tr>
 </tbody>
 </table>
+<blockquote>
+<p>设备端头文件 <code>hmi_l2.h</code> 另外预留了两个本文档未定义的命令：
+<code>0x0e</code>（视频流 STREAM）与 <code>0x0f</code>（远程控制 REMOTE）。两者目前
+只有宏定义，无 handler 实现，规范待补。</p>
+</blockquote>
 <hr />
 <h3 id="32-固件升级命令-command-id-0x01">3.2 固件升级命令 (command id 0x01)</h3>
 <p>L2 版本号：<strong>0</strong></p>
@@ -946,6 +997,26 @@ Key Header 固定占用 <strong>2 个字节</strong>，v-length = 0 时这 2 个
 <hr />
 <h3 id="36-运动数据命令-command-id-0x05">3.6 运动数据命令 (command id 0x05)</h3>
 <p>L2 版本号：<strong>1</strong></p>
+<blockquote>
+<p><strong>实现现状：运动数据（Data type <code>0x01</code>）双端已实现，可联调；睡眠数据（Data type <code>0x02</code>）仍未实现。</strong></p>
+<ul>
+<li>设备端 <code>hmi_l2_cmd_sport.c</code> 已实现完整的运动历史同步会话：解析
+<code>0x01</code> 的 Data type、经 <code>app_health_read_history()</code> 分页读取
+pedo TSDB、按序发送 <code>0x07</code> → <code>0x02</code> → <code>0x04</code>/<code>0x08</code>，
+并在 <code>EVT_BLE_DISCONNECTED</code> 时作废会话。</li>
+<li>手机端 <code>HoneyBox</code> 的 <code>watch_health_protocol.dart</code> /
+<code>watch_health_repository.dart</code> 已迁移到 version 1：请求携带 Data type、
+按 <code>0x10</code> 校验 L2 Header、解析 18 字节记录、marker 按 Data type 归属会话。</li>
+<li>睡眠数据（Key <code>0x03</code>）设备端连存储层都还没有：既无 sleep TSDB，也无
+<code>sleep_state_record_t</code> 结构与读取 API。设备收到 Data type <code>0x02</code>
+的请求时<strong>不创建会话、不回任何响应</strong>（符合本节「其他值保留，设备收到后
+不得创建同步会话」的处理方式），手机端同步会超时。本节睡眠部分的线格式属于
+已定稿设计，手机端解码已按规范实现，设备端补齐存储与算法接入后即可联调。</li>
+<li>逐次心率（Key <code>0x0d</code>）在 version 1 中为保留编号，双端均不发送。
+心率只以「桶内平均值」形式出现在 <code>0x02</code> 的 <code>Sport bucket record</code>
+中，由 <code>Flags.HAS_HR</code> 指示有效性。</li>
+</ul>
+</blockquote>
 <p>版本 1 以设备持久化记录为数据源。运动记录和睡眠记录分别存放在独立的
 FlashDB TSDB 中，线上记录与对应 FlashDB 记录字段一一对应。多字节整数
 按本协议统一使用大端序编码，禁止直接复制 MCU 内存中的结构体字节。</p>
@@ -1675,7 +1746,13 @@ End 的 Data type 必须与该会话请求和数据返回类型一致。睡眠�
 </tbody>
 </table>
 <hr />
-<h3 id="312-文件传输命令-command-id-0x0b">3.12 文件传输命令 (command id 0x0b)</h3>
+<h3 id="312-文件传输命令-command-id-0x0b">3.12 文件传输命令 (command id 0x10)</h3>
+<blockquote>
+<p><strong>命令 ID 变更</strong>：本命令原定为 <code>0x0b</code>，设备端实现已改用
+<code>0x10</code>（<code>hmi_l2.h</code> 中 <code>HMI_L2_CMD_FILE_XFER</code>，原
+<code>0x0b</code> 定义被注释保留）。双端须以 <code>0x10</code> 为准；手机端若仍发
+<code>0x0b</code>，设备会因查不到 handler 而丢弃。变更原因未记录于代码。</p>
+</blockquote>
 <p>L2 版本号：<strong>0</strong></p>
 <h4 id="概述">概述</h4>
 <p>文件传输命令在 L1 可靠传输之上提供一套应用层会话机制，支持图片、视频及原始二进制数据从手机到设备的单向传输。传输流程如下：</p>
@@ -1871,6 +1948,15 @@ End 的 Data type 必须与该会话请求和数据返回类型一致。睡眠�
 </tr>
 </tbody>
 </table>
+<blockquote>
+<p><strong>实现现状</strong>：设备端收到 <code>XFER_END_REQ</code> 后解析出 crc32 但
+<strong>不做校验</strong>（<code>hmi_l2_cmd_xfer.c</code> 中标注 <code>TODO: verify crc32</code>），
+且无论 FlashDB 写入结果如何都固定回复
+<code>status=0x00, error_code=0x00</code>。因此 <code>0x01</code>（CRC32 校验失败）与
+<code>0x02</code>（数据不完整）两个状态码当前<strong>永不出现</strong>，手机端不能依据本响应
+判断文件完整性。此外 FlashDB BigFile 的创建路径当前被桩化
+（<code>app_get_bf()</code> 尚未实现），数据实际未落盘。</p>
+</blockquote>
 <hr />
 <h4 id="0x07-传输中止xfer_abort">0x07 — 传输中止（XFER_ABORT）</h4>
 <p><strong>方向</strong>：双向 | <strong>Value（1 byte）</strong>：</p>

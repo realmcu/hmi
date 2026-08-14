@@ -8,10 +8,16 @@
  *    Byte 0: Command ID
  *    Byte 1: [7:4] Version  [3:0] Reserve
  *
- *  L2 Payload (0~502 bytes), repeated Key-Value triplets:
+ *  L2 Payload, repeated Key-Value triplets:
  *    1 byte   Key
- *    2 bytes  Key Header (BE): [15:9] Reserve  [8:0] v-length
+ *    2 bytes  Key Header (BE): [15:0] v-length (max 65535)
  *    N bytes  Key Value  (N = v-length, may be 0)
+ *
+ *  The Key Header used to be [15:9] Reserve + [8:0] v-length (max 511).
+ *  It was widened to a full 16-bit v-length to carry chunks >= 512 bytes
+ *  (see HMI_L2_XFER_CHUNK_MAX = 2048). A v-length of 0 still occupies the
+ *  full 2 bytes. Frame capacity is bounded by PROTO_MAX_PAYLOAD_LEN, not
+ *  by this field.
  *============================================================================*/
 
 #define L2_HDR_LEN      2u
