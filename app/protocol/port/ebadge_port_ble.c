@@ -124,6 +124,10 @@ static void on_gap_msg(T_IO_MSG *msg)
          * handlers (l2_task) so we do not race an inbound EBXF chunk mid-
          * abort.  post_call is safe from this GAP-dispatcher context. */
         (void)ebadge_task_post_call((ebadge_post_fn_t)xfer_session_abort, NULL);
+        /* Same reason for the reassembler: a 0x02 SEND_FILE that announced a
+         * body and then dropped would otherwise leave the RX stream in raw
+         * mode, swallowing the next connection's frames as file bytes.     */
+        (void)ebadge_task_post_call((ebadge_post_fn_t)ebadge_task_rx_reset, NULL);
         EBADGE_LOG("disconnected");
         break;
 

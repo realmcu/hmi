@@ -238,6 +238,23 @@ int ebadge_task_post_call(ebadge_post_fn_t fn, void *arg)
     return EBADGE_OK;
 }
 
+int ebadge_task_expect_raw(uint32_t len, ebadge_raw_cb_t cb, void *user)
+{
+    if (!s_inited)
+    {
+        return EBADGE_ERR_PARAM;
+    }
+    return ebadge_frame_expect_raw(&s_rx_ctx, len, cb, user);
+}
+
+void ebadge_task_rx_reset(void)
+{
+    /* Must run on l2_task -- callers from other contexts post_call this.
+     * Dropping a partially-received frame or raw body on disconnect keeps a
+     * stale byte count from eating the next connection's first frames.     */
+    ebadge_frame_rx_reset(&s_rx_ctx);
+}
+
 void ebadge_task_set_tick(ebadge_tick_fn_t fn)
 {
     s_tick_fn = fn;

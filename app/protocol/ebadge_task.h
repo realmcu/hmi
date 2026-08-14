@@ -19,6 +19,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "ebadge_frame.h"        /* ebadge_raw_cb_t */
 
 #ifdef __cplusplus
 extern "C" {
@@ -71,6 +72,27 @@ void ebadge_task_set_tick(ebadge_tick_fn_t fn);
 
 /** Nominal tick period.  See xfer_session timeout constants. */
 #define EBADGE_TICK_MS   100
+
+/*----------------------------------------------------------------------------*
+ *  Raw body pass-through  (0x02 SEND_FILE, spec §4.2)
+ *----------------------------------------------------------------------------*/
+/**
+ * @brief  Divert the next @p len RX stream bytes to @p cb instead of framing
+ *         them.  Thin wrapper over ebadge_frame_expect_raw() on the task's
+ *         own reassembler, which handlers cannot otherwise reach.
+ *
+ * MUST be called from inside a command handler (i.e. on l2_task, within the
+ * frame callback).  Anywhere else it is refused and returns non-zero.
+ *
+ * @return 0 on success, negative otherwise (see ebadge_status_t).
+ */
+int ebadge_task_expect_raw(uint32_t len, ebadge_raw_cb_t cb, void *user);
+
+/**
+ * @brief  Drop any partially-received frame / raw body and resume clean
+ *         framing.  Call on BLE disconnect, on l2_task context.
+ */
+void ebadge_task_rx_reset(void);
 
 /*----------------------------------------------------------------------------*
  *  Wall-clock helper  (monotonic-ish, ms since boot; wraps uint32_t)

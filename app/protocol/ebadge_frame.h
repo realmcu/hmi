@@ -11,6 +11,12 @@
  * The reassembler is stateful and byte-stream friendly: BLE ATT writes may
  * split a frame across writes or coalesce many frames into one.  Feed bytes
  * with ebadge_frame_feed(); complete frames dispatch via a callback.
+ *
+ * One command (0x02 SEND_FILE, spec §4.2) is followed by a *raw* body on the
+ * same RX stream -- unframed bytes, no header of their own.  A handler asks
+ * for that by calling ebadge_frame_expect_raw() from inside its frame
+ * callback; the reassembler then routes exactly that many bytes to a sink
+ * before returning to normal framing.  See EBADGE_RX_S_RAW below.
  */
 #ifndef _EBADGE_FRAME_H_
 #define _EBADGE_FRAME_H_
@@ -46,7 +52,24 @@ typedef enum
 {
     EBADGE_RX_S_HDR = 0,     /* accumulating the 5B header             */
     EBADGE_RX_S_BODY,        /* accumulating params_len body bytes     */
+    EBADGE_RX_S_RAW,         /* passing through an unframed raw body   */
 } ebadge_rx_state_t;
+
+/**
+ * @brief  Sink for raw (unframed) body bytes -- see ebadge_frame_expect_raw().
+ *
+ * Called once per input chunk, in arrival order, straight out of the feed
+ * buffer: there is NO accumulation, so @p data dies when the callback
+ * returns and a consumer that needs the whole body must copy or stream it.
+ *
+ * @param  data       Chunk bytes (never NULL, @p len > 0).
+ * @param  len        Chunk length.
+ * @param  remaining  Bytes still expected after this chunk; 0 means the body
+ *                    is complete and framing has resumed.
+ * @param  user       Opaque cookie passed to ebadge_frame_expect_raw().
+ */
+typedef void (*ebadge_raw_cb_t)(const uint8_t *data, uint16_t len,
+                                uint32_t remaining, void *user);
 
 typedef struct
 {
@@ -56,6 +79,12 @@ typedef struct
     uint16_t          body_len;
     uint16_t          body_got;
     uint8_t           body[EBADGE_PARAMS_MAX];
+    /* Raw pass-through, armed by ebadge_frame_expect_raw() ---------------- */
+    bool              in_frame_cb; /* true while a frame cb is running       */
+    bool              raw_armed;   /* set during a frame cb, consumed after  */
+    uint32_t          raw_remain;  /* bytes still to route to raw_cb         */
+    ebadge_raw_cb_t   raw_cb;
+    void             *raw_user;
 } ebadge_rx_ctx_t;
 
 /**
@@ -83,6 +112,25 @@ void ebadge_frame_rx_reset(ebadge_rx_ctx_t *ctx);
 int ebadge_frame_feed(ebadge_rx_ctx_t *ctx,
                       const uint8_t *bytes, uint16_t len,
                       ebadge_frame_cb_t cb, void *user);
+
+/**
+ * @brief  Route the next @p len stream bytes to @p cb instead of framing them.
+ *
+ * MUST be called from inside an ebadge_frame_cb_t, i.e. while the frame that
+ * announces the body is being handled.  The switch takes effect as soon as
+ * that callback returns, so any bytes already queued behind the metadata
+ * frame in the same feed() call are picked up correctly.
+ *
+ * There is no timeout here: a peer that announces a body and then goes quiet
+ * leaves the stream in EBADGE_RX_S_RAW.  Recovery is the link layer's job --
+ * ebadge_frame_rx_reset() on disconnect discards the partial body.
+ *
+ * @param  len   Body length, must be > 0.
+ * @return 0 on success, negative if not called from a frame callback or if
+ *         @p len is 0 (see ebadge_status_t).
+ */
+int ebadge_frame_expect_raw(ebadge_rx_ctx_t *ctx, uint32_t len,
+                            ebadge_raw_cb_t cb, void *user);
 
 #ifdef __cplusplus
 }

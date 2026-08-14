@@ -208,6 +208,16 @@ extern "C" {
 #define EB_MAX_AP_SSID          32
 #define EB_MAX_AP_PASSWORD      63
 
+/**
+ * Sanity cap on a 0x02 SEND_FILE body.  The spec does not fix a number here
+ * (§7.3 leaves the single-file limit open, suggesting ~2 MiB for the Wi-Fi
+ * path), but §4.2/§7.5 restrict this BLE route to debug and small config
+ * files -- wallpaper must go through 0x10 + TCP.  64 KiB is generous for that
+ * role while keeping a bogus length from parking the RX stream in raw mode
+ * for minutes.  Bodies are streamed, never buffered, so this is policy only.
+ */
+#define EB_MAX_SEND_FILE_BYTES  (64u * 1024u)
+
 #ifdef __cplusplus
 }
 #endif

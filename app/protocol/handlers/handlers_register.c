@@ -16,6 +16,7 @@
 
 /* Handler forward declarations -- one per command. */
 extern void handle_set_time(const ebadge_tlv_t *tlvs, uint8_t n);
+extern void handle_send_file(const ebadge_tlv_t *tlvs, uint8_t n);
 extern void handle_send_msg(const ebadge_tlv_t *tlvs, uint8_t n);
 extern void handle_result(const ebadge_tlv_t *tlvs, uint8_t n);
 extern void handle_xfer_offer(const ebadge_tlv_t *tlvs, uint8_t n);
@@ -28,6 +29,7 @@ void ebadge_handlers_register(void)
     /* App -> Dev inbound.  Notifies (0x11/0x13/0x14/0x15/0x16/0x18/0x1A)
      * are outbound-only and have no handler here.                       */
     (void)ebadge_l2_register(EB_CMD_SET_TIME,     handle_set_time);
+    (void)ebadge_l2_register(EB_CMD_SEND_FILE,    handle_send_file);
     (void)ebadge_l2_register(EB_CMD_SEND_MSG,     handle_send_msg);
     (void)ebadge_l2_register(EB_CMD_RESULT,       handle_result);
     (void)ebadge_l2_register(EB_CMD_XFER_OFFER,   handle_xfer_offer);
