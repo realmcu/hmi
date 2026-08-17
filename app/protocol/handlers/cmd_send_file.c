@@ -10,8 +10,8 @@
  *
  * Spec constraints honoured here:
  *   §4.2  reply is 0x04 RESULT with cmd=0x02; no progress notify, no UI
- *   §5.7  while a Wi-Fi transfer is in flight (state != IDLE) -> RESULT FAILED
- *   §7.5  this path is for debug / small config files, never wallpaper
+ *   §5.7  while a Wi-Fi transfer is in flight (state != IDLE) -> RESULT BUSY
+ *   §8.3  this path is for debug / small config files, never wallpaper
  *
  * CRITICAL: the body is already on the wire by the time we decide anything,
  * so *every* rejection path still has to arm the raw sink and drain those
@@ -31,6 +31,7 @@
 #include "../ebadge_errcode.h"
 #include "../ebadge_log.h"
 #include "../wifi_xfer/xfer_session.h"
+#include "../wifi_xfer/stream_session.h"
 
 /*----------------------------------------------------------------------------*
  *  In-flight body state  (l2_task-owned, single-flight -- no locks)
@@ -112,12 +113,16 @@ static void on_body(const uint8_t *data, uint16_t len, uint32_t remaining,
 }
 
 /*----------------------------------------------------------------------------*
- *  Reject helper -- answer FAILED now, then swallow the body that follows
+ *  Reject helper -- answer now, then swallow the body that follows
+ *
+ *  @p code lets the caller pick between §2.5's FAILED and the V1.3-added
+ *  BUSY, which is strictly more informative when we are refusing only
+ *  because a Wi-Fi transfer or preview stream owns the storage path.
  *----------------------------------------------------------------------------*/
-static void reject_and_drain(uint32_t body_len, const char *why)
+static void reject_and_drain(uint32_t body_len, uint8_t code, const char *why)
 {
-    EBADGE_WARN1("SEND_FILE: %s -> RESULT FAILED", why);
-    (void)ebadge_l2_result_send(EB_CMD_SEND_FILE, EB_RESULT_FAILED);
+    EBADGE_WARN2("SEND_FILE: %s -> RESULT code=0x%02x", why, code);
+    (void)ebadge_l2_result_send(EB_CMD_SEND_FILE, code);
 
     if (body_len == 0)
     {
@@ -164,9 +169,9 @@ void handle_send_file(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
      * sink is single-flight and the first one still owns the stream.      */
     if (s_sf.active)
     {
-        EBADGE_WARN1("SEND_FILE: body still in flight (%u left) -> FAILED",
+        EBADGE_WARN1("SEND_FILE: body still in flight (%u left) -> RESULT BUSY",
                      (unsigned)(s_sf.total - s_sf.got));
-        (void)ebadge_l2_result_send(EB_CMD_SEND_FILE, EB_RESULT_FAILED);
+        (void)ebadge_l2_result_send(EB_CMD_SEND_FILE, EB_RESULT_BUSY);
         return;
     }
 
@@ -182,28 +187,37 @@ void handle_send_file(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
 
     if (length == 0)
     {
-        reject_and_drain(0, "zero-length body");
+        reject_and_drain(0, EB_RESULT_FAILED, "zero-length body");
         return;
     }
     if (length > EB_MAX_SEND_FILE_BYTES)
     {
-        reject_and_drain(length, "body over the small-file cap");
+        reject_and_drain(length, EB_RESULT_FAILED, "body over the small-file cap");
         return;
     }
     if (name_len == 0)
     {
-        reject_and_drain(length, "missing TLV_FILE_NAME");
+        reject_and_drain(length, EB_RESULT_FAILED, "missing TLV_FILE_NAME");
         return;
     }
     if (has_type && (ftype < EB_FILE_TYPE_JPEG || ftype > EB_FILE_TYPE_MAX))
     {
-        reject_and_drain(length, "unsupported TLV_FILE_TYPE");
+        reject_and_drain(length, EB_RESULT_FAILED, "unsupported TLV_FILE_TYPE");
         return;
     }
-    /* Spec §5.7: a Wi-Fi transfer owns the storage write path while it runs. */
+    /* Spec §5.7: a Wi-Fi transfer owns the storage write path while it runs.
+     * §2.5's V1.3 BUSY code says "try again later" instead of "no". */
     if (xfer_session_state() != XFER_SESSION_IDLE)
     {
-        reject_and_drain(length, "wifi transfer in progress");
+        reject_and_drain(length, EB_RESULT_BUSY, "wifi transfer in progress");
+        return;
+    }
+    /* A preview stream writes nothing, so storage is free -- but it is
+     * saturating the radio and the l2_task queue, and a 64 KiB body over BLE
+     * would stall it into its own 3s frame timeout.  Refuse instead.       */
+    if (stream_session_state() != STREAM_SESSION_IDLE)
+    {
+        reject_and_drain(length, EB_RESULT_BUSY, "preview stream in progress");
         return;
     }
 

@@ -31,6 +31,7 @@
 #include "../ebadge_task.h"
 #include "../ebadge_log.h"
 #include "../wifi_xfer/xfer_session.h"
+#include "../wifi_xfer/stream_session.h"
 
 #define HMI_CONN_HANDLE_INVALID     0xFFFF
 
@@ -124,6 +125,10 @@ static void on_gap_msg(T_IO_MSG *msg)
          * handlers (l2_task) so we do not race an inbound EBXF chunk mid-
          * abort.  post_call is safe from this GAP-dispatcher context. */
         (void)ebadge_task_post_call((ebadge_post_fn_t)xfer_session_abort, NULL);
+        /* Ditto for the preview stream: it holds the same SoftAP and TCP
+         * listener, and its 3s frame gap would otherwise keep them up for
+         * seconds after the phone is already gone.                         */
+        (void)ebadge_task_post_call((ebadge_post_fn_t)stream_session_abort, NULL);
         /* Same reason for the reassembler: a 0x02 SEND_FILE that announced a
          * body and then dropped would otherwise leave the RX stream in raw
          * mode, swallowing the next connection's frames as file bytes.     */

@@ -23,10 +23,11 @@ extern void handle_xfer_offer(const ebadge_tlv_t *tlvs, uint8_t n);
 extern void handle_get_ap_info(const ebadge_tlv_t *tlvs, uint8_t n);
 extern void handle_get_battery(const ebadge_tlv_t *tlvs, uint8_t n);
 extern void handle_get_storage(const ebadge_tlv_t *tlvs, uint8_t n);
+extern void handle_jpg_stream_offer(const ebadge_tlv_t *tlvs, uint8_t n);
 
 void ebadge_handlers_register(void)
 {
-    /* App -> Dev inbound.  Notifies (0x11/0x13/0x14/0x15/0x16/0x18/0x1A)
+    /* App -> Dev inbound.  Notifies (0x09/0x11/0x13/0x14/0x15/0x16/0x18/0x1A)
      * are outbound-only and have no handler here.                       */
     (void)ebadge_l2_register(EB_CMD_SET_TIME,     handle_set_time);
     (void)ebadge_l2_register(EB_CMD_SEND_FILE,    handle_send_file);
@@ -36,6 +37,8 @@ void ebadge_handlers_register(void)
     (void)ebadge_l2_register(EB_CMD_GET_AP_INFO,  handle_get_ap_info);
     (void)ebadge_l2_register(EB_CMD_GET_BATTERY,  handle_get_battery);
     (void)ebadge_l2_register(EB_CMD_GET_STORAGE,  handle_get_storage);
+    /* V1.3 §4.5 -- the preview stream's opener.  Its 0x09 answer is a notify. */
+    (void)ebadge_l2_register(EB_CMD_JPG_STREAM_OFFER, handle_jpg_stream_offer);
 
     EBADGE_LOG("handlers registered");
 }

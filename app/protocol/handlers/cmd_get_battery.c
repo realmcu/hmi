@@ -2,7 +2,7 @@
  * @file    cmd_get_battery.c
  * @brief   0x17 GET_BATTERY -- respond with 0x18 BATTERY.
  *
- * Spec §4.11 TLVs, both required:
+ * Spec §4.13 TLVs, both required:
  *   0x01 percent  1B 0..100
  *   0x02 charge   1B EBADGE_BATT_* (0 discharging / 1 charging / 2 full)
  *

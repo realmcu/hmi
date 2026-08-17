@@ -2,12 +2,14 @@
  * @file    cmd_xfer_offer.c
  * @brief   0x10 XFER_OFFER -- parse TLVs, delegate to xfer_session_offer().
  *
- * Spec §4.5 TLVs (all required except REPLACE_ID):
+ * Spec §4.7 TLVs (all required except REPLACE_ID):
  *   0x01 name (utf-8 <=23B)  0x02 file_type  0x03 size u32
  *   0x04 crc32 u32           0x05 replace_id u16 (optional)
  *
  * A missing required TLV is answered by xfer_session with 0x16 XFER_FAIL,
  * not 0x04 RESULT -- the offer lives entirely in the transfer state machine.
+ * V1.3 §4.7 also removed the confirmation dialog, so a valid offer is now
+ * auto-accepted inside xfer_session_offer(); nothing changes for this file.
  */
 #include <string.h>
 #include "../ebadge_cmd.h"

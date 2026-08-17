@@ -24,6 +24,7 @@
 #include "ebadge_log.h"
 #include "handlers/handlers_register.h"
 #include "wifi_xfer/xfer_session.h"
+#include "wifi_xfer/stream_session.h"
 #include "port/ebadge_port_ble.h"
 
 /*----------------------------------------------------------------------------*
@@ -72,7 +73,8 @@ static void            *s_task_handle;
 static void            *s_queue_handle;
 static void            *s_tick_timer;
 static ebadge_rx_ctx_t  s_rx_ctx;
-static ebadge_tick_fn_t s_tick_fn;
+static ebadge_tick_fn_t s_tick_fn[EBADGE_TICK_SINKS];
+static uint8_t          s_tick_n;
 static bool             s_inited;
 
 /*----------------------------------------------------------------------------*
@@ -130,9 +132,9 @@ static void l2_task_entry(void *p_param)
             break;
 
         case L2_MSG_TICK:
-            if (s_tick_fn)
+            for (uint8_t i = 0; i < s_tick_n; i++)
             {
-                s_tick_fn(msg.u.tick.now_ms);
+                s_tick_fn[i](msg.u.tick.now_ms);
             }
             break;
 
@@ -182,12 +184,13 @@ int ebadge_task_init(void)
 
     s_inited = true;
 
-    /* Once the task is up, wire the pieces around it: BLE port, xfer state
-     * machine (registers tick sink), then command handlers (registers L2
-     * dispatch table).  Order matters only in that handlers can call into
-     * xfer_session, so xfer_session must be inited first.                 */
+    /* Once the task is up, wire the pieces around it: BLE port, both Wi-Fi
+     * state machines (each registers a tick sink), then command handlers
+     * (registers the L2 dispatch table).  Order matters only in that
+     * handlers can call into either session, so sessions go first.       */
     ebadge_port_ble_init();
     xfer_session_init();
+    stream_session_init();
     ebadge_handlers_register();
 
     EBADGE_LOG("l2_task up");
@@ -257,7 +260,23 @@ void ebadge_task_rx_reset(void)
 
 void ebadge_task_set_tick(ebadge_tick_fn_t fn)
 {
-    s_tick_fn = fn;
+    if (fn == NULL)
+    {
+        return;
+    }
+    for (uint8_t i = 0; i < s_tick_n; i++)
+    {
+        if (s_tick_fn[i] == fn) { return; }     /* already registered        */
+    }
+    if (s_tick_n >= EBADGE_TICK_SINKS)
+    {
+        /* Silently dropping a sink means a session never times out, which is
+         * far worse to debug than a loud complaint at init time.            */
+        EBADGE_ERR1("set_tick: sink table full (%d), timeout sink LOST",
+                    (int)s_tick_n);
+        return;
+    }
+    s_tick_fn[s_tick_n++] = fn;
 }
 
 uint32_t ebadge_task_now_ms(void)

@@ -52,13 +52,21 @@ xfer_session_state_t xfer_session_state(void);
  *          - unsupported type? -> emit 0x16 FAIL(UNSUP_TYPE)
  *          - no space?         -> emit 0x16 FAIL(STORAGE_FULL)
  *
- *         Otherwise stashes the offer and enters WAIT_CONFIRM (30s timeout);
- *         the app UI is expected to invoke xfer_session_user_decision().
+ *         If none of those fire, V1.3 §4.7 requires an immediate automatic
+ *         accept ("设备不弹窗，自动回复同意或拒绝"), so this calls
+ *         xfer_session_user_decision(true) itself and returns with the AP
+ *         coming up.  WAIT_CONFIRM is therefore transient in V1.3.
  */
 void xfer_session_offer(const char *name, uint8_t file_type,
                         uint32_t size, uint32_t crc32, uint16_t replace_id);
 
-/** User answered the confirmation prompt: accept => raise AP; reject => fail. */
+/**
+ * @brief  Resolve WAIT_CONFIRM: accept => raise AP; reject => 0x16 + reset.
+ *
+ * V1.3 §4.7 dropped the confirmation UI, so xfer_session_offer() now invokes
+ * this itself with accept=true.  It stays public because §5.7 still defines
+ * the state and because reinstating a prompt is then a one-line change.
+ */
 void xfer_session_user_decision(bool accept);
 
 /** SoftAP notifies that the STA (App) has associated.  Enters RECV. */

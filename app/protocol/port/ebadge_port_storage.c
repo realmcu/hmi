@@ -23,7 +23,7 @@ int ebadge_port_storage_stat(ebadge_storage_stat_t *out)
     if (!out) { return -1; }
     /* TODO(port): query the underlying storage backend.  Synthetic values
      * below let GET_STORAGE respond with plausible defaults during bring-up.
-     * Units are BYTES per spec §4.12 -- 4MiB total / 3MiB free.            */
+     * Units are BYTES per spec §4.14 -- 4MiB total / 3MiB free.            */
     out->total_bytes   = 4u * 1024u * 1024u;
     out->free_bytes    = 3u * 1024u * 1024u;
     out->wp_used_bytes = 0;

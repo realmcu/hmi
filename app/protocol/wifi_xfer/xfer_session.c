@@ -4,13 +4,14 @@
  *
  * Timing / timeouts (see PROT-001 §5.5):
  *
- *   WAIT_CONFIRM   30s   user must accept the offer
+ *   WAIT_CONFIRM   30s   transient in V1.3 -- §4.7 auto-accepts, so this
+ *                        deadline only guards a reinstated user prompt
  *   WAIT_STA       60s   phone STA must associate with our SoftAP
  *   RECV          120s   idle-in-transfer watchdog (no data seen)
  *   OVERALL       180s   whole thing from OFFER to DONE
  *
  * The state machine is driven by:
- *   - BLE handlers (offer, user_decision)
+ *   - BLE handlers (offer, which now auto-resolves user_decision)
  *   - port_softap callback (on_sta_joined)
  *   - port_tcp callback (on_data, on_close)
  *   - ebadge_task tick (~100ms) -- for the four timeouts above
@@ -18,7 +19,7 @@
  * All callbacks from other threads MUST be marshalled via
  * ebadge_task_post_call() before invoking anything here.
  *
- * Progress throttling (PROT-001 §4.8):  emit 0x14 PROGRESS at least every
+ * Progress throttling (PROT-001 §4.10):  emit 0x14 PROGRESS at least every
  * 200ms OR at each new 5% boundary, whichever comes first.
  */
 #include <string.h>
@@ -26,6 +27,8 @@
 #include <stdbool.h>
 
 #include "xfer_session.h"
+#include "stream_session.h"
+#include "xfer_notify.h"
 #include "ebxf_frame.h"
 
 #include "../ebadge_cmd.h"
@@ -89,7 +92,7 @@ static xfer_ctx_t s_x;
  *  0x11, EB_TLV_AP_* only inside 0x13, and so on.
  *----------------------------------------------------------------------------*/
 
-/** 0x11 XFER_DECISION (spec §4.6).  @p reason is optional: pass 0 to omit. */
+/** 0x11 XFER_DECISION (spec §4.8).  @p reason is optional: pass 0 to omit. */
 static void emit_decision(uint8_t decision, uint8_t reason)
 {
     uint8_t  params[16];
@@ -104,42 +107,21 @@ static void emit_decision(uint8_t decision, uint8_t reason)
     (void)ebadge_l2_notify_send(EB_CMD_XFER_DECISION, params, off);
 }
 
-/** 0x13 AP_INFO (spec §4.7) -- all seven TLVs are required. */
+/** 0x13 AP_INFO and 0x16 XFER_FAIL are byte-identical for the preview stream,
+ *  so they live in xfer_notify.c -- eb_emit_ap_info() / eb_emit_fail().  These
+ *  thin wrappers keep the call sites below reading as before and pin the port,
+ *  which the shared builder takes as a parameter.                          */
 static void emit_ap_info(const ebadge_softap_info_t *info)
 {
-    /* Worst case: (3+32)+(3+63)+4+7+5+4+4 = 125 bytes.  Sized with slack so
-     * a max-length SSID + PSK cannot silently drop the trailing TLVs.     */
-    uint8_t  params[160];
-    uint16_t off  = 0;
-    uint16_t pwlen = (uint16_t)strlen(info->password);
-
-    ebadge_tlv_put(params, sizeof(params), &off, EB_TLV_AP_SSID,
-                   (const uint8_t *)info->ssid,
-                   (uint16_t)strlen(info->ssid));
-    ebadge_tlv_put(params, sizeof(params), &off, EB_TLV_AP_PASSWORD,
-                   (const uint8_t *)info->password, pwlen);
-    ebadge_tlv_put_u8(params, sizeof(params), &off, EB_TLV_AP_CHANNEL,
-                      info->channel);
-    /* IPv4 goes out in NETWORK order (192.168.4.1 -> C0 A8 04 01), so it
-     * cannot use put_u32, which would emit it little-endian.               */
-    uint8_t ipb[4] =
-    {
-        (uint8_t)((info->ip >> 24) & 0xFFu),
-        (uint8_t)((info->ip >> 16) & 0xFFu),
-        (uint8_t)((info->ip >>  8) & 0xFFu),
-        (uint8_t)((info->ip) & 0xFFu),
-    };
-    ebadge_tlv_put(params, sizeof(params), &off, EB_TLV_AP_IPV4, ipb, 4);
-    ebadge_tlv_put_u16(params, sizeof(params), &off, EB_TLV_AP_PORT,
-                       XS_TCP_PORT);
-    ebadge_tlv_put_u8(params, sizeof(params), &off, EB_TLV_AP_PROTO,
-                      EB_AP_PROTO_RAW_TCP);
-    ebadge_tlv_put_u8(params, sizeof(params), &off, EB_TLV_AP_SECURITY,
-                      pwlen ? EB_AP_SEC_WPA2_PSK : EB_AP_SEC_OPEN);
-    (void)ebadge_l2_notify_send(EB_CMD_AP_INFO, params, off);
+    eb_emit_ap_info(info, XS_TCP_PORT);
 }
 
-/** 0x14 XFER_PROGRESS (spec §4.8) -- absolute byte counters, not a percent. */
+static void emit_fail(uint8_t reason, const char *detail)
+{
+    eb_emit_fail(reason, detail);
+}
+
+/** 0x14 XFER_PROGRESS (spec §4.10) -- absolute byte counters, not a percent. */
 static void emit_progress(uint32_t recv, uint32_t total)
 {
     uint8_t  params[16];
@@ -149,7 +131,7 @@ static void emit_progress(uint32_t recv, uint32_t total)
     (void)ebadge_l2_notify_send(EB_CMD_XFER_PROGRESS, params, off);
 }
 
-/** 0x15 XFER_DONE (spec §4.9) -- all three TLVs required. */
+/** 0x15 XFER_DONE (spec §4.11) -- all three TLVs required. */
 static void emit_done(uint16_t file_id)
 {
     uint8_t  params[64];
@@ -163,24 +145,6 @@ static void emit_done(uint16_t file_id)
                    (const uint8_t *)s_x.name,
                    (uint16_t)strlen(s_x.name));
     (void)ebadge_l2_notify_send(EB_CMD_XFER_DONE, params, off);
-}
-
-/** 0x16 XFER_FAIL (spec §4.10).  @p detail is optional: pass NULL to omit. */
-static void emit_fail(uint8_t reason, const char *detail)
-{
-    uint8_t  params[32];
-    uint16_t off = 0;
-    ebadge_tlv_put_u8(params, sizeof(params), &off,
-                      EB_TLV_FAIL_REASON, reason);
-    if (detail && detail[0])
-    {
-        size_t n = strlen(detail);
-        if (n > EB_MAX_MSG_STR) { n = EB_MAX_MSG_STR; }
-        ebadge_tlv_put(params, sizeof(params), &off,
-                       EB_TLV_FAIL_DETAIL, (const uint8_t *)detail,
-                       (uint16_t)n);
-    }
-    (void)ebadge_l2_notify_send(EB_CMD_XFER_FAIL, params, off);
 }
 
 /*----------------------------------------------------------------------------*
@@ -292,7 +256,7 @@ static void on_tick(uint32_t now_ms)
         if ((int32_t)(now_ms - s_x.deadline_stage) >= 0)
         {
             EBADGE_WARN("xfer: user did not confirm in 30s");
-            /* Spec §4.6: decision=TIMEOUT, reason=USER_TIMEOUT. */
+            /* Spec §4.8: decision=TIMEOUT, reason=USER_TIMEOUT. */
             emit_decision(EB_DECISION_TIMEOUT, EB_XFER_ERR_USER_TIMEOUT);
             reset_ctx();
         }
@@ -323,22 +287,9 @@ static void on_tick(uint32_t now_ms)
 }
 
 /*----------------------------------------------------------------------------*
- *  CRC32 (IEEE 802.3, poly 0xEDB88320) -- streaming
+ *  CRC32 (IEEE 802.3, poly 0xEDB88320) -- now shared with the stream path,
+ *  see eb_crc32_update() in ebxf_frame.c.  Same algorithm, one copy.
  *----------------------------------------------------------------------------*/
-static uint32_t crc32_update(uint32_t crc, const uint8_t *buf, uint16_t len)
-{
-    crc = ~crc;
-    for (uint16_t i = 0; i < len; i++)
-    {
-        crc ^= buf[i];
-        for (int b = 0; b < 8; b++)
-        {
-            uint32_t mask = -(int32_t)(crc & 1u);
-            crc = (crc >> 1) ^ (0xEDB88320u & mask);
-        }
-    }
-    return ~crc;
-}
 
 /*----------------------------------------------------------------------------*
  *  Public API
@@ -365,6 +316,16 @@ void xfer_session_offer(const char *name, uint8_t file_type,
     {
         EBADGE_WARN1("offer while busy (state=%d) -> XFER_FAIL BUSY", (int)s_x.state);
         emit_fail(EB_XFER_ERR_BUSY, "busy");
+        return;
+    }
+    /* One radio, one SoftAP, one TCP 9000 -- a live preview stream owns all
+     * three, so a file offer has to wait (spec §6.7).  Symmetric with the
+     * check stream_session_offer() runs against us.                        */
+    if (stream_session_state() != STREAM_SESSION_IDLE)
+    {
+        EBADGE_WARN1("offer while preview stream busy (state=%d) -> XFER_FAIL BUSY",
+                     (int)stream_session_state());
+        emit_fail(EB_XFER_ERR_BUSY, "preview stream busy");
         return;
     }
 
@@ -424,8 +385,19 @@ void xfer_session_offer(const char *name, uint8_t file_type,
 
     EBADGE_LOG2("xfer: offer accepted for approval, size=%u type=%d",
                 (unsigned)size, (int)file_type);
-    EBADGE_LOG("xfer: WAIT_CONFIRM (30s)  -- awaiting user_decision()");
-    /* App / UI is expected to eventually call xfer_session_user_decision().  */
+
+    /* V1.3 §4.7 removed the confirmation Overlay: "设备不弹窗，自动回复同意
+     * 或拒绝".  Every reason to say no (busy / bad type / no space) has
+     * already answered 0x16 and returned above, so reaching here IS the
+     * accept.  Auto-answer now instead of parking in WAIT_CONFIRM waiting
+     * for a UI call that no longer exists -- without this, V1.3 offers would
+     * sit for 30s and then emit DECISION=TIMEOUT, i.e. every transfer fails.
+     *
+     * WAIT_CONFIRM and xfer_session_user_decision() are deliberately KEPT:
+     * §5.7 still lists the state, the transition below runs through it, and
+     * a product decision to reinstate a prompt only has to drop this call.  */
+    EBADGE_LOG("xfer: WAIT_CONFIRM -> auto-accept (V1.3 §4.7, no user prompt)");
+    xfer_session_user_decision(true);
 }
 
 void xfer_session_user_decision(bool accept)
@@ -566,12 +538,12 @@ void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len)
             fail_and_reset(EB_XFER_ERR_STORAGE_FULL, "wp_write");
             return;
         }
-        s_x.crc32_running = crc32_update(s_x.crc32_running, body, n);
+        s_x.crc32_running = eb_crc32_update(s_x.crc32_running, body, n);
         s_x.bytes_recv   += n;
 
         /* Progress throttling: fire on 5%-boundary crossings OR 200ms lapse.
          * The percentage is an emission trigger only -- the payload carries
-         * absolute recv/total byte counts per spec §4.8.                  */
+         * absolute recv/total byte counts per spec §4.10.                  */
         uint8_t pct = (s_x.size ? (uint8_t)((uint64_t)s_x.bytes_recv * 100u
                                             / s_x.size) : 0);
         bool step_hit = pct >= (uint8_t)(s_x.last_progress_pct

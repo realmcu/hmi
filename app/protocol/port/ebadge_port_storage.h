@@ -19,7 +19,7 @@ extern "C" {
 /**
  * Storage headline for 0x1A STORAGE_INFO / the offer pre-check.
  *
- * Units are BYTES (uint64), matching spec §4.12 where TLV_STOR_TOTAL /
+ * Units are BYTES (uint64), matching spec §4.14 where TLV_STOR_TOTAL /
  * _FREE / _WP_USED are all 8-byte LE byte counts.  An earlier revision
  * used uint32 KB here, which both narrowed the range and mismatched the
  * wire format.

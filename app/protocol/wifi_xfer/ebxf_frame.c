@@ -56,3 +56,24 @@ void ebxr_pack(uint8_t out[EBXR_LEN], uint8_t status, uint8_t reason)
     out[6] = 0;                             /* reserved u16 LE = 0x0000      */
     out[7] = 0;
 }
+
+/*----------------------------------------------------------------------------*
+ *  CRC32, bitwise (no 1KB table).  The file path runs this over every byte of
+ *  a wallpaper, and the stream path over every preview frame, so if profiling
+ *  ever shows it hot the fix is a nibble-table -- not a second copy of this.
+ *----------------------------------------------------------------------------*/
+uint32_t eb_crc32_update(uint32_t crc, const uint8_t *buf, uint32_t len)
+{
+    if (!buf) { return crc; }
+    crc = ~crc;
+    for (uint32_t i = 0; i < len; i++)
+    {
+        crc ^= buf[i];
+        for (int b = 0; b < 8; b++)
+        {
+            uint32_t mask = (uint32_t) - (int32_t)(crc & 1u);
+            crc = (crc >> 1) ^ (0xEDB88320u & mask);
+        }
+    }
+    return ~crc;
+}

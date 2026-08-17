@@ -25,9 +25,16 @@
  *    5    1   reason    EB_XFER_ERR_* on failure, 0x00 on success
  *    6    2   reserved  0x0000
  *
- * Note the status polarity: 0 is FAILURE here, same as the generic §2.5
- * result code.  A TCP-level success does NOT replace BLE 0x15 DONE -- the
- * App treats 0x15/0x16 as authoritative (spec §5.3).
+ * CAREFUL: this status byte is 0=failure / 1=success, which is the OPPOSITE
+ * of the generic §2.5 RESULT code after V1.3 inverted that table (there 0 is
+ * now SUCCEED).  §5.3 and §6.3 were left as-is, so the two polarities now
+ * genuinely disagree -- do not "unify" them.  A TCP-level success also does
+ * NOT replace BLE 0x15 DONE; the App treats 0x15/0x16 as authoritative.
+ *
+ * The stream-preview data plane (§6.2) uses a DIFFERENT, shorter header with
+ * the SAME "EBXF" magic -- see ebxs_frame.h.  Pick the codec by which BLE
+ * offer opened the session (0x10 -> 40B here, 0x08 -> 14B there); the magic
+ * alone cannot tell them apart.
  */
 #ifndef _EBADGE_EBXF_FRAME_H_
 #define _EBADGE_EBXF_FRAME_H_
@@ -72,6 +79,15 @@ int  ebxf_hdr_parse(const uint8_t *buf, ebxf_hdr_t *out);
  * @param  reason  EB_XFER_ERR_* when failing; pass 0 on success.
  */
 void ebxr_pack(uint8_t out[EBXR_LEN], uint8_t status, uint8_t reason);
+
+/*----------------------------------------------------------------------------*
+ *  CRC32  (IEEE 802.3, reflected, poly 0xEDB88320) -- streaming
+ *
+ *  Shared by every crc32 field on the wire: the EBXF whole-file crc (§5.2),
+ *  the EBXS per-frame crc (§6.2), and the 0x10 offer's TLV_XFER_CRC32.  Seed
+ *  a new accumulator with 0 and feed chunks in order.
+ *----------------------------------------------------------------------------*/
+uint32_t eb_crc32_update(uint32_t crc, const uint8_t *buf, uint32_t len);
 
 #ifdef __cplusplus
 }

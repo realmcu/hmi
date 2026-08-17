@@ -62,13 +62,17 @@ int ebadge_task_post_call(ebadge_post_fn_t fn, void *arg);
  *----------------------------------------------------------------------------*/
 /**
  * @brief  Register a periodic tick handler (called ~ every EBADGE_TICK_MS ms
- *         on the l2_task).  xfer_session uses this for timeouts.
+ *         on the l2_task).  Both Wi-Fi sessions use this for their timeouts.
  *
- * NOTE: only ONE tick sink is supported for now.  Use post_call from within
- *       the sink if fanout is needed later.
+ * Up to EBADGE_TICK_SINKS sinks are fanned out, in registration order.
+ * Registering the same fn twice is a no-op.  There is no unregister: sinks
+ * live for the life of the process and must tolerate ticking while idle.
  */
 typedef void (*ebadge_tick_fn_t)(uint32_t now_ms);
 void ebadge_task_set_tick(ebadge_tick_fn_t fn);
+
+/** Number of tick sinks the fanout can hold (xfer_session, stream_session). */
+#define EBADGE_TICK_SINKS   4
 
 /** Nominal tick period.  See xfer_session timeout constants. */
 #define EBADGE_TICK_MS   100

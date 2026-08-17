@@ -1,9 +1,14 @@
 /**
  * @file    ebadge_cmd.h
- * @brief   eBadge Protocol V1.2 command IDs and TLV type codes.
+ * @brief   eBadge Protocol command IDs and TLV type codes.
  *
- * Wire spec:  eBadge-PROT-001 V1.2 (2026-08-11).  Frame header is fixed 5B,
+ * Wire spec:  eBadge-PROT-001 V1.3 (2026-08-13).  Frame header is fixed 5B,
  * LE byte order, no CRC / no ACK; reliability is ATT-native.
+ *
+ * V1.3 deltas implemented here:  the 0x08/0x09 JPEG-stream pair (§4.5/§4.6)
+ * plus its 14-byte TCP frame (§6.2, see ebxs_frame.h), and the §2.7 file-type
+ * enum grown to 0x07.  V1.3 also drops the confirmation dialog: both 0x08 and
+ * 0x10 are answered by the device itself, without user interaction.
  *
  *   [ver 1][cmd 1][0x80][params_len 2 LE][params N]
  *
@@ -25,8 +30,10 @@
  *   EB_TLV_SFILE_*  0x02 SEND_FILE         EB_TLV_PROG_*  0x14 PROGRESS
  *   EB_TLV_MSG_*    0x03 SEND_MSG          EB_TLV_DONE_*  0x15 XFER_DONE
  *   EB_TLV_RESULT_* 0x04 RESULT            EB_TLV_FAIL_*  0x16 XFER_FAIL
- *   EB_TLV_XFER_*   0x10 XFER_OFFER        EB_TLV_BAT_*   0x18 BATTERY
- *   EB_TLV_DEC_*    0x11 XFER_DECISION     EB_TLV_STOR_*  0x1A STORAGE_INFO
+ *   EB_TLV_SOFR_*   0x08 STREAM_OFFER      EB_TLV_BAT_*   0x18 BATTERY
+ *   EB_TLV_SDEC_*   0x09 STREAM_DECISION   EB_TLV_STOR_*  0x1A STORAGE_INFO
+ *   EB_TLV_XFER_*   0x10 XFER_OFFER
+ *   EB_TLV_DEC_*    0x11 XFER_DECISION
  */
 #ifndef _EBADGE_CMD_H_
 #define _EBADGE_CMD_H_
@@ -52,6 +59,10 @@ extern "C" {
 #define EB_CMD_SEND_MSG         0x03    /* H->D  push message,   ack 0x04     */
 #define EB_CMD_RESULT           0x04    /* D->H  generic result               */
 
+/* JPEG stream preview over Wi-Fi  (V1.3 §4.5/§4.6) ------------------- */
+#define EB_CMD_JPG_STREAM_OFFER 0x08    /* H->D  "start a preview stream"     */
+#define EB_CMD_JPG_STREAM_DEC   0x09    /* D->H  reject/accept/negotiate      */
+
 /* File transfer over Wi-Fi ------------------------------------------- */
 #define EB_CMD_XFER_OFFER       0x10    /* H->D  "I want to send..."          */
 #define EB_CMD_XFER_DECISION    0x11    /* D->H  reject/accept/timeout        */
@@ -67,7 +78,9 @@ extern "C" {
 #define EB_CMD_GET_STORAGE      0x19    /* H->D  no params,      ack 0x1A     */
 #define EB_CMD_STORAGE_INFO     0x1A    /* D->H  capacity report              */
 
-/* 0x05..0x0F and 0x1B..0x2F are RESERVED -- must not be used (spec §3). */
+/* 0x05..0x07, 0x0A..0x0F and 0x1B..0x2F are RESERVED -- must not be used.
+ * (V1.2 also reserved 0x08/0x09; V1.3 §3 allocates them to the stream pair
+ * above, so the reserved ranges are now split around them.)              */
 
 /*----------------------------------------------------------------------------*
  *  0x01 SET_TIME  (spec §4.1)
@@ -107,7 +120,36 @@ extern "C" {
 #define EB_TLV_RESULT_CODE      0x02    /* 1B, EB_RESULT_* (see errcode.h)    */
 
 /*----------------------------------------------------------------------------*
- *  0x10 XFER_OFFER  (spec §4.5)
+ *  0x08 JPG_STREAM_OFFER  (spec §4.5, V1.3)
+ *
+ *  Same-screen preview: the App pushes a continuous run of JPEG frames over
+ *  TCP instead of one stored file.  Nothing is written to storage, so there
+ *  is no size / crc32 / replace_id here -- each frame carries its own length
+ *  and CRC in the §6.2 header.  The device answers by itself (no dialog).
+ *----------------------------------------------------------------------------*/
+#define EB_TLV_SOFR_NAME        0x01    /* required, utf-8 <=23B              */
+#define EB_TLV_SOFR_TYPE        0x02    /* required, EB_FILE_TYPE_* (not 0)   */
+#define EB_TLV_SOFR_FPS         0x03    /* required, 1B frames per second     */
+
+/*----------------------------------------------------------------------------*
+ *  0x09 JPG_STREAM_DECISION  (spec §4.6, V1.3)
+ *
+ *  DECISION reuses the EB_DECISION_* values, but 0x02 means NEGOTIATE here
+ *  (the device accepts at a different frame rate) where 0x11 uses it for
+ *  TIMEOUT -- see EB_STREAM_DEC_NEGOTIATE in ebadge_errcode.h.
+ *----------------------------------------------------------------------------*/
+#define EB_TLV_SDEC_DECISION    0x01    /* required, EB_DECISION_*            */
+#define EB_TLV_SDEC_REASON      0x02    /* optional, EB_XFER_ERR_* on reject  */
+#define EB_TLV_SDEC_FPS         0x03    /* optional, 1B negotiated fps        */
+
+/** Frame-rate window the device is willing to serve (§4.5 fixes no range,
+ *  so these are ours: below MIN the preview is pointless, above MAX the
+ *  decoder cannot keep up and we would just drop frames).                  */
+#define EB_STREAM_FPS_MIN       1u
+#define EB_STREAM_FPS_MAX       30u
+
+/*----------------------------------------------------------------------------*
+ *  0x10 XFER_OFFER  (spec §4.7)
  *----------------------------------------------------------------------------*/
 #define EB_TLV_XFER_NAME        0x01    /* required, utf-8 <=23B              */
 #define EB_TLV_XFER_TYPE        0x02    /* required, EB_FILE_TYPE_* (not 0)   */
@@ -116,13 +158,13 @@ extern "C" {
 #define EB_TLV_XFER_REPLACE_ID  0x05    /* optional, 2B LE file_id to replace */
 
 /*----------------------------------------------------------------------------*
- *  0x11 XFER_DECISION  (spec §4.6)
+ *  0x11 XFER_DECISION  (spec §4.8)
  *----------------------------------------------------------------------------*/
 #define EB_TLV_DEC_DECISION     0x01    /* required, EB_DECISION_*            */
 #define EB_TLV_DEC_REASON       0x02    /* optional, EB_XFER_ERR_* on reject  */
 
 /*----------------------------------------------------------------------------*
- *  0x13 AP_INFO  (spec §4.7) -- every TLV below is REQUIRED
+ *  0x13 AP_INFO  (spec §4.9) -- every TLV below is REQUIRED
  *----------------------------------------------------------------------------*/
 #define EB_TLV_AP_SSID          0x01    /* utf-8 SSID, <=32B                  */
 #define EB_TLV_AP_PASSWORD      0x02    /* utf-8, <=63B; len=0 if open        */
@@ -132,8 +174,8 @@ extern "C" {
 #define EB_TLV_AP_PROTO         0x06    /* 1B, EB_AP_PROTO_RAW_TCP only       */
 #define EB_TLV_AP_SECURITY      0x07    /* 1B, EB_AP_SEC_*                    */
 
-/** 0x13 AP_INFO fixed values mandated by spec §4.7. */
-#define EB_AP_PROTO_RAW_TCP     0x01    /* the only legal proto in V1.2       */
+/** 0x13 AP_INFO fixed values mandated by spec §4.9. */
+#define EB_AP_PROTO_RAW_TCP     0x01    /* the only legal proto (V1.2/V1.3)   */
 #define EB_AP_SEC_OPEN          0x00
 #define EB_AP_SEC_WPA2_PSK      0x01
 #define EB_AP_DEFAULT_IPV4_A    192     /* 192.168.4.1                        */
@@ -143,36 +185,39 @@ extern "C" {
 #define EB_AP_DEFAULT_PORT      9000    /* 0x2328, LE on the wire: 28 23      */
 
 /*----------------------------------------------------------------------------*
- *  0x14 XFER_PROGRESS  (spec §4.8)
+ *  0x14 XFER_PROGRESS  (spec §4.10)
  *
  *  Note: the spec reports absolute byte counters, NOT a percentage.  The
  *  5% / 200ms throttle still uses a percentage internally to decide *when*
  *  to emit, but the payload carries recv/total.
+ *
+ *  Not emitted for a 0x08 preview stream: there is no total to report, and at
+ *  24 fps a per-frame notify would swamp the BLE link.
  *----------------------------------------------------------------------------*/
 #define EB_TLV_PROG_RECV        0x01    /* required, 4B LE bytes received     */
 #define EB_TLV_PROG_TOTAL       0x02    /* required, 4B LE == offer size      */
 
 /*----------------------------------------------------------------------------*
- *  0x15 XFER_DONE  (spec §4.9)
+ *  0x15 XFER_DONE  (spec §4.11)
  *----------------------------------------------------------------------------*/
 #define EB_TLV_DONE_FILE_ID     0x01    /* required, 2B LE, nonzero           */
 #define EB_TLV_DONE_SIZE        0x02    /* required, 4B LE final size          */
 #define EB_TLV_DONE_NAME        0x03    /* required, utf-8 final name on dev   */
 
 /*----------------------------------------------------------------------------*
- *  0x16 XFER_FAIL  (spec §4.10)
+ *  0x16 XFER_FAIL  (spec §4.12) -- also used to report a stream abort
  *----------------------------------------------------------------------------*/
 #define EB_TLV_FAIL_REASON      0x01    /* required, EB_XFER_ERR_*            */
 #define EB_TLV_FAIL_DETAIL      0x02    /* optional, utf-8 <=23B debug text   */
 
 /*----------------------------------------------------------------------------*
- *  0x18 BATTERY  (spec §4.11)
+ *  0x18 BATTERY  (spec §4.13)
  *----------------------------------------------------------------------------*/
 #define EB_TLV_BAT_PERCENT      0x01    /* required, 1B 0..100                */
 #define EB_TLV_BAT_CHARGE       0x02    /* required, 1B EBADGE_BATT_*         */
 
 /*----------------------------------------------------------------------------*
- *  0x1A STORAGE_INFO  (spec §4.12) -- every TLV below is REQUIRED
+ *  0x1A STORAGE_INFO  (spec §4.14) -- every TLV below is REQUIRED
  *
  *  Widths matter here: TOTAL / FREE / WP_USED are uint64 LE and count BYTES
  *  (not KB).  FS_MARGIN is uint32 and must always answer EB_FS_MARGIN.
@@ -187,7 +232,8 @@ extern "C" {
 #define EB_FS_MARGIN            4096u
 
 /*----------------------------------------------------------------------------*
- *  File type enum  (spec §2.7) -- shared by SEND_FILE, XFER_OFFER, EBXF hdr
+ *  File type enum  (spec §2.7) -- shared by SEND_FILE, XFER_OFFER,
+ *  JPG_STREAM_OFFER, and both TCP headers (EBXF §5.2 / EBXS §6.2)
  *----------------------------------------------------------------------------*/
 #define EB_FILE_TYPE_UNKNOWN    0x00    /* illegal in an OFFER                */
 #define EB_FILE_TYPE_JPEG       0x01
@@ -210,11 +256,12 @@ extern "C" {
 
 /**
  * Sanity cap on a 0x02 SEND_FILE body.  The spec does not fix a number here
- * (§7.3 leaves the single-file limit open, suggesting ~2 MiB for the Wi-Fi
- * path), but §4.2/§7.5 restrict this BLE route to debug and small config
- * files -- wallpaper must go through 0x10 + TCP.  64 KiB is generous for that
- * role while keeping a bogus length from parking the RX stream in raw mode
- * for minutes.  Bodies are streamed, never buffered, so this is policy only.
+ * (§8.3 leaves the single-file limit open, suggesting ~2 MiB for the Wi-Fi
+ * path), but §4.2 and §7's "大图禁止 BLE 0x02 主路径" restrict this BLE route
+ * to debug and small config files -- wallpaper must go through 0x10 + TCP.
+ * 64 KiB is generous for that role while keeping a bogus length from parking
+ * the RX stream in raw mode for minutes.  Bodies are streamed, never
+ * buffered, so this is policy only.
  */
 #define EB_MAX_SEND_FILE_BYTES  (64u * 1024u)
 

@@ -75,7 +75,9 @@ int  ebadge_l2_notify_send(uint8_t cmd, const uint8_t *params, uint16_t params_l
  * (TLV_CMD 0x01 first, TLV_RESULT 0x02 second).
  *
  * @param  cmd_ref  The command id being answered (EB_CMD_*).
- * @param  code     EB_RESULT_SUCCEED or EB_RESULT_FAILED -- note 0 is FAILURE.
+ * @param  code     EB_RESULT_* -- note V1.3 §2.5 INVERTED the polarity:
+ *                  0x00 is now SUCCEED and 0x01 is FAILED.  Always use the
+ *                  macros; a literal 0/1 here means the opposite of V1.2.
  */
 int  ebadge_l2_result_send(uint8_t cmd_ref, uint8_t code);
 
@@ -94,7 +96,7 @@ int  ebadge_tlv_put_u16(uint8_t *buf, uint16_t cap, uint16_t *poff,
                         uint8_t type, uint16_t v);
 int  ebadge_tlv_put_u32(uint8_t *buf, uint16_t cap, uint16_t *poff,
                         uint8_t type, uint32_t v);
-/** 8-byte LE integer -- needed by 0x1A STORAGE_INFO (spec §4.12). */
+/** 8-byte LE integer -- needed by 0x1A STORAGE_INFO (spec §4.14). */
 int  ebadge_tlv_put_u64(uint8_t *buf, uint16_t cap, uint16_t *poff,
                         uint8_t type, uint64_t v);
 

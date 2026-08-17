@@ -2,7 +2,7 @@
  * @file    cmd_get_storage.c
  * @brief   0x19 GET_STORAGE -- respond with 0x1A STORAGE_INFO.
  *
- * Spec §4.12 TLVs, all five required:
+ * Spec §4.14 TLVs, all five required:
  *   0x01 total     8B LE bytes
  *   0x02 free      8B LE bytes
  *   0x03 wp_count  2B LE
