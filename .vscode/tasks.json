@@ -3,8 +3,12 @@
   "tasks": [
     {
       "label": "West Build",
-      "type": "shell",
-      "command": "cd $(realpath ${workspaceFolder}) && west build -b rtl87x3g_evb",
+      "type": "process",
+      "command": "west",
+      "args": ["build", "-b", "rtl87x3g_evb"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": ["$gcc"],
       "group": {
         "kind": "build",
@@ -13,8 +17,12 @@
     },
     {
       "label": "West Rebuild",
-      "type": "shell",
-      "command": "cd $(realpath ${workspaceFolder}) && west build -b rtl87x3g_evb -p",
+      "type": "process",
+      "command": "west",
+      "args": ["build", "-b", "rtl87x3g_evb", "-p"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "problemMatcher": ["$gcc"],
       "group": "build"
     },
