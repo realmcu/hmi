@@ -1,0 +1,129 @@
+/*
+ * Copyright (c) 2026, Realtek Semiconductor Corporation
+ *
+ * SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+ */
+
+/*
+ * External 8711 Wi-Fi chip on the high-speed SPI1 bus (AT-over-SPI).
+ *
+ * Enabled via the wifi_8711 snippet (pairs with wifi_8711.conf):
+ *   west build -b rtl87x3g_evb applications/eBadge_8773g_8711f -p always \
+ *     -S flash_16M_bank0 -S wifi_8711
+ *
+ * Pin assignment (board-defined, 2026-08-14):
+ *
+ *   SPI1 CLK   P4_2  (GPIOB9)    high-speed SPI1 (spi1_hs) controller
+ *   SPI1 MISO  P4_3  (GPIOB10)
+ *   SPI1 MOSI  P4_4  (GPIOB11)
+ *   SPI1 CSN   P4_5  (GPIOB12)   hardware SS_N, controller-driven
+ *   M2S        P4_1  (GPIOB8)    BLE -> WIFI attention, output
+ *   S2M        P2_7  (GPIOA22)   WIFI -> BLE attention, interrupt input
+ *
+ * !! PIN CONFLICT -- READ BEFORE FLASHING !!
+ *
+ * P4_3 and P4_4 are also wired to I2C2 (I2C2_DAT / I2C2_CLK) in
+ * boards/rtl87x3g_evb.overlay, where they drive the CST816D touch panel.
+ * Both pinctrl groups therefore claim the same two pads.
+ *
+ * This overlay does NOT disable &i2c2, on purpose: port/ui/gui_port_indev.c
+ * binds the panel with DEVICE_DT_GET(DT_NODELABEL(touch_device)) and has no
+ * DT_NODE_HAS_STATUS guard, so disabling the bus turns into an
+ * __device_dts_ord_NN link error rather than a graceful build-out.
+ *
+ * Consequence: whichever driver runs pinctrl last owns the pads.  Touch and
+ * Wi-Fi cannot both work on this wiring.  Resolve it on the hardware side --
+ * move the panel to another I2C instance, or move SPI1 to different pads --
+ * before treating this snippet as functional.  It is wired up here exactly as
+ * specified so the DT/Kconfig plumbing can be built and reviewed.
+ */
+
+#include <zephyr/dt-bindings/gpio/realtek-rtl87x3g-gpio.h>
+#include <zephyr/dt-bindings/pinctrl/rtl87x3g-pinctrl.h>
+
+/* Handshake GPIOs -- consumed by app_spi_master_zephyr.c via
+ * DT_NODELABEL(wifi_8711_resources).  Named after this snippet (rather than a
+ * generic "resources") so a node contributed by another stacked -S overlay
+ * cannot collide or silently merge with it. */
+/ {
+	wifi_8711_resources: wifi_8711_resources {
+		compatible = "spi_m2s2m-gpio";
+		m2s-gpios = <&gpiob 8  GPIO_ACTIVE_LOW>;	/* P4_1, BLE -> WIFI */
+		s2m-gpios = <&gpioa 22 GPIO_ACTIVE_HIGH>;	/* P2_7, WIFI -> BLE */
+	};
+
+	/*
+	 * Non-cacheable DMA staging area for the SPI master.
+	 *
+	 * app_spi_master_zephyr.c places ~114 KB of buffers (tx_ring_storage +
+	 * tx_dma_buf + 2x rx_storage, SPI_XMIT_SIZE = 16 KiB each) in
+	 * SECTION_PSRAM1_NC.  That macro is DT_NODE_EXISTS-guarded, so without a
+	 * psram1_nc node it expands to nothing and all of it lands in the 82 KB
+	 * DTCM -- a link-time overflow.  Hence this node.
+	 *
+	 * Address: SPIC1 is laid out as 512 KB DSP reserve + 3 MB GUI lower heap
+	 * (port/ui/gui_port_os.c: SPIC1_MEM_BASE + DSP_RSV_SIZE, 0x300000), i.e.
+	 * 0x22000000..0x22380000 is taken.  app_lower_init.c:app_mpu_config()
+	 * maps SPIC1_MEM_BASE..+0x400000 as MPU region 2 with attr 0x44
+	 * (non-cacheable), so 0x22380000..0x22400000 is both free and already
+	 * non-cacheable -- no extra MPU work, and no SCB_CleanDCache needed on
+	 * the SPI path.
+	 *
+	 * The name psram1_nc matches what psram_section.h looks up; the region
+	 * is NOLOAD (not zeroed at boot) and PSRAM only comes up inside
+	 * app_system_lower_init(), so every field here must be initialised at
+	 * runtime in app_spi_master_init().
+	 */
+	psram1_nc_region: psram1_nc_region {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		psram1_nc: memory@22380000 {
+			compatible = "zephyr,memory-region";
+			reg = <0x22380000 DT_SIZE_K(512)>;
+			zephyr,memory-region = "PSRAM1_NC";
+		};
+	};
+};
+
+/* SPI master -- high-speed SPI1 controller, hardware CS (SS_N).
+ *
+ * spi1_hs ships status="disabled" in rtl87x3g.dtsi like every other SPI node,
+ * and CONFIG_SPI_RTL87X3G depends on DT_HAS_REALTEK_RTL87X3G_SPI_ENABLED, so
+ * this status="okay" is what actually pulls the SPI driver into the build.
+ * The binding also makes pinctrl-0 / pinctrl-names required. */
+&spi1_hs {
+	status = "okay";
+	pinctrl-0 = <&spi1_wifi_default>;
+	pinctrl-names = "default";
+
+	/* SPI1 GDMA handshakes: TX = 6, RX = 7.  Channels 0/1 are free here --
+	 * uart3 in boards/rtl87x3g_evb.overlay uses channels 2/3. */
+	dmas = <&dma0 0 6 0x16c21>, <&dma0 1 7 0x6c0a>;	/* tx, rx */
+	dma-names = "tx", "rx";
+	rx-sample-delay = <1>;
+
+	/* Bus peer, not a controller.  app_spi_master_zephyr.c binds it via
+	 * DT_NODELABEL(wifi_8711_device). */
+	wifi_8711_device: wifi_8711_device@0 {
+		compatible = "wifi_8711-device";
+		reg = <0>;
+		spi-max-frequency = <4000000>;
+		status = "okay";
+	};
+};
+
+&pinctrl {
+	/* Group name is snippet-prefixed so it cannot clash with the
+	 * i2c2_default / uart3_default groups already in the board overlay. */
+	spi1_wifi_default: spi1_wifi_default {
+		group1 {
+			psels = <RTL87X3G_PSEL(HS_P4_2_SPI1_CLK,  P4_2, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(HS_P4_3_SPI1_MISO, P4_3, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(HS_P4_4_SPI1_MOSI, P4_4, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(HS_P4_5_SPI1_CSN,  P4_5, DIR_OUT, DRV_HIGH, PULL_UP)>;
+		};
+	};
+};
+
+/* &dma0 and &gpioa / &gpiob are already status="okay" in
+ * boards/rtl87x3g_evb.overlay; repeated here would be a no-op. */

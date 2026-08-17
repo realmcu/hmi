@@ -37,6 +37,10 @@ config REALTEK_BUILD_EXAMPLE_EBADGE
     bool "Ebadge Widget Demo"
 	default n
 
+# External 8711 Wi-Fi chip over SPI.  Selected by the wifi_8711 snippet, which
+# also carries the devicetree nodes the module binds to.
+rsource "app/wifi_8711/Kconfig"
+
 endmenu
 
 menu "Zephyr Kernel"

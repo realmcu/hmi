@@ -1,0 +1,4 @@
+name: wifi_8711
+append:
+  EXTRA_CONF_FILE: wifi_8711.conf
+  EXTRA_DTC_OVERLAY_FILE: wifi_8711.overlay
