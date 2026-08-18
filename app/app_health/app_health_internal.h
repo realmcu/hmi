@@ -127,25 +127,12 @@ int  health_db_load_today(uint32_t current_utc_day_index,
  * Returns 0 on success, negative on failure. */
 int  health_db_save_today(const health_daily_rollup_t *rollup);
 
-/* Iterate every TSDB record whose ts_utc falls in [from, to]. @c to may be
- * 0 to mean "no upper bound". The callback receives the copied record plus
- * the TSDB-side timestamp (for cross-check); returning false continues the
- * iteration, true stops it. Returns the number of records visited. */
-typedef bool (*health_db_iter_cb_t)(const health_pedo_record_t *rec,
-                                    uint32_t fdb_ts,
-                                    uint32_t fdb_addr,
-                                    void *user);
-size_t health_db_iter(uint32_t from, uint32_t to,
-                      health_db_iter_cb_t cb, void *user);
-
-/* Count decodable health records with ts_utc in [from, to]. Uses the same
- * payload validation as health_db_iter(), so count and list agree even when
- * an older firmware left differently-sized records in the TSDB. */
-size_t health_db_count(uint32_t from, uint32_t to);
-
-/* Erase every record in the pedo TSDB. Does NOT touch the today-KV; caller
- * should zero that separately if needed. Returns 0 on success. */
-int  health_db_clean(void);
+/* Take the next record no consumer has seen yet, oldest first, advancing the
+ * persisted watermark over it. Returns 1 when @c out was filled, 0 when
+ * nothing unread remains, negative errno on a NULL argument or unusable
+ * store. Backs app_health_history_read(); see that declaration in
+ * app_health.h for the full contract. */
+int  health_db_read_next(health_pedo_record_t *out);
 
 /* --------------------------------------------------------------
  * health_worker — private acquisition task.
@@ -175,23 +162,9 @@ void health_worker_stop(health_stop_mode_t mode);
 /* True from successful start until the worker has completed cleanup. */
 bool health_worker_is_running(void);
 
-typedef enum
-{
-    HEALTH_FLUSH_OK = 0,
-    HEALTH_FLUSH_EMPTY,
-    HEALTH_FLUSH_NOT_RUNNING,
-    HEALTH_FLUSH_INVALID_TIME,
-    HEALTH_FLUSH_DB_ERROR,
-} health_flush_result_t;
-
-/* Force a partial-bucket flush right now, independent of the bucket deadline.
- * Intended for the debug `health flush` shell command. The result distinguishes
- * an empty accumulator from lifecycle, clock, and persistence failures. */
-health_flush_result_t health_worker_flush_now(void);
-
 /* Read the current today-rollup snapshot (thread-safe copy). Used by
- * app_health to publish EVT_HEALTH_STEPS_UPDATED and by the shell for
- * "current status" queries. */
+ * app_health to publish EVT_HEALTH_STEPS_UPDATED and to back
+ * app_health_get_today(). */
 void health_worker_get_today(health_daily_rollup_t *out);
 
 /* Read the current UTC epoch seconds via /dev/rtc0. Returns 0 if the RTC

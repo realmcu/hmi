@@ -5,7 +5,7 @@
  * section 3.6 for the authoritative wire format.
  *
  * Implemented: activity data (Data type 0x01) backed by the pedo TSDB via
- * app_health_count_history() + app_health_read_history().
+ * app_health_history_read().
  *
  * NOT implemented: sleep data (Data type 0x02, reply key 0x03). The storage
  * layer doesn't exist yet -- no sleep TSDB, no sleep_state_record_t, no read
@@ -40,14 +40,14 @@
 /* Session state. Only touched from l2_task (command handler) and from the
  * disconnect hook, which is bounced onto l2_task as well.
  *
- * s_sync_total is counted once when the session opens and never refreshed:
- * the session serves a frozen snapshot, so a bucket the worker flushes
- * mid-sync is picked up by the phone's next connection instead of extending
- * this one indefinitely. s_sync_sent tracks progress against it. */
+ * There is no read cursor here: app_health owns the watermark and never
+ * hands out the same record twice, so a session is just "is a sync in
+ * flight, and for which Data type". s_sync_sent is for logging.
+ *
+ * Consequence worth knowing: records taken from app_health cannot be taken
+ * again. See sport_send_activity_page() for how a failed send is handled. */
 static bool     s_sync_active;
 static uint8_t  s_sync_dtype;
-static uint32_t s_sync_next_ts;
-static int      s_sync_total;
 static int      s_sync_sent;
 
 /*============================================================================*
@@ -134,63 +134,72 @@ static uint16_t sport_encode_record(uint8_t *out, const health_pedo_record_t *r)
 
 static void sport_session_reset(void)
 {
-    s_sync_active  = false;
-    s_sync_dtype   = 0;
-    s_sync_next_ts = 0;
-    s_sync_total   = 0;
-    s_sync_sent    = 0;
+    s_sync_active = false;
+    s_sync_dtype  = 0;
+    s_sync_sent   = 0;
 }
 
-/* Read and emit one page of activity records starting at s_sync_next_ts.
- * Advances the cursor and closes the session when the last page is sent. */
+/* Read up to one frame's worth of records and emit them, then tell the phone
+ * whether to ask again.
+ *
+ * Reads are one-way: app_health never hands the same record out twice, so
+ * anything taken here that fails to reach the phone is lost. Records are taken
+ * one at a time and encoded as they arrive, so the loop never runs ahead of
+ * what we intend to send.
+ *
+ * There is also no way to peek past the page boundary -- asking whether a
+ * ninth record exists would consume it. So a full page always advertises MORE,
+ * and the next request finding the store empty closes with END. When the
+ * record count is an exact multiple of the page size that costs one extra
+ * empty round trip. */
 static void sport_send_activity_page(void)
 {
-    health_pedo_record_t recs[HMI_L2_SPORT_RECS_MAX];
+    uint8_t  val[1u + HMI_L2_SPORT_RECS_MAX * HMI_L2_SPORT_REC_SIZE];
+    uint16_t pos = 1u;                 /* val[0] is the record count */
+    uint8_t  n   = 0u;
 
-    int n = app_health_read_history(s_sync_next_ts, 0u,
-                                    recs, HMI_L2_SPORT_RECS_MAX);
-    if (n < 0)
+    while (n < HMI_L2_SPORT_RECS_MAX)
     {
-        /* Storage unavailable: the session terminates. The phone re-syncs
-         * from scratch on the next connection and de-dupes on its side. */
-        PROTO_LOG("L2 SPORT read_history failed rc=%d, aborting session", n);
-        sport_session_reset();
-        return;
+        health_pedo_record_t rec;
+        int rc = app_health_history_read(&rec);
+        if (rc < 0)
+        {
+            /* Storage unavailable. Drop the session; the phone retries on its
+             * next connection. Records already encoded into val are discarded
+             * unsent -- accepted, because the alternative is sending a partial
+             * page and then having to explain the failure anyway. */
+            PROTO_LOG("L2 SPORT history_read failed rc=%d, aborting session", rc);
+            sport_session_reset();
+            return;
+        }
+        if (rc == 0)
+        {
+            break;                     /* no unread records left */
+        }
+
+        pos += sport_encode_record(&val[pos], &rec);
+        n++;
     }
 
-    /* Spec: an empty DB must NOT produce a Record count=0 page -- go
+    /* Spec: an empty store must NOT produce a Record count=0 page -- go
      * straight from START to END. */
-    if (n > 0)
+    if (n > 0u)
     {
-        uint8_t  val[1u + HMI_L2_SPORT_RECS_MAX * HMI_L2_SPORT_REC_SIZE];
-        uint16_t pos = 0;
-
-        val[pos++] = (uint8_t)n;
-        for (int i = 0; i < n; i++)
-        {
-            pos += sport_encode_record(&val[pos], &recs[i]);
-        }
+        val[0] = n;
 
         if (!sport_send(HMI_L2_SPORT_DATA_RSP, val, pos))
         {
-            PROTO_LOG("L2 SPORT page send failed, aborting session");
+            PROTO_LOG("L2 SPORT page send failed, aborting session "
+                      "(%u record(s) consumed but not delivered)", (unsigned)n);
             sport_session_reset();
             return;
         }
 
-        s_sync_sent   += n;
-        /* Timestamps are strictly increasing, so +1 skips exactly the
-         * records already sent. */
-        s_sync_next_ts = recs[n - 1].ts_utc + 1u;
-
-        PROTO_LOG("L2 SPORT page sent count=%d progress=%d/%d next_ts=%lu",
-                  n, s_sync_sent, s_sync_total,
-                  (unsigned long)s_sync_next_ts);
+        s_sync_sent += n;
+        PROTO_LOG("L2 SPORT page sent count=%u sent=%d", (unsigned)n, s_sync_sent);
     }
 
-    /* A short page means the snapshot is exhausted even if the count taken at
-     * session start suggested otherwise (e.g. a record aged out mid-sync). */
-    if (s_sync_sent < s_sync_total && n == HMI_L2_SPORT_RECS_MAX)
+    if (n == HMI_L2_SPORT_RECS_MAX)
     {
         (void)sport_send_dtype(HMI_L2_SPORT_MORE, HMI_L2_SPORT_DT_ACTIVITY);
     }
@@ -249,24 +258,14 @@ static void sport_on_req(const hmi_l2_kv_t *kv)
 
     if (!s_sync_active)
     {
-        /* First request: open the session at the oldest record and announce
-         * the start before any data page.
+        /* First request: announce the start before any data page.
          *
-         * Count once here rather than per page: each count is a full TSDB
-         * walk, and a per-page recount would let buckets flushed mid-sync
-         * keep the session alive indefinitely. */
-        int total = app_health_count_history(0u, 0u);
-        if (total < 0)
-        {
-            PROTO_LOG("L2 SPORT count_history failed rc=%d, no session", total);
-            return;
-        }
-
-        s_sync_active  = true;
-        s_sync_dtype   = dtype;
-        s_sync_next_ts = 0u;
-        s_sync_total   = total;
-        s_sync_sent    = 0;
+         * Nothing to open -- app_health's watermark already knows where the
+         * unread history begins, and it persists across connections, so a
+         * reconnect resumes rather than restarting. */
+        s_sync_active = true;
+        s_sync_dtype  = dtype;
+        s_sync_sent   = 0;
 
         if (!sport_send_dtype(HMI_L2_SYNC_START, dtype))
         {
@@ -274,7 +273,7 @@ static void sport_on_req(const hmi_l2_kv_t *kv)
             sport_session_reset();
             return;
         }
-        PROTO_LOG("L2 SPORT sync started dtype=0x%02x total=%d", dtype, total);
+        PROTO_LOG("L2 SPORT sync started dtype=0x%02x", dtype);
     }
     else if (s_sync_dtype != dtype)
     {
@@ -306,9 +305,10 @@ static void on_cmd_sport(const hmi_l2_kv_t *kvs, uint8_t n)
  *                              Lifecycle
  *============================================================================*/
 
-/* Runs on app_task. Only clears session state (no flash handles to release),
- * so unlike the xfer handler this needs no bounce onto l2_task: a torn read of
- * a bool/u8/u32 trio can at worst drop a page the dead link couldn't carry. */
+/* Runs on app_task. Only clears session state (no flash handles to release, no
+ * read cursor to unwind -- app_health's watermark is already persisted), so
+ * unlike the xfer handler this needs no bounce onto l2_task: a torn read of the
+ * bool/u8/int trio can at worst drop a page the dead link couldn't carry. */
 static void on_ble_disconnected(app_event_id_t id, const void *payload,
                                 size_t len, void *user)
 {

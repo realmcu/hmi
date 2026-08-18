@@ -31,6 +31,11 @@
  *              successful TSDB append. Persists the new today rollup to
  *              env KV and publishes EVT_HEALTH_STEPS_UPDATED. Runs on
  *              the worker task; must not block on the event bus.
+ *
+ * Deliberately NOT here: the history read cursor (health_db.c, next to the
+ * append path whose timestamp ordering it depends on) and the today rollup
+ * (health_worker.c, which owns the accumulator). This file only forwards to
+ * them so outside consumers include app_health.h alone.
  */
 
 #include "app_health.h"
@@ -50,76 +55,13 @@ APP_LOG_MODULE_REGISTER(app_health);
 static bool s_time_synced;
 static bool s_user_bound;
 
-/* Reject a range whose upper bound precedes its lower bound. A zero
- * to_ts_utc is the documented "no upper bound" spelling, not a bound of 0. */
-static bool history_range_valid(uint32_t from_ts_utc, uint32_t to_ts_utc)
+/* Thin forwarders. The read cursor and the today rollup live in health_db and
+ * health_worker respectively; these exist so consumers outside the module only
+ * ever include app_health.h. */
+
+int app_health_history_read(health_pedo_record_t *out)
 {
-    return to_ts_utc == 0u || to_ts_utc >= from_ts_utc;
-}
-
-int app_health_count_history(uint32_t from_ts_utc, uint32_t to_ts_utc)
-{
-    if (!history_range_valid(from_ts_utc, to_ts_utc))
-    {
-        return -EINVAL;
-    }
-    if (health_db_init() != 0)
-    {
-        return -EIO;
-    }
-
-    return (int)health_db_count(from_ts_utc, to_ts_utc);
-}
-
-typedef struct
-{
-    health_pedo_record_t *out_records;
-    size_t                max_records;
-    size_t                written;
-} history_fill_t;
-
-static bool history_fill_cb(const health_pedo_record_t *rec,
-                            uint32_t fdb_ts, uint32_t fdb_addr,
-                            void *user)
-{
-    (void)fdb_ts;
-    (void)fdb_addr;
-
-    history_fill_t *fill = (history_fill_t *)user;
-
-    fill->out_records[fill->written++] = *rec;
-
-    /* Returning true stops health_db_iter; the records left behind stay in
-     * the store for the caller's next batch. */
-    return fill->written >= fill->max_records;
-}
-
-int app_health_read_history(uint32_t from_ts_utc,
-                            uint32_t to_ts_utc,
-                            health_pedo_record_t *out_records,
-                            size_t max_records)
-{
-    if (out_records == NULL || max_records == 0u ||
-        !history_range_valid(from_ts_utc, to_ts_utc))
-    {
-        return -EINVAL;
-    }
-    if (health_db_init() != 0)
-    {
-        return -EIO;
-    }
-
-    history_fill_t fill =
-    {
-        .out_records = out_records,
-        .max_records = max_records,
-        .written     = 0u,
-    };
-    /* The visited count health_db_iter returns includes records it decoded
-     * but we never stored, so `written` is the authoritative answer. */
-    (void)health_db_iter(from_ts_utc, to_ts_utc, history_fill_cb, &fill);
-
-    return (int)fill.written;
+    return health_db_read_next(out);
 }
 
 void app_health_get_today(health_daily_rollup_t *out)
