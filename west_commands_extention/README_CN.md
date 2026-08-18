@@ -6,11 +6,35 @@ RTL8773E Dashboard 项目的 West 自定义命令（仅面向 GCC/CMake 构建�
 
 ### `west info`
 
-显示工作区路径、构建状态和输出 ELF 文件。
+一次显示工作区和构建状态，以及所有 West project 和额外 Git submodule 的
+当前 commit ID 与工作区状态。默认只显示 `CLEAN` / `DIRTY`，便于直接复制完整输出；
+不存在、未初始化或无法读取的仓库会显示 `MISSING` / `UNINIT` / `ERROR`，但不影响其余检查。
 
 ```bash
+# 简洁模式：显示每个仓库的 commit ID 和状态
 west info
+
+# 详细模式：脏仓库下方额外列出 modified/untracked 文件
+west info --files
+west info -f
 ```
+
+示例输出：
+
+```text
+Repositories
+------------------------------------------------------------------------------------------------
+Status   Project                  Commit                                   Path
+------------------------------------------------------------------------------------------------
+CLEAN    manifest                 2113fc3c1f4ab98c1e5f09625d827c4bd61fd407 .manifest
+DIRTY    HoneyGUI                 a9ebc692ae8cb0260dbe1e40271f3aa1aaf4abcb sdk/src/sample/gui
+------------------------------------------------------------------------------------------------
+Total: 7, clean: 6, dirty: 1
+```
+
+> 父仓库中的嵌套 West project 会从父仓库状态中排除，避免同一处改动重复报脏；
+> 但父仓库真实跟踪的 Git submodule 指针变化仍会正常显示。内部 HoneyComb
+> 中未单独列为 West project 的 submodule，也会自动加入报告。
 
 ### `west build`
 

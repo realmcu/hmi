@@ -7,11 +7,37 @@ MDK projects, build directly in Keil).
 
 ### `west info`
 
-Show workspace path, build status, and output ELF file.
+Show the workspace and build status, plus the current commit ID and worktree
+status of every West project and additional Git submodule. The default output
+only shows `CLEAN` / `DIRTY`; unavailable repositories are reported as
+`MISSING`, `UNINIT`, or `ERROR` without stopping the remaining checks.
 
 ```bash
+# Concise mode: show each repository's commit ID and status
 west info
+
+# Detailed mode: also list modified and untracked files
+west info --files
+west info -f
 ```
+
+Example output:
+
+```text
+Repositories
+------------------------------------------------------------------------------------------------
+Status   Project                  Commit                                   Path
+------------------------------------------------------------------------------------------------
+CLEAN    manifest                 2113fc3c1f4ab98c1e5f09625d827c4bd61fd407 .manifest
+DIRTY    HoneyGUI                 a9ebc692ae8cb0260dbe1e40271f3aa1aaf4abcb sdk/src/sample/gui
+------------------------------------------------------------------------------------------------
+Total: 7, clean: 6, dirty: 1
+```
+
+> Nested West projects are excluded from their parent repository's status to
+> avoid duplicate dirty reports. Real Git submodule pointer changes remain
+> visible, and HoneyComb submodules not declared as West projects are added
+> automatically.
 
 ### `west build`
 

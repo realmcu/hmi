@@ -196,6 +196,151 @@ def _package_userdata(cmake_src: str, bin_path: str):
     return record_dst, flash_ready, workdir
 
 
+class _Repository:
+    def __init__(self, name, path, abspath, revision='-'):
+        self.name = name
+        self.path = path
+        self.abspath = abspath
+        self.revision = revision
+
+
+class _RepositoryState:
+    def __init__(self, name, path, revision, commit, status, changes,
+                 error=''):
+        self.name = name
+        self.path = path
+        self.revision = revision
+        self.commit = commit
+        self.status = status
+        self.changes = changes
+        self.error = error
+
+
+def _git(repo_dir, *args):
+    """Run git without invoking a shell and return its decoded output."""
+    return subprocess.run(
+        ['git', *args], cwd=repo_dir, capture_output=True, text=True,
+        encoding='utf-8', errors='replace',
+    )
+
+
+def _gitmodule_paths(repo_dir):
+    """Return paths declared by this repository's .gitmodules file."""
+    if not os.path.isfile(os.path.join(repo_dir, '.gitmodules')):
+        return []
+    result = _git(
+        repo_dir, 'config', '-f', '.gitmodules',
+        '--get-regexp', r'^submodule\..*\.path$',
+    )
+    if result.returncode not in (0, 1):
+        return []
+    return [
+        line.split(None, 1)[1].replace('\\', '/').rstrip('/')
+        for line in result.stdout.splitlines() if len(line.split(None, 1)) == 2
+    ]
+
+
+def _project_state(project, projects, show_files):
+    """Collect the current commit and worktree state of one repository."""
+    repo_dir = project.abspath
+    path = project.path or '.'
+    if not os.path.isdir(repo_dir):
+        return _RepositoryState(
+            project.name, path, project.revision, '-', 'MISSING', [],
+            'project directory does not exist',
+        )
+    if not os.path.exists(os.path.join(repo_dir, '.git')):
+        return _RepositoryState(
+            project.name, path, project.revision, '-', 'UNINIT', [],
+            'repository is not initialized',
+        )
+
+    head = _git(repo_dir, 'rev-parse', '--verify', 'HEAD')
+    if head.returncode != 0:
+        error = head.stderr.strip() or 'not a Git repository'
+        return _RepositoryState(
+            project.name, path, project.revision, '-', 'ERROR', [], error,
+        )
+
+    untracked = 'all' if show_files else 'normal'
+    status_args = ['status', '--porcelain=v1', f'--untracked-files={untracked}']
+    nested_paths = []
+    gitmodule_paths = set(_gitmodule_paths(repo_dir))
+    repo_dir_abs = os.path.abspath(repo_dir)
+    repo_dir_norm = os.path.normcase(repo_dir_abs)
+    for nested in projects:
+        if nested is project:
+            continue
+        nested_dir_abs = os.path.abspath(nested.abspath)
+        nested_dir_norm = os.path.normcase(nested_dir_abs)
+        try:
+            common = os.path.commonpath([repo_dir_norm, nested_dir_norm])
+        except ValueError:
+            continue
+        if common != repo_dir_norm:
+            continue
+        relative = os.path.relpath(nested_dir_abs, repo_dir_abs)
+        relative = relative.replace(os.sep, '/')
+        if (relative != '.' and not relative.startswith('../') and
+                relative not in gitmodule_paths):
+            nested_paths.append(relative)
+
+    if nested_paths:
+        status_args.append('--')
+        status_args.append('.')
+        for nested_path in nested_paths:
+            status_args.extend((
+                f':(exclude){nested_path}', f':(exclude){nested_path}/',
+            ))
+
+    worktree = _git(repo_dir, *status_args)
+    if worktree.returncode != 0:
+        error = worktree.stderr.strip() or 'git status failed'
+        return _RepositoryState(
+            project.name, path, project.revision, head.stdout.strip(),
+            'ERROR', [], error,
+        )
+
+    changes = worktree.stdout.splitlines()
+    return _RepositoryState(
+        project.name, path, project.revision, head.stdout.strip(),
+        'DIRTY' if changes else 'CLEAN', changes if show_files else [],
+    )
+
+
+def _collect_repository_states(manifest, show_files=False):
+    projects = list(manifest.projects)
+    repositories = [
+        _Repository(project.name, project.path or '.', project.abspath,
+                    project.revision)
+        for project in projects
+    ]
+
+    west_paths = {
+        os.path.normcase(os.path.abspath(repository.abspath))
+        for repository in repositories
+    }
+    submodule_index = 0
+    while submodule_index < len(repositories):
+        parent = repositories[submodule_index]
+        submodule_index += 1
+        for submodule_path in _gitmodule_paths(parent.abspath):
+            abspath = os.path.abspath(os.path.join(parent.abspath, submodule_path))
+            normalized = os.path.normcase(abspath)
+            if normalized in west_paths:
+                continue
+            workspace_path = os.path.relpath(abspath, manifest.topdir).replace(os.sep, '/')
+            repositories.append(_Repository(
+                f'submodule:{workspace_path}', workspace_path, abspath,
+            ))
+            west_paths.add(normalized)
+
+    return [
+        _project_state(repository, repositories, show_files)
+        for repository in repositories
+    ]
+
+
 class ProjectInfo(WestCommand):
     def __init__(self):
         super().__init__(
@@ -204,8 +349,14 @@ class ProjectInfo(WestCommand):
         )
 
     def do_add_parser(self, parser_adder, **kwargs):
-        return parser_adder.add_parser(self.name, help=self.help,
-                                       description=self.description)
+        parser = parser_adder.add_parser(
+            self.name, help=self.help, description=self.description,
+        )
+        parser.add_argument(
+            '-f', '--files', action='store_true',
+            help='list changed and untracked files in dirty repositories',
+        )
+        return parser
 
     def do_run(self, args, unknown):
         topdir = self.manifest.topdir
@@ -221,11 +372,34 @@ class ProjectInfo(WestCommand):
         built = bool(built_modes)
 
         log.inf('RTL8773E Dashboard Project')
-        log.inf('=' * 54)
+        log.inf('=' * 96)
         log.inf(f'  Workspace : {topdir}')
         log.inf(f'  SDK root  : {cmake_src}')
         log.inf(f'  Build root: {build_root}')
         log.inf(f'  Built     : {", ".join(built_modes) if built else "no — run: west build"}')
+        log.inf('')
+        log.inf('Repositories')
+        log.inf('-' * 96)
+        log.inf(f'{"Status":<8} {"Project":<24} {"Commit":<40} Path')
+        log.inf('-' * 96)
+
+        states = _collect_repository_states(self.manifest, args.files)
+        for state in states:
+            commit = state.commit if state.commit == '-' else state.commit[:40]
+            log.inf(f'{state.status:<8} {state.name:<24} {commit:<40} {state.path}')
+            if state.error:
+                log.inf(f'         ! {state.error}')
+            for change in state.changes:
+                log.inf(f'         {change}')
+
+        clean = sum(state.status == 'CLEAN' for state in states)
+        dirty = sum(state.status == 'DIRTY' for state in states)
+        errors = len(states) - clean - dirty
+        log.inf('-' * 96)
+        summary = f'Total: {len(states)}, clean: {clean}, dirty: {dirty}'
+        if errors:
+            summary += f', unavailable: {errors}'
+        log.inf(summary)
 
         if built:
             bin_root = os.path.join(cmake_src, 'board', 'evb', 'hmi_dashboard', 'gcc', 'bin')
@@ -241,7 +415,7 @@ class ProjectInfo(WestCommand):
                     for elf in elfs:
                         log.inf(f'    {elf}')
 
-        log.inf('=' * 54)
+        log.inf('=' * 96)
 
 
 class BuildCommand(WestCommand):
