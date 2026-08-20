@@ -31,3 +31,6 @@ gcc/bin/
 # JLink runtime files
 **/mdk/JLinkLog.txt
 **/mdk/JLinkLog*.txt
+
+# Auto-generated at build time by version_gen_config.sh
+/version.h
