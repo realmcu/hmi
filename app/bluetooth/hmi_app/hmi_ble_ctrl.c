@@ -12,6 +12,8 @@
 #include "gap_msg.h"
 #include "gap_conn_le.h"
 #include "hmi_ctrl_service.h"
+#include "hmi_l2_cmd_xfer.h"
+#include "hmi_protocal_task.h"
 
 #define HMI_CONN_HANDLE_INVALID     0xFFFF
 
@@ -114,6 +116,14 @@ static T_APP_RESULT app_hmi_callback(T_SERVER_ID service_id, void *p_data)
     return app_result;
 }
 
+/* Posted to l2_task by gap_hmi_msg on disconnect: resets the xfer receive
+ * session in the same context as on_cmd_xfer (no fdb_bf race). */
+static void hmi_ctrl_xfer_reset_cb(l2_msg_t *p_msg)
+{
+    (void)p_msg;
+    hmi_l2_xfer_reset();
+}
+
 static void gap_hmi_msg(T_IO_MSG *p_gap_msg)
 {
     APP_PRINT_TRACE2("gap_hmi_msg: type %d, subtype %d", p_gap_msg->type, p_gap_msg->subtype);
@@ -131,6 +141,10 @@ static void gap_hmi_msg(T_IO_MSG *p_gap_msg)
             case GAP_CONN_STATE_DISCONNECTED:
                 hmi_conn_handle    = HMI_CONN_HANDLE_INVALID;
                 hmi_event_cccd_enabled = false;
+                /* Reset the receive session on l2_task (same context as
+                 * on_cmd_xfer) to avoid racing fdb_bf_abort with fdb_bf_append;
+                 * it runs after any DATA frames still queued ahead of it. */
+                hmi_proto_post_call(hmi_ctrl_xfer_reset_cb, NULL);
                 APP_PRINT_INFO0("gap_hmi_msg: disconnected");
                 break;
 

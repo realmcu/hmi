@@ -1,4 +1,8 @@
-/** Copyright(c) 2018, Realtek Semiconductor Corporation.All rights reserved.*/
+/*
+ * Copyright (c) 2026, Realtek Semiconductor Corporation
+ *
+ * SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+ */
 
 #ifndef _FLASH_MAP_H_
 #define _FLASH_MAP_H_
@@ -30,7 +34,7 @@
 #define APP_DEFINED_SECTION_ADDR        0x704C2000
 #define APP_DEFINED_SECTION_SIZE        0x0000F000  //60K Bytes
 #define USER_DATA1_ADDR                 0x704D1000
-#define USER_DATA1_SIZE                 0x00B2F000  //11452K Bytes
+#define USER_DATA1_SIZE                 0x0032F000  //3260K Bytes
 #define USER_DATA1_WITH_HEADER          1
 #define USER_DATA2_ADDR                 0x00000000
 #define USER_DATA2_SIZE                 0x00000000  //0K Bytes

@@ -5,6 +5,7 @@
 #include <trace.h>
 #include <string.h>
 #include <stdlib.h>
+#include <os_timer.h>
 #include <gap.h>
 #include <gap_adv.h>
 #include <gap_bond_le.h>
@@ -13,6 +14,8 @@
 #include "hmi_ble_gap_init.h"
 #include "hmi_ble_gap_msg.h"
 #include "hmi_ble_conn.h"
+#include "app_ota_service.h"
+#include "hmi_ble_central.h"
 
 static T_GAP_DEV_STATE gap_dev_state = {0, 0, 0, 0};                 /**< GAP device state */
 static T_GAP_CONN_STATE gap_conn_state = GAP_CONN_STATE_DISCONNECTED; /**< GAP connection state */
@@ -21,6 +24,80 @@ static hmi_ble_conn_info_t hmi_conn_info = {0, 0, 0, 0};             /**< Cached
 static T_LE_MSG_CBACK_ITEM gap_msg_list = {NULL, NULL};
 
 static void update_conn_info(uint8_t conn_id);
+
+/* le_adv_start() may be rejected (cause 0x2 GAP_CAUSE_INVALID_STATE) while a
+ * link is still tearing down: right after a central/master disconnect the
+ * controller has not finished releasing the link.  (A slave/peripheral
+ * disconnect never hits this, which is why the old direct le_adv_start()
+ * worked there.)  This transient is NOT reflected in T_GAP_DEV_STATE, so a
+ * dev-state-change retry never fires -- retry on a short one-shot timer. */
+static void    *s_adv_retry_timer     = NULL;
+static uint8_t  s_adv_retry_cnt       = 0;
+
+#define ADV_RETRY_TIMER_ID   1u
+#define ADV_RETRY_MS         200u
+#define ADV_RETRY_MAX        10u    /* ~2s worst case */
+
+static void adv_retry_timer_cb(void *p_handle)
+{
+    (void)p_handle;
+    /* Re-attempt from the timer task; le_adv_start() only posts to the stack. */
+    hmi_ble_gap_start_adv();
+}
+
+void hmi_ble_gap_start_adv(void)
+{
+    uint8_t adv_st = gap_dev_state.gap_adv_state;
+    if (adv_st == GAP_ADV_STATE_ADVERTISING || adv_st == GAP_ADV_STATE_START)
+    {
+        /* Already advertising / starting (e.g. a master connection did not stop
+         * our advertising) -- nothing to do. */
+        s_adv_retry_cnt = 0;
+        if (s_adv_retry_timer != NULL)
+        {
+            os_timer_stop(&s_adv_retry_timer);
+        }
+        return;
+    }
+
+    T_GAP_CAUSE cause = le_adv_start();
+    if (cause == GAP_CAUSE_SUCCESS)
+    {
+        s_adv_retry_cnt = 0;
+        if (s_adv_retry_timer != NULL)
+        {
+            os_timer_stop(&s_adv_retry_timer);
+        }
+        return;
+    }
+
+    /* Typically cause 0x2 (GAP_CAUSE_INVALID_STATE) right after a central/master
+     * disconnect: the controller has not finished tearing the link down yet.
+     * This transient is NOT reflected in T_GAP_DEV_STATE, so a dev-state retry
+     * never triggers -- retry on a short one-shot timer instead. */
+    if (s_adv_retry_cnt < ADV_RETRY_MAX)
+    {
+        s_adv_retry_cnt++;
+        if (s_adv_retry_timer == NULL)
+        {
+            os_timer_create(&s_adv_retry_timer, "adv_retry", ADV_RETRY_TIMER_ID,
+                            ADV_RETRY_MS, false, adv_retry_timer_cb);
+        }
+        os_timer_restart(&s_adv_retry_timer, ADV_RETRY_MS);
+        APP_PRINT_WARN2("hmi_ble_gap_start_adv: le_adv_start cause 0x%x, retry #%d scheduled",
+                        cause, s_adv_retry_cnt);
+    }
+    else
+    {
+        s_adv_retry_cnt = 0;
+        APP_PRINT_ERROR0("hmi_ble_gap_start_adv: gave up restarting advertising");
+    }
+}
+
+uint8_t hmi_ble_gap_get_adv_state(void)
+{
+    return gap_dev_state.gap_adv_state;
+}
 
 
 void hmi_le_msg_cback_register(P_LE_MSG_HANDLER_CBACK
@@ -64,7 +141,7 @@ static void app_handle_dev_state_evt(T_GAP_DEV_STATE new_state, uint16_t cause)
         {
             APP_PRINT_INFO0("GAP stack ready");
             /*stack ready*/
-            le_adv_start();
+            hmi_ble_gap_start_adv();
         }
     }
 
@@ -86,6 +163,26 @@ static void app_handle_dev_state_evt(T_GAP_DEV_STATE new_state, uint16_t cause)
             APP_PRINT_INFO0("GAP adv start");
         }
     }
+
+    if (gap_dev_state.gap_scan_state != new_state.gap_scan_state)
+    {
+        if (new_state.gap_scan_state == GAP_SCAN_STATE_SCANNING)
+        {
+            APP_PRINT_INFO0("GAP scan start");
+        }
+        else if (new_state.gap_scan_state == GAP_SCAN_STATE_IDLE)
+        {
+            APP_PRINT_INFO0("GAP scan stop");
+        }
+        /* Second half of a re-scan: le_scan_start() the fresh session only once
+         * the old one has fully stopped (IDLE).  Issuing it back-to-back with
+         * le_scan_stop() drops the start -> the second scan finds 0 devices. */
+        hmi_ble_central_handle_scan_state(new_state.gap_scan_state);
+    }
+
+    /* Let the central module sequence its adv-stop -> scan-start transition
+     * (starting a scan concurrently with an adv stop wedges adv in STOP). */
+    hmi_ble_central_handle_adv_state(new_state.gap_adv_state);
 
     gap_dev_state = new_state;
 }
@@ -113,8 +210,17 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
             {
                 APP_PRINT_ERROR1("app_handle_conn_state_evt: connection lost cause 0x%x", disc_cause);
             }
+            if (hmi_ble_central_is_active())
+            {
+                /* We owned this link as GATT client (file-send mode). */
+                hmi_ble_central_handle_disconnected(conn_id, disc_cause);
+            }
+            else
+            {
+                app_ota_glue_link_disconnected(conn_id, disc_cause);
+            }
             memset(&hmi_conn_info, 0, sizeof(hmi_conn_info));
-            le_adv_start();
+            hmi_ble_gap_start_adv();    /* return to receiver(advertising) state */
         }
         break;
 
@@ -134,17 +240,26 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
                             TRACE_BDADDR(remote_bd), remote_bd_type,
                             conn_interval, conn_latency, conn_supervision_timeout);
 
-            update_conn_info(conn_id);
+            if (hmi_ble_central_is_active())
+            {
+                /* We initiated this link as GATT client -> start discovery. */
+                hmi_ble_central_handle_connected(conn_id);
+            }
+            else
+            {
+                update_conn_info(conn_id);
+                app_ota_glue_link_connected(conn_id, 0, remote_bd);
 
-            /* update connection interval to 30ms */
-            uint16_t interval_min = 24;   /* 24 * 1.25ms = 30ms */
-            uint16_t interval_max = 24;   /* 24 * 1.25ms = 30ms */
-            uint16_t latency = 0;
-            uint16_t supervision_timeout = 500; /* 500 * 10ms = 5000ms */
-            uint16_t min_ce_len = 2 * (interval_min - 1);
-            uint16_t max_ce_len = 2 * (interval_max - 1);
-            le_update_conn_param(conn_id, interval_min, interval_max, latency,
-                                 supervision_timeout, min_ce_len, max_ce_len);
+                /* update connection interval to 30ms */
+                uint16_t interval_min = 24;   /* 24 * 1.25ms = 30ms */
+                uint16_t interval_max = 24;   /* 24 * 1.25ms = 30ms */
+                uint16_t latency = 0;
+                uint16_t supervision_timeout = 500; /* 500 * 10ms = 5000ms */
+                uint16_t min_ce_len = 2 * (interval_min - 1);
+                uint16_t max_ce_len = 2 * (interval_max - 1);
+                le_update_conn_param(conn_id, interval_min, interval_max, latency,
+                                     supervision_timeout, min_ce_len, max_ce_len);
+            }
         }
         break;
 

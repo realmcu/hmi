@@ -82,7 +82,7 @@ static struct gui_indev indev =
     .touch_timeout_ms = DT_PROP(TOUCH_DEV_NODE, gesture_release_timeout_ms),
     .long_button_time_ms = 800,
     .short_button_time_ms = 300,
-    .quick_slide_time_ms = 50,
+    .quick_slide_time_ms = 200,
 
     .kb_long_button_time_ms = 2000,
     .kb_short_button_time_ms = 60,

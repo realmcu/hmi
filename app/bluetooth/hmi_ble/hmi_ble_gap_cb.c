@@ -22,6 +22,7 @@
 #include <gap_adv.h>
 #include <app_msg.h>
 #include "hmi_ble_gap_cb.h"
+#include "hmi_ble_central.h"
 #include "trace.h"
 
 /**
@@ -82,6 +83,11 @@ T_APP_RESULT hmi_ble_gap_callback(uint8_t cb_type, void *p_cb_data)
     case GAP_MSG_LE_ADV_UPDATE_PARAM:
         APP_PRINT_INFO1("GAP_MSG_LE_ADV_UPDATE_PARAM: cause 0x%x",
                         p_data->p_le_adv_update_param_rsp->cause);
+        break;
+
+    case GAP_MSG_LE_SCAN_INFO:
+        /* Central (send) mode: advertising report from a scan started by us. */
+        hmi_ble_central_handle_scan_info(p_data->p_le_scan_info);
         break;
     default:
         APP_PRINT_ERROR1("app_gap_callback: unhandled cb_type 0x%x", cb_type);

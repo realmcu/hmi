@@ -255,6 +255,7 @@ static bool on_tcp_open_rsp(T_ATCMD_TYPE cmd, const char *rsp)
 
     if (rsp == NULL || strncmp(rsp, "[ATWT]", 6) != 0)
     {
+        PROTO_LOG("L2 WIFI ATWT check rsp failed");
         return true;
     }
 

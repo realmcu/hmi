@@ -1,6 +1,6 @@
 /*
  * Independent BLE video stream service (decoupled from the shared L1/L2
- * protocol).  Stream data arrives on its own GATT characteristic (0xFFD4),
+ * protocol).  Stream data arrives on its own GATT characteristic (0xFFC4),
  * carries no L1 wrapper (reliability = BLE LL CRC24/ARQ + credit flow control
  * + KS_REPORT gap retransmission), is processed on a dedicated stream_task,
  * and the reassembled frame is committed to the (independent) STP pool.
@@ -27,6 +27,7 @@
  * producer only borrows that single shared instance through the getter below.
  * Declared here (instead of including the GUI header chain) so the BLE side
  * stays free of guidef.h / tlsf.h. */
+extern stp_transport_t *gui_stream_transport_get(void);
 extern stp_transport_t *app_stream_transport_get(void);
 
 /* ---- Task / queue config ------------------------------------------------- */
@@ -90,7 +91,7 @@ static stp_transport_t *stream_tp(void)
 {
     if (s_tp == NULL)
     {
-        s_tp = app_stream_transport_get();
+        s_tp = gui_stream_transport_get();//app_stream_transport_get();//gui_stream_transport_get();
     }
     return s_tp;
 }
@@ -181,7 +182,7 @@ static void stream_reset(void)
 
 /* Send a stream control message (KS_ACK/KS_CREDIT/KS_REPORT) to the peer.
  * Payload = L2 message [CMD_STREAM][ver][key][khdr][value], no L1 wrapper;
- * delivered fire-and-forget as a notify on 0xFFD5. */
+ * delivered fire-and-forget as a notify on 0xFFC5. */
 static void stream_send(uint8_t key, const uint8_t *val, uint16_t val_len)
 {
     if (val_len > STREAM_REPORT_MAX_VAL || s_conn_handle == 0xFFFFu)
@@ -695,6 +696,9 @@ static void stream_on_kv(uint8_t key, const uint8_t *val, uint16_t vl)
 
             PROTO_LOG("STREAM OPEN session=%d codec=%d w=%d h=%d fps=%d",
                       sid, codec, width, height, fps);
+
+            extern void ui_jump_streaming(void);
+            ui_jump_streaming();
             break;
         }
 
@@ -758,7 +762,7 @@ static void stream_dispatch(const uint8_t *msg, uint16_t len)
 
 /* ---- RX transport (BLE callback + task) ---------------------------------- */
 
-/* Called in BLE callback context on every write to 0xFFD4. */
+/* Called in BLE callback context on every write to 0xFFC4. */
 static void stream_rx_sink(uint16_t conn_handle, const uint8_t *data, uint16_t len)
 {
     s_conn_handle = conn_handle;

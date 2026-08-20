@@ -27,6 +27,7 @@
 #include "hmi_ble_gap_init.h"
 #include "hmi_ble_gap_msg.h"
 #include "hmi_ble_profile_init.h"
+#include "hmi_ble_central.h"
 
 
 #ifdef CONFIG_RTK_BT_BREDR
@@ -159,6 +160,7 @@ void bt_task_entry(void *p_param)
 #endif
     hmi_ble_gap_init();
     hmi_ble_profile_init();
+    hmi_ble_central_init();   /* GATT client for device-to-device file send */
 
 #ifdef CONFIG_RTK_BT_BREDR
     framework_init();

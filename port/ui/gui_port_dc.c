@@ -169,7 +169,7 @@ static uint8_t __attribute__((aligned(4))) __attribute__((
 
 void gui_port_dc_init(void)
 {
-    rtk_lcd_hal_init();
+    // rtk_lcd_hal_init();
     dc.frame_buf = NULL;
     dc.fb_height = LCD_SECTION_HEIGHT;
     dc.fb_width = rtk_lcd_hal_get_width();

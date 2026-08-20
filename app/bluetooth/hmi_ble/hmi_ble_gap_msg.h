@@ -89,6 +89,14 @@ void hmi_handle_bt_io_msg(T_IO_MSG io_msg);
 void hmi_le_msg_cback_register(P_LE_MSG_HANDLER_CBACK cback);
 void hmi_le_msg_cback_unregister(P_LE_MSG_HANDLER_CBACK cback);
 
+/* Start (or restart) legacy advertising, tolerant of a still-tearing-down link:
+ * retries automatically when the GAP device state settles.  Use this instead of
+ * le_adv_start() for any "return to receiver/advertising" transition. */
+void hmi_ble_gap_start_adv(void);
+
+/* Current GAP advertising state (@ref GAP_ADV_STATE_* in gap_msg.h). */
+uint8_t hmi_ble_gap_get_adv_state(void);
+
 
 #ifdef __cplusplus
 }

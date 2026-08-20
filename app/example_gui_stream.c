@@ -90,6 +90,7 @@ stp_transport_t *app_stream_transport_get(void)
 static int app_init_stream(void)
 {
     gui_log("GUI Stream Widget Example Start\n");
+    extern void gui_set_keep_active_time(uint32_t active_time);
     gui_set_keep_active_time(1000000);
 
 #ifdef ENABLE_STREAM  // streaming
@@ -154,4 +155,4 @@ static int app_init(void)
 #endif
 
 
-GUI_INIT_APP_EXPORT(app_init_stream);
+// GUI_INIT_APP_EXPORT(app_init_stream);

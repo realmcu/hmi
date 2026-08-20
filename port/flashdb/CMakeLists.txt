@@ -23,6 +23,7 @@ target_sources(${APP_TARGET_NAME} PRIVATE
     ${FLASHDB_DIR}/src/fdb.c
     ${FLASHDB_DIR}/src/fdb_kvdb.c
     ${FLASHDB_DIR}/src/fdb_utils.c
+    ${FLASHDB_DIR}/src/bf/fdb_bf.c   # BigFile 大文件扩展（FDB_USING_BF）
     # 如需时序数据库，取消注释：
     # ${FLASHDB_DIR}/src/fdb_tsdb.c
 )
@@ -55,7 +56,6 @@ target_include_directories(${APP_TARGET_NAME} PUBLIC
 # ============================================================
 target_sources(${APP_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/fal_flash_rtk_port.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/flashdb_test.c
 )
 
 # fmc_api.h 路径（Realtek HAL 模块）
@@ -69,4 +69,4 @@ target_include_directories(${APP_TARGET_NAME} BEFORE PUBLIC
     ${FMC_API_INC_DIR}
 )
 
-message(STATUS "FlashDB: port/flashdb integrated (KVDB + FAL + RTK port)")
+message(STATUS "FlashDB: port/flashdb integrated (KVDB + BF + FAL + RTK port)")

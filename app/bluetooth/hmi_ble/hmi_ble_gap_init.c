@@ -16,6 +16,7 @@
 /*============================================================================*
  *                              Header Files
  *============================================================================*/
+#include <stddef.h>   /* NULL */
 #include <gap.h>
 #include <gap_le.h>
 #include <gap_bond_le.h>
@@ -171,6 +172,52 @@ void hmi_ble_gap_init(void)
     /* register gap message callback */
     le_register_app_cb(hmi_ble_gap_callback);
 
+}
+
+bool hmi_ble_gap_get_local_name(char *buf, uint8_t buf_len)
+{
+    if (buf == NULL || buf_len == 0)
+    {
+        return false;
+    }
+
+    /* Walk the AD structures in adv_data[] and copy out the Local Name field.
+     * Each AD structure is [len][type][len-1 data bytes]; len covers the type.
+     * GAP_PARAM_DEVICE_NAME is write-only, so the broadcast data is the source. */
+    uint16_t i = 0;
+    while (i < sizeof(adv_data))
+    {
+        uint8_t len = adv_data[i];
+        if (len == 0 || (uint16_t)(i + 1 + len) > sizeof(adv_data))
+        {
+            break;
+        }
+        uint8_t type = adv_data[i + 1];
+        if (type == GAP_ADTYPE_LOCAL_NAME_COMPLETE ||
+            type == GAP_ADTYPE_LOCAL_NAME_SHORT)
+        {
+            uint8_t name_len = (uint8_t)(len - 1);            /* strip type byte */
+            uint8_t n = (name_len < (uint8_t)(buf_len - 1)) ? name_len
+                        : (uint8_t)(buf_len - 1);
+            for (uint8_t k = 0; k < n; k++)
+            {
+                buf[k] = (char)adv_data[i + 2 + k];
+            }
+            buf[n] = '\0';
+            return true;
+        }
+        i = (uint16_t)(i + 1 + len);
+    }
+    return false;
+}
+
+bool hmi_ble_gap_get_local_addr(uint8_t bd_addr[6])
+{
+    if (bd_addr == NULL)
+    {
+        return false;
+    }
+    return (gap_get_param(GAP_PARAM_BD_ADDR, bd_addr) == GAP_CAUSE_SUCCESS);
 }
 
 /** @} */ /* End of group PERIPH_APP_TASK */

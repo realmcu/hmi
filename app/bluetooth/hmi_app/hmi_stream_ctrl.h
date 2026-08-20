@@ -11,7 +11,7 @@ extern "C" {
 
 /**
  * @brief Initialize the independent stream service:
- *        register the stream GATT service (0xFFD4 RX / 0xFFD5 TX),
+ *        register the stream GATT service (0xFFC4 RX / 0xFFC5 TX),
  *        create the stream RX queue and stream task.
  *        Call from BLE profile init (after the BT stack is up).
  */

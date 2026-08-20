@@ -159,7 +159,7 @@ bool wifi_data_tx(uint32_t ip_addr, uint16_t port, const uint8_t *data, uint16_t
  * (example_gui_stream.c).  The wifi RX path is the producer; fetch the shared
  * handle here.  Returns NULL until the stream app has initialised. */
 extern stp_transport_t *app_stream_transport_get(void);
-
+extern stp_transport_t *gui_stream_transport_get(void);
 #pragma pack(push,1)
 typedef struct
 {
@@ -173,7 +173,7 @@ typedef struct
 void wifi_stream_cb(uint8_t *payload, uint16_t pkt_len)
 {
     /* The transport is owned by the app (created in example_gui_stream.c). */
-    stp_transport_t *tp = app_stream_transport_get();
+    stp_transport_t *tp = gui_stream_transport_get();
     if (!tp)
     {
         return;   /* transport not ready yet -> drop */
@@ -290,6 +290,9 @@ void wifi_stream_cb(uint8_t *payload, uint16_t pkt_len)
                 int rc = 0;
                 rc = stp_commit(tp, &f, s_xfer_total, false);
                 printf("commit %u %d \n", s_xfer_total, rc);
+
+                extern void ui_jump_streaming(void);
+                ui_jump_streaming();
 
                 extern int cache_flush_by_addr(uint32_t *addr, uint32_t length);
                 cache_flush_by_addr((uint32_t *)(cur_addr - s_xfer_total), s_xfer_total);
