@@ -4,29 +4,34 @@
 # SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
 #
 
-menu "WIFI 8711 (AT-over-SPI) module"
+menu "WIFI 8711 (SPI slave transport) module"
 
 config WIFI_8711
 	bool "External 8711 Wi-Fi chip over SPI"
 	default n
 	help
-	  Enable the AT-over-SPI link toward the external 8711 Wi-Fi chip: the
-	  SPI DMA master plus the AT command engine.  TCP/IP lives in the 8711's
-	  own firmware, so this brings up no Zephyr net stack.
+	  Enable the SPI link toward the external 8711FA Wi-Fi chip: the SPI
+	  slave transport plus the JPGS/ATMC slot engine.  TCP/IP and the SoftAP
+	  live in the 8711's own firmware, so this brings up no Zephyr net stack.
 
 	  Turned on by the wifi_8711 snippet
 	  (applications/eBadge_8773g_8711f/snippets/wifi_8711), which also
-	  supplies the wifi_8711_device / wifi_8711_resources / psram1_nc
-	  devicetree nodes this module binds to.  Enabling the symbol on its own
-	  will not build -- the DT nodes must come with it.
+	  supplies the spi0_slave / wifi_8711_resources / psram1_nc devicetree
+	  nodes this module binds to.  Enabling the symbol on its own will not
+	  build -- the DT nodes must come with it.
 
-config WIFI_8711_ROLE_MASTER
-	bool "SPI master role"
+config WIFI_8711_ROLE_SLAVE
+	bool "SPI slave role"
 	depends on WIFI_8711
+	select SPI
+	select SPI_SLAVE
 	default y
 	help
-	  Build the SPI master side (we clock the bus, the 8711 is the slave).
-	  This is the only role this product supports; keep it enabled.
+	  Build the SPI slave side: the 8711 drives SCLK and CS, we park a
+	  4096-byte slot in TX DMA and wait to be clocked.  This is the only role
+	  the v2.0 protocol allows (note/refer/spi-at-command-protocol 1.md
+	  sec.1) -- the 8773G cannot generate a clock at all, so there is no
+	  master variant to fall back to.  Keep it enabled.
 
 config WIFI_8711_TEST
 	bool "wifi8711 shell command group"
@@ -34,7 +39,7 @@ config WIFI_8711_TEST
 	default n
 	help
 	  Register the `wifi8711` shell commands for bring-up: probe the DT
-	  bindings, toggle the M2S line, and report link state.  Useful before
-	  the eBadge port_softap / port_tcp layers exist.
+	  bindings, drive the B2W line, and read W2B.  Useful before the eBadge
+	  port_softap / port_tcp layers exist.
 
 endmenu

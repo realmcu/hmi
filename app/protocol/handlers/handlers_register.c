@@ -24,6 +24,7 @@ extern void handle_get_ap_info(const ebadge_tlv_t *tlvs, uint8_t n);
 extern void handle_get_battery(const ebadge_tlv_t *tlvs, uint8_t n);
 extern void handle_get_storage(const ebadge_tlv_t *tlvs, uint8_t n);
 extern void handle_jpg_stream_offer(const ebadge_tlv_t *tlvs, uint8_t n);
+extern void handle_debug(const ebadge_tlv_t *tlvs, uint8_t n);
 
 void ebadge_handlers_register(void)
 {
@@ -39,6 +40,9 @@ void ebadge_handlers_register(void)
     (void)ebadge_l2_register(EB_CMD_GET_STORAGE,  handle_get_storage);
     /* V1.3 §4.5 -- the preview stream's opener.  Its 0x09 answer is a notify. */
     (void)ebadge_l2_register(EB_CMD_JPG_STREAM_OFFER, handle_jpg_stream_offer);
+
+    /* Off-spec debug hook at 0xFF -- see the 0xFF block in ebadge_cmd.h. */
+    (void)ebadge_l2_register(EB_CMD_DEBUG,        handle_debug);
 
     EBADGE_LOG("handlers registered");
 }

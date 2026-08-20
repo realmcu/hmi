@@ -33,7 +33,7 @@
  *   EB_TLV_SOFR_*   0x08 STREAM_OFFER      EB_TLV_BAT_*   0x18 BATTERY
  *   EB_TLV_SDEC_*   0x09 STREAM_DECISION   EB_TLV_STOR_*  0x1A STORAGE_INFO
  *   EB_TLV_XFER_*   0x10 XFER_OFFER
- *   EB_TLV_DEC_*    0x11 XFER_DECISION
+ *   EB_TLV_DEC_*    0x11 XFER_DECISION     EB_TLV_DBG_*   0xFF DEBUG
  */
 #ifndef _EBADGE_CMD_H_
 #define _EBADGE_CMD_H_
@@ -81,6 +81,12 @@ extern "C" {
 /* 0x05..0x07, 0x0A..0x0F and 0x1B..0x2F are RESERVED -- must not be used.
  * (V1.2 also reserved 0x08/0x09; V1.3 §3 allocates them to the stream pair
  * above, so the reserved ranges are now split around them.)              */
+
+/* Debug / bring-up ---------------------------------------------------- */
+/** Vendor debug hook.  NOT in PROT-001 -- 0xFF is deliberately outside the
+ *  spec's allocated and reserved ranges so it can never collide with a future
+ *  revision.  Sub-function is selected by TLV, see the 0xFF block below.   */
+#define EB_CMD_DEBUG            0xFF    /* H->D  debug subcmd,   ack 0x04     */
 
 /*----------------------------------------------------------------------------*
  *  0x01 SET_TIME  (spec §4.1)
@@ -230,6 +236,50 @@ extern "C" {
 
 /** Filesystem metadata margin, spec §2.9 -- fixed at 4096 bytes. */
 #define EB_FS_MARGIN            4096u
+
+/*----------------------------------------------------------------------------*
+ *  0xFF DEBUG  (not in PROT-001 -- vendor bring-up hook)
+ *
+ *  One required TLV selects the sub-function; the value TLV is a reserved
+ *  placeholder so the wire format does not have to change when the first
+ *  subcmd needs an argument.  Adding a subcmd means adding an EB_DBG_SUB_*
+ *  value and a case in handlers/cmd_debug.c -- the frame shape stays fixed.
+ *
+ *  Minimal request (subcmd 0x01 = query the 8711's SoftAP info, no value):
+ *
+ *    01 FF 80 04 00   01 01 00 01
+ *    |  |  |  |__|__ params_len = 4 (LE)
+ *    |  |  |__ flags                  \__ TLV: type=0x01 len=0x0001 val=0x01
+ *    |  |__ cmd 0xFF
+ *    |__ ver 0x01
+ *
+ *  Answered by 0x04 RESULT.  Note V1.3 polarity: 0x00 == SUCCEED.
+ *----------------------------------------------------------------------------*/
+#define EB_TLV_DBG_SUBCMD       0x01    /* required, 1B, EB_DBG_SUB_*          */
+#define EB_TLV_DBG_VALUE        0x02    /* optional, reserved subcmd argument  */
+
+/** Length of the SUBCMD TLV value -- fixed at 1 byte. */
+#define EB_DBG_SUBCMD_LEN       1
+
+/** Upper bound on the reserved VALUE payload.  Kept small on purpose: this
+ *  is a debug hook, not a data path -- anything bulky belongs on 0x02/0x10. */
+#define EB_DBG_VALUE_MAX        32
+
+/** Sub-function codes.  0x00 is left unassigned so a zero-filled or
+ *  default-constructed request does not silently trigger a real action.
+ *
+ *  NOTE on 0x01: it started life as the no-op PING.  It is now the 8711 AP-info
+ *  query, which is the check actually being used during bring-up; the plain
+ *  liveness ping moved to 0x02.  Nothing had shipped against the old numbering.
+ *
+ *  The two Wi-Fi subcmds answer RESULT as soon as the AT command is STAGED --
+ *  not when the 8711 replies.  The 8711 is the SPI master and polls every ~2 s,
+ *  so the reply cannot be waited for inside a BLE handler; it appears in the
+ *  device log 2..4 s later.  RESULT here means "queued", not "answered".      */
+#define EB_DBG_SUB_NONE         0x00    /* invalid -- rejected                 */
+#define EB_DBG_SUB_WIFI_AP_INFO 0x01    /* 8711 AT+WLSTATE, reply -> log       */
+#define EB_DBG_SUB_PING         0x02    /* no-op liveness check, acks SUCCEED  */
+#define EB_DBG_SUB_WIFI_START_AP 0x03   /* 8711 AT+WLSTARTAP, reply -> log     */
 
 /*----------------------------------------------------------------------------*
  *  File type enum  (spec §2.7) -- shared by SEND_FILE, XFER_OFFER,

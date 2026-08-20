@@ -1,52 +1,134 @@
 /**
  * @file    wifi_8711.h
- * @brief   External 8711 Wi-Fi chip over SPI (AT-over-SPI) -- skeleton.
+ * @brief   RTL8711FA link over SPI -- WE ARE THE SLAVE.  Mounting skeleton.
  *
- * SCOPE: this is the mounting skeleton only.  It proves the devicetree and
- * Kconfig plumbing resolves (SPI controller + bus peer + M2S/S2M handshake
- * GPIOs + non-cacheable DMA region) and gives the eBadge port layer something
- * to call.  The AT engine, the SPI DMA transfer path and the socket flows are
- * NOT here -- they get ported from
- * applications/watch/src/module/wifi_8711/ (~3700 lines).
+ * SCOPE: hardware bring-up only.  This proves the devicetree, Kconfig and pad
+ * plumbing resolves (SPI slave controller + B2W/W2B handshake GPIOs + the
+ * non-cacheable DMA staging region) and gives the eBadge port layer something
+ * to call.  The slot engine -- JPGS reassembly, ATMC command/response, JPU
+ * decode and the LCDC handoff -- is NOT here yet.
  *
- * Architecture, for whoever lands the port:
+ * Role, since it is the one thing worth repeating: per the v2.0 protocol
+ * (note/refer/spi-at-command-protocol 1.md sec.1) the RTL8711FA is the SPI
+ * master.  It drives SCLK and CS; the 8773G cannot generate a clock at all.
+ * Every transaction is one fixed 4096-byte full-duplex slot that the 8711
+ * initiates: we park a TX slot in DMA, arm RX, raise B2W, and wait to be
+ * clocked.  There is no master variant of this transport.
  *
- *   eBadge protocol (l2_task)
- *        |  port_softap / port_tcp
- *   AT command engine          <- app_spi_atcmd.c    (to be ported)
- *        |  [AT][len][data][crc32][pad] frames
- *   SPI DMA master + M2S/S2M   <- app_spi_master_zephyr.c (to be ported)
- *        |  spi1_hs, 4 MHz, hardware CS
- *   8711 chip (owns the TCP/IP stack in its own firmware)
+ * Architecture, for whoever lands the rest:
+ *
+ *   eBadge protocol (l2_task)  /  JPU decode + LCDC
+ *        |  port_softap / port_tcp are AT commands, not sockets
+ *   JPGS + ATMC slot parser        <- to be written (sec.4..6)
+ *        |  4096 B slots, Magic at offset 0 selects the parser
+ *   SPI slave DMA + B2W/W2B        <- partially here (pins + IRQ only)
+ *        |  spi0_slave, mode 3, 8 bit, ~18.5 MHz supplied by the 8711
+ *   8711FA (owns the SoftAP and the TCP/IP stack in its own firmware)
  *
  * Note the last line: there is no lwIP and no Zephyr net_if on this SoC.
- * Sockets are AT commands (AT+SKTCFG / AT+SKTSERVER / AT+SKTSENDRAW / ...),
- * so ebadge_port_tcp becomes an AT adapter rather than a socket wrapper.
+ * The AP and the socket both live in the 8711, reachable only through ATMC
+ * packets on the MISO half of a slot.
  */
 #ifndef _WIFI_8711_H_
 #define _WIFI_8711_H_
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/*----------------------------------------------------------------------------*
+ *  Protocol constants (sec.10).  Here rather than in a private header because
+ *  the parser, the transport and the shell all need the same slot geometry.
+ *----------------------------------------------------------------------------*/
+#define WIFI_8711_SLOT_SIZE        4096U   /* every transfer, exactly       */
+#define WIFI_8711_HEADER_SIZE      32U     /* both JPGS and ATMC            */
+
+#define WIFI_8711_JPG_MAGIC        0x5347504AU  /* "JPGS", wire 4A 50 47 53 */
+#define WIFI_8711_JPG_VERSION      1U
+#define WIFI_8711_JPG_FLAG_START   0x01U
+#define WIFI_8711_JPG_FLAG_END     0x02U
+#define WIFI_8711_JPG_PAYLOAD_MAX  (WIFI_8711_SLOT_SIZE - WIFI_8711_HEADER_SIZE)
+
+#define WIFI_8711_AT_MAGIC         0x434D5441U  /* "ATMC", wire 41 54 4D 43 */
+#define WIFI_8711_AT_VERSION       1U
+#define WIFI_8711_AT_TYPE_COMMAND  1U      /* 8773 -> 8711, on MISO         */
+#define WIFI_8711_AT_TYPE_RESPONSE 2U      /* 8711 -> 8773, on MOSI         */
+#define WIFI_8711_AT_TYPE_POLL     3U      /* 8711 -> 8773 heartbeat        */
+#define WIFI_8711_AT_PAYLOAD_MAX   (WIFI_8711_SLOT_SIZE - WIFI_8711_HEADER_SIZE)
+
+/* The 8711's command parse buffer is 128 bytes; a longer COMMAND payload is
+ * silently dropped (sec.9).  Not a slot limit -- a peer firmware limit. */
+#define WIFI_8711_AT_COMMAND_MAX   128U
+
+/* The 8711's TCP entry caps a frame at 61440 B (sec.5.2); our reassembly
+ * buffer must be at least this large. */
+#define WIFI_8711_JPEG_FRAME_MAX   61440U
+
 /**
- * @brief  Probe and latch the devicetree resources for the 8711 link.
+ * @brief  Probe the devicetree resources and configure the SPI slave pads.
  *
- * Checks that the SPI bus is ready and configures the two handshake GPIOs.
- * Does NOT power the chip, send any AT command, or start a transfer -- see
- * the TODO block in wifi_8711.c for what a real init still owes.
+ * Verifies spi0_slave came up, applies the slave SPI configuration (mode 3,
+ * 8 bit, MSB first), parks B2W low and arms the W2B edge interrupt.
  *
- * @retval 0        resources are present and ready
+ * Does NOT arm a transfer, so the 8711 will see B2W stay low and time out its
+ * READY wait (1000 ms, sec.3.2) -- expected until the slot engine exists.
+ *
+ * @retval 0        resources present, pads configured, W2B interrupt armed
  * @retval -ENODEV  SPI controller or a GPIO port is not ready
- * @retval <0       gpio configuration failed (errno from the gpio driver)
+ * @retval <0       gpio/spi configuration failed (errno from the driver)
  */
 int wifi_8711_init(void);
 
 /** True once wifi_8711_init() has succeeded. */
 bool wifi_8711_ready(void);
+
+/**
+ * @brief  Drive B2W / READY.
+ *
+ * @param  ready  true raises the line (we are armed), false drops it.
+ *
+ * Callers must respect the four-phase rule (sec.3.1): raise only after BOTH
+ * RX and TX DMA are armed, drop from the RX-done ISR.  Never pulse it -- the
+ * 8711 may be blocked on either edge.
+ */
+int wifi_8711_set_ready(bool ready);
+
+/** Current logical level of B2W / READY, as last driven by us. */
+int wifi_8711_get_ready(void);
+
+/** Current logical level of W2B / REQUEST (1 = the 8711 wants a slot). */
+int wifi_8711_get_request(void);
+
+/*----------------------------------------------------------------------------*
+ *  Bus handles for the transport layer.
+ *
+ *  The slave configuration is validated once during wifi_8711_init(), so the
+ *  transport re-uses the very same struct rather than building a second one
+ *  that could drift out of agreement with it -- the driver compares the config
+ *  pointer when deciding whether to reconfigure.
+ *----------------------------------------------------------------------------*/
+struct spi_config;
+struct device;
+
+/** SPI slave controller, or NULL before a successful wifi_8711_init(). */
+const struct device *wifi_8711_spi_dev(void);
+
+/** The validated slave-mode config (mode 3, 8 bit, MSB first). */
+const struct spi_config *wifi_8711_spi_cfg(void);
+
+/**
+ * @brief  W2B edge counters, for bring-up.
+ *
+ * @param  rising   out: rising edges seen (8711 announced a slot)
+ * @param  falling  out: falling edges seen (8711 released after a transfer)
+ *
+ * Non-zero counters prove the pad, the pull-down and the interrupt path all
+ * work even before a single byte has been clocked.
+ */
+void wifi_8711_get_w2b_stats(uint32_t *rising, uint32_t *falling);
 
 #ifdef __cplusplus
 }

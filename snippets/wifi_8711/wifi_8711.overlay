@@ -5,122 +5,172 @@
  */
 
 /*
- * External 8711 Wi-Fi chip on the high-speed SPI1 bus (AT-over-SPI).
+ * External 8711FA Wi-Fi chip on SPI0 -- WE ARE THE SLAVE.
  *
  * Enabled via the wifi_8711 snippet (pairs with wifi_8711.conf):
  *   west build -b rtl87x3g_evb applications/eBadge_8773g_8711f -p always \
  *     -S flash_16M_bank0 -S wifi_8711
  *
- * Pin assignment (board-defined, 2026-08-14):
+ * ROLE, because this is the single easiest thing to get backwards:
+ * the RTL8711FA drives SCLK and CS, we do not.  Per the v2.0 protocol
+ * (note/refer/spi-at-command-protocol 1.md sec.1) the 8711 is the SPI master
+ * and the 8773G is a purely passive slave: it can never start a transfer, it
+ * parks 4096 bytes in TX DMA and waits to be clocked.  Hence spi0_slave
+ * (spi_slave@40015c00, the node that carries `is-slave`) and not spi1_hs.
+ * Earlier revisions of this overlay had us as master on spi1_hs; that was
+ * based on the older AT-over-SPI docs and is wrong for this firmware.
  *
- *   SPI1 CLK   P4_2  (GPIOB9)    high-speed SPI1 (spi1_hs) controller
- *   SPI1 MISO  P4_3  (GPIOB10)
- *   SPI1 MOSI  P4_4  (GPIOB11)
- *   SPI1 CSN   P4_5  (GPIOB12)   hardware SS_N, controller-driven
- *   M2S        P4_1  (GPIOB8)    BLE -> WIFI attention, output
- *   S2M        P2_7  (GPIOA22)   WIFI -> BLE attention, interrupt input
+ * Pin assignment (v2.0 protocol sec.2.1):
  *
- * !! PIN CONFLICT -- READ BEFORE FLASHING !!
+ *   SPI0 CLK   P4_2  (GPIOB9)   <- 8711 PC2, slave clock input
+ *   SPI0 MISO  P4_3  (GPIOB10)   -> 8711 PC4, SO, the one output we drive
+ *   SPI0 MOSI  P4_4  (GPIOB11)  <- 8711 PC3, SI
+ *   SPI0 CS    P4_5  (GPIOB12)  <- 8711 PC5, SS_N, active low
+ *   B2W        P4_1  (GPIOB8)   -> 8711 PC7, READY: our output, active high
+ *   W2B        P2_7  (GPIOA22)  <- 8711 PC6, REQUEST: our input, active high
  *
- * P4_3 and P4_4 are also wired to I2C2 (I2C2_DAT / I2C2_CLK) in
- * boards/rtl87x3g_evb.overlay, where they drive the CST816D touch panel.
- * Both pinctrl groups therefore claim the same two pads.
- *
- * This overlay does NOT disable &i2c2, on purpose: port/ui/gui_port_indev.c
- * binds the panel with DEVICE_DT_GET(DT_NODELABEL(touch_device)) and has no
- * DT_NODE_HAS_STATUS guard, so disabling the bus turns into an
- * __device_dts_ord_NN link error rather than a graceful build-out.
- *
- * Consequence: whichever driver runs pinctrl last owns the pads.  Touch and
- * Wi-Fi cannot both work on this wiring.  Resolve it on the hardware side --
- * move the panel to another I2C instance, or move SPI1 to different pads --
- * before treating this snippet as functional.  It is wired up here exactly as
- * specified so the DT/Kconfig plumbing can be built and reviewed.
+ * P4_3 / P4_4 used to collide with the CST816D touch panel on I2C2.  That is
+ * resolved on the board side: boards/rtl87x3g_evb.overlay now routes I2C2 to
+ * P2_3 (CLK) / P2_4 (DAT), so P4_2..P4_5 belong to this bus alone.  The active
+ * LCD (CONFIG_REALTEK_LCD_ST7801N_466_466_QSPI) sits on P9_x with RST=P4_0,
+ * TE=P2_2, BL=P2_5 -- P4_1..P4_5 and P2_7 are clear of it.
  */
 
 #include <zephyr/dt-bindings/gpio/realtek-rtl87x3g-gpio.h>
 #include <zephyr/dt-bindings/pinctrl/rtl87x3g-pinctrl.h>
 
-/* Handshake GPIOs -- consumed by app_spi_master_zephyr.c via
- * DT_NODELABEL(wifi_8711_resources).  Named after this snippet (rather than a
- * generic "resources") so a node contributed by another stacked -S overlay
- * cannot collide or silently merge with it. */
 / {
+	/*
+	 * The two handshake lines of the four-phase slot protocol (sec.3.1).
+	 * Both are level-held and active high -- explicitly NOT pulses; the
+	 * spec forbids short pulses because each edge is a rendezvous point.
+	 *
+	 * Named b2w/w2b rather than the m2s/s2m of the master-side skeleton on
+	 * purpose.  m2s/s2m are relative to who is master, and we just changed
+	 * that, so reusing those property names would silently invert the two
+	 * pins for anyone reading the old code.
+	 */
 	wifi_8711_resources: wifi_8711_resources {
-		compatible = "spi_m2s2m-gpio";
-		m2s-gpios = <&gpiob 8  GPIO_ACTIVE_LOW>;	/* P4_1, BLE -> WIFI */
-		s2m-gpios = <&gpioa 22 GPIO_ACTIVE_HIGH>;	/* P2_7, WIFI -> BLE */
+		compatible = "wifi_8711-irq";
+
+		/* READY/ACK.  We raise it only once RX+TX DMA are both armed,
+		 * and drop it from the RX-done ISR.  After a JPEG END slot it
+		 * stays low across JPU decode + LCDC transfer, and the rising
+		 * edge that follows is what the 8711 reports to the phone as
+		 * DONE <seq> (sec.3.3, sec.5.3).  Push-pull output, starts low. */
+		b2w-gpios = <&gpiob 8  GPIO_ACTIVE_HIGH>;	/* P4_1 */
+
+		/* REQUEST.  The 8711 raises it to announce a slot and drops it
+		 * after the transfer completes; we have to observe both edges.
+		 * Input with pull-down per the sec.11.1 checklist -- if the
+		 * 8711 is unpowered this reads a stable idle instead of
+		 * floating into spurious interrupts. */
+		w2b-gpios = <&gpioa 22 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;	/* P2_7 */
 	};
 
 	/*
-	 * Non-cacheable DMA staging area for the SPI master.
+	 * Non-cacheable DMA staging area for the slave transport.
 	 *
-	 * app_spi_master_zephyr.c places ~114 KB of buffers (tx_ring_storage +
-	 * tx_dma_buf + 2x rx_storage, SPI_XMIT_SIZE = 16 KiB each) in
-	 * SECTION_PSRAM1_NC.  That macro is DT_NODE_EXISTS-guarded, so without a
-	 * psram1_nc node it expands to nothing and all of it lands in the 82 KB
-	 * DTCM -- a link-time overflow.  Hence this node.
+	 * Sized for what the v2.0 protocol actually needs on this side:
+	 * 4096 B TX slot + 2x 4096 B RX ping-pong (12 KB) plus the >=60 KiB
+	 * JPEG reassembly buffer that sec.5.2 requires (the 8711's TCP entry
+	 * caps a frame at 61440 B).  128 KB leaves room for a second assembly
+	 * buffer if the frame path ever needs to overlap decode with receive.
 	 *
-	 * Address: SPIC1 is laid out as 512 KB DSP reserve + 3 MB GUI lower heap
-	 * (port/ui/gui_port_os.c: SPIC1_MEM_BASE + DSP_RSV_SIZE, 0x300000), i.e.
-	 * 0x22000000..0x22380000 is taken.  app_lower_init.c:app_mpu_config()
-	 * maps SPIC1_MEM_BASE..+0x400000 as MPU region 2 with attr 0x44
-	 * (non-cacheable), so 0x22380000..0x22400000 is both free and already
-	 * non-cacheable -- no extra MPU work, and no SCB_CleanDCache needed on
-	 * the SPI path.
+	 * Why non-cacheable and not DTCM: every buffer here is touched by GDMA
+	 * or the JPU, and DTCM has only ~82 KB total for the whole app.  Living
+	 * in an MPU region that is already marked non-cacheable means no
+	 * SCB_CleanDCache_by_Addr on the SPI path -- the exact maintenance bug
+	 * that bit the H264 render buffers after SPIC3 became cacheable.
 	 *
-	 * The name psram1_nc matches what psram_section.h looks up; the region
-	 * is NOLOAD (not zeroed at boot) and PSRAM only comes up inside
-	 * app_system_lower_init(), so every field here must be initialised at
-	 * runtime in app_spi_master_init().
+	 * Address: app_lower_init.c:app_mpu_config() maps
+	 * SPIC1_MEM_BASE(0x22000000)..+0x400000 as MPU region 2 with attr 0x44
+	 * (non-cacheable).  port/ui/gui_port_os.c now takes its 3 MB lower heap
+	 * from SPIC3, so SPIC1 past the 512 KB DSP reserve is unclaimed;
+	 * 0x22380000 is kept from the previous revision to stay clear of it.
+	 *
+	 * The region is NOLOAD (not zeroed at boot) and SPIC1 PSRAM only comes
+	 * up inside app_system_lower_init(), so anything placed here must be
+	 * initialised at runtime, never via a static initialiser.
 	 */
 	psram1_nc_region: psram1_nc_region {
 		#address-cells = <1>;
 		#size-cells = <1>;
 		psram1_nc: memory@22380000 {
 			compatible = "zephyr,memory-region";
-			reg = <0x22380000 DT_SIZE_K(512)>;
+			reg = <0x22380000 DT_SIZE_K(128)>;
 			zephyr,memory-region = "PSRAM1_NC";
 		};
 	};
 };
 
-/* SPI master -- high-speed SPI1 controller, hardware CS (SS_N).
+/* SPI slave.
  *
- * spi1_hs ships status="disabled" in rtl87x3g.dtsi like every other SPI node,
- * and CONFIG_SPI_RTL87X3G depends on DT_HAS_REALTEK_RTL87X3G_SPI_ENABLED, so
- * this status="okay" is what actually pulls the SPI driver into the build.
- * The binding also makes pinctrl-0 / pinctrl-names required. */
-&spi1_hs {
+ * spi0_slave ships status="disabled" in rtl87x3g.dtsi like every other SPI
+ * node, and CONFIG_SPI_RTL87X3G is gated on
+ * DT_HAS_REALTEK_RTL87X3G_SPI_ENABLED, so this status="okay" is what pulls the
+ * driver into the build.  Two BUILD_ASSERTs in spi_rtl87x3g.c react to it:
+ * CONFIG_SPI_SLAVE must be y (wifi_8711.conf), and spi0 must stay disabled
+ * (it is -- nothing in this app enables it).
+ *
+ * Deliberately absent, versus the old master stanza:
+ *   - no spi-max-frequency / max-bus-freq.  The 8711 supplies SCLK (~18.5 MHz
+ *     from its 20 MHz request); spi_rtl87x3g_configure() skips both the
+ *     frequency ceiling check and the baudrate divider when is-slave, so any
+ *     value here would be decoration.
+ *   - no child device node.  A slave controller has no bus peers, so the
+ *     transport binds the controller itself with DEVICE_DT_GET and a bare
+ *     struct spi_config (SPI_DT_SPEC_GET needs a child and would reintroduce
+ *     a meaningless frequency).
+ *   - no rx-sample-delay yet.  The driver exposes SPI_SetRxSampleDly and it
+ *     is the first knob to reach for if 18.5 MHz sampling proves marginal on
+ *     these pads, but guessing a value before measuring only hides the
+ *     problem.
+ */
+&spi0_slave {
 	status = "okay";
-	pinctrl-0 = <&spi1_wifi_default>;
+	pinctrl-0 = <&spi0_slave_wifi_default>;
 	pinctrl-names = "default";
 
-	/* SPI1 GDMA handshakes: TX = 6, RX = 7.  Channels 0/1 are free here --
-	 * uart3 in boards/rtl87x3g_evb.overlay uses channels 2/3. */
-	dmas = <&dma0 0 6 0x16c21>, <&dma0 1 7 0x6c0a>;	/* tx, rx */
+	/* Slave GDMA handshakes: TX = 55, RX = 56
+	 * (RTL87X3G_DMA_HANDSHAKE_SPI_SLAVE_TX/_RX).  NOT the 6/7 the master
+	 * revision used -- those are SPI1.  Channels 0/1 are free: uart3 in
+	 * boards/rtl87x3g_evb.overlay holds 2/3.  The cfg words are the
+	 * slave-side pair from the bt_audio_trx reference overlay; a 4096 B
+	 * block is far inside the 20-bit GDMA block limit, so no chaining. */
+	dmas = <&dma0 0 55 0x10021>, <&dma0 1 56 0xa>;	/* tx, rx */
 	dma-names = "tx", "rx";
-	rx-sample-delay = <1>;
-
-	/* Bus peer, not a controller.  app_spi_master_zephyr.c binds it via
-	 * DT_NODELABEL(wifi_8711_device). */
-	wifi_8711_device: wifi_8711_device@0 {
-		compatible = "wifi_8711-device";
-		reg = <0>;
-		spi-max-frequency = <4000000>;
-		status = "okay";
-	};
 };
 
 &pinctrl {
 	/* Group name is snippet-prefixed so it cannot clash with the
-	 * i2c2_default / uart3_default groups already in the board overlay. */
-	spi1_wifi_default: spi1_wifi_default {
+	 * i2c2_default / i2c0_default / uart3_default groups already in the
+	 * board overlay.
+	 *
+	 * All four pads go through the ORDINARY pinmux group, never the
+	 * high-speed one.  Two independent reasons:
+	 *   1. protocol sec.2.2, vendor-verified: on the 8773G the HS_Func1
+	 *      group carries only the slave INPUTS.  SO/MISO does not drive
+	 *      under it and the master reads back all 0xFF.
+	 *   2. HS_P4_x has no slave function to select anyway -- FUNC0 is
+	 *      LCDC_DATA4..7 and FUNC1 is SPI1 master.  And pinctrl_rtl87x3g.c
+	 *      is an if/else chain: the HS branch calls Pinmux_Deinit(), so
+	 *      "high-speed group AND ordinary pinmux", which sec.2.2 asks for
+	 *      in raw HAL terms, is not expressible here at all.
+	 * The ordinary group is what bt_audio_trx's SPI slave overlay uses on
+	 * all four pins across four chip variants including the 8773GTP, so
+	 * the write-up is proven -- just not yet on P4_2..P4_5 specifically.
+	 *
+	 * DIR_OUT on all four, inputs included, mirrors that reference: in
+	 * PAD_PINMUX_MODE the selected function owns the direction and the dir
+	 * bit only matters for PAD_SW_MODE.
+	 */
+	spi0_slave_wifi_default: spi0_slave_wifi_default {
 		group1 {
-			psels = <RTL87X3G_PSEL(HS_P4_2_SPI1_CLK,  P4_2, DIR_OUT, DRV_HIGH, PULL_UP)>,
-				<RTL87X3G_PSEL(HS_P4_3_SPI1_MISO, P4_3, DIR_OUT, DRV_HIGH, PULL_UP)>,
-				<RTL87X3G_PSEL(HS_P4_4_SPI1_MOSI, P4_4, DIR_OUT, DRV_HIGH, PULL_UP)>,
-				<RTL87X3G_PSEL(HS_P4_5_SPI1_CSN,  P4_5, DIR_OUT, DRV_HIGH, PULL_UP)>;
+			psels = <RTL87X3G_PSEL(SPI_CLK_SLAVE,     P4_2, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(SPI_SO_SLAVE,      P4_3, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(SPI_SI_SLAVE,      P4_4, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(SPI_SS_N_0_SLAVE,  P4_5, DIR_OUT, DRV_HIGH, PULL_UP)>;
 		};
 	};
 };

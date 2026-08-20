@@ -17,7 +17,7 @@
 
 #define DRV_LCD_WIDTH   360
 #define DRV_LCD_HIGHT   360
-#if 1
+#if 0
 #include "lcd_st77916_360_360_qspi.h"
 
 
@@ -33,7 +33,7 @@
 
 #else
 
-#include "lcd_icna3310_466_466_qspi.h"
+#include "lcd_st7801n_466_466_qspi.h"
 
 #ifdef DRV_LCD_WIDTH
 #undef DRV_LCD_WIDTH
@@ -114,8 +114,6 @@ static void wait_rect_copy_by_dma_done(void)
     while (GDMA_GetTransferINTStatus(copy_num) != SET);
     GDMA_ClearINTPendingBit(copy_num, GDMA_INT_Transfer);
 }
-#endif
-
 
 
 
@@ -126,7 +124,7 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
 
     if (dc->section_count == 0)
     {
-        rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_NO_TE);
+        rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_HW_TE);
         rtk_lcd_hal_set_window(0, dc->fb_height * dc->section_count, dc->fb_width, dc->fb_height);
         rtk_lcd_hal_start_transfer(dc->frame_buf, dc->fb_width * dc->fb_height);
     }
@@ -134,7 +132,7 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
     {
         uint32_t last_height = dc->screen_height - dc->section_count * dc->fb_height;
         rtk_lcd_hal_transfer_done();
-        rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_NO_TE);
+        rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_HW_TE);
         rtk_lcd_hal_set_window(0, dc->fb_height * dc->section_count, dc->fb_width, last_height);
         rtk_lcd_hal_start_transfer(dc->frame_buf, dc->fb_width * last_height);
         rtk_lcd_hal_transfer_done();
@@ -142,12 +140,45 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
     else
     {
         rtk_lcd_hal_transfer_done();
-        rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_NO_TE);
+        rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_HW_TE);
         rtk_lcd_hal_set_window(0, dc->fb_height * dc->section_count, dc->fb_width, dc->fb_height);
         rtk_lcd_hal_start_transfer(dc->frame_buf, dc->fb_width * dc->fb_height);
     }
 
 }
+
+#else
+
+void port_gui_lcd_update(struct gui_dispdev *dc)
+{
+    uint32_t total_section_cnt = (rtk_lcd_hal_get_height() / LCD_SECTION_HEIGHT + ((
+            rtk_lcd_hal_get_height() % LCD_SECTION_HEIGHT) ? 1 : 0));
+
+    if (dc->section_count == 0)
+    {
+        rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_HW_TE);
+        rtk_lcd_hal_set_window(0, dc->fb_height * dc->section_count, dc->fb_width, dc->fb_height);
+        rtk_lcd_hal_start_transfer(dc->frame_buf, dc->fb_width * dc->fb_height);
+    }
+    else if (dc->section_count == total_section_cnt - 1)
+    {
+        uint32_t last_height = dc->screen_height - dc->section_count * dc->fb_height;
+        rtk_lcd_hal_transfer_done();
+        rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_HW_TE);
+        rtk_lcd_hal_set_window(0, dc->fb_height * dc->section_count, dc->fb_width, last_height);
+        rtk_lcd_hal_start_transfer(dc->frame_buf, dc->fb_width * last_height);
+        rtk_lcd_hal_transfer_done();
+    }
+    else
+    {
+        rtk_lcd_hal_transfer_done();
+        rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_HW_TE);
+        rtk_lcd_hal_set_window(0, dc->fb_height * dc->section_count, dc->fb_width, dc->fb_height);
+        rtk_lcd_hal_start_transfer(dc->frame_buf, dc->fb_width * dc->fb_height);
+    }
+
+}
+#endif
 static void gui_dc_lcd_power_on(void)
 {
     gui_log("port_gui_lcd_power_on");

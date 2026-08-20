@@ -10,7 +10,7 @@
 #include "trace.h"
 #include "gui_message.h"
 
-#include "touch_cst816d_zephyr.h"
+#include "touch_cst820_zephyr.h"
 #include "key_button_8773g_zephyr.h"
 
 #define TOUCH_DEV_NODE  DT_NODELABEL(touch_device)
@@ -49,9 +49,13 @@ gui_touch_port_data_t *port_touchpad_get_data()
     pressing = touch_raw_data.is_press;
 
     //gui_log("x %d y %d time %d press %d",raw_data.x_coordinate, raw_data.y_coordinate, raw_data.timestamp_ms, pressing);
+    // gui_log("port_touchpad_get_data\n");
+
     if (pressing == true)
     {
         raw_data.event = GUI_TOUCH_EVENT_DOWN;
+        gui_log("x %d y %d time %d press %d\n", raw_data.x_coordinate, raw_data.y_coordinate,
+                raw_data.timestamp_ms, pressing);
     }
     else
     {

@@ -13,14 +13,20 @@
 /*----------------------------------------------------------------------------*
  *  Handler table
  *----------------------------------------------------------------------------*/
-/* We cover cmd IDs 0x01..0x1A -- table size fits with slack. */
-#define EBADGE_L2_HANDLER_MAX   0x40
+/* Spec commands occupy 0x01..0x1A, but 0xFF DEBUG sits at the top of the
+ * range, so the table has to span the whole byte.  A sparse 256-entry
+ * function-pointer array costs 1 KB of BSS -- cheaper than a second lookup
+ * path for one out-of-band id.                                             */
+#define EBADGE_L2_HANDLER_MAX   0x100
 
 static ebadge_l2_handler_t s_handlers[EBADGE_L2_HANDLER_MAX];
 
 int ebadge_l2_register(uint8_t cmd, ebadge_l2_handler_t handler)
 {
-    if (cmd == 0 || cmd >= EBADGE_L2_HANDLER_MAX || handler == NULL)
+    /* cmd is uint8_t so the upper bound can never trip now that the table
+     * covers 0x00..0xFF; only cmd 0 stays illegal (it is the "no handler"
+     * sentinel in the frame layer's eyes and never a real command).        */
+    if (cmd == 0 || handler == NULL)
     {
         return EBADGE_ERR_PARAM;
     }
@@ -87,7 +93,7 @@ int ebadge_l2_handle(uint8_t cmd, const uint8_t *params, uint16_t params_len)
         EBADGE_LOG_HEX("<-- params", params, params_len);
     }
 
-    if (cmd == 0 || cmd >= EBADGE_L2_HANDLER_MAX)
+    if (cmd == 0)
     {
         EBADGE_WARN1("l2: cmd 0x%02x out of range", cmd);
         return EBADGE_ERR_UNKNOWN_CMD;

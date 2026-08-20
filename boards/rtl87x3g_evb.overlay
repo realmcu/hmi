@@ -73,31 +73,31 @@
 	i2c2_default: i2c2_default {
 		group1 {
 			psels =
-				<RTL87X3G_PSEL(I2C2_CLK, P4_4, DIR_OUT, DRV_HIGH, PULL_NONE)>,
-				<RTL87X3G_PSEL(I2C2_DAT, P4_3, DIR_OUT, DRV_HIGH, PULL_NONE)>;
+				<RTL87X3G_PSEL(I2C2_CLK, P2_3, DIR_OUT, DRV_HIGH, PULL_NONE)>,
+				<RTL87X3G_PSEL(I2C2_DAT, P2_4, DIR_OUT, DRV_HIGH, PULL_NONE)>;
 		};
 	};
 	i2c2_sleep: i2c2_sleep {
 		group1 {
 			psels =
-				<RTL87X3G_PSEL(SW_MODE, P4_4, DIR_IN, DRV_LOW, PULL_UP)>,
-				<RTL87X3G_PSEL(SW_MODE, P4_3, DIR_IN, DRV_LOW, PULL_UP)>;
+				<RTL87X3G_PSEL(SW_MODE, P2_3, DIR_IN, DRV_LOW, PULL_UP)>,
+				<RTL87X3G_PSEL(SW_MODE, P2_4, DIR_IN, DRV_LOW, PULL_UP)>;
 		};
 	};
 
-	/* I2C0 (Gsensor): SCL=P3_5, SDA=P3_4 —— 对齐 eBadge_8773g_dev */
+	/* I2C0 (Gsensor): SCL=P5_0, SDA=P5_1 */
 	i2c0_default: i2c0_default {
 		group1 {
 			psels =
-				<RTL87X3G_PSEL(I2C0_CLK, P3_5, DIR_OUT, DRV_HIGH, PULL_NONE)>,
-				<RTL87X3G_PSEL(I2C0_DAT, P3_4, DIR_OUT, DRV_HIGH, PULL_NONE)>;
+				<RTL87X3G_PSEL(I2C0_CLK, P5_0, DIR_OUT, DRV_HIGH, PULL_NONE)>,
+				<RTL87X3G_PSEL(I2C0_DAT, P5_1, DIR_OUT, DRV_HIGH, PULL_NONE)>;
 		};
 	};
 	i2c0_sleep: i2c0_sleep {
 		group1 {
 			psels =
-				<RTL87X3G_PSEL(SW_MODE, P3_5, DIR_IN, DRV_LOW, PULL_UP)>,
-				<RTL87X3G_PSEL(SW_MODE, P3_4, DIR_IN, DRV_LOW, PULL_UP)>;
+				<RTL87X3G_PSEL(SW_MODE, P5_0, DIR_IN, DRV_LOW, PULL_UP)>,
+				<RTL87X3G_PSEL(SW_MODE, P5_1, DIR_IN, DRV_LOW, PULL_UP)>;
 		};
 	};
 };
@@ -108,18 +108,15 @@
 	pinctrl-0 = <&i2c2_default>;
 	pinctrl-1 = <&i2c2_sleep>;
 	pinctrl-names = "default", "sleep";
-	/*touch_device: touch_cst816d@15 {
-	* compatible = "hynitron,cst816d";   
-	*
-	* touch_device: touch_cst820@15 {
-	* 	compatible = "hynitron,cst820";
-	*/
-	touch_device: touch_cst816d@15 {
-		compatible = "hynitron,cst816d"; 
+	touch_device: touch_cst820@15 {
+		compatible = "hynitron,cst820";
 		reg = <0x15>;
-		irq-gpios = <&gpioa 0 GPIO_ACTIVE_LOW>;		/* P0_0, falling edge */
-		rst-gpios = <&gpioa 3 GPIO_ACTIVE_HIGH>;	/* P0_3 */
-		gesture-release-timeout-ms = <30>;
+		irq-gpios = <&gpiob 25 GPIO_ACTIVE_LOW>;		/* P3_5, falling edge */
+		rst-gpios = <&gpioa 6 GPIO_ACTIVE_HIGH>;	    /* P3_4 */
+		pwr-en-gpios = <&gpioa 3 GPIO_ACTIVE_HIGH>;	    /* P0_3/ADC_3, VD33_EN, asserted first */
+		pwr-gpios = <&gpioa 7 GPIO_ACTIVE_LOW>;		    /* P1_0, touch supply enable, active low */
+
+	 	gesture-release-timeout-ms = <30>;
 		status = "okay";
 	};
 };
