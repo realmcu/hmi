@@ -359,6 +359,7 @@ typedef struct l3_draw_tria_img
 
     void *fill_data;
     L3_FILL_TYPE fill_type;
+    uint16_t light;   // flat shading factor for texture fill, Q8 (256 = full bright, 0 = unset -> full)
 } l3_draw_tria_img_t;
 
 typedef struct l3_rect
@@ -493,6 +494,7 @@ void l3_apply_deformation_to_model_vertex(l3_deformation_state_t *deformation,
 void *l3_malloc(size_t size);
 void l3_free(void *ptr);
 int l3_ftl_read(uintptr_t addr, uint8_t *buf, uint32_t len);
+void *l3_fs_load(const char *path, bool *need_free);
 uint32_t l3_get_time_ms(void);
 
 #ifdef __cplusplus

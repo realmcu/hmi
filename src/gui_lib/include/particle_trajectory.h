@@ -50,13 +50,13 @@ typedef void (*trajectory_callback_t)(particle_t *particle, float dt, void *user
 typedef struct trajectory_config
 {
     trajectory_type_t type;     /**< Trajectory type */
-    float gravity;              /**< Gravity acceleration (pixels/s^2), clamped to [-1000, 1000] */
+    float gravity;              /**< Gravity acceleration (pixels/s²), clamped to [-1000, 1000] */
     float damping;              /**< Damping coefficient (0.0-1.0), reduces velocity each frame */
     float spiral_speed;         /**< Spiral angular velocity (rad/s) */
     float spiral_cx;            /**< Spiral center X coordinate */
     float spiral_cy;            /**< Spiral center Y coordinate */
-    float wind_x;               /**< Wind force X component (pixels/s^2) */
-    float wind_y;               /**< Wind force Y component (pixels/s^2) */
+    float wind_x;               /**< Wind force X component (pixels/s²) */
+    float wind_y;               /**< Wind force Y component (pixels/s²) */
     trajectory_callback_t custom_cb;  /**< Custom trajectory callback */
     void *custom_data;          /**< User data for custom callback */
 } trajectory_config_t;
