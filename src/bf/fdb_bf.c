@@ -33,7 +33,8 @@
 
 static uint32_t align_up(uint32_t v, uint32_t a)
 {
-    if (a == 0) {
+    if (a == 0)
+    {
         return v;
     }
     return ((v + a - 1) / a) * a;
@@ -45,17 +46,21 @@ static fdb_err_t make_full_key(const char *key, char *out, size_t out_size)
     size_t plen = strlen(BF_PREFIX);
     size_t klen;
 
-    if (key == NULL) {
+    if (key == NULL)
+    {
         return FDB_INVALID_PARAM;
     }
     klen = strlen(key);
-    if (klen == 0 || klen >= FDB_BF_KEY_MAX) {
+    if (klen == 0 || klen >= FDB_BF_KEY_MAX)
+    {
         return FDB_INVALID_PARAM;
     }
-    if (plen + klen + 1 > out_size) {
+    if (plen + klen + 1 > out_size)
+    {
         return FDB_INVALID_PARAM;
     }
-    if (plen + klen >= FDB_KV_NAME_MAX) {
+    if (plen + klen >= FDB_KV_NAME_MAX)
+    {
         /* the KVDB KV name has a hard limit */
         return FDB_INVALID_PARAM;
     }
@@ -70,15 +75,18 @@ static fdb_err_t make_full_key(const char *key, char *out, size_t out_size)
 
 static fdb_err_t data_write(fdb_bf_t db, uint32_t off, const void *buf, size_t len)
 {
-    if ((uint64_t)off + len > db->data_size) {
+    if ((uint64_t)off + len > db->data_size)
+    {
         return FDB_WRITE_ERR;
     }
-    return fal_partition_write(db->data_part, off, (const uint8_t *)buf, len) >= 0 ? FDB_NO_ERR : FDB_WRITE_ERR;
+    return fal_partition_write(db->data_part, off, (const uint8_t *)buf,
+                               len) >= 0 ? FDB_NO_ERR : FDB_WRITE_ERR;
 }
 
 static fdb_err_t data_erase(fdb_bf_t db, uint32_t off, size_t len)
 {
-    if ((uint64_t)off + len > db->data_size) {
+    if ((uint64_t)off + len > db->data_size)
+    {
         return FDB_ERASE_ERR;
     }
     return fal_partition_erase(db->data_part, off, len) >= 0 ? FDB_NO_ERR : FDB_ERASE_ERR;
@@ -110,7 +118,8 @@ static fdb_err_t del_dirent(fdb_bf_t db, const char *full_key)
 
 /* ==================== "bf/" KV enumeration ==================== */
 
-typedef bool (*bf_raw_cb)(fdb_bf_t db, const char *user_key, const struct fdb_bf_dirent *ent, void *arg);
+typedef bool (*bf_raw_cb)(fdb_bf_t db, const char *user_key, const struct fdb_bf_dirent *ent,
+                          void *arg);
 
 /* iterate every valid directory entry; the callback returns true to stop early */
 static void bf_iterate(fdb_bf_t db, bf_raw_cb cb, void *arg)
@@ -124,29 +133,36 @@ static void bf_iterate(fdb_bf_t db, bf_raw_cb cb, void *arg)
     size_t ulen;
 
     fdb_kv_iterator_init(db->dir_kvdb, &it);
-    while (fdb_kv_iterate(db->dir_kvdb, &it)) {
+    while (fdb_kv_iterate(db->dir_kvdb, &it))
+    {
         kv = &it.curr_kv;
-        if (kv->name_len <= plen) {
+        if (kv->name_len <= plen)
+        {
             continue;
         }
-        if (strncmp(kv->name, BF_PREFIX, plen) != 0) {
+        if (strncmp(kv->name, BF_PREFIX, plen) != 0)
+        {
             continue;
         }
-        if (kv->value_len != sizeof(struct fdb_bf_dirent)) {
+        if (kv->value_len != sizeof(struct fdb_bf_dirent))
+        {
             continue;
         }
         ulen = kv->name_len - plen;
-        if (ulen >= sizeof(user_key)) {
+        if (ulen >= sizeof(user_key))
+        {
             continue;       /* defensive: should not happen */
         }
         memcpy(user_key, kv->name + plen, ulen);
         user_key[ulen] = '\0';
 
         if (fdb_blob_read((fdb_db_t)db->dir_kvdb,
-                          fdb_kv_to_blob(kv, fdb_blob_make(&blob, &ent, sizeof(ent)))) != sizeof(ent)) {
+                          fdb_kv_to_blob(kv, fdb_blob_make(&blob, &ent, sizeof(ent)))) != sizeof(ent))
+        {
             continue;
         }
-        if (cb(db, user_key, &ent, arg)) {
+        if (cb(db, user_key, &ent, arg))
+        {
             break;
         }
     }
@@ -158,8 +174,10 @@ static fdb_bf_file_t alloc_handle(fdb_bf_t db)
 {
     int i;
 
-    for (i = 0; i < FDB_BF_MAX_OPEN_HANDLES; i++) {
-        if (!db->handles[i].in_use) {
+    for (i = 0; i < FDB_BF_MAX_OPEN_HANDLES; i++)
+    {
+        if (!db->handles[i].in_use)
+        {
             memset(&db->handles[i], 0, sizeof(db->handles[i]));
             db->handles[i].in_use = true;
             db->handles[i].db = db;
@@ -176,12 +194,14 @@ static void free_handle(fdb_bf_file_t file)
 
 /* ==================== rotating allocator ==================== */
 
-struct bf_region {
+struct bf_region
+{
     uint32_t start;
     uint32_t end;
 };
 
-struct collect_arg {
+struct collect_arg
+{
     struct bf_region *arr;
     uint32_t cap;
     uint32_t n;
@@ -197,16 +217,19 @@ static bool collect_cb(fdb_bf_t db, const char *key, const struct fdb_bf_dirent 
     (void)db;
     (void)key;
 
-    if (ent->capacity == 0) {
+    if (ent->capacity == 0)
+    {
         return false;
     }
-    if (c->n >= c->cap) {
+    if (c->n >= c->cap)
+    {
         c->overflow = true;
         return true;        /* stop iteration */
     }
     /* insertion sort by start offset */
     i = c->n;
-    while (i > 0 && c->arr[i - 1].start > ent->offset) {
+    while (i > 0 && c->arr[i - 1].start > ent->offset)
+    {
         c->arr[i] = c->arr[i - 1];
         i--;
     }
@@ -224,25 +247,32 @@ static bool scan_range(const struct bf_region *r, uint32_t n, uint32_t lo, uint3
     uint32_t p = lo;
     uint32_t i;
 
-    for (i = 0; i < n && p < hi; i++) {
-        if (r[i].end <= p) {
+    for (i = 0; i < n && p < hi; i++)
+    {
+        if (r[i].end <= p)
+        {
             continue;               /* region entirely before p */
         }
-        if (r[i].start >= hi) {
+        if (r[i].start >= hi)
+        {
             break;                  /* region beyond the search window */
         }
-        if (r[i].start > p) {
+        if (r[i].start > p)
+        {
             uint32_t gap_end = (r[i].start < hi) ? r[i].start : hi;
-            if (gap_end - p >= need) {
+            if (gap_end - p >= need)
+            {
                 *out = p;
                 return true;
             }
         }
-        if (r[i].end > p) {
+        if (r[i].end > p)
+        {
             p = r[i].end;           /* skip past this occupied region */
         }
     }
-    if (p < hi && hi - p >= need) {
+    if (p < hi && hi - p >= need)
+    {
         *out = p;
         return true;
     }
@@ -255,7 +285,8 @@ static fdb_err_t bf_alloc(fdb_bf_t db, uint32_t need, uint32_t *out_off)
     struct bf_region regions[FDB_BF_MAX_ENTRIES];
     struct collect_arg ca;
 
-    if (need == 0 || need > db->data_size) {
+    if (need == 0 || need > db->data_size)
+    {
         return FDB_NO_SPACE;
     }
 
@@ -264,24 +295,28 @@ static fdb_err_t bf_alloc(fdb_bf_t db, uint32_t need, uint32_t *out_off)
     ca.n = 0;
     ca.overflow = false;
     bf_iterate(db, collect_cb, &ca);
-    if (ca.overflow) {
+    if (ca.overflow)
+    {
         FDB_INFO("Error: too many big files (> %d) to track free space.\n", FDB_BF_MAX_ENTRIES);
         return FDB_NO_SPACE;
     }
 
     /* next-fit: from the write cursor to the end, then wrap and scan the whole region */
     if (db->write_cursor < db->data_size &&
-        scan_range(regions, ca.n, db->write_cursor, db->data_size, need, out_off)) {
+        scan_range(regions, ca.n, db->write_cursor, db->data_size, need, out_off))
+    {
         goto found;
     }
-    if (scan_range(regions, ca.n, 0, db->data_size, need, out_off)) {
+    if (scan_range(regions, ca.n, 0, db->data_size, need, out_off))
+    {
         goto found;
     }
     return FDB_NO_SPACE;
 
 found:
     db->write_cursor = *out_off + need;
-    if (db->write_cursor >= db->data_size) {
+    if (db->write_cursor >= db->data_size)
+    {
         db->write_cursor = 0;
     }
     return FDB_NO_ERR;
@@ -298,7 +333,8 @@ static bool cursor_cb(fdb_bf_t db, const char *key, const struct fdb_bf_dirent *
     (void)key;
 
     end = ent->offset + ent->capacity;
-    if (end > *max_end) {
+    if (end > *max_end)
+    {
         *max_end = end;
     }
     return false;
@@ -310,7 +346,8 @@ fdb_err_t fdb_bf_init(fdb_bf_t db, fdb_kvdb_t dir_kvdb, const char *data_part_na
     const struct fal_flash_dev *flash;
     uint32_t max_end = 0;
 
-    if (db == NULL || dir_kvdb == NULL || data_part_name == NULL) {
+    if (db == NULL || dir_kvdb == NULL || data_part_name == NULL)
+    {
         return FDB_INIT_FAILED;
     }
 
@@ -322,17 +359,20 @@ fdb_err_t fdb_bf_init(fdb_bf_t db, fdb_kvdb_t dir_kvdb, const char *data_part_na
     fdb_kvdb_control(dir_kvdb, FDB_KVDB_CTRL_SET_RESERVED_PREFIX, (void *)FDB_BF_KEY_PREFIX);
 
     part = fal_partition_find(data_part_name);
-    if (part == NULL) {
+    if (part == NULL)
+    {
         FDB_INFO("Error: the data partition (%s) is not found.\n", data_part_name);
         return FDB_PART_NOT_FOUND;
     }
     flash = fal_flash_device_find(part->flash_name);
-    if (flash == NULL) {
+    if (flash == NULL)
+    {
         FDB_INFO("Error: the flash device (%s) is not found.\n", part->flash_name);
         return FDB_PART_NOT_FOUND;
     }
     /* the Big File extension only supports NOR flash (write granularity == 1 bit) */
-    if (flash->write_gran != 1) {
+    if (flash->write_gran != 1)
+    {
         FDB_INFO("Error: the Big File extension only supports NOR flash (write_gran must be 1, got %d).\n",
                  (int)flash->write_gran);
         return FDB_UNSUPPORTED;
@@ -347,7 +387,8 @@ fdb_err_t fdb_bf_init(fdb_bf_t db, fdb_kvdb_t dir_kvdb, const char *data_part_na
 
     /* rebuild the write cursor from existing directory entries */
     bf_iterate(db, cursor_cb, &max_end);
-    if (max_end >= db->data_size) {
+    if (max_end >= db->data_size)
+    {
         max_end = 0;
     }
     db->write_cursor = max_end;
@@ -360,7 +401,8 @@ fdb_err_t fdb_bf_init(fdb_bf_t db, fdb_kvdb_t dir_kvdb, const char *data_part_na
 
 fdb_err_t fdb_bf_deinit(fdb_bf_t db)
 {
-    if (db == NULL) {
+    if (db == NULL)
+    {
         return FDB_INVALID_PARAM;
     }
     db->inited = false;
@@ -378,33 +420,39 @@ fdb_err_t fdb_bf_create(fdb_bf_t db, const char *key, size_t max_size, fdb_bf_fi
     uint32_t need;
     uint32_t offset = 0;
 
-    if (db == NULL || !db->inited || out == NULL) {
+    if (db == NULL || !db->inited || out == NULL)
+    {
         return FDB_INIT_FAILED;
     }
     result = make_full_key(key, full_key, sizeof(full_key));
-    if (result != FDB_NO_ERR) {
+    if (result != FDB_NO_ERR)
+    {
         return result;
     }
 
     need = align_up((uint32_t)max_size, db->blk_size);
-    if (need == 0) {
+    if (need == 0)
+    {
         need = db->blk_size;        /* reserve at least one block */
     }
 
     file = alloc_handle(db);
-    if (file == NULL) {
+    if (file == NULL)
+    {
         return FDB_BUSY;
     }
 
     result = bf_alloc(db, need, &offset);
-    if (result != FDB_NO_ERR) {
+    if (result != FDB_NO_ERR)
+    {
         free_handle(file);
         return result;
     }
 
     /* erase the reserved range before writing */
     result = data_erase(db, offset, need);
-    if (result != FDB_NO_ERR) {
+    if (result != FDB_NO_ERR)
+    {
         free_handle(file);
         return result;
     }
@@ -423,21 +471,26 @@ fdb_err_t fdb_bf_append(fdb_bf_file_t file, const void *buf, size_t len)
 {
     fdb_err_t result;
 
-    if (file == NULL || !file->in_use) {
+    if (file == NULL || !file->in_use)
+    {
         return FDB_INVALID_PARAM;
     }
-    if (len == 0) {
+    if (len == 0)
+    {
         return FDB_NO_ERR;
     }
-    if (buf == NULL) {
+    if (buf == NULL)
+    {
         return FDB_INVALID_PARAM;
     }
-    if ((uint64_t)file->size + len > file->capacity) {
+    if ((uint64_t)file->size + len > file->capacity)
+    {
         return FDB_NO_SPACE;
     }
 
     result = data_write(file->db, file->offset + file->size, buf, len);
-    if (result != FDB_NO_ERR) {
+    if (result != FDB_NO_ERR)
+    {
         return result;
     }
     file->size += (uint32_t)len;
@@ -462,13 +515,15 @@ fdb_err_t fdb_bf_commit(fdb_bf_file_t file, const uint32_t *data_crc)
     struct fdb_bf_dirent ent;
     fdb_bf_t db;
 
-    if (file == NULL || !file->in_use) {
+    if (file == NULL || !file->in_use)
+    {
         return FDB_INVALID_PARAM;
     }
     db = file->db;
 
     result = make_full_key(file->key, full_key, sizeof(full_key));
-    if (result != FDB_NO_ERR) {
+    if (result != FDB_NO_ERR)
+    {
         return result;
     }
 
@@ -478,7 +533,8 @@ fdb_err_t fdb_bf_commit(fdb_bf_file_t file, const uint32_t *data_crc)
     ent.capacity = align_up(file->size, db->blk_size);
     ent.flags    = 0;
     ent.reserved = 0;
-    if (data_crc != NULL) {
+    if (data_crc != NULL)
+    {
         ent.data_crc = *data_crc;
         ent.flags   |= FDB_BF_FLAG_CRC_VALID;
     }
@@ -492,7 +548,8 @@ fdb_err_t fdb_bf_commit(fdb_bf_file_t file, const uint32_t *data_crc)
 
 fdb_err_t fdb_bf_abort(fdb_bf_file_t file)
 {
-    if (file == NULL || !file->in_use) {
+    if (file == NULL || !file->in_use)
+    {
         return FDB_INVALID_PARAM;
     }
     /* no KVDB entry was written, so the reserved data range is simply released */
@@ -509,14 +566,17 @@ fdb_err_t fdb_bf_delete(fdb_bf_t db, const char *key)
     char full_key[FDB_KV_NAME_MAX];
     struct fdb_bf_dirent ent;
 
-    if (db == NULL || !db->inited) {
+    if (db == NULL || !db->inited)
+    {
         return FDB_INIT_FAILED;
     }
     result = make_full_key(key, full_key, sizeof(full_key));
-    if (result != FDB_NO_ERR) {
+    if (result != FDB_NO_ERR)
+    {
         return result;
     }
-    if (!read_dirent(db, full_key, &ent)) {
+    if (!read_dirent(db, full_key, &ent))
+    {
         return FDB_NOT_FOUND;
     }
     /* removing the directory entry makes the file invisible; the data range is
@@ -524,22 +584,26 @@ fdb_err_t fdb_bf_delete(fdb_bf_t db, const char *key)
     return del_dirent(db, full_key);
 }
 
-struct find_by_addr_arg {
+struct find_by_addr_arg
+{
     uint32_t off;
     bool found;
     char key[FDB_BF_KEY_MAX];
 };
 
-static bool find_by_addr_cb(fdb_bf_t db, const char *key, const struct fdb_bf_dirent *ent, void *arg)
+static bool find_by_addr_cb(fdb_bf_t db, const char *key, const struct fdb_bf_dirent *ent,
+                            void *arg)
 {
     struct find_by_addr_arg *fa = (struct find_by_addr_arg *)arg;
 
     (void)db;
 
-    if (ent->capacity == 0) {
+    if (ent->capacity == 0)
+    {
         return false;
     }
-    if (fa->off >= ent->offset && fa->off < ent->offset + ent->capacity) {
+    if (fa->off >= ent->offset && fa->off < ent->offset + ent->capacity)
+    {
         strncpy(fa->key, key, sizeof(fa->key) - 1);
         fa->key[sizeof(fa->key) - 1] = '\0';
         fa->found = true;
@@ -555,11 +619,13 @@ fdb_err_t fdb_bf_delete_by_addr(fdb_bf_t db, uint32_t addr)
     uint32_t base;
     fdb_err_t result;
 
-    if (db == NULL || !db->inited) {
+    if (db == NULL || !db->inited)
+    {
         return FDB_INIT_FAILED;
     }
     base = db->data_flash->addr + db->data_part->offset;
-    if (addr < base) {
+    if (addr < base)
+    {
         return FDB_NOT_FOUND;
     }
 
@@ -568,12 +634,14 @@ fdb_err_t fdb_bf_delete_by_addr(fdb_bf_t db, uint32_t addr)
     fa.key[0] = '\0';
     /* iterate read-only to locate the key, then delete it after the iteration */
     bf_iterate(db, find_by_addr_cb, &fa);
-    if (!fa.found) {
+    if (!fa.found)
+    {
         return FDB_NOT_FOUND;
     }
 
     result = make_full_key(fa.key, full_key, sizeof(full_key));
-    if (result != FDB_NO_ERR) {
+    if (result != FDB_NO_ERR)
+    {
         return result;
     }
     return del_dirent(db, full_key);
@@ -584,10 +652,12 @@ bool fdb_bf_exists(fdb_bf_t db, const char *key)
     char full_key[FDB_KV_NAME_MAX];
     struct fdb_bf_dirent ent;
 
-    if (db == NULL || !db->inited) {
+    if (db == NULL || !db->inited)
+    {
         return false;
     }
-    if (make_full_key(key, full_key, sizeof(full_key)) != FDB_NO_ERR) {
+    if (make_full_key(key, full_key, sizeof(full_key)) != FDB_NO_ERR)
+    {
         return false;
     }
     return read_dirent(db, full_key, &ent);
@@ -598,20 +668,24 @@ fdb_err_t fdb_bf_stat(fdb_bf_t db, const char *key, struct fdb_bf_dirent *out)
     char full_key[FDB_KV_NAME_MAX];
     fdb_err_t result;
 
-    if (db == NULL || !db->inited || out == NULL) {
+    if (db == NULL || !db->inited || out == NULL)
+    {
         return FDB_INVALID_PARAM;
     }
     result = make_full_key(key, full_key, sizeof(full_key));
-    if (result != FDB_NO_ERR) {
+    if (result != FDB_NO_ERR)
+    {
         return result;
     }
-    if (!read_dirent(db, full_key, out)) {
+    if (!read_dirent(db, full_key, out))
+    {
         return FDB_NOT_FOUND;
     }
     return FDB_NO_ERR;
 }
 
-struct foreach_arg {
+struct foreach_arg
+{
     fdb_bf_iter_cb cb;
     void *arg;
 };
@@ -628,7 +702,8 @@ fdb_err_t fdb_bf_foreach(fdb_bf_t db, fdb_bf_iter_cb cb, void *arg)
 {
     struct foreach_arg fo;
 
-    if (db == NULL || !db->inited || cb == NULL) {
+    if (db == NULL || !db->inited || cb == NULL)
+    {
         return FDB_INVALID_PARAM;
     }
     fo.cb = cb;
@@ -644,23 +719,171 @@ fdb_err_t fdb_bf_get_addr(fdb_bf_t db, const char *key, uint32_t *out_addr, size
     struct fdb_bf_dirent ent;
     fdb_err_t result;
 
-    if (db == NULL || !db->inited) {
+    if (db == NULL || !db->inited)
+    {
         return FDB_INIT_FAILED;
     }
     result = make_full_key(key, full_key, sizeof(full_key));
-    if (result != FDB_NO_ERR) {
+    if (result != FDB_NO_ERR)
+    {
         return result;
     }
-    if (!read_dirent(db, full_key, &ent)) {
+    if (!read_dirent(db, full_key, &ent))
+    {
         return FDB_NOT_FOUND;
     }
-    if (out_addr) {
+    if (out_addr)
+    {
         *out_addr = db->data_flash->addr + db->data_part->offset + ent.offset;
     }
-    if (out_size) {
+    if (out_size)
+    {
         *out_size = ent.size;
     }
     return FDB_NO_ERR;
+}
+
+/* ==================== space accounting ==================== */
+
+struct space_arg
+{
+    struct bf_region *arr;
+    uint32_t cap;
+    uint32_t n;
+    bool overflow;
+    uint32_t used;
+    uint32_t valid;
+};
+
+/* Same sorted insertion as collect_cb, but also totals the byte counts.  Kept
+ * separate rather than extending collect_arg so the allocator's hot path stays
+ * untouched. */
+static bool space_cb(fdb_bf_t db, const char *key, const struct fdb_bf_dirent *ent, void *arg)
+{
+    struct space_arg *s = (struct space_arg *)arg;
+    uint32_t i;
+
+    (void)db;
+    (void)key;
+
+    if (ent->capacity == 0)
+    {
+        return false;
+    }
+
+    s->used += ent->capacity;
+    s->valid += ent->size;
+
+    if (s->n >= s->cap)
+    {
+        /* Keep counting bytes, but the region array -- and therefore
+         * largest_free -- can no longer be trusted. */
+        s->overflow = true;
+        return false;
+    }
+    i = s->n;
+    while (i > 0 && s->arr[i - 1].start > ent->offset)
+    {
+        s->arr[i] = s->arr[i - 1];
+        i--;
+    }
+    s->arr[i].start = ent->offset;
+    s->arr[i].end = ent->offset + ent->capacity;
+    s->n++;
+
+    return false;
+}
+
+/* Walk the gaps between occupied regions and return the widest one.  Mirrors
+ * scan_range()'s traversal, but measures instead of stopping at the first fit --
+ * this is the number that decides whether fdb_bf_create() will succeed. */
+static uint32_t largest_gap(const struct bf_region *r, uint32_t n, uint32_t total)
+{
+    uint32_t best = 0;
+    uint32_t p = 0;
+    uint32_t i;
+
+    for (i = 0; i < n && p < total; i++)
+    {
+        if (r[i].end <= p)
+        {
+            continue;
+        }
+        if (r[i].start > p)
+        {
+            uint32_t gap_end = (r[i].start < total) ? r[i].start : total;
+
+            if (gap_end - p > best)
+            {
+                best = gap_end - p;
+            }
+        }
+        if (r[i].end > p)
+        {
+            p = r[i].end;
+        }
+    }
+    if (p < total && total - p > best)
+    {
+        best = total - p;
+    }
+
+    return best;
+}
+
+fdb_err_t fdb_bf_space(fdb_bf_t db, struct fdb_bf_space *out)
+{
+    struct bf_region regions[FDB_BF_MAX_ENTRIES];
+    struct space_arg sa;
+
+    if (db == NULL || !db->inited || out == NULL)
+    {
+        return FDB_INVALID_PARAM;
+    }
+
+    sa.arr = regions;
+    sa.cap = FDB_BF_MAX_ENTRIES;
+    sa.n = 0;
+    sa.overflow = false;
+    sa.used = 0;
+    sa.valid = 0;
+    bf_iterate(db, space_cb, &sa);
+
+    memset(out, 0, sizeof(*out));
+    out->total_size = db->data_size;
+    out->blk_size = db->blk_size;
+    out->file_count = sa.n;
+    out->valid_size = sa.valid;
+    out->truncated = sa.overflow;
+
+    /* Defensive: a corrupt dirent could claim more capacity than the partition
+     * holds.  Clamp rather than underflow free_size. */
+    out->used_size = (sa.used > db->data_size) ? db->data_size : sa.used;
+    out->free_size = db->data_size - out->used_size;
+
+    if (sa.overflow)
+    {
+        /* Region array incomplete -- report the fragmentation-blind upper bound
+         * instead of a wrong contiguous figure. */
+        out->largest_free = out->free_size;
+    }
+    else
+    {
+        out->largest_free = largest_gap(regions, sa.n, db->data_size);
+    }
+
+    return FDB_NO_ERR;
+}
+
+uint32_t fdb_bf_free_size(fdb_bf_t db)
+{
+    struct fdb_bf_space sp;
+
+    if (fdb_bf_space(db, &sp) != FDB_NO_ERR)
+    {
+        return 0;
+    }
+    return sp.largest_free;
 }
 
 #endif /* FDB_USING_BF */

@@ -62,7 +62,8 @@ extern "C" {
 /**
  * Big File directory entry. Stored as the value of one KVDB KV (24 bytes).
  */
-struct fdb_bf_dirent {
+struct fdb_bf_dirent
+{
     uint32_t offset;        /**< data offset relative to the data partition start */
     uint32_t capacity;      /**< allocated capacity, aligned to flash block size */
     uint32_t size;          /**< valid data length (<= capacity) */
@@ -75,7 +76,8 @@ typedef struct fdb_bf_dirent *fdb_bf_dirent_t;
 /**
  * Big File open/write handle.
  */
-struct fdb_bf_file {
+struct fdb_bf_file
+{
     struct fdb_bf *db;                 /**< owner BF object */
     bool      in_use;                  /**< handle slot is allocated */
     char      key[FDB_BF_KEY_MAX];     /**< user file key (without prefix) */
@@ -88,11 +90,14 @@ typedef struct fdb_bf_file *fdb_bf_file_t;
 /**
  * Big File database object.
  */
-struct fdb_bf {
-    fdb_kvdb_t  dir_kvdb;                          /**< user-shared KVDB holding the directory entries */
+struct fdb_bf
+{
+    fdb_kvdb_t
+    dir_kvdb;                          /**< user-shared KVDB holding the directory entries */
     const struct fal_partition *data_part;         /**< data partition */
     const struct fal_flash_dev *data_flash;        /**< flash device of the data partition */
-    uint32_t    blk_size;                          /**< erase block size of the data flash (allocation unit) */
+    uint32_t
+    blk_size;                          /**< erase block size of the data flash (allocation unit) */
     uint32_t    data_size;                         /**< data partition length in bytes */
     uint32_t    write_cursor;                      /**< rotating allocation cursor, rebuilt at init */
     struct fdb_bf_file handles[FDB_BF_MAX_OPEN_HANDLES];
@@ -111,10 +116,31 @@ typedef struct fdb_bf *fdb_bf_t;
  *
  * @return return true to stop the iteration, false to continue
  */
-typedef bool (*fdb_bf_iter_cb)(const char *key, const struct fdb_bf_dirent *ent, uint32_t xip_addr, void *arg);
+typedef bool (*fdb_bf_iter_cb)(const char *key, const struct fdb_bf_dirent *ent, uint32_t xip_addr,
+                               void *arg);
+
+/**
+ * Big File space usage. Filled in by fdb_bf_space().
+ *
+ * The allocator only ever hands out a *contiguous* block-aligned run, so
+ * `largest_free` -- not `free_size` -- decides whether an fdb_bf_create() of a
+ * given size can succeed. The two differ once the partition is fragmented.
+ */
+struct fdb_bf_space
+{
+    uint32_t total_size;      /**< data partition length, == db->data_size */
+    uint32_t used_size;       /**< sum of every entry's allocated capacity */
+    uint32_t free_size;       /**< total_size - used_size, possibly fragmented */
+    uint32_t largest_free;    /**< biggest contiguous free run; the usable limit */
+    uint32_t valid_size;      /**< sum of every entry's valid data length */
+    uint32_t file_count;      /**< number of committed big files */
+    uint32_t blk_size;        /**< allocation unit (erase block size) */
+    bool     truncated;       /**< true: > FDB_BF_MAX_ENTRIES files, figures are partial */
+};
 
 /* lifecycle */
-fdb_err_t fdb_bf_init(fdb_bf_t db, fdb_kvdb_t dir_kvdb, const char *data_part_name, void *user_data);
+fdb_err_t fdb_bf_init(fdb_bf_t db, fdb_kvdb_t dir_kvdb, const char *data_part_name,
+                      void *user_data);
 fdb_err_t fdb_bf_deinit(fdb_bf_t db);
 
 /* write: create -> append... -> commit(data_crc) / abort
@@ -138,6 +164,15 @@ bool      fdb_bf_exists(fdb_bf_t db, const char *key);
 fdb_err_t fdb_bf_stat(fdb_bf_t db, const char *key, struct fdb_bf_dirent *out);
 fdb_err_t fdb_bf_foreach(fdb_bf_t db, fdb_bf_iter_cb cb, void *arg);
 fdb_err_t fdb_bf_get_addr(fdb_bf_t db, const char *key, uint32_t *out_addr, size_t *out_size);
+
+/* space accounting
+ *
+ * fdb_bf_space()      -- full report, one pass over the directory entries
+ * fdb_bf_free_size()  -- shorthand for the number that actually gates a create:
+ *                        the largest contiguous free run, 0 on error
+ */
+fdb_err_t fdb_bf_space(fdb_bf_t db, struct fdb_bf_space *out);
+uint32_t  fdb_bf_free_size(fdb_bf_t db);
 
 #ifdef __cplusplus
 }
