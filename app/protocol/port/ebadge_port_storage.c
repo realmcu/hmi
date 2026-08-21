@@ -226,3 +226,46 @@ int ebadge_port_storage_wp_abort(int handle)
     EBADGE_LOG1("port_storage: wp_abort id=%d discarded", (int)s_wp_file_id);
     return 0;
 }
+
+int ebadge_port_storage_reset(uint32_t *out_removed)
+{
+    uint32_t removed = 0;
+
+    if (out_removed) { *out_removed = 0; }
+
+    /* Checked here as well as inside BF so the local session pointer and the BF
+     * handle table cannot disagree: BF would reject on its own handle, but
+     * s_wp_file would still look valid to wp_write afterwards. */
+    if (s_wp_file != NULL)
+    {
+        EBADGE_WARN("port_storage: reset refused, a write session is open");
+        return -2;
+    }
+
+    fdb_err_t rc = fdb_bf_reset(app_get_bf(), &removed);
+    if (out_removed) { *out_removed = removed; }
+
+    if (rc == FDB_NO_ERR)
+    {
+        /* No id bookkeeping to clear: pick_file_id() probes the directory each
+         * time, so an empty directory already means ids restart from 1. */
+        EBADGE_LOG1("port_storage: reset ok, %u files erased", (unsigned)removed);
+        return 0;
+    }
+
+    if (rc == FDB_INIT_FAILED)
+    {
+        EBADGE_WARN("port_storage: reset before BF init");
+        return -1;
+    }
+    if (rc == FDB_BUSY)
+    {
+        return -2;
+    }
+
+    /* Erase failed: the directory is empty, so the files are gone regardless;
+     * only stale bytes remain on flash. */
+    EBADGE_ERR2("port_storage: reset erase failed rc=%d after %u removed",
+                (int)rc, (unsigned)removed);
+    return -3;
+}

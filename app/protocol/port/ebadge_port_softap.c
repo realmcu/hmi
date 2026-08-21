@@ -250,10 +250,11 @@ bool ebadge_port_softap_info(ebadge_softap_info_t *out_info, uint16_t *out_port)
         memcpy(out_info->ssid, ap.ssid, sizeof(out_info->ssid) - 1U);
         memcpy(out_info->password, ap.password, sizeof(out_info->password) - 1U);
         out_info->ip = ap.ip;
-        /* WLSTATE does not report the channel and there is no command that
-         * does.  Leaving it 0 is honest and harmless: the phone scans for the
-         * SSID, and 0x13's channel TLV is a hint, not a tuning instruction. */
-        out_info->channel = 0U;
+        /* From the CHANNEL= line of AT+WLSTATE (spi-at-command-protocol sec.10.1,
+         * v2.1).  Still 0 against an older 8711 build that omits the line, which
+         * remains a safe answer: the phone scans for the SSID, and 0x13's channel
+         * TLV is a hint rather than a tuning instruction. */
+        out_info->channel = ap.channel;
     }
     if (out_port != NULL)
     {

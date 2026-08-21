@@ -174,11 +174,24 @@ bool wifi_8711_at_ap_parse(const char *text, wifi_8711_ap_info_t *out)
         {
             out->port = (uint16_t)strtoul(val, NULL, 10);
         }
+        else if (line_is(line, "CHANNEL=", &val))
+        {
+            /* Range-checked before the narrowing cast: an out-of-range value
+             * would otherwise alias onto a plausible channel (300 -> 44) and be
+             * handed to the phone as fact.  0 already means "unknown". */
+            unsigned long ch = strtoul(val, NULL, 10);
+
+            out->channel = (ch >= 1UL && ch <= 196UL) ? (uint8_t)ch : 0U;
+        }
         else if (line_is(line, "CLIENTS=", &val))
         {
             out->clients = (uint8_t)strtoul(val, NULL, 10);
         }
-        /* CLIENT=n MAC=.. / [+WLSTATE]:OK / [+WLSTARTAP]:OK and anything the
+        /* FILE_PORT= (the EBXF upload port, sec.6) is not read here: nothing on
+         * this side connects to it yet.  It cannot be swallowed by the "PORT="
+         * branch above either, because line_is() anchors at the line start.
+         *
+         * CLIENT=n MAC=.. / [+WLSTATE]:OK / [+WLSTARTAP]:OK and anything the
          * vendor adds later fall through deliberately -- see the file header. */
     }
 
@@ -215,6 +228,10 @@ static void ap_complete(bool ok, const wifi_8711_ap_info_t *info)
         }
         if (info->ip != 0U)   { s_cache.ip      = info->ip; }
         if (info->port != 0U) { s_cache.port    = info->port; }
+        /* Same merge rule as ip/port, for the same reason: WLSTARTAP does not
+         * report a channel, and a firmware older than v2.1 does not report one
+         * at all, so 0 means "no news" and must not clear what we know. */
+        if (info->channel != 0U) { s_cache.channel = info->channel; }
         s_cache.clients = info->clients;
         s_cache_valid   = true;
         s_cache_ms      = k_uptime_get_32();
@@ -266,8 +283,8 @@ static void on_at_reply(wifi_8711_at_result_t res, const char *text, size_t len,
 
     EBADGE_LOG2("wifi8711 ap: ssid=\"%s\" clients=%u", info.ssid,
                 (unsigned)info.clients);
-    EBADGE_LOG2("wifi8711 ap: ip=%08x port=%u", (unsigned)info.ip,
-                (unsigned)info.port);
+    EBADGE_LOG3("wifi8711 ap: ip=%08x port=%u channel=%u", (unsigned)info.ip,
+                (unsigned)info.port, (unsigned)info.channel);
     ap_complete(true, &info);
 }
 

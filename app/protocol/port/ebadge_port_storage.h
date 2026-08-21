@@ -86,6 +86,29 @@ int  ebadge_port_storage_wp_commit(int handle, uint32_t data_crc,
 /** Discard a write session (mid-transfer failure / abort). */
 int  ebadge_port_storage_wp_abort(int handle);
 
+/**
+ * @brief  Erase every stored file and reset the storage records.
+ *
+ * Clears the whole user-writable area: every file directory entry is dropped,
+ * the payload partition is erased, and all derived figures reported by
+ * ebadge_port_storage_stat() (wp_count, wp_used_bytes, free_bytes) fall back to
+ * empty.  There is no undo.
+ *
+ * Blocks for the full partition erase -- seconds, not milliseconds -- so call it
+ * from a task context that may stall, never from a data callback or an ISR.
+ * Rejected while a write session is open; abort the transfer first.
+ *
+ * The caller is responsible for whatever holds file addresses at the app level
+ * (the UI's wallpaper list is built once at boot from the directory and is NOT
+ * refreshed by this call).
+ *
+ * @param  out_removed  Optional; receives the number of files erased.  It is
+ *                      filled in even when the call fails partway.
+ * @return 0 on success; -1 storage backend not ready; -2 a write session is
+ *         open; -3 the payload erase failed (the files are already gone).
+ */
+int  ebadge_port_storage_reset(uint32_t *out_removed);
+
 #ifdef __cplusplus
 }
 #endif

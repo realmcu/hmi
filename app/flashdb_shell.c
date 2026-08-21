@@ -11,6 +11,7 @@
 
 #include <zephyr/shell/shell.h>
 #include <stdio.h>
+#include <string.h>
 #include "flashdb.h"
 
 extern fdb_bf_t app_get_bf(void);
@@ -86,9 +87,41 @@ static int cmd_list(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
+static int cmd_reset(const struct shell *sh, size_t argc, char **argv)
+{
+    uint32_t removed = 0;
+    fdb_err_t rc;
+
+    /* Destructive and not undoable, so it takes an explicit confirmation word
+     * rather than trusting a bare `fdb reset` typed by mistake. */
+    if (argc != 2 || strcmp(argv[1], "yes") != 0)
+    {
+        shell_error(sh, "erases ALL big files. run: fdb reset yes");
+        return -EINVAL;
+    }
+
+    shell_print(sh, "resetting BF area (erase may take a few seconds)...");
+
+    rc = fdb_bf_reset(app_get_bf(), &removed);
+    if (rc != FDB_NO_ERR)
+    {
+        /* removed is filled in even on failure -- report it so a partial reset
+         * is visible instead of looking like nothing happened. */
+        shell_error(sh, "fdb_bf_reset failed (%d), %u entries removed",
+                    (int)rc, removed);
+        return -EIO;
+    }
+
+    shell_print(sh, "BF reset done: %u entries removed, data partition erased",
+                removed);
+    shell_warn(sh, "the UI's file list still holds the old addresses -- reboot");
+    return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_fdb,
                                SHELL_CMD(space, NULL, "BF partition space usage", cmd_space),
                                SHELL_CMD(list,  NULL, "list all big files", cmd_list),
+                               SHELL_CMD(reset, NULL, "erase ALL big files: fdb reset yes", cmd_reset),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(fdb, &sub_fdb, "FlashDB big-file diagnostics", NULL);

@@ -53,7 +53,7 @@ void handle_get_ap_info(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
      * same either way -- the 8711's AP is up from boot and is not raised per
      * session.  Gating on session state would only mean an App that asked at
      * the wrong moment got NOT_READY for an AP that was in fact ready. */
-    EBADGE_LOG2("GET_AP_INFO: -> AP_INFO ssid=\"%s\" port=%u",
-                info.ssid, (unsigned)port);
+    EBADGE_LOG3("GET_AP_INFO: -> AP_INFO ssid=\"%s\" port=%u channel=%u",
+                info.ssid, (unsigned)port, (unsigned)info.channel);
     eb_emit_ap_info(&info, port);
 }

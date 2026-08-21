@@ -15,7 +15,7 @@
  * firmware has exactly two commands and NEITHER of them sets anything:
  *
  *   AT+WLSTARTAP   ensure the AP is running, read back SSID + password
- *   AT+WLSTATE     read SSID / password / IP / port / associated clients
+ *   AT+WLSTATE     read SSID / password / IP / port / channel / assoc clients
  *
  * So this side cannot choose the SSID, the password, the channel or the port.
  * It can only ask what they already are.  Any code that invents credentials and
@@ -55,6 +55,7 @@ typedef struct
     char     password[64];  /**< NUL-terminated; "" means an open network      */
     uint32_t ip;            /**< AP-side IPv4, HOST order (0xC0A82B01)         */
     uint16_t port;          /**< the 8711's TCP data port (5004 in practice)   */
+    uint8_t  channel;       /**< 2.4 GHz channel, or 0 if the reply omits it   */
     uint8_t  clients;       /**< associated STAs right now                     */
     bool     running;       /**< the reply described a live AP                 */
 } wifi_8711_ap_info_t;
@@ -114,9 +115,9 @@ int wifi_8711_at_ap_start(wifi_8711_ap_cb_t cb, void *user);
  * @return true if a query has ever succeeded; false if nothing is known yet
  *
  * NOTE the `clients` field is a snapshot from whenever that query ran and may
- * be arbitrarily stale.  SSID / password / IP / port are safe to trust -- the
- * 8711 has no mechanism to change them -- but never decide "the phone has
- * connected" from a cached client count.
+ * be arbitrarily stale.  SSID / password / IP / port / channel are safe to
+ * trust -- the 8711 has no mechanism to change them -- but never decide "the
+ * phone has connected" from a cached client count.
  */
 bool wifi_8711_at_ap_cached(wifi_8711_ap_info_t *out);
 
@@ -131,10 +132,11 @@ uint32_t wifi_8711_at_ap_cache_age_ms(void);
  * @brief  Parse a WLSTATE / WLSTARTAP reply body into @p out.
  *
  * Accepts both shapes, since they overlap: WLSTATE answers
- * "SSID= / PASSWORD= / IP= / PORT= / CLIENTS= / CLIENT=..." terminated by
- * "[+WLSTATE]:OK", while WLSTARTAP answers "[+WLSTARTAP]:OK" followed by just
- * SSID and PASSWORD.  Fields that are absent are left zeroed, so a caller must
- * check what it needs rather than assuming a full struct.
+ * "SSID= / PASSWORD= / IP= / PORT= / CHANNEL= / FILE_PORT= / CLIENTS= /
+ * CLIENT=..." terminated by "[+WLSTATE]:OK", while WLSTARTAP answers
+ * "[+WLSTARTAP]:OK" followed by just SSID and PASSWORD.  Fields that are absent
+ * are left zeroed, so a caller must check what it needs rather than assuming a
+ * full struct -- CHANNEL= only appears from the v2.1 8711 firmware onwards.
  *
  * @return true if at least an SSID was found and the reply was not [AT]:ERROR
  */
