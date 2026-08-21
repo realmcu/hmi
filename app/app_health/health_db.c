@@ -9,17 +9,14 @@
  *      the RTC-backed flashdb_get_time returns), so time-range queries
  *      done through fdb_tsl_iter_by_time match record content exactly.
  *
- *   2. env KVDB — two fixed-size values under known keys:
- *      "health.today"  the accumulated {steps, distance, calories} for the
- *                      current UTC day, so a UI wake-up reads today's totals
- *                      in one KV get instead of iterating the TSDB. Treated
- *                      as zero when the stored utc_day_index disagrees with
- *                      the caller's "today", i.e. day rollover is handled at
- *                      read time and no timer has to fire at midnight.
- *      "health.synced" the sequential-read watermark: ts_utc of the newest
- *                      record handed to a consumer. Lives here rather than in
- *                      the app layer because it relies on the strictly
- *                      increasing timestamps this file enforces on append.
+ *   2. env KVDB, key "health.synced" — the sequential-read watermark:
+ *      ts_utc of the newest record handed to a consumer. Lives here rather
+ *      than in the app layer because it relies on the strictly increasing
+ *      timestamps this file enforces on append.
+ *
+ * Today's running totals are deliberately NOT persisted: they live only in
+ * health_worker's RAM accumulator, so they restart at zero after a reboot.
+ * The per-bucket records in the TSDB remain the durable history.
  *
  * All handles are cached lazily via flashdb_registry_*; if the registry
  * fails to bring the DB up, every function here degrades to a
@@ -38,7 +35,6 @@
 
 APP_LOG_MODULE_REGISTER(health_db);
 
-#define HEALTH_TODAY_KEY   "health.today"
 #define HEALTH_SYNCED_KEY  "health.synced"
 
 static void *s_health_db_lock;
@@ -116,100 +112,13 @@ int health_db_append_pedo(health_pedo_record_t *rec)
 }
 
 /* --------------------------------------------------------------
- * env KV helpers. Both stored values (today rollup, sync watermark) are
- * fixed-size blobs under a known key, so the get-handle / lock / blob /
- * unlock shape is shared and only the interpretation differs.
+ * Sync watermark, stored as a bare u32 under HEALTH_SYNCED_KEY.
  * -------------------------------------------------------------- */
 
-/* Read a blob of exactly @c len bytes. Returns 1 when @c out was filled, 0
- * when the key is absent or stored at a different size (caller treats that as
- * "no value"), negative when the store itself is unusable. */
-static int kv_load(const char *key, void *out, size_t len)
-{
-    fdb_kvdb_t kvdb = flashdb_registry_get_env_kvdb();
-    if (kvdb == NULL)
-    {
-        APP_LOGE("env kvdb not ready");
-        return -EIO;
-    }
-
-    struct fdb_blob blob;
-    db_lock();
-    size_t got = fdb_kv_get_blob(kvdb, key, fdb_blob_make(&blob, out, len));
-    db_unlock();
-
-    if (got == 0)
-    {
-        return 0;                 /* first boot / KV wiped */
-    }
-    if (got != len)
-    {
-        /* Layout changed between firmware versions. Refuse to trust the entry
-         * rather than reinterpret its bytes; the next save overwrites it. */
-        APP_LOGW("KV '%s' size mismatch got=%u expect=%u; discarding",
-                 key, (unsigned)got, (unsigned)len);
-        return 0;
-    }
-    return 1;
-}
-
-static int kv_save(const char *key, const void *val, size_t len)
-{
-    fdb_kvdb_t kvdb = flashdb_registry_get_env_kvdb();
-    if (kvdb == NULL)
-    {
-        return -EIO;
-    }
-
-    struct fdb_blob blob;
-    db_lock();
-    fdb_err_t e = fdb_kv_set_blob(kvdb, key, fdb_blob_make(&blob, val, len));
-    db_unlock();
-    if (e != FDB_NO_ERR)
-    {
-        APP_LOGE("fdb_kv_set_blob('%s') err=%d", key, (int)e);
-        return -EIO;
-    }
-    return 0;
-}
-
-int health_db_load_today(uint32_t current_utc_day_index,
-                         health_daily_rollup_t *out)
-{
-    if (out == NULL)
-    {
-        return -EINVAL;
-    }
-    memset(out, 0, sizeof(*out));
-    out->utc_day_index = current_utc_day_index;
-
-    health_daily_rollup_t stored;
-    int rc = kv_load(HEALTH_TODAY_KEY, &stored, sizeof(stored));
-    if (rc <= 0)
-    {
-        /* Absent, stale-sized, or unusable store: "today so far = 0" is still
-         * a valid answer, so only a store failure propagates. */
-        return (rc < 0) ? rc : 0;
-    }
-
-    /* A snapshot from a previous UTC day is not an error — today is empty by
-     * definition, and out is already zeroed with the new day index. */
-    if (stored.utc_day_index == current_utc_day_index)
-    {
-        *out = stored;
-    }
-    return 0;
-}
-
-int health_db_save_today(const health_daily_rollup_t *rollup)
-{
-    if (rollup == NULL)
-    {
-        return -EINVAL;
-    }
-    return kv_save(HEALTH_TODAY_KEY, rollup, sizeof(*rollup));
-}
-
+/* Yields 0 when nothing has been synced yet, which is also how an absent or
+ * wrong-sized entry is reported: re-sending history the phone may already hold
+ * is safe (it de-dupes), whereas trusting a bad watermark would skip records
+ * forever. Negative only when the store itself is unusable. */
 static int health_db_load_synced_ts(uint32_t *out_ts)
 {
     if (out_ts == NULL)
@@ -218,14 +127,28 @@ static int health_db_load_synced_ts(uint32_t *out_ts)
     }
     *out_ts = 0u;
 
-    uint32_t stored = 0u;
-    int rc = kv_load(HEALTH_SYNCED_KEY, &stored, sizeof(stored));
-    if (rc <= 0)
+    fdb_kvdb_t kvdb = flashdb_registry_get_env_kvdb();
+    if (kvdb == NULL)
     {
-        /* Nothing synced yet, or an entry we refuse to trust: re-sending
-         * history the phone may already hold is safe (it de-dupes), whereas
-         * trusting a bad watermark would skip records forever. */
-        return (rc < 0) ? rc : 0;
+        APP_LOGE("env kvdb not ready");
+        return -EIO;
+    }
+
+    uint32_t stored = 0u;
+    struct fdb_blob blob;
+    db_lock();
+    size_t got = fdb_kv_get_blob(kvdb, HEALTH_SYNCED_KEY,
+                                 fdb_blob_make(&blob, &stored, sizeof(stored)));
+    db_unlock();
+
+    if (got != sizeof(stored))
+    {
+        if (got != 0u)
+        {
+            APP_LOGW("synced KV size mismatch got=%u; restarting from oldest",
+                     (unsigned)got);
+        }
+        return 0;
     }
 
     *out_ts = stored;
@@ -234,7 +157,23 @@ static int health_db_load_synced_ts(uint32_t *out_ts)
 
 static int health_db_save_synced_ts(uint32_t ts_utc)
 {
-    return kv_save(HEALTH_SYNCED_KEY, &ts_utc, sizeof(ts_utc));
+    fdb_kvdb_t kvdb = flashdb_registry_get_env_kvdb();
+    if (kvdb == NULL)
+    {
+        return -EIO;
+    }
+
+    struct fdb_blob blob;
+    db_lock();
+    fdb_err_t e = fdb_kv_set_blob(kvdb, HEALTH_SYNCED_KEY,
+                                  fdb_blob_make(&blob, &ts_utc, sizeof(ts_utc)));
+    db_unlock();
+    if (e != FDB_NO_ERR)
+    {
+        APP_LOGE("fdb_kv_set_blob(synced) err=%d", (int)e);
+        return -EIO;
+    }
+    return 0;
 }
 
 /* Bridge from FDB's callback (fdb_tsl_t, void*) to one that hands out an

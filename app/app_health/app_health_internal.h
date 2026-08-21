@@ -13,7 +13,7 @@
  *  - health_worker.c : owns the private acquisition task, the gsa FSM,
  *                      the accumulator and the bucket deadline. Calls
  *                      into health_db on flush.
- *  - health_db.c     : owns the pedo TSDB + env KV writes; provides
+ *  - health_db.c     : owns the pedo TSDB + the sync watermark KV; provides
  *                      read-only queries used by the shell.
  *  - app_health.c    : module lifecycle. Wires events (EVT_TIME_SYNCED
  *                      arms the worker, EVT_POWER_LOW disarms it) and
@@ -36,7 +36,6 @@ extern "C" {
  * constant so nothing at runtime (settings, shell, BLE) can rewrite it.
  * -------------------------------------------------------------- */
 #define HEALTH_BUCKET_MIN        15u
-#define HEALTH_BUCKET_SEC        (HEALTH_BUCKET_MIN * 60u)
 
 #define HEALTH_ODR_HZ            25u
 
@@ -49,8 +48,6 @@ extern "C" {
 #define HEALTH_WORKER_PRIO       2
 #define HEALTH_WORKER_STACK      2048u
 
-#define HEALTH_GS_PATH           "/dev/gsensor0"
-#define HEALTH_RTC_PATH          "/dev/rtc0"
 
 /* --------------------------------------------------------------
  * On-flash record layout (18 B).
@@ -82,16 +79,14 @@ _Static_assert(sizeof(health_pedo_record_t) == 18,
                "health_pedo_record_t must stay 18 bytes; flash layout depends on it");
 
 /* --------------------------------------------------------------
- * Aggregated view of "today so far" — cached in env KVDB under
- * "health.today" so UI wake-up doesn't have to iterate the TSDB.
- *
- * Not written on every sample; updated once per successful flush and
- * zero'd when the UTC day rolls over (or when the store detects a
- * stale record on load).
+ * Aggregated view of "today so far", rendered on demand from
+ * health_worker's RAM accumulator. Never persisted: a reboot restarts the
+ * day at zero, and the per-bucket TSDB records are the durable history.
+ * The accumulator behind it is zeroed when the UTC day rolls over, which is
+ * detected on read rather than by a midnight timer.
  * -------------------------------------------------------------- */
 typedef struct
 {
-    uint32_t utc_day_index; /* floor(ts_utc / 86400) at last update       */
     uint32_t steps;
     uint32_t distance_m;
     uint32_t calories_dkcal;
@@ -116,17 +111,6 @@ int  health_db_init(void);
  * Returns 0 on success, negative on failure. */
 int  health_db_append_pedo(health_pedo_record_t *rec);
 
-/* Load "health.today" from env KV. If no entry exists, or the stored day
- * doesn't match @c current_utc_day_index, zeros @c out and returns 0 anyway — the caller
- * still gets a valid "today so far = 0" view. Returns negative only on
- * unrecoverable flash errors. */
-int  health_db_load_today(uint32_t current_utc_day_index,
-                          health_daily_rollup_t *out);
-
-/* Persist "health.today" back to env KV. Overwrites any previous value.
- * Returns 0 on success, negative on failure. */
-int  health_db_save_today(const health_daily_rollup_t *rollup);
-
 /* Take the next record no consumer has seen yet, oldest first, advancing the
  * persisted watermark over it. Returns 1 when @c out was filled, 0 when
  * nothing unread remains, negative errno on a NULL argument or unusable
@@ -141,11 +125,10 @@ int  health_db_read_next(health_pedo_record_t *out);
  * calling it again while already running is a no-op that returns 0.
  * -------------------------------------------------------------- */
 
-/* Start the acquisition task. Returns 0 on success (running or newly
- * created), negative if the gsa slot is contested or thread creation
- * fails. @c initial_rollup is the today-so-far state to seed the accumulator's
- * "today rollup" with; pass NULL to start fresh at zero. */
-int  health_worker_start(const health_daily_rollup_t *initial_rollup);
+/* Start the acquisition task. Today's totals begin at zero — they are RAM-only
+ * and nothing is restored from flash. Returns 0 on success (running or newly
+ * created), negative if the gsa slot is contested or thread creation fails. */
+int  health_worker_start(void);
 
 /* Create worker synchronization objects. Called once during module init. */
 int  health_worker_init(void);
@@ -167,11 +150,16 @@ bool health_worker_is_running(void);
  * app_health_get_today(). */
 void health_worker_get_today(health_daily_rollup_t *out);
 
-/* Read the current UTC epoch seconds via /dev/rtc0. Returns 0 if the RTC
- * driver isn't available or the ioctl failed. Callers that need "today's
- * UTC day index" divide the result by 86400. Implemented in
- * health_worker.c because the worker already owns the RTC path helper. */
-uint32_t health_worker_rtc_now_utc(void);
+/* Bucket boundary reached: write the closed bucket to the TSDB. @c boundary_utc
+ * is the boundary instant in Unix seconds and becomes the record's timestamp,
+ * so it must be the value the tick reported rather than a fresh clock read.
+ *
+ * Writes flash synchronously on the calling task. A no-op when no worker is
+ * running. */
+void health_worker_on_bucket_boundary(uint32_t boundary_utc);
+
+/* Local day rolled over: zero today's running totals. */
+void health_worker_on_day_changed(void);
 
 /* Called by health_worker.c immediately after a successful TSDB append —
  * hands the app-layer module the new today-rollup so it can (a) persist

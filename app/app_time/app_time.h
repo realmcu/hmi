@@ -13,27 +13,23 @@ extern "C" {
  * @file  app_time.h
  * @brief Wall-clock semantics on top of the RTC driver.
  *
- * Owns the timezone offset, the "sync from phone" entry point, a
- * once-per-minute tick event and local-time formatting for the UI.
- * Alarms / calendar do not live here in the skeleton — they belong to a
- * future @c app_alarm brainstorm.
+ * Sole writer of the hardware RTC, and the single source of truth for local
+ * wall-clock boundaries: it publishes EVT_TIME_TICK_15MIN and
+ * EVT_TIME_DAY_CHANGED so consumers never re-derive them.
+ *
+ * Alarms / calendar do not live here — they belong to a future @c app_alarm.
  */
 extern const app_module_t app_time_module;
 
-/** Wall-clock time in Unix seconds. */
-uint32_t app_time_now(void);
-
-/** Timezone offset from UTC, minutes. Beijing = +480. */
-int16_t  app_time_tz_offset(void);
-int      app_time_tz_set(int16_t minutes);
-
 /**
- * @brief  Set the wall clock from a phone sync payload.
- *
- * Invoked by the private GATT time-sync handler in @c app_ble . Publishes
- * @c EVT_TIME_SYNCED on success.
+ * Boundary tick period, minutes. EVT_TIME_TICK_15MIN fires at every local
+ * multiple of this (:00/:15/:30/:45). Exposed because consumers that store
+ * data per bucket must agree with it — see the _Static_assert in app_health.c.
  */
-int      app_time_set_from_phone(uint32_t unix_sec, int16_t tz_min);
+#define APP_TIME_TICK_MIN_STEP   15u
+
+/** Wall-clock time in Unix seconds; zero if the RTC is unset or unreadable. */
+uint32_t app_time_now(void);
 
 typedef struct
 {
@@ -48,9 +44,6 @@ typedef struct
 
 /** Store a validated local calendar value in the hardware RTC. */
 int app_time_set_local(const app_time_local_t *time);
-
-/** Fill @p out with the current local time (applying the timezone offset). */
-void app_time_local_now(app_time_local_t *out);
 
 #ifdef __cplusplus
 }

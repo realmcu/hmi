@@ -28,9 +28,8 @@
  *  4. on_evt_power_low()   — stop the worker; a graceful stop runs a
  *              final flush before yielding the gsa slot.
  *  5. app_health_on_flush() — called from the worker after each
- *              successful TSDB append. Persists the new today rollup to
- *              env KV and publishes EVT_HEALTH_STEPS_UPDATED. Runs on
- *              the worker task; must not block on the event bus.
+ *              successful TSDB append. Publishes EVT_HEALTH_STEPS_UPDATED.
+ *              Runs on the worker task; must not block on the event bus.
  *
  * Deliberately NOT here: the history read cursor (health_db.c, next to the
  * append path whose timestamp ordering it depends on) and the today rollup
@@ -42,6 +41,7 @@
 #include "app_health_internal.h"
 #include "app_event.h"
 #include "app_event_defs.h"
+#include "app_time.h"
 #include "app_log.h"
 
 #include <errno.h>
@@ -50,6 +50,12 @@
 #include <string.h>
 
 APP_LOG_MODULE_REGISTER(app_health);
+
+/* The record's bucket_min field and the tick that closes the bucket have to
+ * describe the same interval, or every stored record would misreport its own
+ * width. app_time owns the tick; this asserts the two definitions agree. */
+_Static_assert(HEALTH_BUCKET_MIN == APP_TIME_TICK_MIN_STEP,
+               "health bucket width must match app_time's boundary tick");
 
 /* Both events land on app_task, so these lifecycle flags are serialised. */
 static bool s_time_synced;
@@ -70,17 +76,12 @@ void app_health_get_today(health_daily_rollup_t *out)
     health_worker_get_today(out);
 }
 
-/* Runs on the WORKER task, not app_task. Keep it short and non-blocking:
- * one KV write + one event publish. The event bus copy is bounded to
- * APP_EVENT_MAX_PAYLOAD (32B) so the u32 total fits comfortably. */
+/* Runs on the WORKER task, not app_task. Keep it short and non-blocking: one
+ * event publish. The event bus copy is bounded to APP_EVENT_MAX_PAYLOAD (32B)
+ * so the u32 total fits comfortably. */
 void app_health_on_flush(const health_daily_rollup_t *rollup)
 {
     if (rollup == NULL) { return; }
-
-    if (health_db_save_today(rollup) != 0)
-    {
-        APP_LOGW("today KV save failed (continuing)");
-    }
 
     uint32_t today_steps = rollup->steps;
     int rc = app_event_publish(EVT_HEALTH_STEPS_UPDATED,
@@ -98,15 +99,7 @@ static void try_start_worker(void)
         return;
     }
 
-    /* Seed today rollup from KV so a same-UTC-day reboot resumes the
-     * running total. RTC is guaranteed set here (s_time_synced is one
-    * of the preconditions), so current_utc_day_index is trustworthy; the DB
-     * self-invalidates the KV entry when its stored day differs. */
-    uint32_t current_utc_day_index = health_worker_rtc_now_utc() / 86400u;
-    health_daily_rollup_t today_rollup = {0};
-    (void)health_db_load_today(current_utc_day_index, &today_rollup);
-
-    int rc = health_worker_start(&today_rollup);
+    int rc = health_worker_start();
     if (rc != 0)
     {
         APP_LOGE("worker start failed rc=%d", rc);
@@ -151,6 +144,35 @@ static void on_evt_user_unbound(app_event_id_t id, const void *payload,
     health_worker_stop(HEALTH_STOP_DISCARD);
 }
 
+/* Both time events come from app_time, which owns the wall clock and the
+ * timezone offset — forwarding them rather than re-deriving them keeps a single
+ * definition of "which 15-minute bucket are we in" for the whole firmware.
+ *
+ * At local midnight app_time publishes DAY_CHANGED before TICK_15MIN, so
+ * today's totals are cleared before the bucket that opens the new day is
+ * handed over. */
+static void on_evt_time_tick_15min(app_event_id_t id, const void *payload,
+                                   size_t len, void *user)
+{
+    (void)id; (void)user;
+
+    if (payload == NULL || len != sizeof(uint32_t))
+    {
+        APP_LOGW("EVT_TIME_TICK_15MIN bad payload len=%u", (unsigned)len);
+        return;
+    }
+
+    health_worker_on_bucket_boundary(*(const uint32_t *)payload);
+}
+
+static void on_evt_time_day_changed(app_event_id_t id, const void *payload,
+                                    size_t len, void *user)
+{
+    (void)id; (void)payload; (void)len; (void)user;
+
+    health_worker_on_day_changed();
+}
+
 static void on_evt_power_low(app_event_id_t id, const void *payload,
                              size_t len, void *user)
 {
@@ -182,6 +204,17 @@ static int health_init(void)
     {
         APP_LOGE("subscribe EVT_USER_BOUND failed");
         return -1;
+    }
+    if (app_event_subscribe(EVT_TIME_TICK_15MIN, on_evt_time_tick_15min, NULL) != 0)
+    {
+        APP_LOGE("subscribe EVT_TIME_TICK_15MIN failed");
+        /* Fatal for recording: without the tick nothing ever reaches flash. */
+        return -1;
+    }
+    if (app_event_subscribe(EVT_TIME_DAY_CHANGED, on_evt_time_day_changed, NULL) != 0)
+    {
+        APP_LOGE("subscribe EVT_TIME_DAY_CHANGED failed");
+        /* Not fatal — buckets still land, but today's total never resets. */
     }
     if (app_event_subscribe(EVT_USER_UNBOUND, on_evt_user_unbound, NULL) != 0)
     {

@@ -23,9 +23,9 @@ extern "C" {
  * Persistence
  * -----------
  * Runtime samples are aggregated in a 15-minute bucket (fixed by product
- * spec) and appended to the "pedo" FlashDB TSDB. The current-day rollup
- * is mirrored to the "env" FlashDB KVDB (key "health.today") so UI /
- * BLE consumers can read today's totals in O(1) without touching TSDB.
+ * spec) and appended to the "pedo" FlashDB TSDB — that is the durable
+ * history. Today's running totals are RAM-only and restart at zero after a
+ * reboot; app_health_get_today() reads them in O(1) without touching TSDB.
  *
  * Consumer API
  * ------------

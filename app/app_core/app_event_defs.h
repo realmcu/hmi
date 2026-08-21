@@ -33,9 +33,24 @@ enum
     EVT_POWER_LOW            = 0x0201, /* payload: none, edge-triggered when crossing low threshold */
     EVT_POWER_CHARGING       = 0x0202, /* payload: app_evt_power_charging_t */
 
-    /* Time (0x300~) */
+    /* Time (0x300~)
+     *
+     * The tick events below are aligned to LOCAL wall-clock boundaries
+     * (UTC + timezone offset, default +480 / Beijing), not to UTC and not to
+     * uptime. Two devices booted at different moments therefore fire them at
+     * the same wall-clock instant, which is what makes them usable as the
+     * single source of truth for "which 15-minute bucket are we in" and
+     * "has the day rolled over".
+     */
     EVT_TIME_SYNCED          = 0x0300, /* payload: app_evt_time_synced_t, wall clock has been set from phone */
-    EVT_TIME_TICK_MIN        = 0x0301, /* payload: none, one tick per local minute */
+    /* 0x0301 was a per-minute demo tick; retired with the app_time skeleton.
+     * Left unused rather than reassigned so old logs stay unambiguous. */
+    /* Both carry uint32_t: the boundary instant in Unix seconds. That is the
+     * boundary itself, not the moment of delivery — dispatch goes through the
+     * queue, so a subscriber may run a few ms late and must timestamp data
+     * with this value rather than re-reading the clock. */
+    EVT_TIME_TICK_15MIN      = 0x0302, /* payload: uint32_t utc_sec, at local :00/:15/:30/:45 */
+    EVT_TIME_DAY_CHANGED     = 0x0303, /* payload: uint32_t utc_sec, at local midnight */
 
     /* Setting (0x400~) */
     EVT_SETTING_CHANGED      = 0x0400, /* payload: app_evt_setting_changed_t */
