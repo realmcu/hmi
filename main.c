@@ -32,12 +32,11 @@ int main(void)
 #endif
 
     // io init
-    // gsensor VD33_EN P0_3
-    // Pad_Config(ADC_3, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_ENABLE, PAD_OUT_HIGH);
     // WiFi VD33_WF_EN P0_2
     Pad_Config(ADC_2, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_ENABLE, PAD_OUT_HIGH);
-    // MOTOR VD33_MOTOR_EN MICBIAS1
-    // Pad_Config(MICBIAS1, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_ENABLE, PAD_OUT_HIGH);
+
+    // BT ANT HIGHT
+    Pad_Config(P2_6, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_ENABLE, PAD_OUT_HIGH);
 
 
     app_system_lower_init();

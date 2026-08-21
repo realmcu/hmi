@@ -98,8 +98,35 @@ void stream_session_offer(const char *name, uint8_t file_type, uint8_t fps);
 /** SoftAP reports the STA (App) associated.  Arms the §6.5 10s connect timer. */
 void stream_session_on_sta_joined(void);
 
-/** TCP delivered bytes.  Handles EBXS header/payload reassembly. */
+/**
+ * @brief  TCP delivered bytes of an EBXS-framed stream (14B header per frame).
+ *
+ * UNREACHABLE in the current topology, for the same reason as
+ * xfer_session_on_tcp_data(): the 8711 validates every payload as a JPEG
+ * (`FF D8`..`FF D9`) and answers `ERR <seq> JPEG` otherwise, so an
+ * EBXS-prefixed frame never reaches SPI.  Kept for a future firmware that
+ * terminates TCP here; the live path is stream_session_on_frame_chunk().
+ */
 void stream_session_on_tcp_data(const uint8_t *data, uint16_t len);
+
+/**
+ * @brief  A chunk of one preview frame, with the framing already resolved.
+ *
+ * This is the live path.  jpgs_ingress calls it with payload the 8711 has
+ * stripped of TCP and of the phone's "JPG <size> <seq>" line, and which
+ * jpgs_ingress itself has stripped of the JPGS slot header -- so the frame
+ * geometry that EBXS would have carried comes from the JPGS header instead:
+ * @p frame_size is its TotalSize, @p offset its Offset, and @p is_last is its
+ * END flag.
+ *
+ * There is no per-frame CRC on this path, and none is needed: JPGS carries a
+ * CRC32 per slot which jpgs_ingress has already checked, so corruption between
+ * the two chips is caught at finer granularity than EBXS managed.  Frames
+ * therefore count as ok on completion.
+ */
+void stream_session_on_frame_chunk(const uint8_t *chunk, uint16_t len,
+                                   uint32_t offset, uint32_t frame_size,
+                                   bool is_last);
 
 /** TCP closed.  For a stream this is the NORMAL end of session (§6.4). */
 void stream_session_on_tcp_close(int reason /* ebadge_tcp_close_reason_t */);

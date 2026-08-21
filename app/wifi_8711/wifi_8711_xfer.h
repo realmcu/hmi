@@ -78,6 +78,10 @@ typedef void (*wifi_8711_slot_cb_t)(const uint8_t *rx, size_t len);
  * @retval 0        thread started, first slot armed, B2W raised
  * @retval -ENODEV  wifi_8711_init() has not run
  * @retval <0       spi/gpio error from the first arm
+ *
+ * TX content staged before this call is PRESERVED and goes out on that first
+ * slot; only unstaged content is zeroed.  That is what lets a caller avoid
+ * burning a POLL period on an all-zero slot -- stage, then start.
  */
 int wifi_8711_xfer_start(wifi_8711_slot_cb_t cb);
 
@@ -108,14 +112,28 @@ int wifi_8711_xfer_set_sink(wifi_8711_slot_cb_t cb);
  * the right side of "never rewrite the TX slot while TX DMA is running"
  * (sec.4.2 / sec.11.2).
  *
+ * MAY BE CALLED BEFORE wifi_8711_xfer_start(), and for a latency-sensitive
+ * caller it SHOULD be.  Promotion only happens at an ARM, so content staged
+ * after the transport is already running cannot reach the slot currently in
+ * flight -- it waits for the next one, i.e. up to one whole POLL period (~2 s
+ * at idle).  Staging first and starting second gets it into the very first
+ * slot instead.
+ *
  * @param  slot  exactly WIFI_8711_SLOT_SIZE bytes
  * @retval 0        staged
- * @retval -ENODEV  transport not started
  * @retval -EINVAL  NULL slot
  */
 int wifi_8711_xfer_set_tx(const uint8_t *slot);
 
-/** Fill the TX slot with zeroes (the "idle content" of sec.4.2). */
+/**
+ * @brief  Fill the TX slot with zeroes (the "idle content" of sec.4.2).
+ *
+ * Required after a matching RESPONSE arrives: sec.4.2 says to clear the pending
+ * state and restore idle content, otherwise the stale COMMAND keeps being
+ * presented on MISO for every subsequent slot.  Harmless to the 8711, which
+ * de-duplicates on Sequence (sec.11.3), but it leaves the link permanently
+ * advertising a command that has already been answered.
+ */
 int wifi_8711_xfer_set_tx_idle(void);
 
 /**
@@ -196,7 +214,11 @@ int wifi_8711_xfer_test_pattern(uint32_t seed);
  *
  * Per sec.4.2 the slot stays staged until a matching RESPONSE arrives, because
  * the 8711 may read the same COMMAND out of several consecutive slots and
- * de-duplicates on Sequence.
+ * de-duplicates on Sequence.  Once the RESPONSE is in, the caller is expected
+ * to call wifi_8711_xfer_set_tx_idle().
+ *
+ * As with wifi_8711_xfer_set_tx(), this MAY be called before
+ * wifi_8711_xfer_start() and doing so saves a POLL period.
  *
  * @param  text  AT command text including the trailing CRLF; must be shorter
  *               than WIFI_8711_AT_COMMAND_MAX (the 8711's parse buffer is

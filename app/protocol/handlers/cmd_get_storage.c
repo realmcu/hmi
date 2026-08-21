@@ -23,10 +23,15 @@ void handle_get_storage(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
     (void)tlvs; (void)n_tlv;
 
     ebadge_storage_stat_t st = {0};
-    if (ebadge_port_storage_stat(&st) != 0)
+    int rc = ebadge_port_storage_stat(&st);
+    if (rc != 0)
     {
-        EBADGE_WARN("GET_STORAGE: port_storage stat FAIL -> RESULT FAILED");
-        (void)ebadge_l2_result_send(EB_CMD_GET_STORAGE, EB_RESULT_FAILED);
+        /* -2 is "BF not initialised yet", a transient startup state, so the App
+         * should retry rather than treat the device as broken.  §2.5 has a code
+         * for exactly that. */
+        uint8_t result = (rc == -2) ? EB_RESULT_NOT_READY : EB_RESULT_FAILED;
+        EBADGE_WARN2("GET_STORAGE: stat rc=%d -> RESULT 0x%02x", rc, result);
+        (void)ebadge_l2_result_send(EB_CMD_GET_STORAGE, result);
         return;
     }
 
@@ -35,7 +40,7 @@ void handle_get_storage(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
                 (unsigned)(st.total_bytes   >> 10),
                 (unsigned)(st.free_bytes    >> 10),
                 (unsigned)(st.wp_used_bytes >> 10));
-    EBADGE_LOG2("GET_STORAGE: wp_count=%d fs_margin=%u  (port_storage STUB)",
+    EBADGE_LOG2("GET_STORAGE: wp_count=%d fs_margin=%u",
                 (int)st.wp_count, (unsigned)EB_FS_MARGIN);
 
     uint8_t  params[64];

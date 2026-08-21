@@ -281,6 +281,26 @@ extern "C" {
 #define EB_DBG_SUB_PING         0x02    /* no-op liveness check, acks SUCCEED  */
 #define EB_DBG_SUB_WIFI_START_AP 0x03   /* 8711 AT+WLSTARTAP, reply -> log     */
 
+/** 0x04 / 0x05 -- the reserved Wi-Fi data tunnel, one subcmd per direction.
+ *
+ *  0x04 RX polls the 8711 for data that arrived over Wi-Fi; the message is
+ *  printed to the device log, not returned over BLE.  Takes no argument.
+ *
+ *  0x05 TX sends the VALUE TLV's bytes out over Wi-Fi, which is the one subcmd
+ *  that actually uses the reserved argument the frame has always carried.  With
+ *  no VALUE, or an empty one, it is rejected -- "send nothing" is a mistake, not
+ *  a request.  EB_DBG_VALUE_MAX (32) is below the tunnel's own 56 B cap, so the
+ *  TLV is the binding limit here and no length can overflow the AT framing.
+ *
+ *  NEITHER WORKS AGAINST CURRENT 8711 FIRMWARE.  Its AT parser knows only
+ *  WLSTATE and WLSTARTAP and answers "[AT]:ERROR" to anything else (vendor spec
+ *  sec.7.3), so both answer SUCCEED for the staging and then log the rejection
+ *  2..4 s later.  After the first rejection the tunnel latches itself off and
+ *  these return NOT_READY without going on the wire -- see
+ *  wifi_8711/wifi_8711_at_data.h.                                            */
+#define EB_DBG_SUB_WIFI_DATA_RX 0x04    /* 8711 AT+WLRECV, reply -> log        */
+#define EB_DBG_SUB_WIFI_DATA_TX 0x05    /* 8711 AT+WLSEND=<hex of VALUE TLV>   */
+
 /*----------------------------------------------------------------------------*
  *  File type enum  (spec §2.7) -- shared by SEND_FILE, XFER_OFFER,
  *  JPG_STREAM_OFFER, and both TCP headers (EBXF §5.2 / EBXS §6.2)

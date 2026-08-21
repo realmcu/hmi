@@ -27,17 +27,35 @@ extern "C" {
 typedef struct
 {
     uint64_t total_bytes;      /* user-writable partition total              */
-    uint64_t free_bytes;       /* currently free                            */
+    uint64_t free_bytes;       /* largest storable file -- see note below    */
     uint64_t wp_used_bytes;    /* consumed by stored wallpapers (approx ok)  */
     uint16_t wp_count;         /* wallpapers currently stored               */
 } ebadge_storage_stat_t;
 
-/** Query storage headline for the STORAGE_INFO command / offer pre-check. */
+/**
+ * Query storage headline for the STORAGE_INFO command / offer pre-check.
+ *
+ * NOTE on `free_bytes`: it is the largest *contiguous* free run, not the sum
+ * of all free bytes.  The FlashDB BigFile allocator only hands out one
+ * contiguous block-aligned run, so on a fragmented partition the sum would
+ * promise space that no single file can use.  Treat this field as "the biggest
+ * file that can still be stored", which is what both callers actually need.
+ *
+ * @return 0 on success; -1 @p out is NULL; -2 storage backend not ready yet
+ *         (BF uninitialised) -- the caller should answer NOT_READY, not FAILED.
+ */
 int  ebadge_port_storage_stat(ebadge_storage_stat_t *out);
 
 /**
  * @brief  Open a write session for a fresh file.
+ *
+ * Reserves and erases the whole @p size range up front, so this blocks for one
+ * NOR erase per 4KB block (~15 blocks for a 60KB wallpaper).  Call it from the
+ * session state machine with no slot in flight, never from a data callback.
+ *
  * @param  name       Nul-terminated file name (utf-8, <=EB_MAX_FILE_NAME).
+ *                    Informational only: the on-flash key is derived from the
+ *                    assigned file_id, so the App's name is logged, not stored.
  * @param  size       Expected total bytes.
  * @param  file_type  EB_FILE_TYPE_* value.
  * @return >0 opaque write handle; <0 on error.
@@ -49,8 +67,21 @@ int  ebadge_port_storage_wp_begin(const char *name, uint32_t size,
 int  ebadge_port_storage_wp_write(int handle,
                                   const uint8_t *data, uint16_t len);
 
-/** Commit the file atomically.  Returns the assigned file_id (>=1) or <0. */
-int  ebadge_port_storage_wp_commit(int handle, uint16_t *out_file_id);
+/**
+ * @brief  Commit the file atomically (one KV set).
+ *
+ * Call this ONLY after the received data has passed CRC verification: commit is
+ * the point where the file becomes visible, and there is no rollback afterwards.
+ *
+ * @param  data_crc      CRC32 of the bytes actually appended.  Stored in the
+ *                       directory entry so a later reader can re-verify without
+ *                       the transfer being present; the caller has already
+ *                       compared it against the offer's expected value.
+ * @param  out_file_id   Receives the assigned file_id (>=1).
+ * @return 0 on success; <0 on error.
+ */
+int  ebadge_port_storage_wp_commit(int handle, uint32_t data_crc,
+                                   uint16_t *out_file_id);
 
 /** Discard a write session (mid-transfer failure / abort). */
 int  ebadge_port_storage_wp_abort(int handle);

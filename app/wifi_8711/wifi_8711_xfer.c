@@ -177,8 +177,10 @@ static int arm_slot(void)
                            slot_done_cb, NULL);
     if (rc != 0)
     {
+        /* Counted, not logged: the retry loop below logs once per outage
+         * instead, because a driver that keeps rejecting the arm would
+         * otherwise flood the log at retry rate. */
         s_stats.arm_fail++;
-        EBADGE_ERR1("wifi8711 xfer: arm failed %d", rc);
         return rc;
     }
 
@@ -196,6 +198,47 @@ static int arm_slot(void)
         }
     }
     return 0;
+}
+
+/*----------------------------------------------------------------------------*
+ *  Arm, retrying until it succeeds.  For the transport thread only.
+ *
+ *  The thread MUST NOT go back to its k_sem_take() with no DMA armed: nothing
+ *  would ever complete, so the semaphore would never be given, the thread would
+ *  block forever and B2W would stay low -- a silently dead link whose only
+ *  symptom is arm_fail == 1.  That was the behaviour before this function
+ *  existed, and it is why "back off and hope" is not good enough here.
+ *
+ *  Retrying without a bound is the right shape rather than a bounded attempt
+ *  count: the usual cause is the driver still holding ctx->lock from the
+ *  completion we were just woken by, which clears on its own in well under a
+ *  millisecond.  If it somehow never clears, an unbounded retry still recovers
+ *  the link the moment it does, where a bounded one would have given up for
+ *  good.  Meanwhile the 8711 just sees B2W low and waits.
+ *----------------------------------------------------------------------------*/
+#define ARM_RETRY_DELAY_MS   10U
+#define ARM_RETRY_COMPLAIN   100U  /* ~1 s between repeats of the same moan */
+
+static void arm_slot_retry(void)
+{
+    uint32_t tries = 0U;
+
+    while (arm_slot() != 0)
+    {
+        if ((tries % ARM_RETRY_COMPLAIN) == 0U)
+        {
+            EBADGE_ERR1("wifi8711 xfer: arm failed, retrying (arm_fail=%u)",
+                        (unsigned)s_stats.arm_fail);
+        }
+        tries++;
+        k_msleep(ARM_RETRY_DELAY_MS);
+    }
+
+    if (tries != 0U)
+    {
+        EBADGE_LOG1("wifi8711 xfer: re-armed after %u failed attempts",
+                    (unsigned)tries);
+    }
 }
 
 /*----------------------------------------------------------------------------*
@@ -295,12 +338,8 @@ static void xfer_thread_fn(void *a, void *b, void *c)
 
         (void)wait_w2b_low();
 
-        if (arm_slot() != 0)
-        {
-            /* Back off rather than spin: a failing arm is usually the driver
-             * still holding its context, which clears on its own. */
-            k_msleep(10);
-        }
+        /* Must not fall through with nothing armed -- see arm_slot_retry(). */
+        arm_slot_retry();
     }
 }
 
@@ -333,16 +372,28 @@ int wifi_8711_xfer_start(wifi_8711_slot_cb_t cb)
     s_paused = false;
     memset(&s_stats, 0, sizeof(s_stats));
 
-    /* Idle TX content until someone stages something (sec.4.2 allows all
-     * zeroes; the 8711 simply finds no valid ATMC COMMAND on MISO). */
     memset(slot_tx, 0, sizeof(slot_tx));
-    memset(slot_tx_staging, 0, sizeof(slot_tx_staging));
-    s_tx_dirty = false;
+
+    /* Keep anything staged BEFORE the transport started, so it rides the very
+     * first slot.  Wiping unconditionally here used to cost a whole POLL period
+     * (up to ~2 s): the first slot went out all-zero and the caller's command
+     * could only be promoted by the *second* arm.  Staging first and starting
+     * second is now the fast path -- see wifi_8711_at_query.c.
+     *
+     * Idle content is all zeroes, which sec.4.2 explicitly allows; the 8711
+     * simply finds no valid ATMC COMMAND on MISO. */
+    if (!s_tx_dirty)
+    {
+        memset(slot_tx_staging, 0, sizeof(slot_tx_staging));
+    }
 
     /* Arm the FIRST slot before the thread exists.  If the 8711 booted ahead
      * of us its opening W2B edge is already gone, and a transport that only
      * armed on an edge would sit there forever -- the latent bug in the
-     * bt_audio_trx reference, which never pre-arms. */
+     * bt_audio_trx reference, which never pre-arms.
+     *
+     * Not arm_slot_retry(): with no thread yet there is nobody to be deadlocked,
+     * so a failure here is better reported to the caller than retried silently. */
     rc = arm_slot();
     if (rc != 0)
     {
@@ -371,11 +422,11 @@ int wifi_8711_xfer_set_tx(const uint8_t *slot)
     {
         return -EINVAL;
     }
-    if (!s_started)
-    {
-        return -ENODEV;
-    }
 
+    /* Deliberately NOT gated on s_started: staging before the transport starts
+     * is the fast path, because wifi_8711_xfer_start() keeps staged content and
+     * arms it into the very first slot.  Requiring "started" first would force
+     * the caller to waste a whole POLL period on an all-zero slot. */
     k_mutex_lock(&tx_lock, K_FOREVER);
     memcpy(slot_tx_staging, slot, WIFI_8711_SLOT_SIZE);
     s_tx_dirty = true;
@@ -385,11 +436,6 @@ int wifi_8711_xfer_set_tx(const uint8_t *slot)
 
 int wifi_8711_xfer_set_tx_idle(void)
 {
-    if (!s_started)
-    {
-        return -ENODEV;
-    }
-
     k_mutex_lock(&tx_lock, K_FOREVER);
     memset(slot_tx_staging, 0, WIFI_8711_SLOT_SIZE);
     s_tx_dirty = true;
@@ -508,10 +554,8 @@ int wifi_8711_xfer_test_at(const char *text, uint32_t *out_seq)
     {
         return -EINVAL;
     }
-    if (!s_started)
-    {
-        return -ENODEV;
-    }
+    /* No s_started gate: see wifi_8711_xfer_set_tx().  Staging the command
+     * first and starting the transport second saves a whole POLL period. */
     /* sec.9: the 8711's parse buffer is 128 B and a longer payload is dropped
      * silently -- so reject it here, loudly, instead. */
     if (strlen(text) >= WIFI_8711_AT_COMMAND_MAX)

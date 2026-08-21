@@ -30,6 +30,7 @@
 #include "stream_session.h"
 #include "xfer_notify.h"
 #include "ebxf_frame.h"
+#include "jpgs_ingress.h"
 
 #include "../ebadge_cmd.h"
 #include "../ebadge_l2.h"
@@ -49,9 +50,20 @@
 #define XS_RECV_IDLE_MS     120000u
 #define XS_OVERALL_MS       180000u
 
-#define XS_TCP_PORT           EB_AP_DEFAULT_PORT
+/* The TCP port is NOT ours to choose -- the 8711 runs the server and reports
+ * the port in its WLSTATE reply (5004 in practice).  EB_AP_DEFAULT_PORT is kept
+ * out of this file deliberately so nobody reintroduces a hardcoded one. */
 #define XS_PROGRESS_MS         200
 #define XS_PROGRESS_STEP_PCT     5
+
+/* Largest file the data plane can carry, in bytes.
+ *
+ * Deliberately a literal rather than WIFI_8711_JPEG_FRAME_MAX: that macro lives
+ * behind CONFIG_WIFI_8711 in the driver header, and this file is transport
+ * agnostic on purpose (it also serves the 0x02 BLE path).  The number is the
+ * 8711 server's TCP_JPG_MAX_FRAME_SIZE, which is the same 60 KiB the JPGS
+ * transport asserts -- see the check in xfer_session_offer(). */
+#define XS_MAX_FILE_SIZE     61440u
 
 /*----------------------------------------------------------------------------*
  *  Session state  (l2_task-owned; no locking)
@@ -67,11 +79,22 @@ typedef struct
     uint32_t crc32_expected;
     uint16_t replace_id;
 
+    /* data plane ------------------------------------------------------- */
+    uint16_t tcp_port;            /* as reported by the AP, not chosen    */
+
     /* runtime ---------------------------------------------------------- */
     uint32_t bytes_recv;
     uint32_t crc32_running;
     bool     ebxf_seen;
     int      wp_handle;
+
+    /* Partial EBXF header carried across deliveries.  The 40-byte header is
+     * not guaranteed to arrive in one piece: it rides the same byte stream as
+     * the body, and the JPGS transport below it caps a payload at 4064 bytes,
+     * so a header landing on a delivery boundary is routine rather than
+     * anomalous.  Bytes accumulate here until all EBXF_HDR_LEN are in hand. */
+    uint8_t  ebxf_hdr[EBXF_HDR_LEN];
+    uint8_t  ebxf_hdr_len;
 
     /* timers (deadlines in ebadge_task_now_ms units) ------------------ */
     uint32_t deadline_stage;      /* per-state deadline                  */
@@ -113,7 +136,7 @@ static void emit_decision(uint8_t decision, uint8_t reason)
  *  which the shared builder takes as a parameter.                          */
 static void emit_ap_info(const ebadge_softap_info_t *info)
 {
-    eb_emit_ap_info(info, XS_TCP_PORT);
+    eb_emit_ap_info(info, s_x.tcp_port);
 }
 
 static void emit_fail(uint8_t reason, const char *detail)
@@ -164,6 +187,10 @@ static void tear_down_data_plane(void)
         (void)ebadge_port_softap_stop();
     }
     (void)ebadge_port_tcp_close();
+    /* Drop any half-reassembled JPGS frame too.  The 8711 may well be mid-frame
+     * when we give up, and leftover chunks measured against a frame this session
+     * never started would make the *next* transfer's first frame look corrupt. */
+    jpgs_ingress_reset();
     if (s_x.wp_handle > 0)
     {
         (void)ebadge_port_storage_wp_abort(s_x.wp_handle);
@@ -190,8 +217,11 @@ static void fail_and_reset(uint8_t reason, const char *detail)
  *----------------------------------------------------------------------------*/
 static void on_softap_joined_from_driver(void)
 {
-    /* Called on softap driver thread -- marshal to l2_task. */
-    (void)ebadge_task_post_call((ebadge_post_fn_t)xfer_session_on_sta_joined, NULL);
+    /* Already on l2_task -- port_softap marshals the edge itself, because it
+     * discovers it from an AT reply on the transport thread and has to re-check
+     * the session is still alive after the hop anyway.  Calling
+     * ebadge_task_post_call() again here would only add a second hop. */
+    xfer_session_on_sta_joined();
 }
 
 static void on_tcp_data_from_driver(const uint8_t *data, uint16_t len)
@@ -348,9 +378,33 @@ void xfer_session_offer(const char *name, uint8_t file_type,
         return;
     }
 
+    /* Single-file cap imposed by the transport, not by our storage.
+     *
+     * The file crosses the 8711 as ONE "JPG <size> <seq>" frame, and that
+     * server rejects any size above TCP_JPG_MAX_FRAME_SIZE == 61440 with
+     * `ERR HEADER` (phone-to-8711-jpeg-tcp-protocol.md sec.4).  Accepting a
+     * larger offer would bring the AP up, have the phone refused at the TCP
+     * door, and then fail on the 120s idle deadline with IO_TIMEOUT -- a
+     * misleading answer to a limit we can state immediately.
+     *
+     * This is also why the App is expected to downscale before offering: the
+     * cap is on the JPEG the phone sends, not on what BF could store. */
+    if (size > XS_MAX_FILE_SIZE)
+    {
+        EBADGE_WARN2("offer: size=%u > %u -> XFER_FAIL TOO_LARGE",
+                     (unsigned)size, (unsigned)XS_MAX_FILE_SIZE);
+        emit_fail(EB_XFER_ERR_TOO_LARGE, "over 60KiB frame cap");
+        return;
+    }
+
     /* Space check (spec §2.9): free must cover the payload plus the fixed
      * 4096-byte filesystem metadata margin.  Both sides are BYTES -- the
-     * pre-alignment code compared a KB field against a byte count.        */
+     * pre-alignment code compared a KB field against a byte count.
+     *
+     * st.free_bytes is now the largest *contiguous* free run (BF allocates
+     * nothing else), so this rejects fragmented-but-nominally-roomy cases too.
+     * The +EB_FS_MARGIN also covers BF's own block-align round-up, since
+     * align_up(size, 4096) <= size + 4096 for the 4 KB NOR block. */
     ebadge_storage_stat_t st;
     if (ebadge_port_storage_stat(&st) == 0)
     {
@@ -420,25 +474,31 @@ void xfer_session_user_decision(bool accept)
     EBADGE_LOG("xfer: user ACCEPT -> DECISION 0x01");
     emit_decision(EB_DECISION_ACCEPT, 0);
 
-    ebadge_softap_info_t info =
+    /* Ask the radio what the AP IS -- do not invent it.  The 8711 owns the
+     * SoftAP and its credentials cannot be set from this side, so a hardcoded
+     * SSID here would send the phone looking for a network that does not
+     * exist.  See ebadge_port_softap.h. */
+    ebadge_softap_info_t info;
+    uint16_t             tcp_port = 0;
+    int rc = ebadge_port_softap_start(&info, &tcp_port,
+                                      on_softap_joined_from_driver);
+    if (rc != 0)
     {
-        .ssid     = "eBadge-XFR",
-        .password = "ebadge-xfer",
-        .channel  = 6,
-        .ip       = ((uint32_t)EB_AP_DEFAULT_IPV4_A << 24)
-        | ((uint32_t)EB_AP_DEFAULT_IPV4_B << 16)
-        | ((uint32_t)EB_AP_DEFAULT_IPV4_C <<  8)
-        | (uint32_t)EB_AP_DEFAULT_IPV4_D,
-    };
-    if (ebadge_port_softap_start(&info, on_softap_joined_from_driver) != 0)
-    {
-        EBADGE_ERR("xfer: softap_start FAIL -> XFER_FAIL AP_START");
+        /* -EAGAIN means the credentials are not known yet, which on the wire is
+         * still AP_START: §2.6 has no "ask me again" transfer reason, and the
+         * App's recovery is the same either way -- retry the offer. */
+        EBADGE_ERR1("xfer: softap_start FAIL (%d) -> XFER_FAIL AP_START", rc);
         fail_and_reset(EB_XFER_ERR_AP_START, "softap start");
         return;
     }
+    s_x.tcp_port = tcp_port;
+
+    /* The 8711 runs the TCP server itself, on the port it just reported, so
+     * there is no socket to open on this side -- port_tcp only has to arm the
+     * sink that the SPI JPGS/EBXF path feeds. */
     ebadge_tcp_listen_t lc =
     {
-        .port     = XS_TCP_PORT,
+        .port     = tcp_port,
         .on_data  = on_tcp_data_from_driver,
         .on_close = on_tcp_close_from_driver,
     };
@@ -453,7 +513,7 @@ void xfer_session_user_decision(bool accept)
 
     /* Emit AP_INFO so the App can associate. */
     EBADGE_LOG2("xfer: -> AP_INFO ssid=\"%s\" tcp_port=%d",
-                info.ssid, XS_TCP_PORT);
+                info.ssid, (int)tcp_port);
     emit_ap_info(&info);
 
     s_x.state         = XFER_SESSION_WAIT_STA;
@@ -481,7 +541,11 @@ void xfer_session_on_sta_joined(void)
     EBADGE_LOG("xfer: RECV started");
 }
 
-void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len)
+/**
+ * Body bytes only -- no framing header.  See xfer_session_on_payload() in the
+ * header for why this, not the EBXF variant, is the live path.
+ */
+void xfer_session_on_payload(const uint8_t *data, uint16_t len)
 {
     if (s_x.state != XFER_SESSION_RECV || data == NULL || len == 0)
     {
@@ -490,23 +554,119 @@ void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len)
     uint32_t now = ebadge_task_now_ms();
     s_x.last_data_ms = now;
 
-    uint16_t consumed = 0;
-
-    /* First-time-only: consume the 40B EBXF header before body bytes. */
-    if (!s_x.ebxf_seen)
+    /* Append + accumulate CRC + progress notify. */
+    int rc = ebadge_port_storage_wp_write(s_x.wp_handle, data, len);
+    if (rc < 0)
     {
-        if (len < EBXF_HDR_LEN)
+        fail_and_reset(EB_XFER_ERR_STORAGE_FULL, "wp_write");
+        return;
+    }
+    s_x.crc32_running = eb_crc32_update(s_x.crc32_running, data, len);
+    s_x.bytes_recv   += len;
+
+    /* Progress throttling: fire on 5%-boundary crossings OR 200ms lapse.
+     * The percentage is an emission trigger only -- the payload carries
+     * absolute recv/total byte counts per spec §4.10.                  */
+    uint8_t pct = (s_x.size ? (uint8_t)((uint64_t)s_x.bytes_recv * 100u
+                                        / s_x.size) : 0);
+    bool step_hit = pct >= (uint8_t)(s_x.last_progress_pct
+                                     + XS_PROGRESS_STEP_PCT);
+    bool time_hit = (int32_t)(now - (s_x.last_progress_ms
+                                     + XS_PROGRESS_MS)) >= 0;
+    if (step_hit || time_hit)
+    {
+        emit_progress(s_x.bytes_recv, s_x.size);
+        s_x.last_progress_pct = pct;
+        s_x.last_progress_ms  = now;
+    }
+
+    /* Done?  ">=" rather than "==": a sender that overruns the offered size is
+     * caught by the CRC below, and stopping here keeps wp_write from being
+     * called past the reserved capacity. */
+    if (s_x.bytes_recv >= s_x.size)
+    {
+        s_x.state = XFER_SESSION_COMPLETING;
+
+        /* CRC verify. */
+        if (s_x.crc32_running != s_x.crc32_expected)
         {
-            /* Header would need reassembly.  Simple path: drop and fail;
-             * the delivery contract asks for >=4KB batches, so a fragmented
-             * header is anomalous.  A real impl could stash + resume.     */
-            EBADGE_ERR("xfer: EBXF header split across delivery, unsupported");
-            fail_and_reset(EB_XFER_ERR_VERIFY, "ebxf split");
+            EBADGE_ERR2("xfer: CRC mismatch got=0x%08x exp=0x%08x",
+                        s_x.crc32_running, s_x.crc32_expected);
+            fail_and_reset(EB_XFER_ERR_VERIFY, "crc32");
             return;
         }
-        ebxf_hdr_t hdr;
-        if (ebxf_hdr_parse(data, &hdr) != 0)
+
+        uint16_t file_id = 0;
+        /* Commit only now, with the verified CRC: the compare above is what
+         * makes this the "verification passed" path, and commit is the point of
+         * no return. */
+        int crc_rc = ebadge_port_storage_wp_commit(s_x.wp_handle,
+                                                   s_x.crc32_running, &file_id);
+        s_x.wp_handle = 0;
+        if (crc_rc < 0)
         {
+            fail_and_reset(EB_XFER_ERR_STORAGE_FULL, "wp_commit");
+            return;
+        }
+        /* Send EBXR ok, then tear down the data plane.  status=0x01 is SUCCESS
+         * and reason is 0 on success (spec §5.3).  The ack rides the reserved AT
+         * tunnel rather than a socket -- see ebadge_port_tcp.c.             */
+        uint8_t ack[EBXR_LEN];
+        ebxr_pack(ack, EBXR_STATUS_OK, 0);
+        (void)ebadge_port_tcp_send(ack, EBXR_LEN);
+        (void)ebadge_port_tcp_close();
+        (void)ebadge_port_softap_stop();
+        /* Same reason as in tear_down_data_plane(): the last frame ended exactly
+         * on the file's last byte, but the 8711 may still push a stray slot. */
+        jpgs_ingress_reset();
+
+        /* 0x15 DONE is authoritative for the App, not the EBXR above.     */
+        emit_done(file_id);
+        reset_ctx();
+    }
+}
+
+void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len)
+{
+    if (s_x.state != XFER_SESSION_RECV || data == NULL || len == 0)
+    {
+        return;
+    }
+
+    uint16_t consumed = 0;
+
+    /* First-time-only: consume the 40B EBXF header before body bytes.
+     *
+     * Reassembles across deliveries -- see the ebxf_hdr comment in xfer_ctx_t.
+     * Note that a partial header is NOT fed to the running CRC: the CRC covers
+     * file bytes only, and the header is not part of the file. */
+    if (!s_x.ebxf_seen)
+    {
+        /* Roll the idle deadline here too: on_payload() below is not reached
+         * while only header bytes have arrived. */
+        s_x.last_data_ms = ebadge_task_now_ms();
+
+        uint16_t want = (uint16_t)(EBXF_HDR_LEN - s_x.ebxf_hdr_len);
+        uint16_t take = (len < want) ? len : want;
+        memcpy(s_x.ebxf_hdr + s_x.ebxf_hdr_len, data, take);
+        s_x.ebxf_hdr_len = (uint8_t)(s_x.ebxf_hdr_len + take);
+        consumed         = take;
+
+        if (s_x.ebxf_hdr_len < EBXF_HDR_LEN)
+        {
+            /* Still short.  Returning here is safe: the RECV-idle deadline was
+             * just rolled, so a sender that stops mid-header still times out
+             * rather than wedging the session. */
+            EBADGE_LOG2("xfer: EBXF header %d/%d bytes, waiting",
+                        (int)s_x.ebxf_hdr_len, (int)EBXF_HDR_LEN);
+            return;
+        }
+
+        ebxf_hdr_t hdr;
+        if (ebxf_hdr_parse(s_x.ebxf_hdr, &hdr) != 0)
+        {
+            /* Unrecoverable: everything after this point is body payload, so
+             * there is no byte pattern to resynchronise on. */
             EBADGE_ERR("xfer: bad EBXF magic/version");
             fail_and_reset(EB_XFER_ERR_VERIFY, "ebxf magic");
             return;
@@ -523,74 +683,11 @@ void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len)
             return;
         }
         s_x.ebxf_seen = true;
-        consumed      = EBXF_HDR_LEN;
     }
 
-    /* Body bytes: append + accumulate CRC + progress notify. */
     if (consumed < len)
     {
-        const uint8_t *body = data + consumed;
-        uint16_t       n    = (uint16_t)(len - consumed);
-
-        int rc = ebadge_port_storage_wp_write(s_x.wp_handle, body, n);
-        if (rc < 0)
-        {
-            fail_and_reset(EB_XFER_ERR_STORAGE_FULL, "wp_write");
-            return;
-        }
-        s_x.crc32_running = eb_crc32_update(s_x.crc32_running, body, n);
-        s_x.bytes_recv   += n;
-
-        /* Progress throttling: fire on 5%-boundary crossings OR 200ms lapse.
-         * The percentage is an emission trigger only -- the payload carries
-         * absolute recv/total byte counts per spec §4.10.                  */
-        uint8_t pct = (s_x.size ? (uint8_t)((uint64_t)s_x.bytes_recv * 100u
-                                            / s_x.size) : 0);
-        bool step_hit = pct >= (uint8_t)(s_x.last_progress_pct
-                                         + XS_PROGRESS_STEP_PCT);
-        bool time_hit = (int32_t)(now - (s_x.last_progress_ms
-                                         + XS_PROGRESS_MS)) >= 0;
-        if (step_hit || time_hit)
-        {
-            emit_progress(s_x.bytes_recv, s_x.size);
-            s_x.last_progress_pct = pct;
-            s_x.last_progress_ms  = now;
-        }
-    }
-
-    /* Done? */
-    if (s_x.bytes_recv >= s_x.size)
-    {
-        s_x.state = XFER_SESSION_COMPLETING;
-
-        /* CRC verify. */
-        if (s_x.crc32_running != s_x.crc32_expected)
-        {
-            EBADGE_ERR2("xfer: CRC mismatch got=0x%08x exp=0x%08x",
-                        s_x.crc32_running, s_x.crc32_expected);
-            fail_and_reset(EB_XFER_ERR_VERIFY, "crc32");
-            return;
-        }
-
-        uint16_t file_id = 0;
-        int rc = ebadge_port_storage_wp_commit(s_x.wp_handle, &file_id);
-        s_x.wp_handle = 0;
-        if (rc < 0)
-        {
-            fail_and_reset(EB_XFER_ERR_STORAGE_FULL, "wp_commit");
-            return;
-        }
-        /* Send EBXR ok + tear down data plane.  status=0x01 is SUCCESS and
-         * reason is 0 on success (spec §5.3).                             */
-        uint8_t ack[EBXR_LEN];
-        ebxr_pack(ack, EBXR_STATUS_OK, 0);
-        (void)ebadge_port_tcp_send(ack, EBXR_LEN);
-        (void)ebadge_port_tcp_close();
-        (void)ebadge_port_softap_stop();
-
-        /* 0x15 DONE is authoritative for the App, not the EBXR above.     */
-        emit_done(file_id);
-        reset_ctx();
+        xfer_session_on_payload(data + consumed, (uint16_t)(len - consumed));
     }
 }
 

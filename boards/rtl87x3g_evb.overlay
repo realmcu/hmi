@@ -14,6 +14,19 @@
 	};
 };
 
+/ {
+	gpio_keys: gpio_keys{
+		compatible = "realtek,gpio-keys";
+		debounce-interval-ms = <30>;
+		key1: key1{
+			gpios = <&gpioa 25 (GPIO_ACTIVE_LOW | GPIO_PULL_UP | RTL87X3G_GPIO_INPUT_PM_WAKEUP)>;
+			label = "key1";
+			key,id = <100>;
+			status = "okay";
+		};
+	};
+};
+
 &display_lcd {
 	status = "okay";
 };

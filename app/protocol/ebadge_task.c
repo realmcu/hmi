@@ -25,7 +25,9 @@
 #include "handlers/handlers_register.h"
 #include "wifi_xfer/xfer_session.h"
 #include "wifi_xfer/stream_session.h"
+#include "wifi_xfer/jpgs_ingress.h"
 #include "port/ebadge_port_ble.h"
+#include "port/ebadge_port_softap.h"
 
 /*----------------------------------------------------------------------------*
  *  Configuration
@@ -184,13 +186,21 @@ int ebadge_task_init(void)
 
     s_inited = true;
 
-    /* Once the task is up, wire the pieces around it: BLE port, both Wi-Fi
-     * state machines (each registers a tick sink), then command handlers
-     * (registers the L2 dispatch table).  Order matters only in that
-     * handlers can call into either session, so sessions go first.       */
+    /* Once the task is up, wire the pieces around it: BLE port, the SoftAP
+     * port (registers a tick sink and starts priming the AP cache), both Wi-Fi
+     * state machines (each registers a tick sink too), then command handlers
+     * (registers the L2 dispatch table).  Order matters only in that handlers
+     * can call into either session, so sessions go first.
+     *
+     * port_softap goes before the sessions so its cache has had the longest
+     * possible head start by the time the first offer arrives -- an offer with
+     * nothing cached is answered AP_START, and the AP query it depends on takes
+     * seconds over the 8711's SPI link.                                    */
     ebadge_port_ble_init();
+    ebadge_port_softap_init();
     xfer_session_init();
     stream_session_init();
+    jpgs_ingress_init();
     ebadge_handlers_register();
 
     EBADGE_LOG("l2_task up");

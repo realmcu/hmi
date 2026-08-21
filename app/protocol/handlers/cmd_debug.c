@@ -11,20 +11,31 @@
  *
  * The value TLV exists so the wire format is already final: the first subcmd
  * that needs an argument can carry one without the App having to relearn the
- * frame.  Until then it is dumped to the log and otherwise ignored.
+ * frame.  That subcmd now exists -- 0x05 WIFI_DATA_TX sends its bytes over
+ * Wi-Fi.  Every other subcmd still ignores the value and only logs it.
  *
  * Every path answers 0x04 RESULT.  A debug command that silently did nothing
  * on a malformed request would be indistinguishable from a dead BLE link,
  * which is precisely what this command exists to rule out.
  *
  * THE WI-FI SUBCMDS ARE ASYNCHRONOUS AND THEIR RESULT IS NOT THE ANSWER.
- * The 8711 is the SPI master: it owns SCLK/CS and polls roughly every 2 s, so
- * this side can only stage a slot and wait to be clocked.  A reply therefore
- * needs one poll out and one poll back, arriving 2..4 s later on the transport
- * thread -- long after this handler has returned.  Blocking here to wait for it
- * would stall the l2 task (the single serialiser for every BLE command) for
- * seconds, so we do not: SUCCEED means "the query was queued", and the reply
- * is printed to the device log by the sink in wifi_8711_at_query.c.
+ * The 8711 is the SPI master: it owns SCLK/CS and polls roughly every 2 s while
+ * idle, so this side can only stage a slot and wait to be clocked.  A reply
+ * therefore needs one poll out and one poll back, arriving 2..4 s later on the
+ * transport thread -- long after this handler has returned.  Blocking here to
+ * wait for it would stall the l2 task (the single serialiser for every BLE
+ * command) for seconds, so we do not: SUCCEED means "the query was queued", and
+ * the reply is printed to the device log by wifi_8711_at_query.c.
+ *
+ * The two data-tunnel subcmds (0x04 / 0x05) are reserved and will NOT work
+ * against current 8711 firmware -- its AT parser knows only WLSTATE and
+ * WLSTARTAP.  They stage successfully and the rejection appears in the log a
+ * few seconds later; after that the tunnel latches off and both answer
+ * NOT_READY without touching the wire.  See wifi_8711/wifi_8711_at_data.h.
+ *
+ * An App that wants the AP credentials as DATA should send 0x12 GET_AP_INFO,
+ * which answers 0x13 from a warm cache; these subcmds are for a human watching
+ * the console during bring-up.
  */
 #include <stdint.h>
 #include <errno.h>
@@ -34,13 +45,15 @@
 #include "../ebadge_log.h"
 #if defined(CONFIG_WIFI_8711)
 #include "wifi_8711_at_query.h"
+#include "wifi_8711_at_data.h"
 #endif
 
 /**
  * @brief  Map an errno-style return from the Wi-Fi layer onto an EB_RESULT_*.
  *
  * -ENODEV means the 8711 link never initialised, which is a "not ready", not a
- * failure -- the App can retry.  Everything else is a real failure.
+ * failure -- the App can retry.  -EBUSY means the single-flight AT layer is
+ * occupied, which is also transient.  Everything else is a real failure.
  */
 #if defined(CONFIG_WIFI_8711)
 static uint8_t wifi_rc_to_result(int rc)
@@ -49,7 +62,23 @@ static uint8_t wifi_rc_to_result(int rc)
     {
         return EB_RESULT_SUCCEED;
     }
-    return (rc == -ENODEV) ? EB_RESULT_NOT_READY : EB_RESULT_FAILED;
+    if (rc == -ENODEV)
+    {
+        return EB_RESULT_NOT_READY;
+    }
+    if (rc == -ENOTSUP)
+    {
+        /* The reserved data tunnel, latched off after the 8711 answered
+         * "[AT]:ERROR".  NOT_READY rather than FAILED: nothing is broken, the
+         * peer firmware simply does not implement the command yet, and retrying
+         * is pointless until it does.  See wifi_8711_at_data.h. */
+        return EB_RESULT_NOT_READY;
+    }
+    /* -EBUSY: the AT layer is single flight and something else has it -- most
+     * likely port_softap's background AP poll.  BUSY, not FAILED: retrying in a
+     * few seconds will work, and telling the App it failed would send it
+     * looking for a fault that is not there. */
+    return (rc == -EBUSY) ? EB_RESULT_BUSY : EB_RESULT_FAILED;
 }
 #endif
 
@@ -85,6 +114,39 @@ static uint8_t debug_dispatch_sub(uint8_t sub, const ebadge_tlv_t *val)
         return wifi_rc_to_result(wifi_8711_at_start_ap());
 #else
         EBADGE_WARN("DEBUG: WIFI_START_AP but CONFIG_WIFI_8711=n");
+        (void)val;
+        return EB_RESULT_NOT_READY;
+#endif
+
+    case EB_DBG_SUB_WIFI_DATA_RX:
+#if defined(CONFIG_WIFI_8711)
+        /* Poll the reserved inbound tunnel.  The message, if any, is printed by
+         * wifi_8711_at_data.c -- getting it back over BLE would need a new
+         * response command, and the tunnel has no firmware behind it yet. */
+        EBADGE_LOG("DEBUG: WIFI_DATA_RX -> AT+WLRECV (reply goes to the log)");
+        return wifi_rc_to_result(wifi_8711_at_data_poll(NULL, NULL));
+#else
+        EBADGE_WARN("DEBUG: WIFI_DATA_RX but CONFIG_WIFI_8711=n");
+        (void)val;
+        return EB_RESULT_NOT_READY;
+#endif
+
+    case EB_DBG_SUB_WIFI_DATA_TX:
+#if defined(CONFIG_WIFI_8711)
+        /* The one subcmd that uses the VALUE TLV.  Refuse an absent or empty
+         * one rather than sending a zero-length message: "send nothing" is a
+         * malformed request, and answering SUCCEED to it would suggest bytes
+         * went out. */
+        if (val == NULL || val->len == 0U)
+        {
+            EBADGE_WARN("DEBUG: WIFI_DATA_TX needs a non-empty VALUE TLV");
+            return EB_RESULT_FAILED;
+        }
+        EBADGE_LOG1("DEBUG: WIFI_DATA_TX -> AT+WLSEND %d B", (int)val->len);
+        return wifi_rc_to_result(wifi_8711_at_data_send(val->val, val->len,
+                                                        NULL, NULL));
+#else
+        EBADGE_WARN("DEBUG: WIFI_DATA_TX but CONFIG_WIFI_8711=n");
         (void)val;
         return EB_RESULT_NOT_READY;
 #endif

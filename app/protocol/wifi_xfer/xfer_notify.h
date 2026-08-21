@@ -24,8 +24,9 @@ extern "C" {
 
 /**
  * @brief  Emit 0x13 AP_INFO (spec §4.9) -- all seven TLVs, in spec order.
- * @param  info      creds as handed to port_softap; password "" => Open.
- * @param  tcp_port  the port actually being listened on.
+ * @param  info      creds as REPORTED BY the radio, not chosen by us; a
+ *                   password of "" is emitted as security=Open.
+ * @param  tcp_port  the port the AP's own server is listening on.
  */
 void eb_emit_ap_info(const ebadge_softap_info_t *info, uint16_t tcp_port);
 

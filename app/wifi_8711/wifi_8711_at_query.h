@@ -3,8 +3,13 @@
  * @brief   Bring-up hook: send one AT command to the 8711 and log the reply.
  *
  * This is the smallest thing that can answer "is the SPI link to the 8711
- * alive, and does its SoftAP exist?" from a single BLE debug command, without
- * the JPGS/ATMC slot engine or the port_softap layer being written yet.
+ * alive, and does its SoftAP exist?" from a single BLE debug command or shell
+ * command, with the answer printed to the console rather than returned.
+ *
+ * It is a thin presentation layer over wifi_8711_at_ap.h and owns no state.
+ * Anything that needs the AP credentials *programmatically* -- the 0x12
+ * GET_AP_INFO handler, port_softap -- must call wifi_8711_at_ap_* directly;
+ * going through here would only get it a log line.
  *
  * WHY IT CANNOT BE SYNCHRONOUS -- the one thing to understand before calling:
  *
@@ -18,9 +23,9 @@
  *   "queued", NOT "the 8711 answered".  The answer shows up in the log from
  *   the slot sink installed here.
  *
- * The sink is installed unconditionally by these calls, which would displace a
- * production sink if one existed.  That is fine today (there is none) and is
- * the reason this file is scoped as a debug hook rather than an API.
+ * The sink is installed by the AT layer, not here, so these calls no longer
+ * displace anything -- they share the one transaction layer with the protocol
+ * stack and are refused with -EBUSY if a command is already outstanding.
  */
 #ifndef _WIFI_8711_AT_QUERY_H_
 #define _WIFI_8711_AT_QUERY_H_
@@ -40,6 +45,7 @@ extern "C" {
  * terminated by "[+WLSTATE]:OK"), dumped to the log when it arrives.
  *
  * @retval 0        staged; watch the log for the reply 2..4 s later
+ * @retval -EBUSY   another AT command is outstanding (single flight)
  * @retval -ENODEV  wifi_8711_init() never succeeded (no 8711 on this build)
  * @retval <0       transport start or staging error
  */

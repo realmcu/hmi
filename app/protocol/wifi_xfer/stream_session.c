@@ -50,7 +50,8 @@
 #define SS_FIRST_DATA_MS      10000u    /* §6.5                              */
 #define SS_FRAME_GAP_MS        3000u    /* §6.4                              */
 
-#define SS_TCP_PORT           EB_AP_DEFAULT_PORT
+/* No SS_TCP_PORT: the 8711 runs the TCP server and reports the port itself
+ * (5004 in practice).  See ebadge_port_softap.h.                            */
 
 /** Default frame rate offered back when the App asks for something we cannot
  *  serve.  Mid-window rather than the max: the point of negotiating down is
@@ -175,8 +176,10 @@ static void finish_and_reset(const char *why)
  *----------------------------------------------------------------------------*/
 static void on_softap_joined_from_driver(void)
 {
-    (void)ebadge_task_post_call((ebadge_post_fn_t)stream_session_on_sta_joined,
-                                NULL);
+    /* Already on l2_task: port_softap marshals the edge itself (it learns of
+     * the association from an AT reply on the transport thread).  A second
+     * post_call here would only add a hop. */
+    stream_session_on_sta_joined();
 }
 
 struct ss_chunk { uint8_t *p; uint16_t n; };
@@ -345,18 +348,15 @@ void stream_session_offer(const char *name, uint8_t file_type, uint8_t fps)
     /* Bring the data plane up BEFORE answering, so the 0x13 that follows the
      * decision is already backed by a live listener.  A failure here still
      * owes the App a 0x09 -- it is waiting for one -- so reject rather than
-     * fall through to eb_emit_fail().                                      */
-    ebadge_softap_info_t info =
-    {
-        .ssid     = "eBadge-PRV",
-        .password = "ebadge-prev",
-        .channel  = 6,
-        .ip       = ((uint32_t)EB_AP_DEFAULT_IPV4_A << 24)
-        | ((uint32_t)EB_AP_DEFAULT_IPV4_B << 16)
-        | ((uint32_t)EB_AP_DEFAULT_IPV4_C <<  8)
-        | (uint32_t)EB_AP_DEFAULT_IPV4_D,
-    };
-    if (ebadge_port_softap_start(&info, on_softap_joined_from_driver) != 0)
+     * fall through to eb_emit_fail().
+     *
+     * The credentials come FROM the radio: the 8711 owns the SoftAP and its
+     * SSID/password cannot be set from this side, so anything hardcoded here
+     * would point the phone at a network that does not exist.               */
+    ebadge_softap_info_t info;
+    uint16_t             tcp_port = 0;
+    if (ebadge_port_softap_start(&info, &tcp_port,
+                                 on_softap_joined_from_driver) != 0)
     {
         EBADGE_ERR("stream: softap_start FAIL -> REJECT AP_START");
         tear_down_data_plane();
@@ -366,7 +366,7 @@ void stream_session_offer(const char *name, uint8_t file_type, uint8_t fps)
     }
     ebadge_tcp_listen_t lc =
     {
-        .port     = SS_TCP_PORT,
+        .port     = tcp_port,
         .on_data  = on_tcp_data_from_driver,
         .on_close = on_tcp_close_from_driver,
     };
@@ -383,8 +383,8 @@ void stream_session_offer(const char *name, uint8_t file_type, uint8_t fps)
     emit_stream_decision(decision, 0,
                          (decision == EB_STREAM_DEC_NEGOTIATE) ? agreed : 0);
     EBADGE_LOG2("stream: -> AP_INFO ssid=\"%s\" tcp_port=%d",
-                info.ssid, SS_TCP_PORT);
-    eb_emit_ap_info(&info, SS_TCP_PORT);
+                info.ssid, (int)tcp_port);
+    eb_emit_ap_info(&info, tcp_port);
 
     s_s.state          = STREAM_SESSION_WAIT_STA;
     s_s.deadline_stage = ebadge_task_now_ms() + SS_WAIT_STA_MS;
@@ -440,6 +440,57 @@ static void frame_complete(void)
     s_s.frame_size    = 0;
     s_s.frame_got     = 0;
     s_s.crc32_running = 0;
+}
+
+/**
+ * One chunk of a preview frame whose framing is already resolved -- the live
+ * path from jpgs_ingress.  See stream_session_on_frame_chunk() in the header.
+ */
+void stream_session_on_frame_chunk(const uint8_t *chunk, uint16_t len,
+                                   uint32_t offset, uint32_t frame_size,
+                                   bool is_last)
+{
+    if (s_s.state != STREAM_SESSION_RECV || chunk == NULL || len == 0)
+    {
+        return;
+    }
+
+    s_s.saw_first_data = true;
+    s_s.deadline_stage = ebadge_task_now_ms() + SS_FRAME_GAP_MS;
+
+    /* Mirror the geometry into the context so the introspection getters and the
+     * mid-frame close log stay meaningful on this path too. */
+    s_s.frame_size = frame_size;
+    s_s.frame_got  = offset + len;
+    s_s.in_payload = !is_last;
+
+    if (s_s.sink)
+    {
+        s_s.sink(chunk, len, offset, frame_size, is_last, s_s.sink_user);
+    }
+    else if (offset == 0)
+    {
+        /* No sink installed yet -- same bring-up aid as the EBXS path: log the
+         * head of each frame so a real JPEG can be told from garbage without a
+         * decoder.  TODO(app): stream_session_set_frame_sink().            */
+        EBADGE_LOG_HEX("stream frame head", chunk, len);
+    }
+
+    if (is_last)
+    {
+        /* No CRC compare here: jpgs_ingress verified a CRC32 per slot, which is
+         * strictly finer-grained than EBXS's per-frame one, so a frame that got
+         * this far is intact.  frames_bad stays at whatever the ingress layer
+         * dropped -- see jpgs_ingress_frames_dropped(). */
+        s_s.frames_ok++;
+        if (s_s.frames_ok == 1 || (s_s.frames_ok % 30u) == 0)
+        {
+            EBADGE_LOG2("stream: frame #%u ok, %u bytes",
+                        (unsigned)s_s.frames_ok, (unsigned)frame_size);
+        }
+        s_s.frame_got  = 0;
+        s_s.frame_size = 0;
+    }
 }
 
 void stream_session_on_tcp_data(const uint8_t *data, uint16_t len)

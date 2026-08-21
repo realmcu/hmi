@@ -72,8 +72,30 @@ void xfer_session_user_decision(bool accept);
 /** SoftAP notifies that the STA (App) has associated.  Enters RECV. */
 void xfer_session_on_sta_joined(void);
 
-/** TCP delivered a chunk of body bytes.  Handles EBXF header on first call. */
+/**
+ * @brief  A chunk arrived on a stream that still carries the 40B EBXF header.
+ *
+ * Consumes the header on the first call(s), then behaves as
+ * xfer_session_on_payload().  UNREACHABLE in the current topology: the 8711
+ * only forwards payloads it has validated as JPEG (`FF D8`..`FF D9`), so an
+ * EBXF-prefixed stream is refused with `ERR <seq> JPEG` before it ever gets to
+ * SPI.  Kept for a future firmware that terminates TCP on this chip.
+ */
 void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len);
+
+/**
+ * @brief  A chunk of pure file bytes -- no framing header of any kind.
+ *
+ * This is the live path: jpgs_ingress calls it with payload the 8711 has
+ * already stripped of TCP, of the phone's "JPG <size> <seq>" line, and of the
+ * JPGS slot header.  The file's identity (name / type / size / crc32) comes
+ * from the BLE 0x10 offer instead, which the EBXF header was only ever
+ * required to restate.
+ *
+ * Appends to flash, accumulates the CRC32, emits 0x14 PROGRESS, and on the
+ * last byte verifies against the offer's CRC and commits.
+ */
+void xfer_session_on_payload(const uint8_t *data, uint16_t len);
 
 /** TCP closed for any reason. */
 void xfer_session_on_tcp_close(int reason /* ebadge_tcp_close_reason_t */);
