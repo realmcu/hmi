@@ -160,6 +160,36 @@ fdb_err_t fdb_bf_abort(fdb_bf_file_t file);
 /* manage */
 fdb_err_t fdb_bf_delete(fdb_bf_t db, const char *key);
 fdb_err_t fdb_bf_delete_by_addr(fdb_bf_t db, uint32_t addr);
+
+/**
+ * Factory-reset the Big File area: drop every directory entry, then erase the
+ * whole data partition.
+ *
+ * Only KVs carrying the reserved FDB_BF_KEY_PREFIX are removed -- the directory
+ * KVDB is shared with the application, and its ordinary KVs are left untouched.
+ * (This is why fdb_kv_set_default() is NOT the right tool here: it would wipe
+ * the application's own settings along with the file directory.)
+ *
+ * Every "record" a caller can observe -- file_count, used_size, valid_size, the
+ * allocator's write cursor -- is *derived* from the directory entries on each
+ * query, never stored, so all of them fall back to empty as a consequence of
+ * clearing the directory. There is no separate counter to reset.
+ *
+ * Order is deliberate: the directory is cleared *before* the payload is erased.
+ * A power loss during the (multi-second) erase then leaves entries gone and data
+ * partly erased, which is consistent. The reverse order would leave entries
+ * pointing at erased bytes, i.e. files that exist but read as 0xFF.
+ *
+ * @param db          the BF object
+ * @param out_removed optional, receives the number of entries deleted; may be
+ *                    NULL. It is filled in even when the erase step later fails.
+ *
+ * @return FDB_NO_ERR on success;
+ *         FDB_BUSY if a write session (fdb_bf_create) is still open -- commit or
+ *         abort it first, since resetting under it would strand its handle;
+ *         FDB_ERASE_ERR if the payload erase failed (directory is already empty).
+ */
+fdb_err_t fdb_bf_reset(fdb_bf_t db, uint32_t *out_removed);
 bool      fdb_bf_exists(fdb_bf_t db, const char *key);
 fdb_err_t fdb_bf_stat(fdb_bf_t db, const char *key, struct fdb_bf_dirent *out);
 fdb_err_t fdb_bf_foreach(fdb_bf_t db, fdb_bf_iter_cb cb, void *arg);

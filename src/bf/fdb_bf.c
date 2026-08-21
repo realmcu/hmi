@@ -647,6 +647,149 @@ fdb_err_t fdb_bf_delete_by_addr(fdb_bf_t db, uint32_t addr)
     return del_dirent(db, full_key);
 }
 
+/* ==================== reset ==================== */
+
+/* How many directory keys one reset pass carries. Bounds the stack cost to
+ * BF_RESET_BATCH * FDB_KV_NAME_MAX bytes; the reset loops until a pass comes up
+ * empty, so this caps memory, not the number of files that can be cleared. */
+#define BF_RESET_BATCH   4
+
+/*
+ * Collect up to cap "bf/" KV names (full names, prefix included).
+ *
+ * Deliberately NOT bf_iterate(): that one also requires the value to be a
+ * well-formed dirent, and a reset must clear entries whose value was left the
+ * wrong length by an interrupted write -- exactly the state you reset from.
+ * Matching on the reserved prefix alone is the whole point here.
+ */
+static uint32_t reset_collect(fdb_bf_t db, char keys[][FDB_KV_NAME_MAX], uint32_t cap)
+{
+    struct fdb_kv_iterator it;
+    size_t plen = strlen(BF_PREFIX);
+    uint32_t n = 0;
+    fdb_kv_t kv;
+
+    fdb_kv_iterator_init(db->dir_kvdb, &it);
+    while (n < cap && fdb_kv_iterate(db->dir_kvdb, &it))
+    {
+        kv = &it.curr_kv;
+        if (kv->name_len <= plen)
+        {
+            continue;
+        }
+        if (strncmp(kv->name, BF_PREFIX, plen) != 0)
+        {
+            continue;
+        }
+        if (kv->name_len >= FDB_KV_NAME_MAX)
+        {
+            continue;       /* defensive: cannot be NUL-terminated in the buffer */
+        }
+        /* kv->name is not guaranteed NUL-terminated, so copy by length */
+        memcpy(keys[n], kv->name, kv->name_len);
+        keys[n][kv->name_len] = '\0';
+        n++;
+    }
+
+    return n;
+}
+
+fdb_err_t fdb_bf_reset(fdb_bf_t db, uint32_t *out_removed)
+{
+    char keys[BF_RESET_BATCH][FDB_KV_NAME_MAX];
+    uint32_t removed = 0;
+    uint32_t n;
+    uint32_t i;
+    fdb_err_t result;
+
+    if (out_removed != NULL)
+    {
+        *out_removed = 0;
+    }
+    if (db == NULL || !db->inited)
+    {
+        return FDB_INIT_FAILED;
+    }
+
+    /* An open write session owns a reserved data range and would keep appending
+     * into bytes this call is about to erase, then commit an entry describing
+     * them. Refuse instead of stranding its handle. */
+    for (i = 0; i < FDB_BF_MAX_OPEN_HANDLES; i++)
+    {
+        if (db->handles[i].in_use)
+        {
+            FDB_INFO("Error: cannot reset while a write session is open ('%s').\n",
+                     db->handles[i].key);
+            return FDB_BUSY;
+        }
+    }
+
+    /* 1. Drop every directory entry, a batch per pass.
+     *
+     * Collect-then-delete (the same shape fdb_bf_delete_by_addr uses) rather
+     * than deleting inside the walk: the KV iterator advances from the entry it
+     * is standing on, so mutating that entry mid-walk is a hazard not worth
+     * relying on. Deleting only flips a status field in place, so the next pass
+     * simply no longer sees what this one removed. */
+    for (;;)
+    {
+        n = reset_collect(db, keys, BF_RESET_BATCH);
+        if (n == 0)
+        {
+            break;
+        }
+        for (i = 0; i < n; i++)
+        {
+            result = del_dirent(db, keys[i]);
+            if (result != FDB_NO_ERR)
+            {
+                /* Bail out rather than spin: the next pass would hand back the
+                 * very same key and loop forever. */
+                FDB_INFO("Error: failed to delete the entry '%s' (%d).\n", keys[i], (int)result);
+                if (out_removed != NULL)
+                {
+                    *out_removed = removed;
+                }
+                return result;
+            }
+            removed++;
+        }
+    }
+
+    /* Every figure the API reports -- file_count, used_size, valid_size,
+     * largest_free -- is recomputed from the directory on each query, so an
+     * empty directory *is* the reset counter state. Only the cached allocation
+     * cursor lives in RAM. */
+    db->write_cursor = 0;
+
+    if (out_removed != NULL)
+    {
+        *out_removed = removed;
+    }
+
+    /* 2. Erase the payload.
+     *
+     * Not needed to make the files disappear (step 1 did that, and create()
+     * erases what it hands out), but asked for explicitly so a reset leaves no
+     * readable remnants of the old pictures behind. This is the expensive part:
+     * one sector erase per blk_size of the partition. The FAL port kicks the
+     * watchdog inside its erase loop. */
+    FDB_INFO("Resetting the Big File area: %u entries removed, erasing %u bytes.\n",
+             (unsigned)removed, (unsigned)db->data_size);
+
+    result = data_erase(db, 0, db->data_size);
+    if (result != FDB_NO_ERR)
+    {
+        /* The directory is already empty, so the area reads as "no files"
+         * either way; only the stale bytes survive. Report it so a caller can
+         * retry the erase. */
+        FDB_INFO("Error: the Big File data erase failed (%d).\n", (int)result);
+        return FDB_ERASE_ERR;
+    }
+
+    return FDB_NO_ERR;
+}
+
 bool fdb_bf_exists(fdb_bf_t db, const char *key)
 {
     char full_key[FDB_KV_NAME_MAX];
