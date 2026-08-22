@@ -26,8 +26,10 @@
 #include "wifi_xfer/xfer_session.h"
 #include "wifi_xfer/stream_session.h"
 #include "wifi_xfer/jpgs_ingress.h"
+#include "wifi_xfer/ebfs_ingress.h"
 #include "port/ebadge_port_ble.h"
 #include "port/ebadge_port_softap.h"
+#include "port/ebadge_port_vbat.h"
 
 /*----------------------------------------------------------------------------*
  *  Configuration
@@ -198,9 +200,15 @@ int ebadge_task_init(void)
      * seconds over the 8711's SPI link.                                    */
     ebadge_port_ble_init();
     ebadge_port_softap_init();
+    /* Registers a tick sink and submits the first ADC conversion, so the very
+     * first GET_BATTERY has a chance of finding a real voltage rather than the
+     * placeholder.  Independent of everything else here -- a failure only means
+     * the battery reads as unknown. */
+    ebadge_port_vbat_init();
     xfer_session_init();
     stream_session_init();
     jpgs_ingress_init();
+    ebfs_ingress_init();
     ebadge_handlers_register();
 
     EBADGE_LOG("l2_task up");

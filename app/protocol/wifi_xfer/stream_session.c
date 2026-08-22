@@ -355,7 +355,10 @@ void stream_session_offer(const char *name, uint8_t file_type, uint8_t fps)
      * would point the phone at a network that does not exist.               */
     ebadge_softap_info_t info;
     uint16_t             tcp_port = 0;
-    if (ebadge_port_softap_start(&info, &tcp_port,
+    /* EBADGE_AP_PORT_STREAM, because this session sends bare JPEG frames: the
+     * 8711's PORT= (5004) is the only server that accepts them, and the file
+     * port would expect an EBXF header it will never get. */
+    if (ebadge_port_softap_start(&info, EBADGE_AP_PORT_STREAM, &tcp_port,
                                  on_softap_joined_from_driver) != 0)
     {
         EBADGE_ERR("stream: softap_start FAIL -> REJECT AP_START");
@@ -382,8 +385,10 @@ void stream_session_offer(const char *name, uint8_t file_type, uint8_t fps)
     /* 0x09 first, then 0x13 -- the App keys off the decision. */
     emit_stream_decision(decision, 0,
                          (decision == EB_STREAM_DEC_NEGOTIATE) ? agreed : 0);
-    EBADGE_LOG2("stream: -> AP_INFO ssid=\"%s\" tcp_port=%d",
-                info.ssid, (int)tcp_port);
+    /* Which session is emitting, and nothing more: eb_emit_ap_info() prints the
+     * credentials and port it actually puts on the wire.  Two logs of the same
+     * values invite the reader to trust the earlier one. */
+    EBADGE_LOG("stream: emitting AP_INFO (preview -> the stream port)");
     eb_emit_ap_info(&info, tcp_port);
 
     s_s.state          = STREAM_SESSION_WAIT_STA;

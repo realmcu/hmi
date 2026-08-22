@@ -47,6 +47,7 @@ static wifi_8711_at_cb_t    s_pending_cb;
 static void                *s_pending_user;
 
 static wifi_8711_jpg_sink_t s_jpg_sink;
+static wifi_8711_file_sink_t s_file_sink;
 static wifi_8711_at_stats_t s_stats;
 
 /* Timeout is a delayed work item rather than a thread: it fires at most once
@@ -170,6 +171,21 @@ static void at_slot_sink(const uint8_t *rx, size_t len)
         return;
     }
 
+    if (magic == WIFI_8711_FILE_MAGIC)
+    {
+        /* A file chunk (protocol sec.6).  Note that these are NOT guaranteed to
+         * arrive as an unbroken run: sec.4.1 item 3 lets the 8711 interleave ATMC
+         * slots between chunks, which is what makes it possible to get an
+         * AT+XFERSTOP through mid-upload.  Nothing here or downstream may assume
+         * START..END is contiguous on the wire. */
+        s_stats.file_slots++;
+        if (s_file_sink != NULL)
+        {
+            s_file_sink(rx, len);
+        }
+        return;
+    }
+
     if (magic != WIFI_8711_AT_MAGIC)
     {
         /* Includes the all-zero slot, which is the normal state of a link whose
@@ -205,9 +221,20 @@ static void at_slot_sink(const uint8_t *rx, size_t len)
 
     if (pkt.type == SPI_AT_TYPE_POLL)
     {
-        /* Heartbeat.  Counted and otherwise ignored -- one line every 2 s
-         * forever would push out the reply we are waiting for. */
+        /* Heartbeat.  Counted always; logged only while a command is outstanding.
+         *
+         * Unconditionally would be one line every few seconds for the life of the
+         * device, which pushes the reply we are waiting for out of the scroll
+         * buffer.  While waiting, though, each POLL is the useful datum: it says
+         * the link is alive and the 8711 simply has not answered yet, which is a
+         * completely different fault from silence.  Bounded by the deadline, so
+         * the burst cannot outlast one transaction. */
         s_stats.polls++;
+        if (s_pending_seq != 0U)
+        {
+            EBADGE_LOG(EB_DIR_FROM_8711 "POLL #%u (waiting on seq=%u)",
+                       (unsigned)s_stats.polls, (unsigned)s_pending_seq);
+        }
         return;
     }
 
@@ -226,6 +253,23 @@ static void at_slot_sink(const uint8_t *rx, size_t len)
      * rest of the slot. */
     char   text[WIFI_8711_AT_TEXT_MAX];
     size_t n = spi_at_copy_payload(&pkt, text, sizeof(text));
+
+    /* Dump every RESPONSE body verbatim, HERE, before sequence matching decides
+     * whether anyone still wants it.
+     *
+     * Deliberately ahead of the claim: the replies most worth seeing are the ones
+     * that get dropped.  A sequence mismatch or a lost race with the timeout
+     * discards a reply that the 8711 did in fact send, and with the dump further
+     * downstream that reply left no trace of its contents at all -- the log said
+     * "stale, dropped" and the bytes were gone.  That is how an 8 s deadline
+     * against a 12 s link looked like a dead radio for far longer than it should
+     * have.
+     *
+     * Cheap enough for this context: a couple of printf lines with B2W held low,
+     * which back-pressures the 8711 but does not block. */
+    EBADGE_LOG(EB_DIR_FROM_8711 "RESPONSE seq=%u, %u B:", (unsigned)pkt.sequence,
+               (unsigned)n);
+    ebadge_log_lines(EB_DIR_FROM_8711 "  ", text);
 
     wifi_8711_at_cb_t cb   = NULL;
     void             *user = NULL;
@@ -272,6 +316,11 @@ static void at_slot_sink(const uint8_t *rx, size_t len)
 void wifi_8711_at_set_jpg_sink(wifi_8711_jpg_sink_t cb)
 {
     s_jpg_sink = cb;
+}
+
+void wifi_8711_at_set_file_sink(wifi_8711_file_sink_t cb)
+{
+    s_file_sink = cb;
 }
 
 int wifi_8711_at_submit(const char *cmd, wifi_8711_at_cb_t cb, void *user)
@@ -358,9 +407,15 @@ int wifi_8711_at_submit(const char *cmd, wifi_8711_at_cb_t cb, void *user)
 
     s_stats.submits++;
     /* Spell the timing out, because "it returned 0 but nothing happened yet" is
-     * the expected state for the next couple of seconds, not a failure. */
-    EBADGE_LOG2("wifi8711 at: staged \"%s\" seq=%u", cmd, (unsigned)seq);
-    EBADGE_LOG("wifi8711 at: 8711 owns the clock -- reply in ~2-4 s when idle");
+     * the expected state for the next couple of seconds, not a failure.
+     *
+     * The command text is printed verbatim and tagged with its direction, so the
+     * console shows the exact bytes staged for the 8711 next to the reply they
+     * eventually produce -- the pair is what makes a vendor-side rename or an
+     * argument we got wrong visible, instead of just "no usable AP state". */
+    EBADGE_LOG(EB_DIR_TO_8711 "AT command seq=%u: %s", (unsigned)seq, cmd);
+    EBADGE_LOG(EB_DIR_TO_8711 "8711 owns the clock -- reply in ~2-4 s when idle,"
+               " deadline %u ms", (unsigned)WIFI_8711_AT_TIMEOUT_MS);
     return 0;
 
 fail_release:

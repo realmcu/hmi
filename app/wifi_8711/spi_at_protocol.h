@@ -312,6 +312,32 @@ static inline size_t spi_at_copy_payload(const spi_at_packet_t *pkt,
 #define SPI_AT_CMD_WLSTATE      "AT+WLSTATE\r\n"   /* query SoftAP state      */
 #define SPI_AT_CMD_WLSTARTAP    "AT+WLSTARTAP\r\n" /* start / read back AP    */
 
+/*
+ * File-transfer control, added in protocol v2.2 (sec.10.3 / 10.4).  Both act on
+ * the port-9000 file connection and answer ERROR when there is no active one.
+ *
+ * These exist because v2.2 moved EBXR generation from the 8711 to us: the 8711
+ * forwards the last EBFS slot and then *waits*, holding the TCP connection open
+ * for up to 120 s, for one of these two commands.  Neither is optional -- a
+ * session that sends neither ends with the 8711 closing on its own timeout and
+ * the phone seeing a bare disconnect instead of a coded result.
+ *
+ *   AT+XFERACK=<status>,<reason>   8711 builds the EBXR and closes the TCP.
+ *                                  status 1=success / 0=failure, reason is an
+ *                                  eBadge sec.2.6 transfer code (0 on success).
+ *                                  Both are DECIMAL uint8 text, not hex.
+ *   AT+XFERSTOP                    shutdown now, stop forwarding, NO EBXR.
+ *
+ * The ACK prefix is kept separate from the CRLF because the arguments go
+ * between them; wifi_8711_at_xfer.c is the only place that should format it.
+ */
+#define SPI_AT_CMD_XFERACK_PREFIX "AT+XFERACK="
+#define SPI_AT_CMD_XFERSTOP       "AT+XFERSTOP\r\n"
+
+/** Expected success lines.  Failure is the shared "[AT]:ERROR". */
+#define SPI_AT_RSP_XFERACK_OK     "[+XFERACK]:OK"
+#define SPI_AT_RSP_XFERSTOP_OK    "[+XFERSTOP]:OK"
+
 #ifdef __cplusplus
 }
 #endif

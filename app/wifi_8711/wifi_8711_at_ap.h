@@ -54,7 +54,28 @@ typedef struct
     char     ssid[33];      /**< NUL-terminated, up to 32 B                    */
     char     password[64];  /**< NUL-terminated; "" means an open network      */
     uint32_t ip;            /**< AP-side IPv4, HOST order (0xC0A82B01)         */
-    uint16_t port;          /**< the 8711's TCP data port (5004 in practice)   */
+
+    /*------------------------------------------------------------------------*
+     *  TWO PORTS, AND THEY ARE NOT INTERCHANGEABLE
+     *
+     *  The 8711 runs two TCP servers with different admission rules (see
+     *  note/refer/phone-to-8711-jpeg-tcp-protocol.md and SPI spec v2.1 sec.6):
+     *
+     *    stream_port (PORT=, 5004)      raw JPEG only -- FF D8 .. FF D9, at most
+     *                                   61440 B per frame.  An EBXF header sent
+     *                                   here is rejected: the door does not
+     *                                   accept it.
+     *    file_port   (FILE_PORT=, 9000) EBXF header + body, re-wrapped into EBFS
+     *                                   slots, up to 2 MiB per file.
+     *
+     *  They were one field until a file transfer was pointed at 5004 and the
+     *  phone silently got nowhere.  Keeping them separate is what makes that
+     *  mix-up impossible to express: a file caller reads file_port, a preview
+     *  caller reads stream_port, and neither can accidentally get the other.
+     *------------------------------------------------------------------------*/
+    uint16_t stream_port;   /**< PORT= -- raw-JPEG preview (5004 in practice)  */
+    uint16_t file_port;     /**< FILE_PORT= -- EBXF upload (9000 in practice)  */
+
     uint8_t  channel;       /**< 2.4 GHz channel, or 0 if the reply omits it   */
     uint8_t  clients;       /**< associated STAs right now                     */
     bool     running;       /**< the reply described a live AP                 */

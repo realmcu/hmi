@@ -167,6 +167,88 @@ typedef struct
     uint32_t w2b_wait_to;   /**< timed out waiting for W2B to go low         */
     uint32_t rx_nonzero;    /**< slots whose RX was not all-zero            */
     uint32_t last_result;   /**< raw `result` of the last completion         */
+
+    /*------------------------------------------------------------------------*
+     *  Handshake phase instrumentation (protocol sec.3.1 phases 4..6)
+     *
+     *  The four counters below exist to tell three failure modes apart, all of
+     *  which look identical from the 8711's side (it just reports "READY
+     *  timeout after 1000 ms" per sec.3.2):
+     *
+     *    a) we never raise B2W          -> arms == 0, or arm_fail climbing
+     *    b) we raise B2W out of phase   -> arm_w2b_high climbing
+     *    c) the 8711 never releases W2B -> w2b_wait_to climbing, and
+     *                                      w2b_rising == w2b_falling + 1 stuck
+     *
+     *  Reading them together with the W2B edge counts from
+     *  wifi_8711_get_w2b_stats() is what makes the distinction, which is why
+     *  the shell prints both blocks side by side.
+     *------------------------------------------------------------------------*/
+
+    /** Arms performed while W2B was STILL HIGH -- i.e. we promised the 8711 a
+     *  live DMA before it had released the previous slot.  Phase 6 says we wait
+     *  for W2B low first, so a nonzero count here is the link running out of
+     *  step, not merely slow.  Expected to be 0 in steady state, and to be at
+     *  most 1 across a start() that pre-armed into an already-asserted W2B.   */
+    uint32_t arm_w2b_high;
+
+    /** Completions where W2B was ALREADY LOW when the RX ISR ran.  Per phase 5
+     *  the 8711 drops W2B only after observing our B2W fall, which happens
+     *  inside that same ISR -- so it should still be high here every time.  A
+     *  nonzero count means the 8711 released early, which makes its next rising
+     *  edge ambiguous: we cannot tell a new request from the tail of the old
+     *  one.  This is the counter that would confirm a lost-edge race.         */
+    uint32_t rxdone_w2b_low;
+
+    /** How long the last / worst wait for W2B to fall actually took.  The
+     *  healthy figure is single-digit microseconds (the edge arrives while we
+     *  are still in the 200 us busy-poll), so a jump to ~1000000 is the whole
+     *  timeout and means the edge never came at all.  Distinguishing "slow" from
+     *  "absent" is not possible from w2b_wait_to alone, which only counts the
+     *  outright timeouts.                                                     */
+    uint32_t w2b_fall_us_last;
+    uint32_t w2b_fall_us_max;
+
+    /** W2B level observed at the moment the transport pre-armed its first slot
+     *  and raised B2W, or -1 if it has not started yet.
+     *
+     *  1 here means the 8711 was already waiting on READY when we started --
+     *  the pre-arm in wifi_8711_xfer_start() then supplies a B2W rising edge
+     *  mid-request rather than at the start of a clean cycle, which is the
+     *  first thing to rule out when only the on-demand (AT submit) path fails
+     *  while the idle POLL path is fine.                                      */
+    int32_t  w2b_at_start;
+
+    /*------------------------------------------------------------------------*
+     *  Slot arrival cadence -- how often the 8711 actually comes to us
+     *
+     *  The 8711 owns the clock, so the interval between consecutive slot
+     *  completions IS its idle POLL rate; nothing on this side can change it.
+     *  It is measured rather than assumed because the assumed figure was wrong
+     *  in a way that broke a caller: sec.4.1 item 6 says ~2 s, and
+     *  WIFI_8711_AT_TIMEOUT_MS was sized as "four POLL periods" on that basis,
+     *  but an AT+WLSTATE reply was observed taking 10.3 s with only 2 POLLs
+     *  seen in the first 8 s -- i.e. the real interval is roughly double the
+     *  documented one, and every AT query timed out just before its perfectly
+     *  good answer landed.
+     *
+     *  Three readings, because they call for different fixes:
+     *    - min ~= max ~= 4 s      -> steady, just slower than documented; size
+     *                                every upper-layer deadline off THIS number
+     *    - min << max             -> the 8711 has other work competing with the
+     *                                idle poll; a deadline near the mean will
+     *                                fail intermittently, which is worse
+     *    - one huge max, rest fine -> a lost transaction, and then the handshake
+     *                                counters above are the place to look
+     *
+     *  A gap is only recorded between two slots, so the first completion after
+     *  start() sets the baseline and contributes nothing -- otherwise the whole
+     *  idle stretch since boot would be reported as one enormous interval.
+     *------------------------------------------------------------------------*/
+    uint32_t slot_gap_ms_last;  /**< since the previous completion             */
+    uint32_t slot_gap_ms_min;   /**< 0 until two slots have arrived            */
+    uint32_t slot_gap_ms_max;
+    uint32_t slot_gaps;         /**< intervals measured (= slots_ok - 1)       */
 } wifi_8711_xfer_stats_t;
 
 void wifi_8711_xfer_get_stats(wifi_8711_xfer_stats_t *out);
@@ -180,6 +262,25 @@ void wifi_8711_xfer_reset_stats(void);
  * @return bytes copied, or 0 if no slot has arrived yet
  */
 size_t wifi_8711_xfer_peek_rx(uint8_t *dst, size_t len);
+
+/**
+ * @brief  Hexdump the head of every slot received from the 8711 as it arrives.
+ *
+ * Prints EBADGE_HEXDUMP_DEFAULT bytes per slot, hex on the left and printable
+ * ASCII on the right, tagged [8711->8773].  This is the one place that sees
+ * every inbound slot regardless of magic, so it catches the ones the parsers
+ * reject -- which are exactly the ones worth looking at.
+ *
+ * Off by default, and deliberately a runtime switch rather than a compile-time
+ * one: the dump runs on the transport thread with B2W held low, so it delays
+ * the next ARM and back-pressures the peer.  That is harmless at the 2 s idle
+ * POLL rate and NOT harmless during a JPEG burst, where slots arrive every few
+ * ms -- being able to turn it off without a reflash is the point.
+ *
+ * @param  on  true to dump, false to stop
+ */
+void wifi_8711_xfer_set_rx_dump(bool on);
+bool wifi_8711_xfer_rx_dump(void);
 
 /*----------------------------------------------------------------------------*
  *  Test API

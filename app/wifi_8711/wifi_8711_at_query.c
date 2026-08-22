@@ -48,7 +48,13 @@ static void query_done(bool ok, const wifi_8711_ap_info_t *info, void *user)
                 (unsigned)((info->ip >> 16) & 0xFFU),
                 (unsigned)((info->ip >>  8) & 0xFFU),
                 (unsigned)(info->ip & 0xFFU));
-    EBADGE_LOG2("port=%u clients=%u", (unsigned)info->port,
+    /* Both ports, labelled by what they accept.  Printing one "port=" was fine
+     * while the struct had one field; it stopped being fine when the 8711 turned
+     * out to run two servers with incompatible admission rules, and a console
+     * that showed only one of them could not be used to check the other. */
+    EBADGE_LOG2("stream_port=%u (raw JPEG)  file_port=%u (EBXF)",
+                (unsigned)info->stream_port, (unsigned)info->file_port);
+    EBADGE_LOG2("channel=%u clients=%u", (unsigned)info->channel,
                 (unsigned)info->clients);
     EBADGE_LOG("---------------------------");
 }

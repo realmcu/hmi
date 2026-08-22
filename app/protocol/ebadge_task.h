@@ -71,8 +71,11 @@ int ebadge_task_post_call(ebadge_post_fn_t fn, void *arg);
 typedef void (*ebadge_tick_fn_t)(uint32_t now_ms);
 void ebadge_task_set_tick(ebadge_tick_fn_t fn);
 
-/** Number of tick sinks the fanout can hold (xfer_session, stream_session). */
-#define EBADGE_TICK_SINKS   4
+/** Number of tick sinks the fanout can hold.  Currently four are registered
+ *  (port_softap, xfer_session, stream_session, port_vbat), so this leaves
+ *  headroom -- a sink that does not fit is dropped with an error and whatever
+ *  it was driving silently stops, which is a bad way to find out. */
+#define EBADGE_TICK_SINKS   6
 
 /** Nominal tick period.  See xfer_session timeout constants. */
 #define EBADGE_TICK_MS   100

@@ -25,14 +25,14 @@
  * THE SECOND THING: THERE IS NO EBXF/EBXS HEADER ON THIS PATH EITHER
  * ---------------------------------------------------------------------------
  * §5.2 / §6.2 of the eBadge spec put a 40-byte EBXF header in front of a file
- * and a 14-byte EBXS header in front of every preview frame.  Neither can
- * reach this chip.  The 8711's server (firmware example tcp_jpg_spi_forwarder)
- * validates that every payload *is a JPEG* -- it checks the first two bytes are
- * FF D8 and the last two FF D9, and answers `ERR <seq> JPEG` otherwise
- * (phone-to-8711-jpeg-tcp-protocol.md sec.4 constraints and sec.6.2).  A
- * payload prefixed with "EBXF" fails that check at the TCP door and is never
- * forwarded, so a session waiting for those 40 bytes would parse FF D8.. as a
- * bad magic and fail every transfer.
+ * and a 14-byte EBXS header in front of every preview frame.  Neither can reach
+ * this chip *on this path*.  The 8711's preview server (firmware example
+ * tcp_jpg_spi_forwarder, port 5004) validates that every payload *is a JPEG* --
+ * it checks the first two bytes are FF D8 and the last two FF D9, and answers
+ * `ERR <seq> JPEG` otherwise (phone-to-8711-jpeg-tcp-protocol.md sec.4
+ * constraints and sec.6.2).  A payload prefixed with "EBXF" fails that check at
+ * the TCP door and is never forwarded, so a session waiting for those 40 bytes
+ * would parse FF D8.. as a bad magic and fail every transfer.
  *
  * That is why the two entry points used here are the *headerless* ones:
  *
@@ -45,17 +45,27 @@
  *
  * The EBXF/EBXS parsers are deliberately kept (xfer_session_on_tcp_data() /
  * stream_session_on_tcp_data()) because they are correct for the topology the
- * spec assumes, and a firmware that terminates TCP on this chip would need
- * them unchanged.  They simply have no caller today.
+ * spec assumes, and a firmware that terminates TCP on this chip would need them
+ * unchanged.  They simply have no caller today.
+ *
+ * SPI v2.2 note: the EBXF header does now reach the 8711 -- on the *other* port.
+ * Port 9000 accepts `EBXF + body`, and the 8711 re-frames it into EBFS slots
+ * that restate the whole identity per chunk.  That is ebfs_ingress.c's path, not
+ * this one, and it is where the §5.2 cross-check against the offer happens.
  *
  * ---------------------------------------------------------------------------
  * HOW A FILE AND A PREVIEW FRAME ARE TOLD APART -- BY SESSION, NOT BY WIRE
  * ---------------------------------------------------------------------------
- * There is no second slot magic and no per-slot "kind" field: JPGS is the only
- * payload slot type the 8711 emits (the other magic, ATMC, is the AT channel).
- * So the wire cannot say whether a frame is a wallpaper being stored or a
- * preview frame being displayed, and sniffing the content would be guessing --
- * doubly so now that both are guaranteed to be valid JPEGs.
+ * A JPGS slot carries frame geometry and nothing else: no name, no type, no
+ * whole-file CRC.  So the wire cannot say whether a frame is a wallpaper being
+ * stored or a preview frame being displayed, and sniffing the content would be
+ * guessing -- doubly so given both are guaranteed to be valid JPEGs.
+ *
+ * (EBFS, added in SPI v2.2, *can* say: it has its own magic and restates the
+ * identity per chunk.  A file uploaded on port 9000 therefore never reaches this
+ * file at all.  The routing below still admits JPGS-to-file because port 5004
+ * remains able to carry a bare-JPEG wallpaper, and a phone that has not moved to
+ * 9000 must keep working.)
  *
  * The answer is the same rule the EBXF and EBXS headers already used for their
  * shared "EBXF" magic: *whichever BLE offer opened the session decides*.

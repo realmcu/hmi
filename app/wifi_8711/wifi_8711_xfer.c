@@ -107,7 +107,18 @@ static bool     s_paused;
 static uint8_t  s_rx_idx;        /* half currently armed                     */
 static int      s_last_result;   /* result reported by the last completion   */
 
+/* Arrival time of the previous slot, for the cadence measurement.  Separate
+ * valid flag rather than a 0 sentinel: uptime 0 is a legitimate value, and more
+ * to the point the first completion has no predecessor to be measured against --
+ * without this the whole idle stretch since boot is reported as one interval. */
+static uint32_t s_last_slot_ms;
+static bool     s_last_slot_ms_valid;
+
 static wifi_8711_xfer_stats_t s_stats;
+
+/* Dump every inbound slot's head.  Off by default -- see
+ * wifi_8711_xfer_set_rx_dump() for why this is runtime and not compile-time. */
+static bool s_rx_dump;
 
 /* ATMC command sequence counter (sec.8: 32-bit, skips 0). */
 static uint32_t s_at_seq;
@@ -126,7 +137,49 @@ static void slot_done_cb(const struct device *dev, int result, void *data)
      * the slot -- a full queue must never leave B2W high with no DMA armed. */
     (void)wifi_8711_set_ready(false);
 
+    /* Sample W2B immediately after, while the 8711 has had no chance to react
+     * to the edge above.  Phase 5 has it releasing W2B only once it observes
+     * our B2W fall, so the level here should be 1 every single time; a 0 means
+     * it let go early and its next rising edge cannot be told apart from the
+     * tail of this one.  Read via the GPIO, which is ISR-safe, rather than
+     * inferred -- the whole point is to catch the case where the peer disagrees
+     * with the state machine we think we are running. */
+    if (wifi_8711_get_request() == 0)
+    {
+        s_stats.rxdone_w2b_low++;
+    }
+
     s_last_result = result;
+
+    /* Timestamp the arrival HERE, in the completion ISR, rather than in the
+     * transport thread.  What we are measuring is the 8711's own cadence, and
+     * the thread wakes only after the scheduler gets round to it -- at priority
+     * 5 with the GUI running that adds jitter of its own, which would be
+     * indistinguishable from jitter on the peer's side.
+     *
+     * Uptime in ms, not k_cycle_get_32(): the intervals here are seconds, and a
+     * 32-bit cycle counter wraps well inside a single idle stretch, which would
+     * turn a long gap into a bogusly short one.  10 ms tick granularity is
+     * irrelevant against a multi-second interval. */
+    uint32_t now = k_uptime_get_32();
+    if (s_last_slot_ms_valid)
+    {
+        uint32_t gap = now - s_last_slot_ms;
+
+        s_stats.slot_gap_ms_last = gap;
+        s_stats.slot_gaps++;
+        if (gap > s_stats.slot_gap_ms_max)
+        {
+            s_stats.slot_gap_ms_max = gap;
+        }
+        /* min starts unset rather than at 0, which would never be beaten. */
+        if (s_stats.slot_gap_ms_min == 0U || gap < s_stats.slot_gap_ms_min)
+        {
+            s_stats.slot_gap_ms_min = gap;
+        }
+    }
+    s_last_slot_ms       = now;
+    s_last_slot_ms_valid = true;
 
     /* Slave success is reported as the received frame count, not 0
      * (spi_context.h:194-199).  Anything short means the 8711 clocked fewer
@@ -191,6 +244,18 @@ static int arm_slot(void)
      * case the rising edge is its to give, not ours. */
     if (!s_paused)
     {
+        /* Sample W2B before the edge, not after: this is the "are we in phase"
+         * question.  Phase 6 has us waiting for W2B low before re-arming, so a
+         * high level here means we are about to promise READY while the 8711
+         * still considers the previous slot outstanding -- exactly the shape of
+         * a link that has slipped a phase and then wedges for 1000 ms at a
+         * time.  Counted rather than logged: on a slipped link every slot hits
+         * it, and a line per slot would bury the surrounding evidence. */
+        if (wifi_8711_get_request() == 1)
+        {
+            s_stats.arm_w2b_high++;
+        }
+
         rc = wifi_8711_set_ready(true);
         if (rc != 0)
         {
@@ -249,36 +314,99 @@ static void arm_slot_retry(void)
  *  every case without the cross-module ISR plumbing a semaphore handoff would
  *  need; and the slow path only runs when the link is already misbehaving.
  *  The interrupt in wifi_8711.c stays as the edge counter for diagnosis.
+ *
+ *  The elapsed time is recorded even on success, because "the edge came but
+ *  late" and "the edge never came" need different fixes and w2b_wait_to alone
+ *  cannot separate them -- it only counts the outright timeouts.
+ *
+ *  MEASURED with the cycle counter, and the deadline enforced against it too,
+ *  rather than counting k_msleep(1) iterations.  CONFIG_SYS_CLOCK_TICKS_PER_SEC
+ *  is 100 on this board and CONFIG_TICKLESS_KERNEL is off, so a 1 ms sleep
+ *  actually parks until the next 10 ms tick.  Inferring the elapsed time from
+ *  the loop index therefore under-reports it by up to 10x, and -- worse -- a
+ *  loop of W2B_LOW_TIMEOUT_MS such sleeps runs for ~10 s, not the 1 s the name
+ *  promises.  Both of those were live bugs found by this instrumentation.
  *----------------------------------------------------------------------------*/
+
+/** Below this, "late" is just tick granularity and not worth a line.  One tick
+ *  is 10 ms here, so anything under a few ticks says nothing about the peer. */
+#define W2B_FALL_WARN_US   50000U
+
+static inline uint32_t elapsed_us(uint32_t t0_cyc)
+{
+    /* Unsigned wrap is correct and intentional: the counter is 32-bit and the
+     * windows here are at most a second, far short of its period. */
+    return k_cyc_to_us_floor32(k_cycle_get_32() - t0_cyc);
+}
+
+static void note_fall_time(uint32_t us)
+{
+    s_stats.w2b_fall_us_last = us;
+    if (us > s_stats.w2b_fall_us_max)
+    {
+        s_stats.w2b_fall_us_max = us;
+    }
+}
+
 static bool wait_w2b_low(void)
 {
+    uint32_t t0 = k_cycle_get_32();
+
     if (wifi_8711_get_request() == 0)
     {
+        note_fall_time(0U);
         return true;
     }
 
-    for (uint32_t spun = 0; spun < SLOT_WAIT_SPIN_US; spun += 10U)
+    while (elapsed_us(t0) < SLOT_WAIT_SPIN_US)
     {
         k_busy_wait(10);
         if (wifi_8711_get_request() == 0)
         {
+            note_fall_time(elapsed_us(t0));
             return true;
         }
     }
 
-    for (uint32_t ms = 0; ms < W2B_LOW_TIMEOUT_MS; ms++)
+    while (elapsed_us(t0) < W2B_LOW_TIMEOUT_MS * 1000U)
     {
         k_msleep(1);
         if (wifi_8711_get_request() == 0)
         {
+            uint32_t us = elapsed_us(t0);
+            note_fall_time(us);
+            if (us >= W2B_FALL_WARN_US)
+            {
+                /* Genuinely slow, not quantisation.  The precursor to the
+                 * timeout below rather than a separate fault, so it is worth a
+                 * line -- but only past the threshold, otherwise every single
+                 * slot logs and the surrounding evidence is buried. */
+                EBADGE_WARN1("wifi8711 xfer: W2B fell late, after %u us",
+                             (unsigned)us);
+            }
             return true;
         }
     }
 
-    /* sec.3.2: the 8711 gives up after 1000 ms too.  Do not force a slot
-     * through -- carry on to the next ARM and let the counter show it. */
+    note_fall_time(elapsed_us(t0));
     s_stats.w2b_wait_to++;
-    EBADGE_WARN("wifi8711 xfer: W2B stuck high, re-arming anyway");
+
+    /* sec.3.2: the 8711 gives up after 1000 ms too.  Do not force a slot
+     * through -- carry on to the next ARM and let the counter show it.
+     *
+     * Dump the surrounding state rather than just the fact: which side stopped
+     * driving is not deducible from "stuck high" alone.  The edge counts are the
+     * discriminator -- rising == falling + 1 and frozen means the 8711 asserted
+     * and never released, while rising == falling means we are reading a level
+     * that already toggled and the poll simply missed it. */
+    uint32_t rising = 0U, falling = 0U;
+    wifi_8711_get_w2b_stats(&rising, &falling);
+    EBADGE_WARN2("wifi8711 xfer: W2B stuck high %u us, re-arming anyway (x%u)",
+                 (unsigned)s_stats.w2b_fall_us_last, (unsigned)s_stats.w2b_wait_to);
+    EBADGE_WARN2("wifi8711 xfer:   w2b edges rising=%u falling=%u",
+                 (unsigned)rising, (unsigned)falling);
+    EBADGE_WARN2("wifi8711 xfer:   b2w=%d arms=%u",
+                 wifi_8711_get_ready(), (unsigned)s_stats.arms);
     return false;
 }
 
@@ -326,6 +454,16 @@ static void xfer_thread_fn(void *a, void *b, void *c)
                 s_stats.rx_nonzero++;
             }
 
+            /* Before the sink, so the bytes are on the console even when the
+             * parser below rejects them -- a slot that fails its magic or CRC
+             * check is exactly the one worth seeing, and after the sink it may
+             * already have been dropped with nothing but a counter to show. */
+            if (s_rx_dump)
+            {
+                ebadge_log_hexdump(EB_DIR_FROM_8711 "slot", slot_rx[done_idx],
+                                   WIFI_8711_SLOT_SIZE, EBADGE_HEXDUMP_DEFAULT);
+            }
+
             /* Deliver before waiting on W2B: the sink may want to start work
              * immediately, and B2W is already low so the 8711 is not blocked
              * on us for anything except the next ARM. */
@@ -370,7 +508,11 @@ int wifi_8711_xfer_start(wifi_8711_slot_cb_t cb)
     s_sink   = cb;
     s_rx_idx = 0U;
     s_paused = false;
+    s_last_slot_ms_valid = false;
     memset(&s_stats, 0, sizeof(s_stats));
+    /* Not left at the memset's 0: that reads as "W2B was low at start", which is
+     * the healthy case and the opposite of what a 0 would actually mean here. */
+    s_stats.w2b_at_start = -1;
 
     memset(slot_tx, 0, sizeof(slot_tx));
 
@@ -394,6 +536,19 @@ int wifi_8711_xfer_start(wifi_8711_slot_cb_t cb)
      *
      * Not arm_slot_retry(): with no thread yet there is nobody to be deadlocked,
      * so a failure here is better reported to the caller than retried silently. */
+    s_stats.w2b_at_start = wifi_8711_get_request();
+    if (s_stats.w2b_at_start == 1)
+    {
+        /* The 8711 is mid-request already: it raised W2B and is counting down its
+         * 1000 ms READY timeout (sec.3.2).  Our B2W rising edge is about to land
+         * inside that window rather than at the head of a clean cycle, which is
+         * legal -- that edge is exactly what it is waiting for -- but it also
+         * means slot one runs with no idea how much of the 8711's timeout is
+         * already spent.  Logged because it is the first thing to rule out when
+         * the on-demand AT path fails while the idle POLL path is fine. */
+        EBADGE_WARN("wifi8711 xfer: W2B already high at start -- pre-arming into "
+                    "a request the 8711 has already made");
+    }
     rc = arm_slot();
     if (rc != 0)
     {
@@ -488,7 +643,19 @@ void wifi_8711_xfer_get_stats(wifi_8711_xfer_stats_t *out)
 
 void wifi_8711_xfer_reset_stats(void)
 {
+    /* Sampled before the wipe: it describes how the transport started, not
+     * anything that has happened since, so a reset must not lose it.  Zeroing
+     * it would read as "W2B was low at start" -- the healthy case, and a lie. */
+    int32_t at_start = s_started ? s_stats.w2b_at_start : -1;
+
     memset(&s_stats, 0, sizeof(s_stats));
+    s_stats.w2b_at_start = at_start;
+
+    /* Drop the cadence baseline too, so the first interval after a reset is a
+     * real slot-to-slot gap rather than the whole stretch since the last slot
+     * before it -- which on an idle link would be reported as a huge max and
+     * read as a lost transaction. */
+    s_last_slot_ms_valid = false;
 }
 
 size_t wifi_8711_xfer_peek_rx(uint8_t *dst, size_t len)
@@ -508,6 +675,18 @@ size_t wifi_8711_xfer_peek_rx(uint8_t *dst, size_t len)
     /* s_rx_idx has already flipped, so the last completed half is the other. */
     memcpy(dst, slot_rx[s_rx_idx ^ 1U], len);
     return len;
+}
+
+void wifi_8711_xfer_set_rx_dump(bool on)
+{
+    /* A plain bool store, no lock: the transport thread only reads it, and the
+     * worst a race can do is dump or skip one more slot than asked for. */
+    s_rx_dump = on;
+}
+
+bool wifi_8711_xfer_rx_dump(void)
+{
+    return s_rx_dump;
 }
 
 /*----------------------------------------------------------------------------*

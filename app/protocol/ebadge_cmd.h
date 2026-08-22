@@ -281,25 +281,31 @@ extern "C" {
 #define EB_DBG_SUB_PING         0x02    /* no-op liveness check, acks SUCCEED  */
 #define EB_DBG_SUB_WIFI_START_AP 0x03   /* 8711 AT+WLSTARTAP, reply -> log     */
 
-/** 0x04 / 0x05 -- the reserved Wi-Fi data tunnel, one subcmd per direction.
+/** 0x04 / 0x05 -- the two transfer-control AT commands, on the wire by hand.
  *
- *  0x04 RX polls the 8711 for data that arrived over Wi-Fi; the message is
- *  printed to the device log, not returned over BLE.  Takes no argument.
+ *  These numbers used to be a reserved Wi-Fi data tunnel (AT+WLRECV /
+ *  AT+WLSEND), which no 8711 firmware ever implemented.  SPI protocol v2.2
+ *  replaced that pair with AT+XFERSTOP / AT+XFERACK -- real commands with real
+ *  firmware behind them -- so the subcmd numbers were reused rather than left
+ *  pointing at something that always answered "[AT]:ERROR".  Nothing had shipped
+ *  against the old meaning, because it never worked.
  *
- *  0x05 TX sends the VALUE TLV's bytes out over Wi-Fi, which is the one subcmd
- *  that actually uses the reserved argument the frame has always carried.  With
- *  no VALUE, or an empty one, it is rejected -- "send nothing" is a mistake, not
- *  a request.  EB_DBG_VALUE_MAX (32) is below the tunnel's own 56 B cap, so the
- *  TLV is the binding limit here and no length can overflow the AT framing.
+ *  0x04 STOP takes no argument: it shuts the current file TCP connection down
+ *  immediately and no EBXR is generated (v2.2 sec.10.4).
  *
- *  NEITHER WORKS AGAINST CURRENT 8711 FIRMWARE.  Its AT parser knows only
- *  WLSTATE and WLSTARTAP and answers "[AT]:ERROR" to anything else (vendor spec
- *  sec.7.3), so both answer SUCCEED for the staging and then log the rejection
- *  2..4 s later.  After the first rejection the tunnel latches itself off and
- *  these return NOT_READY without going on the wire -- see
- *  wifi_8711/wifi_8711_at_data.h.                                            */
-#define EB_DBG_SUB_WIFI_DATA_RX 0x04    /* 8711 AT+WLRECV, reply -> log        */
-#define EB_DBG_SUB_WIFI_DATA_TX 0x05    /* 8711 AT+WLSEND=<hex of VALUE TLV>   */
+ *  0x05 ACK is the one subcmd that uses the VALUE TLV: byte 0 is status
+ *  (0 = fail, 1 = success) and byte 1, if present, is the eBadge sec.2.6 reason
+ *  code.  The 8711 builds the EBXR from those two bytes and closes the
+ *  connection (v2.2 sec.10.3).  Success with a non-zero reason is refused here
+ *  rather than passed on, because the spec requires reason == 0 on success.
+ *
+ *  Both answer "[AT]:ERROR" -- surfacing as FAILED in the log a few seconds
+ *  later -- when there is no active file connection to act on, which is the
+ *  normal outcome of poking these with no upload in flight.  They exist for a
+ *  human verifying the 8711 end of sec.10 without needing a phone; the firmware
+ *  itself sends both from xfer_session by way of ebadge_port_tcp.               */
+#define EB_DBG_SUB_XFER_STOP    0x04    /* 8711 AT+XFERSTOP, no argument       */
+#define EB_DBG_SUB_XFER_ACK     0x05    /* 8711 AT+XFERACK=<status>,<reason>   */
 
 /*----------------------------------------------------------------------------*
  *  File type enum  (spec §2.7) -- shared by SEND_FILE, XFER_OFFER,

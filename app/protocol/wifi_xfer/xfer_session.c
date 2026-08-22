@@ -13,7 +13,8 @@
  * The state machine is driven by:
  *   - BLE handlers (offer, which now auto-resolves user_decision)
  *   - port_softap callback (on_sta_joined)
- *   - port_tcp callback (on_data, on_close)
+ *   - ebfs_ingress (on_payload, check_identity) -- the live data path
+ *   - port_tcp callback (on_data, on_close) -- only with a real socket
  *   - ebadge_task tick (~100ms) -- for the four timeouts above
  *
  * All callbacks from other threads MUST be marshalled via
@@ -21,6 +22,25 @@
  *
  * Progress throttling (PROT-001 §4.10):  emit 0x14 PROGRESS at least every
  * 200ms OR at each new 5% boundary, whichever comes first.
+ *
+ * ---------------------------------------------------------------------------
+ * THREE WAYS A SESSION ENDS, AND WHY THEY ARE NOT ONE FUNCTION
+ * ---------------------------------------------------------------------------
+ * Since SPI protocol v2.2 the data plane distinguishes "here is the result" from
+ * "stop sending", so this file does too:
+ *
+ *   success        ack(ok) then close.  Only after CRC and flash commit both
+ *                  pass -- that is what makes the result true.
+ *   fail_and_reset ack(fail, reason) then close.  For a verdict reached on a
+ *                  complete transfer: bad CRC, storage refused the commit,
+ *                  a deadline expired.
+ *   abort_and_reset cut the stream, no verdict.  For when receiving the rest is
+ *                  pointless: the two planes disagree about which file this is,
+ *                  or the session is being torn down under us.
+ *
+ * The middle one is not a special case of the last: a phone that gets a coded
+ * failure can tell the user why, whereas one whose connection is simply cut
+ * cannot -- so the verdict is worth sending whenever there is one to send.
  */
 #include <string.h>
 #include <stdlib.h>
@@ -31,6 +51,7 @@
 #include "xfer_notify.h"
 #include "ebxf_frame.h"
 #include "jpgs_ingress.h"
+#include "ebfs_ingress.h"
 
 #include "../ebadge_cmd.h"
 #include "../ebadge_l2.h"
@@ -50,20 +71,30 @@
 #define XS_RECV_IDLE_MS     120000u
 #define XS_OVERALL_MS       180000u
 
-/* The TCP port is NOT ours to choose -- the 8711 runs the server and reports
- * the port in its WLSTATE reply (5004 in practice).  EB_AP_DEFAULT_PORT is kept
- * out of this file deliberately so nobody reintroduces a hardcoded one. */
+/* The TCP port is NOT ours to choose -- the 8711 runs the server and reports the
+ * upload port in its WLSTATE reply (9000 in practice; 5004 is the separate
+ * preview port).  EB_AP_DEFAULT_PORT is kept out of this file deliberately so
+ * nobody reintroduces a hardcoded one. */
 #define XS_PROGRESS_MS         200
 #define XS_PROGRESS_STEP_PCT     5
 
-/* Largest file the data plane can carry, in bytes.
+/* Largest file the upload data plane can carry, in bytes.
  *
- * Deliberately a literal rather than WIFI_8711_JPEG_FRAME_MAX: that macro lives
- * behind CONFIG_WIFI_8711 in the driver header, and this file is transport
- * agnostic on purpose (it also serves the 0x02 BLE path).  The number is the
- * 8711 server's TCP_JPG_MAX_FRAME_SIZE, which is the same 60 KiB the JPGS
- * transport asserts -- see the check in xfer_session_offer(). */
-#define XS_MAX_FILE_SIZE     61440u
+ * 2 MiB is the 8711's port-9000 single-file cap (SPI spec v2.2 §6), and the BLE
+ * spec's §8.3 suggests the same figure pending a final value.
+ *
+ * This used to be 61440, which was a real limit copied from the wrong channel:
+ * 60 KiB is the *frame* cap on the preview port 5004, where a whole JPEG crosses
+ * as one frame.  A file on port 9000 is fragmented into EBFS slots by the 8711
+ * and has no such ceiling, so the old value refused ordinary wallpapers with
+ * TOO_LARGE.  The two caps must stay distinct -- see WIFI_8711_FILE_SIZE_MAX
+ * and WIFI_8711_JPEG_FRAME_MAX.
+ *
+ * Deliberately a literal rather than the driver macro: that one lives behind
+ * CONFIG_WIFI_8711 and this file is transport agnostic on purpose (it also
+ * serves the 0x02 BLE path).  A BUILD_ASSERT would be better but would drag the
+ * driver header in; the comment above is the contract. */
+#define XS_MAX_FILE_SIZE     (2u * 1024u * 1024u)
 
 /*----------------------------------------------------------------------------*
  *  Session state  (l2_task-owned; no locking)
@@ -187,10 +218,12 @@ static void tear_down_data_plane(void)
         (void)ebadge_port_softap_stop();
     }
     (void)ebadge_port_tcp_close();
-    /* Drop any half-reassembled JPGS frame too.  The 8711 may well be mid-frame
-     * when we give up, and leftover chunks measured against a frame this session
-     * never started would make the *next* transfer's first frame look corrupt. */
+    /* Drop any half-reassembled frame or file too.  The 8711 may well be
+     * mid-transfer when we give up, and leftover chunks measured against
+     * something this session never started would make the *next* transfer's
+     * first slot look corrupt. */
     jpgs_ingress_reset();
+    ebfs_ingress_reset();
     if (s_x.wp_handle > 0)
     {
         (void)ebadge_port_storage_wp_abort(s_x.wp_handle);
@@ -198,14 +231,45 @@ static void tear_down_data_plane(void)
     }
 }
 
+/**
+ * Fail the session, reporting the reason on both planes.
+ *
+ * The data plane gets a verdict (spec §5.3: status=failure plus the §2.6 reason,
+ * which the 8711 turns into an EBXR), and BLE gets the 0x16 XFER_FAIL carrying
+ * the same byte -- so the App sees one code whichever plane it is watching.  BLE
+ * remains the authoritative one; the TCP result is what lets the phone stop
+ * early instead of waiting out a timeout.
+ *
+ * Note the ordering: the verdict goes out BEFORE tear_down_data_plane() closes
+ * our side.  Reversed, the ack would be staged against a connection we had
+ * already disarmed and port_tcp would refuse to send it.
+ */
 static void fail_and_reset(uint8_t reason, const char *detail)
 {
-    /* Nack over TCP if the link is still up.  EBXR carries the same §2.6
-     * reason byte as the BLE 0x16 FAIL, so the App sees one code on both
-     * planes -- and status 0x00 is FAILURE per spec §5.3.                 */
-    uint8_t ack[EBXR_LEN];
-    ebxr_pack(ack, EBXR_STATUS_FAILED, reason);
-    (void)ebadge_port_tcp_send(ack, EBXR_LEN);
+    (void)ebadge_port_tcp_ack(false, reason);
+
+    tear_down_data_plane();
+    emit_fail(reason, detail);
+    reset_ctx();
+}
+
+/**
+ * Fail the session and CUT the stream, with no verdict on the data plane.
+ *
+ * For the cases where continuing to receive is pointless and the inbound bytes
+ * are only costing time and flash writes -- chiefly a data-plane header that
+ * contradicts the BLE offer, which no later byte can reconcile.  The distinction
+ * from fail_and_reset() is deliberate and is the one the transport draws too
+ * (AT+XFERSTOP vs AT+XFERACK): "stop sending" is a different request from "here
+ * is the result", and a stream is often worth stopping before there is any
+ * result to report.
+ *
+ * The App learns the reason from the 0x16 below, which is the plane it is
+ * required to believe anyway.
+ */
+static void abort_and_reset(uint8_t reason, const char *detail)
+{
+    (void)ebadge_port_tcp_abort();
 
     tear_down_data_plane();
     emit_fail(reason, detail);
@@ -380,20 +444,16 @@ void xfer_session_offer(const char *name, uint8_t file_type,
 
     /* Single-file cap imposed by the transport, not by our storage.
      *
-     * The file crosses the 8711 as ONE "JPG <size> <seq>" frame, and that
-     * server rejects any size above TCP_JPG_MAX_FRAME_SIZE == 61440 with
-     * `ERR HEADER` (phone-to-8711-jpeg-tcp-protocol.md sec.4).  Accepting a
-     * larger offer would bring the AP up, have the phone refused at the TCP
-     * door, and then fail on the 120s idle deadline with IO_TIMEOUT -- a
-     * misleading answer to a limit we can state immediately.
-     *
-     * This is also why the App is expected to downscale before offering: the
-     * cap is on the JPEG the phone sends, not on what BF could store. */
+     * The 8711's port-9000 entry accepts at most 2 MiB per file (SPI spec §6).
+     * Answering immediately is better than accepting: an oversized offer would
+     * otherwise bring the AP up, have the phone refused or truncated at the
+     * upload port, and then fail on the idle deadline with IO_TIMEOUT -- a
+     * misleading answer to a limit we can state up front. */
     if (size > XS_MAX_FILE_SIZE)
     {
         EBADGE_WARN2("offer: size=%u > %u -> XFER_FAIL TOO_LARGE",
                      (unsigned)size, (unsigned)XS_MAX_FILE_SIZE);
-        emit_fail(EB_XFER_ERR_TOO_LARGE, "over 60KiB frame cap");
+        emit_fail(EB_XFER_ERR_TOO_LARGE, "over 2MiB file cap");
         return;
     }
 
@@ -480,7 +540,11 @@ void xfer_session_user_decision(bool accept)
      * exist.  See ebadge_port_softap.h. */
     ebadge_softap_info_t info;
     uint16_t             tcp_port = 0;
-    int rc = ebadge_port_softap_start(&info, &tcp_port,
+    /* EBADGE_AP_PORT_FILE, because this session sends an EBXF header + body: the
+     * 8711 only accepts that shape on FILE_PORT= (9000).  Naming the role rather
+     * than taking "the port" is what stops this from being handed 5004, which
+     * accepts bare JPEG and silently discards everything else. */
+    int rc = ebadge_port_softap_start(&info, EBADGE_AP_PORT_FILE, &tcp_port,
                                       on_softap_joined_from_driver);
     if (rc != 0)
     {
@@ -512,8 +576,10 @@ void xfer_session_user_decision(bool accept)
     }
 
     /* Emit AP_INFO so the App can associate. */
-    EBADGE_LOG2("xfer: -> AP_INFO ssid=\"%s\" tcp_port=%d",
-                info.ssid, (int)tcp_port);
+    /* Emit AP_INFO so the App can associate.  Only the "which session" is logged
+     * here -- eb_emit_ap_info() prints the values it actually sends, and having
+     * two logs of the same fields is how a reader ends up trusting the stale one. */
+    EBADGE_LOG("xfer: emitting AP_INFO (file transfer -> the file port)");
     emit_ap_info(&info);
 
     s_x.state         = XFER_SESSION_WAIT_STA;
@@ -587,7 +653,18 @@ void xfer_session_on_payload(const uint8_t *data, uint16_t len)
     {
         s_x.state = XFER_SESSION_COMPLETING;
 
-        /* CRC verify. */
+        /* Length first, then CRC.  An overrun is its own fault and worth naming
+         * separately: a CRC mismatch says "the bytes are wrong", an overrun says
+         * "the sender disagrees with the offer about how many there are", and the
+         * second is the more useful thing to see in a log. */
+        if (s_x.bytes_recv != s_x.size)
+        {
+            EBADGE_ERR2("xfer: length mismatch got=%u exp=%u",
+                        (unsigned)s_x.bytes_recv, (unsigned)s_x.size);
+            fail_and_reset(EB_XFER_ERR_VERIFY, "length");
+            return;
+        }
+
         if (s_x.crc32_running != s_x.crc32_expected)
         {
             EBADGE_ERR2("xfer: CRC mismatch got=0x%08x exp=0x%08x",
@@ -599,7 +676,12 @@ void xfer_session_on_payload(const uint8_t *data, uint16_t len)
         uint16_t file_id = 0;
         /* Commit only now, with the verified CRC: the compare above is what
          * makes this the "verification passed" path, and commit is the point of
-         * no return. */
+         * no return.
+         *
+         * This is also the slowest thing between the last slot and the ack, and
+         * the ack has a deadline -- the 8711 holds the connection for 120 s and
+         * then closes it with no result at all (SPI spec §6.3).  Anything added
+         * here eats into that window. */
         int crc_rc = ebadge_port_storage_wp_commit(s_x.wp_handle,
                                                    s_x.crc32_running, &file_id);
         s_x.wp_handle = 0;
@@ -608,22 +690,97 @@ void xfer_session_on_payload(const uint8_t *data, uint16_t len)
             fail_and_reset(EB_XFER_ERR_STORAGE_FULL, "wp_commit");
             return;
         }
-        /* Send EBXR ok, then tear down the data plane.  status=0x01 is SUCCESS
-         * and reason is 0 on success (spec §5.3).  The ack rides the reserved AT
-         * tunnel rather than a socket -- see ebadge_port_tcp.c.             */
-        uint8_t ack[EBXR_LEN];
-        ebxr_pack(ack, EBXR_STATUS_OK, 0);
-        (void)ebadge_port_tcp_send(ack, EBXR_LEN);
+
+        /* Report success to the data plane, THEN close.  Same ordering reason as
+         * in fail_and_reset(): the transport delivers the result on the live
+         * connection and closes it itself, so disarming first would throw the
+         * result away.  This is the point at which the phone is told the upload
+         * worked -- and per spec §6.3 it is only sound here, after both the CRC
+         * compare and the flash commit have succeeded. */
+        (void)ebadge_port_tcp_ack(true, 0);
         (void)ebadge_port_tcp_close();
         (void)ebadge_port_softap_stop();
-        /* Same reason as in tear_down_data_plane(): the last frame ended exactly
+        /* Same reason as in tear_down_data_plane(): the last chunk ended exactly
          * on the file's last byte, but the 8711 may still push a stray slot. */
         jpgs_ingress_reset();
+        ebfs_ingress_reset();
 
-        /* 0x15 DONE is authoritative for the App, not the EBXR above.     */
+        /* 0x15 DONE is authoritative for the App, not the data-plane result
+         * above (spec §5.3 is explicit that TCP status does not replace it). */
         emit_done(file_id);
         reset_ctx();
     }
+}
+
+/*----------------------------------------------------------------------------*
+ *  Cross-plane identity check (spec §5.2 rule 3)
+ *
+ *  The BLE offer and the data-plane header both describe the file.  They are
+ *  required to agree, and when they do not the honest reading is not "corrupt
+ *  data" but "these are two different files" -- so no amount of further
+ *  receiving can resolve it, and the right response is to stop rather than to
+ *  keep writing bytes we have already decided to discard.
+ *
+ *  Hence abort_and_reset(): cut the stream, no verdict on the wire, reason over
+ *  BLE.  Compare the CRC failure at the end of the file, which uses
+ *  fail_and_reset() because by then there IS a result to report.
+ *----------------------------------------------------------------------------*/
+bool xfer_session_check_identity(uint32_t size, uint32_t crc32,
+                                 uint8_t file_type, const char *name)
+{
+    if (s_x.state != XFER_SESSION_RECV)
+    {
+        /* Nothing offered this file.  Refusing rather than adopting it: a file
+         * we have no offer for has no name we trust, no size to check against
+         * and nowhere to put it. */
+        EBADGE_WARN1("xfer: identity check with no session (state=%d)",
+                     (int)s_x.state);
+        return false;
+    }
+
+    if (size != s_x.size)
+    {
+        EBADGE_WARN2("xfer: size mismatch data=%u offer=%u",
+                     (unsigned)size, (unsigned)s_x.size);
+        abort_and_reset(EB_XFER_ERR_VERIFY, "size mismatch");
+        return false;
+    }
+    if (crc32 != s_x.crc32_expected)
+    {
+        EBADGE_WARN2("xfer: crc32 mismatch data=0x%08x offer=0x%08x",
+                     crc32, s_x.crc32_expected);
+        abort_and_reset(EB_XFER_ERR_VERIFY, "crc mismatch");
+        return false;
+    }
+    if (file_type != s_x.file_type)
+    {
+        /* The 8711 passes the type byte through without interpreting it (SPI
+         * spec §6), so this comparison is the only place it is checked against
+         * anything at all. */
+        EBADGE_WARN2("xfer: file_type mismatch data=0x%02x offer=0x%02x",
+                     (unsigned)file_type, (unsigned)s_x.file_type);
+        abort_and_reset(EB_XFER_ERR_FMT_UNSUPPORTED, "type mismatch");
+        return false;
+    }
+
+    /* Name is compared only when the data plane supplies one.  §5.2 requires it
+     * to match, but a transport that does not carry a name (the 0x02 BLE path)
+     * is not violating anything by omitting it -- and the offer's name is the one
+     * we store under either way, so a missing name costs nothing.
+     *
+     * An empty string counts as absent: it cannot legitimately match the offer's
+     * name, and treating "" as a mismatch would fail transfers over a field the
+     * sender simply left blank. */
+    if (name != NULL && name[0] != '\0' &&
+        strncmp(name, s_x.name, sizeof(s_x.name) - 1U) != 0)
+    {
+        EBADGE_WARN2("xfer: name mismatch data=\"%s\" offer=\"%s\"",
+                     name, s_x.name);
+        abort_and_reset(EB_XFER_ERR_VERIFY, "name mismatch");
+        return false;
+    }
+
+    return true;
 }
 
 void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len)
@@ -666,20 +823,18 @@ void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len)
         if (ebxf_hdr_parse(s_x.ebxf_hdr, &hdr) != 0)
         {
             /* Unrecoverable: everything after this point is body payload, so
-             * there is no byte pattern to resynchronise on. */
+             * there is no byte pattern to resynchronise on.  Cut the stream --
+             * a sender we cannot parse is not one to keep listening to. */
             EBADGE_ERR("xfer: bad EBXF magic/version");
-            fail_and_reset(EB_XFER_ERR_VERIFY, "ebxf magic");
+            abort_and_reset(EB_XFER_ERR_VERIFY, "ebxf magic");
             return;
         }
-        /* Spec §5.2: the header must restate the offer's size / type / crc.
-         * Any disagreement means the two planes describe different files,
-         * which is a verification failure (§2.6 0x09).                    */
-        if (hdr.file_size != s_x.size || hdr.file_type != s_x.file_type ||
-            hdr.crc32     != s_x.crc32_expected)
+        /* Spec §5.2 rule 3, via the shared check so this path and the EBFS one
+         * cannot drift apart.  It tears the session down on mismatch, so there
+         * is nothing to do here but stop. */
+        if (!xfer_session_check_identity(hdr.file_size, hdr.crc32,
+                                         hdr.file_type, hdr.file_name))
         {
-            EBADGE_WARN2("xfer: EBXF mismatch size=%u type=%d",
-                         hdr.file_size, hdr.file_type);
-            fail_and_reset(EB_XFER_ERR_VERIFY, "ebxf mismatch");
             return;
         }
         s_x.ebxf_seen = true;
@@ -710,6 +865,11 @@ void xfer_session_abort(void)
         return;
     }
     EBADGE_LOG("xfer: abort");
+    /* Cut the stream before tearing down.  Without this the 8711 would keep
+     * forwarding slots for a session that no longer exists -- they would be
+     * dropped as unrouted, but only after each one has occupied the SPI link and
+     * back-pressured a phone that is still uploading. */
+    (void)ebadge_port_tcp_abort();
     tear_down_data_plane();
     /* No notify -- the BLE link is probably gone (we are called from
      * the disconnect hook).  A subsequent OFFER will start fresh.        */

@@ -38,9 +38,11 @@
 #include <errno.h>
 #include "wifi_8711.h"
 #include "wifi_8711_xfer.h"
+#include "wifi_8711_at.h"     /* WIFI_8711_AT_TIMEOUT_MS, for the margin check */
 #include "wifi_8711_at_query.h"
-#include "wifi_8711_at_data.h"
+#include "wifi_8711_at_xfer.h"
 #include "spi_at_protocol.h"
+#include "../protocol/ebadge_log.h"   /* EBADGE_HEXDUMP_DEFAULT, for the banner */
 
 #define RES_NODE  DT_NODELABEL(wifi_8711_resources)
 #define SPI_NODE  DT_NODELABEL(spi0_slave)
@@ -262,6 +264,94 @@ static int cmd_stats(const struct shell *sh, size_t argc, char **argv)
     {
         shell_warn(sh, "slots complete but RX is all zero -> check MOSI wiring");
     }
+
+    /*------------------------------------------------------------------------*
+     *  Handshake phases (sec.3.1 phases 4..6)
+     *
+     *  Printed together with the W2B edge counts on purpose: neither block
+     *  identifies a phase slip on its own.  The 8711 reports every one of these
+     *  as the same "READY timeout after 1000 ms", so the whole point of this
+     *  section is to say WHICH of them is happening.
+     *------------------------------------------------------------------------*/
+    uint32_t rising = 0U, falling = 0U;
+    wifi_8711_get_w2b_stats(&rising, &falling);
+
+    shell_print(sh, "--- handshake ---");
+    shell_print(sh, "w2b edges   : rising=%u falling=%u",
+                (unsigned)rising, (unsigned)falling);
+    shell_print(sh, "w2b_at_start: %d  (1 = 8711 was already requesting)",
+                (int)st.w2b_at_start);
+    shell_print(sh, "arm_w2b_high: %u  (armed while W2B still high -> phase slip)",
+                (unsigned)st.arm_w2b_high);
+    shell_print(sh, "rxdone_w2b_l: %u  (W2B already low in RX ISR -> early release)",
+                (unsigned)st.rxdone_w2b_low);
+    /* Both, not just the max: last says whether it is happening right now, max
+     * says whether it ever did.  A max of ~1000200 is a timeout, not slowness. */
+    shell_print(sh, "w2b_fall_us : last=%u max=%u  (healthy: single digits)",
+                (unsigned)st.w2b_fall_us_last, (unsigned)st.w2b_fall_us_max);
+
+    /* The three readings the 8711's single log line cannot distinguish. */
+    if (st.arms == 0U)
+    {
+        shell_warn(sh, "never armed -> B2W never rose; the 8711 will READY-timeout");
+    }
+    else if (st.arm_w2b_high > 1U)
+    {
+        shell_warn(sh, "arm_w2b_high > 1 -> we keep promising READY while the 8711"
+                   " still holds the previous slot open (out of phase)");
+    }
+    if (st.w2b_wait_to != 0U && rising == falling + 1U)
+    {
+        shell_warn(sh, "W2B asserted and never released -> the 8711 is stuck, not us");
+    }
+    if (st.rxdone_w2b_low != 0U)
+    {
+        shell_warn(sh, "W2B released before our B2W fall -> its next rising edge is"
+                   " ambiguous (lost-edge race)");
+    }
+
+    /*------------------------------------------------------------------------*
+     *  Cadence -- the 8711's idle POLL rate, measured
+     *
+     *  This is the number every upper-layer deadline should be sized from, and
+     *  it is NOT the ~2 s in sec.4.1 item 6: that figure is what sized the AT
+     *  timeout at 8 s, and a reply measured at 10.3 s then failed every time.
+     *------------------------------------------------------------------------*/
+    shell_print(sh, "--- cadence ---");
+    if (st.slot_gaps == 0U)
+    {
+        /* Say why rather than print three zeroes: one slot is not an interval,
+         * and "0 ms" would read as an impossibly fast link. */
+        shell_print(sh, "slot_gap    : n/a (need 2 slots, seen %u)",
+                    (unsigned)st.slots_ok);
+    }
+    else
+    {
+        shell_print(sh, "slot_gap_ms : last=%u min=%u max=%u  (n=%u)",
+                    (unsigned)st.slot_gap_ms_last, (unsigned)st.slot_gap_ms_min,
+                    (unsigned)st.slot_gap_ms_max, (unsigned)st.slot_gaps);
+
+        /* A reply needs two transactions: one to carry the COMMAND out, one to
+         * bring the RESPONSE back, plus the 8711's own turnaround.  So the AT
+         * deadline has to clear 2x the WORST gap, not the mean -- sizing it off
+         * the mean is exactly how 8000 ms came to fail 100% of the time. */
+        unsigned need = (unsigned)st.slot_gap_ms_max * 2U;
+        shell_print(sh, "at_timeout  : %u ms vs 2x max gap = %u ms",
+                    (unsigned)WIFI_8711_AT_TIMEOUT_MS, need);
+        if ((unsigned)WIFI_8711_AT_TIMEOUT_MS < need)
+        {
+            shell_warn(sh, "AT timeout is below 2x the worst gap -> replies will"
+                       " be dropped as stale; raise WIFI_8711_AT_TIMEOUT_MS");
+        }
+        if (st.slot_gap_ms_max > st.slot_gap_ms_min * 3U)
+        {
+            /* Jitter matters more than the mean: a deadline that works at the
+             * mean and fails at the tail is worse than one that always fails,
+             * because it looks like an intermittent link fault. */
+            shell_warn(sh, "gap jitter > 3x -> the 8711 has other work competing"
+                       " with its idle poll; size deadlines off max, not mean");
+        }
+    }
     return 0;
 }
 
@@ -346,6 +436,39 @@ static int cmd_rx(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
+/* `rx` shows one slot on demand; this shows every slot as it lands.  Kept as a
+ * switch rather than always-on because the dump runs on the transport thread
+ * with B2W low, which is free at the 2 s idle POLL rate and a real throttle
+ * during a JPEG burst. */
+static int cmd_rxdump(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc != 2)
+    {
+        shell_print(sh, "rxdump is %s -- use: rxdump <on|off>",
+                    wifi_8711_xfer_rx_dump() ? "ON" : "off");
+        return 0;
+    }
+
+    if (strcmp(argv[1], "on") == 0)
+    {
+        wifi_8711_xfer_set_rx_dump(true);
+        shell_print(sh, "rxdump ON: first %u B of every inbound slot, hex + ascii",
+                    (unsigned)EBADGE_HEXDUMP_DEFAULT);
+        shell_warn(sh, "this delays the next ARM -- turn it off before"
+                   " measuring throughput");
+        return 0;
+    }
+    if (strcmp(argv[1], "off") == 0)
+    {
+        wifi_8711_xfer_set_rx_dump(false);
+        shell_print(sh, "rxdump off");
+        return 0;
+    }
+
+    shell_error(sh, "expected 'on' or 'off'");
+    return -EINVAL;
+}
+
 /* Same path the BLE 0xFF debug subcmd 0x01 takes, minus the phone: starts the
  * transport if needed, installs the logging sink, stages the query.  Having one
  * shared implementation is the point -- a shell-only variant would let the two
@@ -367,116 +490,84 @@ static int cmd_apinfo(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
-/** Parse an even-length hex string into @p out.  Returns the byte count, or 0
- *  on a stray character, an odd digit count, or overflow.
+/* Drive the two transfer-control commands from the console (SPI spec v2.2
+ * sec.10).  One command for both because they share a single-flight slot:
+ * issuing them separately would mostly demonstrate -EBUSY.
  *
- *  Local rather than shell_hex2bin(): that helper is not exported by this
- *  Zephyr build.  Rejecting rather than truncating matters here -- a typo'd
- *  argument that half-parsed would send bytes the operator did not intend. */
-static size_t shell_hex_to_bin(const char *s, uint8_t *out, size_t cap)
-{
-    size_t n = 0U;
-
-    for (; s[0] != '\0'; s += 2)
-    {
-        char hi = s[0], lo = s[1];
-        int  v_hi, v_lo;
-
-        if (lo == '\0' || n >= cap)
-        {
-            return 0U;
-        }
-        v_hi = isdigit((int)hi) ? (hi - '0')
-               : (isxdigit((int)hi) ? ((tolower((int)hi) - 'a') + 10) : -1);
-        v_lo = isdigit((int)lo) ? (lo - '0')
-               : (isxdigit((int)lo) ? ((tolower((int)lo) - 'a') + 10) : -1);
-        if (v_hi < 0 || v_lo < 0)
-        {
-            return 0U;
-        }
-        out[n++] = (uint8_t)((v_hi << 4) | v_lo);
-    }
-    return n;
-}
-
-/* Exercise the reserved data tunnel from the console.  Both directions in one
- * command because they share a single-flight slot: issuing them separately would
- * mostly demonstrate -EBUSY.
+ * With no upload in flight the 8711 answers "[AT]:ERROR", and that is still a
+ * useful test -- it proves the framing reaches the peer and comes back as a
+ * clean refusal rather than a timeout, which distinguishes "no file connection
+ * open" from "the link is dead".
  *
- * Expect this to fail against current 8711 firmware -- see wifi_8711_at_data.h.
- * That is still a useful test: it proves the framing reaches the peer and comes
- * back as a clean "[AT]:ERROR" rather than a timeout, which distinguishes "the
- * command is unimplemented" from "the link is dead". */
-static int cmd_data(const struct shell *sh, size_t argc, char **argv)
+ * In normal operation the firmware sends both by itself, from xfer_session by way
+ * of ebadge_port_tcp.  This exists to exercise the 8711 end without a phone. */
+static int cmd_xfer_ctrl(const struct shell *sh, size_t argc, char **argv)
 {
     int rc;
 
     if (argc < 2)
     {
-        shell_error(sh, "usage: wifi8711 data <rx | tx <hex> | stats>");
+        shell_error(sh, "usage: wifi8711 xferctl "
+                    "<ack <status> [reason] | stop | stats>");
         return -EINVAL;
     }
 
     if (strcmp(argv[1], "stats") == 0)
     {
-        wifi_8711_data_stats_t st;
-        wifi_8711_at_data_get_stats(&st);
-        shell_print(sh, "supported   : %s",
-                    wifi_8711_at_data_supported() ? "maybe (untested)"
-                    : "NO (peer said [AT]:ERROR)");
-        shell_print(sh, "polls       : %u  (empty %u)", (unsigned)st.polls,
-                    (unsigned)st.empty_polls);
-        shell_print(sh, "sends       : %u", (unsigned)st.sends);
-        shell_print(sh, "rx          : %u msgs, %u B", (unsigned)st.rx_msgs,
-                    (unsigned)st.rx_bytes);
-        shell_print(sh, "tx          : %u B", (unsigned)st.tx_bytes);
-        shell_print(sh, "errors      : %u", (unsigned)st.errors);
+        wifi_8711_at_xfer_stats_t st;
+        wifi_8711_at_xfer_get_stats(&st);
+        shell_print(sh, "acks ok     : %u", (unsigned)st.acks_ok);
+        shell_print(sh, "acks fail   : %u", (unsigned)st.acks_fail);
+        shell_print(sh, "stops       : %u", (unsigned)st.stops);
+        shell_print(sh, "confirmed   : %u  (8711 said OK)",
+                    (unsigned)st.confirmed);
+        shell_print(sh, "errors      : %u  (refused, timed out, unrecognised)",
+                    (unsigned)st.errors);
         return 0;
     }
 
-    if (strcmp(argv[1], "rx") == 0)
+    if (strcmp(argv[1], "stop") == 0)
     {
-        rc = wifi_8711_at_data_poll(NULL, NULL);
+        rc = wifi_8711_at_xfer_stop(NULL, NULL);
         if (rc != 0)
         {
-            shell_error(sh, "poll = %d%s", rc,
-                        (rc == -ENOTSUP) ? " (tunnel latched off -- the 8711"
-                        " already rejected it)" : "");
+            shell_error(sh, "stop = %d", rc);
             return rc;
         }
-        shell_print(sh, "AT+WLRECV staged; any message is printed to the log");
+        shell_print(sh, "AT+XFERSTOP staged; outcome goes to the log");
         return 0;
     }
 
-    if (strcmp(argv[1], "tx") == 0)
+    if (strcmp(argv[1], "ack") == 0)
     {
-        uint8_t buf[WIFI_8711_AT_DATA_SEND_MAX];
-        size_t  n;
-
-        if (argc != 3)
+        /* status is mandatory: 0 and 1 are both meaningful, so there is no safe
+         * default to fall back on. */
+        if (argc < 3 || argc > 4)
         {
-            shell_error(sh, "usage: wifi8711 data tx <hex>   e.g. tx A1B2C3");
-            return -EINVAL;
-        }
-        /* Rejects an odd digit count and stray characters, so a typo'd argument
-         * is refused rather than half parsed. */
-        n = shell_hex_to_bin(argv[2], buf, sizeof(buf));
-        if (n == 0U)
-        {
-            shell_error(sh, "bad hex, or longer than %u B",
-                        (unsigned)sizeof(buf));
+            shell_error(sh, "usage: wifi8711 xferctl ack <status> [reason]"
+                        "   status 0=fail 1=success");
             return -EINVAL;
         }
 
-        rc = wifi_8711_at_data_send(buf, n, NULL, NULL);
+        unsigned long status = strtoul(argv[2], NULL, 0);
+        unsigned long reason = (argc == 4) ? strtoul(argv[3], NULL, 0) : 0UL;
+
+        if (status > 1UL || reason > 255UL)
+        {
+            shell_error(sh, "status must be 0 or 1, reason 0..255");
+            return -EINVAL;
+        }
+
+        rc = wifi_8711_at_xfer_ack((uint8_t)status, (uint8_t)reason,
+                                   NULL, NULL);
         if (rc != 0)
         {
-            shell_error(sh, "send = %d%s", rc,
-                        (rc == -ENOTSUP) ? " (tunnel latched off)" : "");
+            shell_error(sh, "ack = %d%s", rc,
+                        (rc == -EINVAL) ? " (success needs reason 0)" : "");
             return rc;
         }
-        shell_print(sh, "AT+WLSEND staged with %u B; outcome goes to the log",
-                    (unsigned)n);
+        shell_print(sh, "AT+XFERACK=%u,%u staged; outcome goes to the log",
+                    (unsigned)status, (unsigned)reason);
         return 0;
     }
 
@@ -500,8 +591,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_wifi8711,
                                          cmd_at),
                                SHELL_CMD(apinfo,  NULL, "query AP info + auto-start transport + log the reply",
                                          cmd_apinfo),
-                               SHELL_CMD(data,    NULL, "reserved Wi-Fi data tunnel: data <rx | tx <hex> | stats>",
-                                         cmd_data),
+                               SHELL_CMD(xferctl, NULL,
+                                         "transfer control (v2.2 sec.10): xferctl <ack <status> [reason] | stop | stats>",
+                                         cmd_xfer_ctrl),
                                SHELL_CMD(wait,    NULL, "block until a slot arrives: wait [ms]",
                                          cmd_wait),
                                SHELL_CMD(stats,   NULL, "transport counters -- which half is broken",
@@ -509,6 +601,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_wifi8711,
                                SHELL_CMD(reset,   NULL, "clear the transport counters", cmd_reset),
                                SHELL_CMD(rx,      NULL, "decode + hexdump the last received slot: rx [bytes]",
                                          cmd_rx),
+                               SHELL_CMD(rxdump,  NULL, "hexdump every inbound slot as it arrives: rxdump <on|off>",
+                                         cmd_rxdump),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(wifi8711, &sub_wifi8711, "External 8711FA Wi-Fi (SPI slave)", NULL);

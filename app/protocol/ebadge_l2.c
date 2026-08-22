@@ -86,11 +86,17 @@ static int parse_tlvs(const uint8_t *buf, uint16_t len,
 int ebadge_l2_handle(uint8_t cmd, const uint8_t *params, uint16_t params_len)
 {
     /* Unified inbound trace: every App->Dev command comes through here,
-     * so one line per command gives a stable audit trail during bring-up.  */
-    EBADGE_LOG2("<-- CMD 0x%02x plen=%d", cmd, (int)params_len);
+     * so one line per command gives a stable audit trail during bring-up.
+     *
+     * Tagged with the endpoints rather than a bare "<--".  Four data paths cross
+     * this firmware (phone/8773 over BLE, 8773/8711 over SPI) and all four used
+     * arrows, so a line saying "<-- ... port=5004" did not say whether the phone
+     * had sent that port or the radio had reported it -- which is the exact
+     * question a wrong port makes you ask. */
+    EBADGE_LOG(EB_DIR_FROM_PHONE "CMD 0x%02x plen=%d", cmd, (int)params_len);
     if (params_len)
     {
-        EBADGE_LOG_HEX("<-- params", params, params_len);
+        EBADGE_LOG_HEX(EB_DIR_FROM_PHONE "params", params, params_len);
     }
 
     if (cmd == 0)
@@ -127,12 +133,12 @@ int ebadge_l2_notify_send(uint8_t cmd, const uint8_t *params, uint16_t params_le
 {
     if (!ebadge_port_ble_is_connected())
     {
-        EBADGE_WARN1("--> CMD 0x%02x DROP: no link", cmd);
+        EBADGE_WARN(EB_DIR_TO_PHONE "CMD 0x%02x DROP: no link", cmd);
         return EBADGE_ERR_NO_LINK;
     }
     if (!ebadge_port_ble_cccd_enabled())
     {
-        EBADGE_WARN1("--> CMD 0x%02x DROP: cccd disabled", cmd);
+        EBADGE_WARN(EB_DIR_TO_PHONE "CMD 0x%02x DROP: cccd disabled", cmd);
         return EBADGE_ERR_NO_CCCD;
     }
 
@@ -141,21 +147,23 @@ int ebadge_l2_notify_send(uint8_t cmd, const uint8_t *params, uint16_t params_le
                                       frame, sizeof(frame));
     if (total < 0)
     {
-        EBADGE_ERR2("--> CMD 0x%02x pack FAIL rc=%d", cmd, total);
+        EBADGE_ERR(EB_DIR_TO_PHONE "CMD 0x%02x pack FAIL rc=%d", cmd, total);
         return total;
     }
 
-    /* Unified outbound trace: one line per Dev->App notify. */
-    EBADGE_LOG2("--> CMD 0x%02x plen=%d", cmd, (int)params_len);
+    /* Unified outbound trace: one line per Dev->App notify.  This is the last
+     * point before the bytes leave, so it -- not any upstream log -- is the
+     * record of what the phone actually received. */
+    EBADGE_LOG(EB_DIR_TO_PHONE "CMD 0x%02x plen=%d", cmd, (int)params_len);
     if (params_len)
     {
-        EBADGE_LOG_HEX("--> params", params, params_len);
+        EBADGE_LOG_HEX(EB_DIR_TO_PHONE "params", params, params_len);
     }
 
     int rc = ebadge_port_ble_notify(frame, (uint16_t)total);
     if (rc != 0)
     {
-        EBADGE_ERR2("--> CMD 0x%02x notify FAIL rc=%d", cmd, rc);
+        EBADGE_ERR(EB_DIR_TO_PHONE "CMD 0x%02x notify FAIL rc=%d", cmd, rc);
     }
     return rc;
 }

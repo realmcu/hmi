@@ -44,13 +44,45 @@ extern "C" {
  *  the parser, the transport and the shell all need the same slot geometry.
  *----------------------------------------------------------------------------*/
 #define WIFI_8711_SLOT_SIZE        4096U   /* every transfer, exactly       */
-#define WIFI_8711_HEADER_SIZE      32U     /* both JPGS and ATMC            */
+
+/* Header size is PER SLOT TYPE, not global: JPGS and ATMC both use 32 bytes,
+ * EBFS uses 64.  Anything parsing a slot must pick by the magic at offset 0
+ * before it computes a payload pointer -- see WIFI_8711_FILE_HEADER_SIZE. */
+#define WIFI_8711_HEADER_SIZE      32U     /* JPGS and ATMC only            */
 
 #define WIFI_8711_JPG_MAGIC        0x5347504AU  /* "JPGS", wire 4A 50 47 53 */
 #define WIFI_8711_JPG_VERSION      1U
 #define WIFI_8711_JPG_FLAG_START   0x01U
 #define WIFI_8711_JPG_FLAG_END     0x02U
 #define WIFI_8711_JPG_PAYLOAD_MAX  (WIFI_8711_SLOT_SIZE - WIFI_8711_HEADER_SIZE)
+
+/*----------------------------------------------------------------------------*
+ *  EBFS -- the file slot (protocol v2.2 sec.6), third magic on the same link.
+ *
+ *  A separate slot type exists because a file is not a preview frame.  JPGS
+ *  carries per-frame geometry only, so a file crossing it would have to get its
+ *  identity from the BLE offer alone; EBFS restates the identity the phone put
+ *  in its EBXF header (session, name, type, total size, whole-file CRC32) in
+ *  EVERY slot, which is what lets the 8711 forward a 2 MiB file without ever
+ *  buffering it and lets us cross-check the two planes agree.
+ *
+ *  The 8711 does not interpret File Type and does not filter on it (sec.6): it
+ *  copies the EBXF byte through verbatim, so accepting or refusing the type is
+ *  entirely our decision.
+ *----------------------------------------------------------------------------*/
+#define WIFI_8711_FILE_MAGIC       0x53464245U  /* "EBFS", wire 45 42 46 53 */
+#define WIFI_8711_FILE_VERSION     1U
+#define WIFI_8711_FILE_FLAG_START  0x01U
+#define WIFI_8711_FILE_FLAG_END    0x02U
+#define WIFI_8711_FILE_HEADER_SIZE 64U
+#define WIFI_8711_FILE_PAYLOAD_MAX (WIFI_8711_SLOT_SIZE - WIFI_8711_FILE_HEADER_SIZE)
+#define WIFI_8711_FILE_NAME_LEN    24U     /* field width; 1..23 used       */
+
+/* Largest single file the 8711's port-9000 entry accepts (sec.6).  Distinct
+ * from WIFI_8711_JPEG_FRAME_MAX below, and 34x larger: that one is a *frame*
+ * cap on the preview port, this one is a *file* cap on the upload port.
+ * Conflating them is why a normal-sized wallpaper used to be refused. */
+#define WIFI_8711_FILE_SIZE_MAX    (2U * 1024U * 1024U)
 
 #define WIFI_8711_AT_MAGIC         0x434D5441U  /* "ATMC", wire 41 54 4D 43 */
 #define WIFI_8711_AT_VERSION       1U
@@ -63,8 +95,9 @@ extern "C" {
  * silently dropped (sec.9).  Not a slot limit -- a peer firmware limit. */
 #define WIFI_8711_AT_COMMAND_MAX   128U
 
-/* The 8711's TCP entry caps a frame at 61440 B (sec.5.2); our reassembly
- * buffer must be at least this large. */
+/* The 8711's *preview* TCP entry caps a frame at 61440 B (sec.5.2); our
+ * reassembly buffer must be at least this large.  Not a file-size limit -- see
+ * WIFI_8711_FILE_SIZE_MAX for the upload port. */
 #define WIFI_8711_JPEG_FRAME_MAX   61440U
 
 /**

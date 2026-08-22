@@ -172,7 +172,20 @@ bool wifi_8711_at_ap_parse(const char *text, wifi_8711_ap_info_t *out)
         }
         else if (line_is(line, "PORT=", &val))
         {
-            out->port = (uint16_t)strtoul(val, NULL, 10);
+            /* The preview port.  Anchored at the line start, so "FILE_PORT="
+             * cannot land here -- strstr("PORT=") would have matched it and
+             * silently reported the upload port as the preview one. */
+            out->stream_port = (uint16_t)strtoul(val, NULL, 10);
+        }
+        else if (line_is(line, "FILE_PORT=", &val))
+        {
+            /* The EBXF upload port (SPI spec v2.1 sec.6).  This used to be
+             * skipped with a comment saying nothing connected to it yet, which
+             * stopped being true once file transfers were wired up -- and the
+             * consequence was that AP_INFO advertised the preview port for a
+             * file transfer, so the phone connected to a door that only accepts
+             * bare JPEG and the transfer died with no diagnostic. */
+            out->file_port = (uint16_t)strtoul(val, NULL, 10);
         }
         else if (line_is(line, "CHANNEL=", &val))
         {
@@ -187,11 +200,7 @@ bool wifi_8711_at_ap_parse(const char *text, wifi_8711_ap_info_t *out)
         {
             out->clients = (uint8_t)strtoul(val, NULL, 10);
         }
-        /* FILE_PORT= (the EBXF upload port, sec.6) is not read here: nothing on
-         * this side connects to it yet.  It cannot be swallowed by the "PORT="
-         * branch above either, because line_is() anchors at the line start.
-         *
-         * CLIENT=n MAC=.. / [+WLSTATE]:OK / [+WLSTARTAP]:OK and anything the
+        /* CLIENT=n MAC=.. / [+WLSTATE]:OK / [+WLSTARTAP]:OK and anything the
          * vendor adds later fall through deliberately -- see the file header. */
     }
 
@@ -227,7 +236,8 @@ static void ap_complete(bool ok, const wifi_8711_ap_info_t *info)
             memcpy(s_cache.password, info->password, sizeof(s_cache.password));
         }
         if (info->ip != 0U)   { s_cache.ip      = info->ip; }
-        if (info->port != 0U) { s_cache.port    = info->port; }
+        if (info->stream_port != 0U) { s_cache.stream_port = info->stream_port; }
+        if (info->file_port   != 0U) { s_cache.file_port   = info->file_port; }
         /* Same merge rule as ip/port, for the same reason: WLSTARTAP does not
          * report a channel, and a firmware older than v2.1 does not report one
          * at all, so 0 means "no news" and must not clear what we know. */
@@ -272,19 +282,46 @@ static void on_at_reply(wifi_8711_at_result_t res, const char *text, size_t len,
     if (!wifi_8711_at_ap_parse(text, &info))
     {
         /* Reached when the AP is genuinely down: WLSTATE requires a running AP
-         * and answers [AT]:ERROR otherwise (sec.9 note).  Log the head of the
-         * reply -- an unexpected format is the other reason to land here and
-         * the two need different fixes. */
-        EBADGE_WARN("wifi8711 ap: reply not parseable as AP state (AP down?)");
-        EBADGE_LOG1("wifi8711 ap: reply head: %.64s", text);
+         * and answers [AT]:ERROR otherwise (sec.9 note).  The other way in is a
+         * reply whose format we do not recognise, and the two need different
+         * fixes -- the AT layer has already dumped the body verbatim, so the
+         * distinction is there to read rather than guessed at here. */
+        EBADGE_WARN("wifi8711 ap: reply not parseable as AP state (AP down, or a"
+                    " format we do not know -- see the dump above)");
         ap_complete(false, NULL);
         return;
     }
 
-    EBADGE_LOG2("wifi8711 ap: ssid=\"%s\" clients=%u", info.ssid,
+    /* The raw body is NOT printed here.  The AT layer dumps every RESPONSE
+     * verbatim before it even matches the sequence (see at_slot_sink), which
+     * covers replies this function never sees -- so repeating it would print the
+     * same body twice and still not cover the dropped ones.  What is left here is
+     * the INTERPRETATION, and the two disagreeing is the bug worth catching: a
+     * field the vendor renamed shows up as "absent" below while being plainly
+     * present in the dump above.
+     *
+     * WLSTARTAP answers with SSID + PASSWORD only -- no IP, no ports, no client
+     * count -- so zeroes in those fields here mean "this reply did not carry
+     * them", NOT "the AP has no address".  Say which command shape this was, or
+     * an ip=00000000 line reads as a broken AP and sends the reader looking for a
+     * radio fault.  The cache merges rather than overwrites for exactly this
+     * reason, so these zeroes are neither stored nor forwarded to the phone. */
+    bool full = (info.ip != 0U) || (info.stream_port != 0U) ||
+                (info.file_port != 0U);
+    EBADGE_LOG2("[8711->8773] ap parsed: ssid=\"%s\" clients=%u", info.ssid,
                 (unsigned)info.clients);
-    EBADGE_LOG3("wifi8711 ap: ip=%08x port=%u channel=%u", (unsigned)info.ip,
-                (unsigned)info.port, (unsigned)info.channel);
+    if (full)
+    {
+        EBADGE_LOG4("[8711->8773] ap parsed: ip=%08x stream_port=%u"
+                    " file_port=%u channel=%u",
+                    (unsigned)info.ip, (unsigned)info.stream_port,
+                    (unsigned)info.file_port, (unsigned)info.channel);
+    }
+    else
+    {
+        EBADGE_LOG("[8711->8773] ap parsed: WLSTARTAP shape -- no ip/ports/"
+                   "channel in this reply (cache keeps the previous ones)");
+    }
     ap_complete(true, &info);
 }
 

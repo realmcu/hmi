@@ -9,6 +9,7 @@
 #define _EBADGE_PORT_ENV_H_
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,6 +27,16 @@ typedef struct
 {
     uint8_t              percent;    /* 0..100                                  */
     ebadge_batt_state_t  state;
+
+    /* Raw rail voltage, millivolts, and whether it is real.
+     *
+     * Carried alongside percent rather than instead of it because the wire
+     * format only has percent -- this is here so bring-up can see what the
+     * percentage was derived from, and so "the ADC is not reading" is
+     * distinguishable from "the battery is flat".  mv_valid == false means
+     * unknown; mv is then meaningless rather than zero-and-therefore-empty.  */
+    uint16_t             mv;
+    bool                 mv_valid;
 } ebadge_batt_t;
 
 int  ebadge_port_env_battery(ebadge_batt_t *out);

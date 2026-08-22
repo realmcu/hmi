@@ -64,11 +64,26 @@ extern "C" {
 
 /** How long a command may go unanswered before the callback fires TIMEOUT.
  *
- *  Four idle POLL periods.  The protocol floor is two (one transaction to carry
- *  the COMMAND out, one to bring the RESPONSE back), so this leaves room for a
- *  missed poll without reporting a failure the link would have recovered from
- *  on its own. */
-#define WIFI_8711_AT_TIMEOUT_MS   8000U
+ *  Measured, not derived.  The tempting arithmetic is "two idle POLL periods is
+ *  the floor (one transaction carries the COMMAND out, one brings the RESPONSE
+ *  back), so four is generous" -- which is how this came to be 8000 ms.  On real
+ *  hardware that is not generous, it is short: an AT+WLSTATE submitted into an
+ *  idle link was observed answering at ~10.3 s and ~10.6 s, every time, so every
+ *  single query timed out at 8 s and then had its perfectly good RESPONSE thrown
+ *  away as stale one or two seconds later.
+ *
+ *  The arithmetic was wrong because the 8711 does not answer in the POLL that
+ *  follows the one which collected the command: it needs its own turnaround, and
+ *  the ~2 s figure in sec.4.1 item 6 is a nominal idle rate rather than a bound.
+ *  So the real cost is closer to five POLL periods than two, and a threshold set
+ *  just under it fails 100% of the time while looking like a link fault.
+ *
+ *  20 s is the observed worst case plus roughly 2x headroom.  Long, but the
+ *  alternative is not a faster answer -- the 8711 owns the clock and nothing on
+ *  this side can hurry it -- it is a failure report for a reply that did arrive.
+ *  Callers must not block on this: they are on l2_task and answer from a cache
+ *  (see ebadge_port_softap.c). */
+#define WIFI_8711_AT_TIMEOUT_MS   20000U
 
 /** Longest response text handed to a callback, including the NUL.
  *
@@ -121,6 +136,25 @@ typedef void (*wifi_8711_at_cb_t)(wifi_8711_at_result_t res, const char *text,
  */
 typedef void (*wifi_8711_jpg_sink_t)(const uint8_t *slot, size_t len);
 
+/**
+ * @brief  Sink for EBFS (file upload) slots seen on the link.
+ *
+ * A second sink rather than a flag on the JPGS one because the two slot types
+ * mean different things and are validated differently: a JPGS slot is one
+ * preview frame's worth of an independent stream, an EBFS slot is one chunk of a
+ * file whose neighbours must be exactly accounted for.  Sharing a sink would
+ * make the first thing every callback did be re-reading the magic to find out
+ * which layout it had.
+ *
+ * @param  slot  the whole 4096-byte slot, 64-byte EBFS header included
+ * @param  len   always WIFI_8711_SLOT_SIZE
+ *
+ * Same context and promptness rules as wifi_8711_at_cb_t -- with the difference
+ * that here the delay IS the flow control: the 8711 cannot clock the next chunk
+ * until this returns, which is what keeps a 2 MiB upload from outrunning flash.
+ */
+typedef void (*wifi_8711_file_sink_t)(const uint8_t *slot, size_t len);
+
 /*----------------------------------------------------------------------------*
  *  Lifecycle
  *
@@ -144,6 +178,15 @@ typedef void (*wifi_8711_jpg_sink_t)(const uint8_t *slot, size_t len);
  * how the display path gets them without a second sink existing.
  */
 void wifi_8711_at_set_jpg_sink(wifi_8711_jpg_sink_t cb);
+
+/**
+ * @brief  Install the EBFS slot sink (or NULL to drop file uploads).
+ *
+ * Registered by the protocol stack's ebfs_ingress at startup.  With no sink the
+ * slots are counted as unrouted and dropped, which is the correct behaviour for
+ * a build that has no storage to put a file in.
+ */
+void wifi_8711_at_set_file_sink(wifi_8711_file_sink_t cb);
 
 /*----------------------------------------------------------------------------*
  *  Transactions
@@ -197,7 +240,8 @@ typedef struct
     uint32_t timeouts;      /**< commands that were never answered            */
     uint32_t polls;         /**< POLL heartbeats -- proof of life             */
     uint32_t jpg_slots;     /**< JPGS slots seen                              */
-    uint32_t bad_magic;     /**< slots that were neither ATMC nor JPGS        */
+    uint32_t file_slots;    /**< EBFS slots seen                              */
+    uint32_t bad_magic;     /**< slots that were none of ATMC / JPGS / EBFS   */
     uint32_t parse_err;     /**< ATMC slots that failed header/CRC validation */
 } wifi_8711_at_stats_t;
 

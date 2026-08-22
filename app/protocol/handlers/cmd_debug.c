@@ -11,8 +11,9 @@
  *
  * The value TLV exists so the wire format is already final: the first subcmd
  * that needs an argument can carry one without the App having to relearn the
- * frame.  That subcmd now exists -- 0x05 WIFI_DATA_TX sends its bytes over
- * Wi-Fi.  Every other subcmd still ignores the value and only logs it.
+ * frame.  That subcmd now exists -- 0x05 XFER_ACK takes the status and reason
+ * bytes it sends to the 8711.  Every other subcmd still ignores the value and
+ * only logs it.
  *
  * Every path answers 0x04 RESULT.  A debug command that silently did nothing
  * on a malformed request would be indistinguishable from a dead BLE link,
@@ -27,11 +28,12 @@
  * command) for seconds, so we do not: SUCCEED means "the query was queued", and
  * the reply is printed to the device log by wifi_8711_at_query.c.
  *
- * The two data-tunnel subcmds (0x04 / 0x05) are reserved and will NOT work
- * against current 8711 firmware -- its AT parser knows only WLSTATE and
- * WLSTARTAP.  They stage successfully and the rejection appears in the log a
- * few seconds later; after that the tunnel latches off and both answer
- * NOT_READY without touching the wire.  See wifi_8711/wifi_8711_at_data.h.
+ * The two transfer-control subcmds (0x04 XFER_STOP / 0x05 XFER_ACK) act on
+ * whatever file connection the 8711 currently holds open.  With no upload in
+ * flight they are answered "[AT]:ERROR", which surfaces in the log a few seconds
+ * later -- that is the expected outcome of poking them idly, not a fault.  The
+ * firmware sends both by itself from xfer_session via ebadge_port_tcp; these
+ * exist to exercise the 8711 end of v2.2 sec.10 without a phone.
  *
  * An App that wants the AP credentials as DATA should send 0x12 GET_AP_INFO,
  * which answers 0x13 from a warm cache; these subcmds are for a human watching
@@ -45,7 +47,7 @@
 #include "../ebadge_log.h"
 #if defined(CONFIG_WIFI_8711)
 #include "wifi_8711_at_query.h"
-#include "wifi_8711_at_data.h"
+#include "wifi_8711_at_xfer.h"
 #endif
 
 /**
@@ -68,11 +70,17 @@ static uint8_t wifi_rc_to_result(int rc)
     }
     if (rc == -ENOTSUP)
     {
-        /* The reserved data tunnel, latched off after the 8711 answered
-         * "[AT]:ERROR".  NOT_READY rather than FAILED: nothing is broken, the
-         * peer firmware simply does not implement the command yet, and retrying
-         * is pointless until it does.  See wifi_8711_at_data.h. */
+        /* The 8711 has told us it does not implement this command.  NOT_READY
+         * rather than FAILED: nothing is broken, and retrying is pointless until
+         * the peer firmware gains it. */
         return EB_RESULT_NOT_READY;
+    }
+    if (rc == -EINVAL)
+    {
+        /* Caller's own argument was rejected before anything went on the wire --
+         * XFERACK with a success status and a non-zero reason is the one that
+         * does this.  A real failure, and the App's to fix. */
+        return EB_RESULT_FAILED;
     }
     /* -EBUSY: the AT layer is single flight and something else has it -- most
      * likely port_softap's background AP poll.  BUSY, not FAILED: retrying in a
@@ -118,35 +126,41 @@ static uint8_t debug_dispatch_sub(uint8_t sub, const ebadge_tlv_t *val)
         return EB_RESULT_NOT_READY;
 #endif
 
-    case EB_DBG_SUB_WIFI_DATA_RX:
+    case EB_DBG_SUB_XFER_STOP:
 #if defined(CONFIG_WIFI_8711)
-        /* Poll the reserved inbound tunnel.  The message, if any, is printed by
-         * wifi_8711_at_data.c -- getting it back over BLE would need a new
-         * response command, and the tunnel has no firmware behind it yet. */
-        EBADGE_LOG("DEBUG: WIFI_DATA_RX -> AT+WLRECV (reply goes to the log)");
-        return wifi_rc_to_result(wifi_8711_at_data_poll(NULL, NULL));
+        /* Cut the current file connection.  No argument, and no EBXR: this is
+         * the "stop now" half of v2.2 sec.10, the same command xfer_session
+         * sends when the data plane disagrees with the BLE offer. */
+        EBADGE_LOG("DEBUG: XFER_STOP -> AT+XFERSTOP (reply goes to the log)");
+        return wifi_rc_to_result(wifi_8711_at_xfer_stop(NULL, NULL));
 #else
-        EBADGE_WARN("DEBUG: WIFI_DATA_RX but CONFIG_WIFI_8711=n");
+        EBADGE_WARN("DEBUG: XFER_STOP but CONFIG_WIFI_8711=n");
         (void)val;
         return EB_RESULT_NOT_READY;
 #endif
 
-    case EB_DBG_SUB_WIFI_DATA_TX:
+    case EB_DBG_SUB_XFER_ACK:
 #if defined(CONFIG_WIFI_8711)
-        /* The one subcmd that uses the VALUE TLV.  Refuse an absent or empty
-         * one rather than sending a zero-length message: "send nothing" is a
-         * malformed request, and answering SUCCEED to it would suggest bytes
-         * went out. */
-        if (val == NULL || val->len == 0U)
         {
-            EBADGE_WARN("DEBUG: WIFI_DATA_TX needs a non-empty VALUE TLV");
-            return EB_RESULT_FAILED;
+            /* The one subcmd that uses the VALUE TLV: byte 0 status, byte 1 reason.
+             * An absent or empty VALUE is refused rather than defaulted -- both 0
+             * (fail) and 1 (success) are meaningful, so there is no safe default,
+             * and guessing would send the phone a verdict nobody asked for. */
+            if (val == NULL || val->len == 0U)
+            {
+                EBADGE_WARN("DEBUG: XFER_ACK needs VALUE = <status>[,<reason>]");
+                return EB_RESULT_FAILED;
+            }
+            uint8_t status = val->val[0];
+            uint8_t reason = (val->len >= 2U) ? val->val[1] : 0U;
+
+            EBADGE_LOG2("DEBUG: XFER_ACK -> AT+XFERACK=%u,%u",
+                        (unsigned)status, (unsigned)reason);
+            return wifi_rc_to_result(wifi_8711_at_xfer_ack(status, reason,
+                                                           NULL, NULL));
         }
-        EBADGE_LOG1("DEBUG: WIFI_DATA_TX -> AT+WLSEND %d B", (int)val->len);
-        return wifi_rc_to_result(wifi_8711_at_data_send(val->val, val->len,
-                                                        NULL, NULL));
 #else
-        EBADGE_WARN("DEBUG: WIFI_DATA_TX but CONFIG_WIFI_8711=n");
+        EBADGE_WARN("DEBUG: XFER_ACK but CONFIG_WIFI_8711=n");
         (void)val;
         return EB_RESULT_NOT_READY;
 #endif

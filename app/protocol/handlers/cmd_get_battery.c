@@ -8,6 +8,9 @@
  *
  * A read failure answers 0x04 RESULT(FAILED) rather than reporting a bogus
  * 0%, which the App would otherwise render as a flat battery.
+ *
+ * The percent comes from a VBAT reading -- see port/ebadge_port_vbat.c for how
+ * it is measured and port/ebadge_port_env.c for the voltage-to-percent map.
  */
 #include <stdint.h>
 #include "../ebadge_cmd.h"
@@ -29,7 +32,11 @@ void handle_get_battery(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
     }
 
     /* Clamp rather than trust the port: percent is 0..100 on the wire and a
-     * mis-scaled ADC reading would otherwise be seen as a protocol error.  */
+     * mis-scaled ADC reading would otherwise be seen as a protocol error.
+     *
+     * Note this clamp cannot be used to detect "no reading" -- the port reports
+     * that through mv_valid, not through an out-of-range percent, precisely so
+     * that a sentinel value cannot be laundered into a plausible 100%.       */
     uint8_t pct = (b.percent > 100u) ? 100u : b.percent;
     uint8_t chg = (uint8_t)b.state;
     if (chg > EBADGE_BATT_FULL)
@@ -38,8 +45,21 @@ void handle_get_battery(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
         chg = (uint8_t)EBADGE_BATT_DISCHARGING;
     }
 
-    EBADGE_LOG2("GET_BATTERY: pct=%d charge=%d  (port_env STUB until ADC wired)",
-                (int)pct, (int)chg);
+    /* Log the voltage next to the percent, tagged as outbound: percent is all
+     * the phone gets, so when it displays something surprising this line is what
+     * says whether the number or the measurement behind it is at fault. */
+    if (b.mv_valid)
+    {
+        EBADGE_LOG(EB_DIR_TO_PHONE "0x18 BATTERY: pct=%u charge=%u"
+                   " (vbat=%u mV)", (unsigned)pct, (unsigned)chg,
+                   (unsigned)b.mv);
+    }
+    else
+    {
+        EBADGE_WARN(EB_DIR_TO_PHONE "0x18 BATTERY: pct=%u charge=%u"
+                    " (vbat UNKNOWN -- percent is a placeholder)",
+                    (unsigned)pct, (unsigned)chg);
+    }
 
     uint8_t  params[16];
     uint16_t off = 0;
