@@ -14,14 +14,28 @@
 #include "hmi_bt_task.h"
 #include "ebadge_task.h"      /* V1.2 protocol stack entry point            */
 #include "gui_server.h"
+#include "gui_port.h"
 #include "rtl876x_pinmux.h"
 #include "app_lower_init.h"
+#include <pm.h>
+
 #if defined(CONFIG_WIFI_8711)
 #include "wifi_8711.h"
 #endif
 
 int main(void)
 {
+    /* Keep normal application scheduling active. Power-down explicitly
+     * resumes PM only after a long press requests POWER_POWERDOWN_MODE. */
+    (void)power_mode_pause();
+    extern bool gui_port_power_on_gate(void);
+    if (!gui_port_power_on_gate())
+    {
+        printk("[power-key] short wake, returning to power-down\n");
+        (void)power_mode_set(POWER_POWERDOWN_MODE);
+        (void)power_mode_resume();
+        return 0;
+    }
 
 #ifndef CONFIG_UART_CONSOLE
     DBG_DIRECT("!!!!! remap log pin!!!");
