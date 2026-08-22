@@ -71,23 +71,37 @@ void xfer_session_offer(const char *name, uint8_t file_type,
  */
 void xfer_session_user_decision(bool accept);
 
-/** SoftAP notifies that the STA (App) has associated.  Enters RECV. */
+/** SoftAP notifies that the STA (App) has associated.  Enters RECV.
+ *
+ *  Idempotent, and deliberately so: inbound file data is itself proof that the
+ *  STA associated, and it can beat the poll that would otherwise report the
+ *  edge -- see the comment on the call in ebfs_ingress.c.  A second call once
+ *  the poll catches up is a no-op rather than a warning. */
 void xfer_session_on_sta_joined(void);
 
 /**
  * @brief  A chunk arrived on a stream that still carries the 40B EBXF header.
  *
- * Consumes the header on the first call(s), then behaves as
- * xfer_session_on_payload().  UNREACHABLE in the current topology: the file
- * arrives as EBFS slots, and the 8711 has already parsed the phone's EBXF header
- * to build them -- so the header never reaches us as byte-stream bytes.  Kept
- * for a firmware that terminates TCP on this chip.
+ * Consumes the header on the first call(s) -- reassembling it across calls, since
+ * nothing guarantees all 40 bytes land in one delivery -- runs the §5.2 identity
+ * cross-check against the BLE offer, then behaves as xfer_session_on_payload()
+ * for the remainder and for every later chunk.
  *
- * The identity cross-check the spec attaches to this header is NOT skipped; it
- * moved to xfer_session_check_identity(), which the EBFS path calls with the
- * fields the slot header restates.
+ * THE LIVE PATH for file uploads.  The 8711 forwards TCP port 9000 verbatim into
+ * EBFS slot payloads without parsing it, so the phone's EBXF header arrives as
+ * the first 40 payload bytes and ebfs_ingress routes every chunk here.  (It was
+ * unreachable while the 8711 still parsed EBXF itself and forwarded only the
+ * body; that is what changed.)
+ *
+ * Deliveries must be in stream order and gap-free -- ebfs_ingress guarantees
+ * both, and there is no byte pattern to resynchronise on if they are not.
+ *
+ * @retval 0   the bytes were taken (or were header bytes, still accumulating)
+ * @retval <0  refused.  Either there was no session to take them, or the session
+ *             has ALREADY been failed and torn down -- so the caller must stop
+ *             sending and must not expect a further verdict.
  */
-void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len);
+int xfer_session_on_tcp_data(const uint8_t *data, uint16_t len);
 
 /**
  * @brief  Does the data plane describe the same file the BLE offer did?
@@ -97,7 +111,11 @@ void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len);
  * files -- which is not a corrupt transfer but a confused one, and no amount of
  * further data can resolve it.
  *
- * @param  size       Total Size from the data plane
+ * @param  size       file size from the data plane -- the FILE length, not the
+ *                    length of the stream carrying it, so a caller holding an
+ *                    EBFS Total Size must subtract the EBXF header first (or
+ *                    better: let xfer_session_on_tcp_data() do this from the
+ *                    EBXF header, which states the file length directly)
  * @param  crc32      whole-file CRC32 from the data plane
  * @param  file_type  file type byte from the data plane
  * @param  name       file name from the data plane, NUL-terminated; NULL skips
@@ -108,10 +126,8 @@ void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len);
  *                down by the time this returns -- the stream is cut and 0x16
  *                emitted -- so a caller must simply stop touching it.
  *
- * Safe to call more than once (later chunks restate the same fields, and the
- * spec requires them to be identical, so re-checking costs nothing and catches a
- * sender that changes its mind mid-file).  Returns false if no session is in
- * RECV, because an unsolicited file is also one we cannot place.
+ * Safe to call more than once.  Returns false if no session is in RECV, because
+ * an unsolicited file is also one we cannot place.
  */
 bool xfer_session_check_identity(uint32_t size, uint32_t crc32,
                                  uint8_t file_type, const char *name);
@@ -119,15 +135,21 @@ bool xfer_session_check_identity(uint32_t size, uint32_t crc32,
 /**
  * @brief  A chunk of pure file bytes -- no framing header of any kind.
  *
- * This is the live path: ebfs_ingress calls it with payload the 8711 has already
- * stripped of TCP, of the phone's EBXF header, and of the EBFS slot header.
+ * Live for the JPGS path (jpgs_ingress, port 5004 bare JPEG), where the 8711
+ * strips the phone's framing itself.  Also the tail of the EBXF path, called by
+ * xfer_session_on_tcp_data() once the header is behind it.
  *
  * Appends to flash, accumulates the CRC32, emits 0x14 PROGRESS, and on the last
  * byte verifies the whole-file CRC against the offer, commits to flash, and
  * reports the result to the data plane (which is what lets the phone's upload
  * end with a code rather than a bare disconnect).
+ *
+ * @retval 0   appended (possibly completing the file, in which case the session
+ *             is already committed, reported and reset)
+ * @retval <0  refused: no session in RECV, or the session was just failed and
+ *             torn down.  Nothing further will be accepted either way.
  */
-void xfer_session_on_payload(const uint8_t *data, uint16_t len);
+int xfer_session_on_payload(const uint8_t *data, uint16_t len);
 
 /** TCP closed for any reason. */
 void xfer_session_on_tcp_close(int reason /* ebadge_tcp_close_reason_t */);

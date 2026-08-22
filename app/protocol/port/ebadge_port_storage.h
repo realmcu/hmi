@@ -73,14 +73,23 @@ int  ebadge_port_storage_wp_write(int handle,
  * Call this ONLY after the received data has passed CRC verification: commit is
  * the point where the file becomes visible, and there is no rollback afterwards.
  *
- * @param  data_crc      CRC32 of the bytes actually appended.  Stored in the
- *                       directory entry so a later reader can re-verify without
- *                       the transfer being present; the caller has already
- *                       compared it against the offer's expected value.
+ * @param  data_crc      CRC32 of the file CONTENT -- the stored range from
+ *                       @p content_offset onwards, not the framing in front of
+ *                       it.  Stored in the directory entry so a later reader can
+ *                       re-verify without the transfer being present, and this
+ *                       is the useful one to store because it is exactly the
+ *                       value the sender promised and the caller checked.
+ * @param  content_offset  Bytes at the start of the stored file that are
+ *                       transport framing rather than resource content, and so
+ *                       must be skipped both by whatever consumes the resource
+ *                       and by anyone re-checking @p data_crc.  0 when the
+ *                       stored bytes are pure content.  Only affects the address
+ *                       reported to the UI; the stored file is untouched.
  * @param  out_file_id   Receives the assigned file_id (>=1).
  * @return 0 on success; <0 on error.
  */
 int  ebadge_port_storage_wp_commit(int handle, uint32_t data_crc,
+                                   uint32_t content_offset,
                                    uint16_t *out_file_id);
 
 /** Discard a write session (mid-transfer failure / abort). */

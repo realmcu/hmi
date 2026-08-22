@@ -71,6 +71,20 @@
 #define XS_RECV_IDLE_MS     120000u
 #define XS_OVERALL_MS       180000u
 
+/* How long the BLE verdict waits for the data-plane ack before going out anyway.
+ *
+ * The ack is retried for TCP_CTRL_RETRY_MAX * TCP_CTRL_RETRY_MS (~4 s) plus one
+ * AT transaction, and an AT round trip has been seen at 11..13 s on hardware
+ * when it queues behind a WLSTATE poll.  20 s covers that with margin and still
+ * leaves the App an answer well inside its own patience.
+ *
+ * This is a backstop, not the normal path: port_tcp settles every ack exactly
+ * once, so reaching this deadline means the completion was lost, not merely
+ * slow.  Without it a lost completion would park the session in COMPLETING for
+ * good -- the overall deadline below fires first in practice, but it would
+ * report a timeout for a transfer that actually succeeded. */
+#define XS_ACK_WAIT_MS       20000u
+
 /* The TCP port is NOT ours to choose -- the 8711 runs the server and reports the
  * upload port in its WLSTATE reply (9000 in practice; 5004 is the separate
  * preview port).  EB_AP_DEFAULT_PORT is kept out of this file deliberately so
@@ -96,6 +110,19 @@
  * driver header in; the comment above is the contract. */
 #define XS_MAX_FILE_SIZE     (2u * 1024u * 1024u)
 
+/* Framing bytes reserved on flash in front of the file content.
+ *
+ * The EBXF path stores the whole TCP packet -- 40-byte header plus body -- so the
+ * reservation must cover both.  The JPGS path stores no framing at all (the 8711
+ * strips it), and this is still reserved there because wp_begin runs on the
+ * WAIT_STA -> RECV edge, before any data has arrived to say which path this
+ * transfer will take.  Over-reserving by 40 bytes is the cheap side of that
+ * guess; under-reserving would fail the last write of a max-size file.
+ *
+ * What actually got stored is reported to wp_commit as the content offset, and
+ * that comes from ebxf_seen rather than from here. */
+#define XS_EBXF_STORED_LEN   EBXF_HDR_LEN
+
 /*----------------------------------------------------------------------------*
  *  Session state  (l2_task-owned; no locking)
  *----------------------------------------------------------------------------*/
@@ -119,11 +146,31 @@ typedef struct
     bool     ebxf_seen;
     int      wp_handle;
 
+    /* Verdict held while the data-plane ack goes out.
+     *
+     * Both planes must report, and the data plane goes first (see the ordering
+     * note on ack_settled()).  The BLE notify is therefore built after the ack
+     * settles, on a callback with no access to the frame that decided the
+     * outcome -- so what it needs is parked here.
+     *
+     * done_pending distinguishes "waiting for an ack" from "COMPLETING for some
+     * other reason", which is what lets the tick put a deadline on the wait
+     * without arming one for every completion. */
+    bool     done_pending;
+    bool     done_ok;
+    uint8_t  done_reason;         /* §2.6 code; meaningful when !done_ok   */
+    uint16_t done_file_id;
+    /* Static-lifetime string literal from the failing call site; only read
+     * after the ack settles, which is why it cannot be a buffer we own. */
+    const char *done_detail;
+    uint32_t deadline_ack;        /* only while done_pending               */
+
     /* Partial EBXF header carried across deliveries.  The 40-byte header is
      * not guaranteed to arrive in one piece: it rides the same byte stream as
-     * the body, and the JPGS transport below it caps a payload at 4064 bytes,
-     * so a header landing on a delivery boundary is routine rather than
-     * anomalous.  Bytes accumulate here until all EBXF_HDR_LEN are in hand. */
+     * the body, and the EBFS transport below it chops that stream into 4032-byte
+     * chunks with no regard for where the header ends, so a header split across
+     * two deliveries is routine rather than anomalous.  Bytes accumulate here
+     * until all EBXF_HDR_LEN are in hand. */
     uint8_t  ebxf_hdr[EBXF_HDR_LEN];
     uint8_t  ebxf_hdr_len;
 
@@ -232,25 +279,117 @@ static void tear_down_data_plane(void)
 }
 
 /**
+ * Emit the held BLE verdict and end the session.  Runs on l2_task.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE BLE VERDICT WAITS FOR THE DATA-PLANE ONE
+ * ---------------------------------------------------------------------------
+ * Both planes report the outcome, and BLE is the authoritative one (spec §5.3).
+ * But BLE is also the FASTER one: a notify is a couple of milliseconds, whereas
+ * the ack is an AT transaction that may be queued behind port_softap's poll and
+ * retried for seconds.  Emitted in the obvious order, the phone would routinely
+ * be told "transfer done" over BLE while the TCP upload it is still holding open
+ * had heard nothing -- and an App that closes its socket on the BLE notify would
+ * cut the connection out from under the ack, so the ack would then fail against
+ * a connection that no longer exists.
+ *
+ * So the ack goes first and this runs when it settles.  "Settles", not
+ * "succeeds": a refused or abandoned ack still gets here, because the BLE
+ * verdict is the one the App is required to believe and withholding it over a
+ * data-plane failure would lose the only answer that counts.
+ */
+static void emit_held_verdict(bool ack_ok)
+{
+    if (!s_x.done_pending)
+    {
+        /* Late callback for a session that has already gone -- a GAP disconnect
+         * during the wait resets the context, and the ack's completion can still
+         * arrive afterwards.  Nothing to report and nobody to report it to. */
+        return;
+    }
+    s_x.done_pending = false;
+
+    if (!ack_ok)
+    {
+        /* Worth naming: it means the phone got no TCP result and is relying
+         * entirely on the notify below. */
+        EBADGE_WARN("xfer: data-plane ack did not land; BLE verdict only");
+    }
+
+    /* Only now disarm our side.  Doing it before the ack settled would have
+     * disarmed the connection the ack was staged against. */
+    (void)ebadge_port_tcp_close();
+    (void)ebadge_port_softap_stop();
+    /* The last chunk ended exactly on the file's last byte, but the 8711 may
+     * still push a stray slot -- same reason as tear_down_data_plane(). */
+    jpgs_ingress_reset();
+    ebfs_ingress_reset();
+
+    if (s_x.done_ok)
+    {
+        emit_done(s_x.done_file_id);
+    }
+    else
+    {
+        emit_fail(s_x.done_reason, s_x.done_detail);
+    }
+    reset_ctx();
+}
+
+static void ack_settled_on_l2(void *arg)
+{
+    emit_held_verdict(arg != NULL);
+}
+
+/**
+ * port_tcp's ack completion.  Fires on the transport thread or the system
+ * workqueue, so it only marshals -- everything above touches session state.
+ *
+ * The bool travels as the arg pointer rather than through a static: post_call
+ * copies nothing, and a static flag could be overwritten by a second settle
+ * before the first hop ran.  Only two values are ever needed.
+ */
+static void ack_settled_from_driver(bool ok, void *user)
+{
+    (void)user;
+    (void)ebadge_task_post_call(ack_settled_on_l2, ok ? (void *)1 : NULL);
+}
+
+/**
  * Fail the session, reporting the reason on both planes.
  *
  * The data plane gets a verdict (spec §5.3: status=failure plus the §2.6 reason,
  * which the 8711 turns into an EBXR), and BLE gets the 0x16 XFER_FAIL carrying
- * the same byte -- so the App sees one code whichever plane it is watching.  BLE
- * remains the authoritative one; the TCP result is what lets the phone stop
- * early instead of waiting out a timeout.
+ * the same byte -- so the App sees one code whichever plane it is watching.
  *
- * Note the ordering: the verdict goes out BEFORE tear_down_data_plane() closes
- * our side.  Reversed, the ack would be staged against a connection we had
- * already disarmed and port_tcp would refuse to send it.
+ * The ack goes first and the 0x16 follows it, for the reason set out above
+ * emit_held_verdict().  The session therefore does NOT end here: it parks in
+ * COMPLETING until the ack settles, guarded by the tick's XS_ACK_WAIT_MS.
+ *
+ * @p detail must have static lifetime -- it is logged after this returns.  Every
+ * caller passes a literal.
  */
 static void fail_and_reset(uint8_t reason, const char *detail)
 {
-    (void)ebadge_port_tcp_ack(false, reason);
+    /* Free the flash reservation and stop the ingress now: the verdict is
+     * already decided, so any further inbound byte is waste.  The connection
+     * itself stays armed for the ack -- tear_down_data_plane() would close it. */
+    if (s_x.wp_handle > 0)
+    {
+        (void)ebadge_port_storage_wp_abort(s_x.wp_handle);
+        s_x.wp_handle = 0;
+    }
+    jpgs_ingress_reset();
+    ebfs_ingress_reset();
 
-    tear_down_data_plane();
-    emit_fail(reason, detail);
-    reset_ctx();
+    s_x.state        = XFER_SESSION_COMPLETING;
+    s_x.done_pending = true;
+    s_x.done_ok      = false;
+    s_x.done_reason  = reason;
+    s_x.done_detail  = detail;
+    s_x.deadline_ack = ebadge_task_now_ms() + XS_ACK_WAIT_MS;
+
+    (void)ebadge_port_tcp_ack(false, reason, ack_settled_from_driver, NULL);
 }
 
 /**
@@ -336,11 +475,28 @@ static void on_tick(uint32_t now_ms)
         return;
     }
 
-    /* Overall session hard deadline. */
-    if ((int32_t)(now_ms - s_x.deadline_overall) >= 0)
+    /* Overall session hard deadline.
+     *
+     * Skipped once a verdict is already out on the data plane and only its
+     * completion is outstanding: failing the session then would emit a second,
+     * contradictory BLE notify for a transfer whose outcome is already decided.
+     * That wait has its own deadline below. */
+    if (!s_x.done_pending &&
+        (int32_t)(now_ms - s_x.deadline_overall) >= 0)
     {
         EBADGE_WARN("xfer: overall deadline hit");
         fail_and_reset(EB_XFER_ERR_IO_TIMEOUT, "overall timeout");
+        return;
+    }
+
+    if (s_x.done_pending &&
+        (int32_t)(now_ms - s_x.deadline_ack) >= 0)
+    {
+        /* The ack's completion never arrived.  Release the held verdict rather
+         * than sit here: the App is waiting for it, and port_tcp has already
+         * given up on the data plane by now either way. */
+        EBADGE_WARN("xfer: ack completion lost, releasing BLE verdict");
+        emit_held_verdict(false);
         return;
     }
 
@@ -468,7 +624,9 @@ void xfer_session_offer(const char *name, uint8_t file_type,
     ebadge_storage_stat_t st;
     if (ebadge_port_storage_stat(&st) == 0)
     {
-        uint64_t need = (uint64_t)size + EB_FS_MARGIN;
+        /* +XS_EBXF_STORED_LEN because the stored file carries the TCP framing in
+         * front of the content, so that is what the reservation will ask for. */
+        uint64_t need = (uint64_t)size + XS_EBXF_STORED_LEN + EB_FS_MARGIN;
         if (st.free_bytes < need)
         {
             EBADGE_WARN2("offer: no space, need=%u free=%u -> XFER_FAIL STORAGE_FULL",
@@ -589,13 +747,29 @@ void xfer_session_user_decision(bool accept)
 
 void xfer_session_on_sta_joined(void)
 {
+    if (s_x.state == XFER_SESSION_RECV)
+    {
+        /* Already receiving.  Reached when data arrived before the WLSTATE poll
+         * reported the association and promoted us itself -- the poll's later
+         * answer is then just redundant, not wrong, so it must not warn. */
+        return;
+    }
     if (s_x.state != XFER_SESSION_WAIT_STA)
     {
         EBADGE_WARN1("sta_joined in wrong state=%d", (int)s_x.state);
         return;
     }
-    /* Open write session; ready to receive. */
-    s_x.wp_handle = ebadge_port_storage_wp_begin(s_x.name, s_x.size,
+    /* Open write session; ready to receive.
+     *
+     * Reserve the EBXF header alongside the file: the whole TCP packet is stored,
+     * so the reservation has to cover the framing too or the last 40 bytes of a
+     * file sized at the cap would hit FDB_NO_SPACE in wp_write.
+     *
+     * XS_EBXF_STORED_LEN, not EBXF_HDR_LEN directly, because this same function
+     * serves the JPGS path where the 8711 strips the framing and there is no
+     * header to store -- see the macro. */
+    s_x.wp_handle = ebadge_port_storage_wp_begin(s_x.name,
+                                                 s_x.size + XS_EBXF_STORED_LEN,
                                                  s_x.file_type);
     if (s_x.wp_handle < 0)
     {
@@ -608,14 +782,15 @@ void xfer_session_on_sta_joined(void)
 }
 
 /**
- * Body bytes only -- no framing header.  See xfer_session_on_payload() in the
- * header for why this, not the EBXF variant, is the live path.
+ * Body bytes only -- no framing header.  Reached either from jpgs_ingress (which
+ * gets bytes the 8711 already stripped) or from xfer_session_on_tcp_data() once
+ * the EBXF header has been consumed.
  */
-void xfer_session_on_payload(const uint8_t *data, uint16_t len)
+int xfer_session_on_payload(const uint8_t *data, uint16_t len)
 {
     if (s_x.state != XFER_SESSION_RECV || data == NULL || len == 0)
     {
-        return;
+        return -1;
     }
     uint32_t now = ebadge_task_now_ms();
     s_x.last_data_ms = now;
@@ -625,7 +800,7 @@ void xfer_session_on_payload(const uint8_t *data, uint16_t len)
     if (rc < 0)
     {
         fail_and_reset(EB_XFER_ERR_STORAGE_FULL, "wp_write");
-        return;
+        return -1;
     }
     s_x.crc32_running = eb_crc32_update(s_x.crc32_running, data, len);
     s_x.bytes_recv   += len;
@@ -662,7 +837,7 @@ void xfer_session_on_payload(const uint8_t *data, uint16_t len)
             EBADGE_ERR2("xfer: length mismatch got=%u exp=%u",
                         (unsigned)s_x.bytes_recv, (unsigned)s_x.size);
             fail_and_reset(EB_XFER_ERR_VERIFY, "length");
-            return;
+            return -1;
         }
 
         if (s_x.crc32_running != s_x.crc32_expected)
@@ -670,7 +845,7 @@ void xfer_session_on_payload(const uint8_t *data, uint16_t len)
             EBADGE_ERR2("xfer: CRC mismatch got=0x%08x exp=0x%08x",
                         s_x.crc32_running, s_x.crc32_expected);
             fail_and_reset(EB_XFER_ERR_VERIFY, "crc32");
-            return;
+            return -1;
         }
 
         uint16_t file_id = 0;
@@ -683,33 +858,36 @@ void xfer_session_on_payload(const uint8_t *data, uint16_t len)
          * then closes it with no result at all (SPI spec §6.3).  Anything added
          * here eats into that window. */
         int crc_rc = ebadge_port_storage_wp_commit(s_x.wp_handle,
-                                                   s_x.crc32_running, &file_id);
+                                                   s_x.crc32_running,
+                                                   s_x.ebxf_seen
+                                                   ? EBXF_HDR_LEN : 0U,
+                                                   &file_id);
         s_x.wp_handle = 0;
         if (crc_rc < 0)
         {
             fail_and_reset(EB_XFER_ERR_STORAGE_FULL, "wp_commit");
-            return;
+            return -1;
         }
 
-        /* Report success to the data plane, THEN close.  Same ordering reason as
-         * in fail_and_reset(): the transport delivers the result on the live
-         * connection and closes it itself, so disarming first would throw the
-         * result away.  This is the point at which the phone is told the upload
-         * worked -- and per spec §6.3 it is only sound here, after both the CRC
-         * compare and the flash commit have succeeded. */
-        (void)ebadge_port_tcp_ack(true, 0);
-        (void)ebadge_port_tcp_close();
-        (void)ebadge_port_softap_stop();
-        /* Same reason as in tear_down_data_plane(): the last chunk ended exactly
-         * on the file's last byte, but the 8711 may still push a stray slot. */
-        jpgs_ingress_reset();
-        ebfs_ingress_reset();
+        /* Stay in COMPLETING and hand the result to the data plane.  The BLE
+         * 0x15 DONE is NOT sent here: it goes out from emit_held_verdict() once
+         * the XFERACK has actually left, so the phone cannot be told over BLE that
+         * the transfer finished while the upload it is still holding open has
+         * heard nothing.  See the ordering note above emit_held_verdict().
+         *
+         * file_id is stashed because the notify is built later, on a callback that
+         * has no access to this frame.  The data plane is NOT torn down here
+         * either -- the ack is staged against that connection. */
+        s_x.done_pending = true;
+        s_x.done_ok      = true;
+        s_x.done_reason  = 0U;
+        s_x.done_detail  = NULL;
+        s_x.done_file_id = file_id;
+        s_x.deadline_ack = ebadge_task_now_ms() + XS_ACK_WAIT_MS;
 
-        /* 0x15 DONE is authoritative for the App, not the data-plane result
-         * above (spec §5.3 is explicit that TCP status does not replace it). */
-        emit_done(file_id);
-        reset_ctx();
+        (void)ebadge_port_tcp_ack(true, 0, ack_settled_from_driver, NULL);
     }
+    return 0;
 }
 
 /*----------------------------------------------------------------------------*
@@ -783,11 +961,11 @@ bool xfer_session_check_identity(uint32_t size, uint32_t crc32,
     return true;
 }
 
-void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len)
+int xfer_session_on_tcp_data(const uint8_t *data, uint16_t len)
 {
     if (s_x.state != XFER_SESSION_RECV || data == NULL || len == 0)
     {
-        return;
+        return -1;
     }
 
     uint16_t consumed = 0;
@@ -816,7 +994,7 @@ void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len)
              * rather than wedging the session. */
             EBADGE_LOG2("xfer: EBXF header %d/%d bytes, waiting",
                         (int)s_x.ebxf_hdr_len, (int)EBXF_HDR_LEN);
-            return;
+            return 0;
         }
 
         ebxf_hdr_t hdr;
@@ -827,7 +1005,7 @@ void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len)
              * a sender we cannot parse is not one to keep listening to. */
             EBADGE_ERR("xfer: bad EBXF magic/version");
             abort_and_reset(EB_XFER_ERR_VERIFY, "ebxf magic");
-            return;
+            return -1;
         }
         /* Spec §5.2 rule 3, via the shared check so this path and the EBFS one
          * cannot drift apart.  It tears the session down on mismatch, so there
@@ -835,15 +1013,41 @@ void xfer_session_on_tcp_data(const uint8_t *data, uint16_t len)
         if (!xfer_session_check_identity(hdr.file_size, hdr.crc32,
                                          hdr.file_type, hdr.file_name))
         {
-            return;
+            return -1;
         }
+        EBADGE_LOG3("xfer: EBXF hdr ok, file=\"%s\" size=%u crc=0x%08x",
+                    hdr.file_name, (unsigned)hdr.file_size, hdr.crc32);
         s_x.ebxf_seen = true;
+
+        /* Store the header as well, so what lands on flash is the whole TCP
+         * packet rather than just its body.
+         *
+         * It is written here, once the header has been validated -- not as it
+         * arrived.  A header that fails the parse or the identity check belongs
+         * to a transfer that is about to be cut, and writing it first would leave
+         * those 40 bytes in a reservation that is then aborted.
+         *
+         * Deliberately NOT fed to the running CRC: that accumulator is compared
+         * against the offer's whole-FILE CRC32, which the sender computed over
+         * the content alone.  Nor is it counted in bytes_recv, which is measured
+         * against the offered file size and drives the progress notify.  The
+         * header's 40 bytes are accounted for once, in the reservation made at
+         * wp_begin, and once more as the content_offset handed to wp_commit. */
+        int hrc = ebadge_port_storage_wp_write(s_x.wp_handle, s_x.ebxf_hdr,
+                                               EBXF_HDR_LEN);
+        if (hrc < 0)
+        {
+            fail_and_reset(EB_XFER_ERR_STORAGE_FULL, "wp_write ebxf hdr");
+            return -1;
+        }
     }
 
     if (consumed < len)
     {
-        xfer_session_on_payload(data + consumed, (uint16_t)(len - consumed));
+        return xfer_session_on_payload(data + consumed,
+                                       (uint16_t)(len - consumed));
     }
+    return 0;
 }
 
 void xfer_session_on_tcp_close(int reason)

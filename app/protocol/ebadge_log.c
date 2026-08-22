@@ -85,7 +85,7 @@ void ebadge_log_lines(const char *prefix, const char *body)
  *  position readable at a glance without counting.
  *
  *  One printf per row, not one per byte: the per-byte form interleaves with
- *  other threads' output and turns a 64-byte dump into 64 chances to be cut in
+ *  other threads' output and turns a dump into one chance per byte to be cut in
  *  half.  Building the row in a local buffer first makes each row atomic as far
  *  as any reasonable stdout port is concerned.
  *----------------------------------------------------------------------------*/

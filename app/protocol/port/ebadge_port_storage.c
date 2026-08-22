@@ -12,6 +12,10 @@
  *
  * Requires FDB_USING_BF (port/flashdb/fdb_cfg.h).  Turning it off is meant to
  * break the build here rather than silently resurrect made-up capacity.
+ *
+ * A successful commit also tells the UI, so a wallpaper that just arrived over
+ * Wi-Fi shows up in the carousel without a reboot -- see notify_ui_new_resource()
+ * below for why that lives here and not in xfer_session.
  */
 #include <stdio.h>
 #include <string.h>
@@ -184,7 +188,78 @@ int ebadge_port_storage_wp_write(int handle, const uint8_t *data, uint16_t len)
     return 0;
 }
 
+/**
+ * Tell the UI a new resource landed on flash, so the carousel picks it up
+ * without a reboot.
+ *
+ * Why here rather than in xfer_session: the UI wants the XIP address and length
+ * of the committed data, and the only thing that knows the BF key needed to look
+ * those up is this file -- the protocol's file_id is deliberately not exposed as
+ * a key to callers (see pick_file_id).  Doing it here also covers every commit
+ * path at once, so the 0x02 BLE-only route gets the same behaviour for free when
+ * it is finally wired up.
+ *
+ * ui_add_resource() only posts a message to the GUI server, so this does not
+ * render anything on the calling thread -- it is safe from l2_task, which is
+ * where wp_commit runs.  The two words must therefore outlive this function:
+ * the GUI reads them when it dequeues, not when we post.  Hence static.  One
+ * in-flight transfer at a time (see the WP_HANDLE note above) is what makes a
+ * single slot sufficient.
+ */
+static uint32_t s_ui_res_info[2];
+
+static void notify_ui_new_resource(const char *key, uint32_t content_offset)
+{
+    /* Declared locally: this is the one protocol-side reference to the designer
+     * UI layer, and routing it through a shared header would invite the rest of
+     * the porting layer to reach into the GUI too. */
+    extern void ui_add_resource(uint32_t payload);
+
+    s_ui_res_info[0] = 0;
+    s_ui_res_info[1] = 0;
+
+    size_t    data_size = 0;
+    uint32_t  addr      = 0;
+    fdb_err_t rc = fdb_bf_get_addr(app_get_bf(), key, &addr, &data_size);
+    if (rc != FDB_NO_ERR || addr == 0 || data_size == 0)
+    {
+        /* The file IS committed and readable -- only the UI hand-off failed, so
+         * this is a warning and not a transfer failure.  It shows up after a
+         * reboot, when the list is rebuilt from the directory. */
+        EBADGE_WARN2("port_storage: no addr for '%s' (rc=%d), UI not notified",
+                     key, (int)rc);
+        return;
+    }
+
+    /* Skip the transport framing the file was stored with.  The UI is handed a
+     * pointer it dereferences as a resource header, so it has to land on the
+     * resource -- not on the EBXF header in front of it.  The framing stays on
+     * flash (it is part of the CRC-verified range and part of the record of what
+     * arrived); only the pointer moves past it. */
+    if (content_offset >= (uint32_t)data_size)
+    {
+        EBADGE_WARN2("port_storage: '%s' is %u B of framing and no content",
+                     key, (unsigned)data_size);
+        return;
+    }
+    s_ui_res_info[0] = addr + content_offset;
+    s_ui_res_info[1] = (uint32_t)data_size - content_offset;
+
+    EBADGE_LOG3("port_storage: -> ui_add_resource '%s' addr=0x%08x size=%u",
+                key, (unsigned)s_ui_res_info[0], (unsigned)s_ui_res_info[1]);
+    if (content_offset != 0U)
+    {
+        EBADGE_LOG2("port_storage: (skipped %u B framing, stored %u B total)",
+                    (unsigned)content_offset, (unsigned)data_size);
+    }
+
+    /* The payload is a pointer to the pair, not a value -- mainface_list_add()
+     * memcpy()s 8 bytes out of it. */
+    ui_add_resource((uint32_t)(uintptr_t)s_ui_res_info);
+}
+
 int ebadge_port_storage_wp_commit(int handle, uint32_t data_crc,
+                                  uint32_t content_offset,
                                   uint16_t *out_file_id)
 {
     if (handle != WP_HANDLE || s_wp_file == NULL) { return -2; }
@@ -199,6 +274,11 @@ int ebadge_port_storage_wp_commit(int handle, uint32_t data_crc,
                      (unsigned)size, (unsigned)s_wp_expect);
     }
 
+    /* Copied before the commit: fdb_bf_commit() releases the handle slot and
+     * clears it, so afterwards there is no key left to look the file up by. */
+    char key[FDB_BF_KEY_MAX];
+    (void)snprintf(key, sizeof(key), "%s", s_wp_file->key);
+
     /* Passing the CRC (rather than NULL) sets FDB_BF_FLAG_CRC_VALID, so a
      * reader can re-verify the file long after this transfer is gone. */
     fdb_err_t rc = fdb_bf_commit(s_wp_file, &data_crc);
@@ -212,6 +292,8 @@ int ebadge_port_storage_wp_commit(int handle, uint32_t data_crc,
     if (out_file_id) { *out_file_id = s_wp_file_id; }
     EBADGE_LOG3("port_storage: commit ok id=%d size=%u crc=0x%08x",
                 (int)s_wp_file_id, (unsigned)size, (unsigned)data_crc);
+
+    notify_ui_new_resource(key, content_offset);
     return 0;
 }
 

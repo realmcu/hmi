@@ -43,15 +43,13 @@
  *                                    have carried -- taken from the JPGS
  *                                    header's TotalSize / Offset / END instead
  *
- * The EBXF/EBXS parsers are deliberately kept (xfer_session_on_tcp_data() /
- * stream_session_on_tcp_data()) because they are correct for the topology the
- * spec assumes, and a firmware that terminates TCP on this chip would need them
- * unchanged.  They simply have no caller today.
- *
- * SPI v2.2 note: the EBXF header does now reach the 8711 -- on the *other* port.
- * Port 9000 accepts `EBXF + body`, and the 8711 re-frames it into EBFS slots
- * that restate the whole identity per chunk.  That is ebfs_ingress.c's path, not
- * this one, and it is where the §5.2 cross-check against the offer happens.
+ * SPI v2.2 note: the EBXF header DOES reach this chip -- via the *other* port.
+ * Port 9000 accepts `EBXF + body` and the 8711 forwards that stream verbatim in
+ * EBFS slot payloads without parsing it, so the 40 bytes arrive as payload and
+ * xfer_session_on_tcp_data() is live for them.  That is ebfs_ingress.c's path,
+ * not this one, and it is where the §5.2 cross-check against the offer happens.
+ * stream_session_on_tcp_data() remains without a caller, correct for a firmware
+ * that terminates TCP on this chip.
  *
  * ---------------------------------------------------------------------------
  * HOW A FILE AND A PREVIEW FRAME ARE TOLD APART -- BY SESSION, NOT BY WIRE
@@ -61,11 +59,11 @@
  * stored or a preview frame being displayed, and sniffing the content would be
  * guessing -- doubly so given both are guaranteed to be valid JPEGs.
  *
- * (EBFS, added in SPI v2.2, *can* say: it has its own magic and restates the
- * identity per chunk.  A file uploaded on port 9000 therefore never reaches this
- * file at all.  The routing below still admits JPGS-to-file because port 5004
- * remains able to carry a bare-JPEG wallpaper, and a phone that has not moved to
- * 9000 must keep working.)
+ * (EBFS, added in SPI v2.2, *can* say: it has its own magic, and its payload
+ * carries the phone's EBXF header with the whole identity in it.  A file uploaded
+ * on port 9000 therefore never reaches this file at all.  The routing below still
+ * admits JPGS-to-file because port 5004 remains able to carry a bare-JPEG
+ * wallpaper, and a phone that has not moved to 9000 must keep working.)
  *
  * The answer is the same rule the EBXF and EBXS headers already used for their
  * shared "EBXF" magic: *whichever BLE offer opened the session decides*.
@@ -278,11 +276,22 @@ static void deliver_on_l2(void *arg)
     switch (h->dest)
     {
     case JPGS_DEST_FILE:
+        /* Same race as on the EBFS path: routing admits the session from
+         * WAIT_STA onwards (dest is chosen on state != IDLE), but on_payload()
+         * only accepts RECV, so without this the first frames of a wallpaper
+         * would be dropped silently while the 15 s join poll caught up.
+         * Inbound data is the association evidence -- take the edge from it.
+         * Idempotent, so the poll's later answer stays harmless. */
+        if (xfer_session_state() == XFER_SESSION_WAIT_STA)
+        {
+            EBADGE_LOG("jpgs: data arrived before the join poll -> entering RECV");
+            xfer_session_on_sta_joined();
+        }
         /* Appends to flash via ebadge_port_storage; see the back-pressure note
          * in the file header for why blocking the transport here is wanted.
          * on_payload(), not on_tcp_data(): there is no EBXF header on this
          * path -- see the framing section of the file header. */
-        xfer_session_on_payload(h->payload, h->len);
+        (void)xfer_session_on_payload(h->payload, h->len);
         break;
     case JPGS_DEST_STREAM:
         stream_session_on_frame_chunk(h->payload, h->len, h->offset,

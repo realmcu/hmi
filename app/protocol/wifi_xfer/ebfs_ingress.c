@@ -3,35 +3,70 @@
  * @brief   EBFS slot validation, cross-plane identity check, and hand-off.
  *
  * ---------------------------------------------------------------------------
- * WHAT ARRIVES HERE
+ * WHAT ARRIVES HERE  --  a byte stream, not a file
  * ---------------------------------------------------------------------------
- * The phone uploads to the 8711 on TCP port 9000 as `EBXF 40B header + body`.
- * The 8711 does not buffer the file: it parses that header, then re-frames the
- * body into 4096-byte EBFS slots on the SPI link, restating the identity from
- * the EBXF header in every slot (SPI spec v2.2 §6).  So:
+ * The phone uploads to the 8711 on TCP port 9000 as `EBXF 40B header + body`
+ * (eBadge spec §5.2).  The 8711 does not buffer and does not parse: it chops the
+ * TCP stream VERBATIM into the payload area of 4096-byte EBFS slots and forwards
+ * them on the SPI link.  So:
  *
  *     phone --Wi-Fi/TCP:9000--> 8711FA --SPI EBFS slots--> 8773G (us)
  *
- * The EBXF header never reaches this chip as bytes, which is why xfer_session's
- * EBXF parser has no caller.  Nothing is lost by that: EBFS carries strictly
- * more (a session id, a chunk index, a per-chunk CRC) and carries it repeatedly.
+ * and the first 40 bytes of the FIRST slot's payload are the EBXF header, not
+ * file content.  That is the one fact this file is built around, and it is a
+ * change from the earlier arrangement in which the 8711 parsed EBXF itself and
+ * forwarded only the body.  The consequences are worth stating plainly, because
+ * each one is a place the old code was right and would now be wrong:
+ *
+ *   - EBFS `Total Size` and `Offset` measure the STREAM (40 + file bytes), not
+ *     the file.  They are still perfectly usable for continuity policing -- see
+ *     below -- but they must never be compared against a file length.
+ *   - EBFS `File Type`, `Name` and `File CRC32` can only be filled by a peer
+ *     that reads EBXF, so they are no longer a trustworthy identity source.
+ *     Name Length in particular is now legitimately 0.
+ *   - The authoritative data-plane identity is the EBXF header itself, inside
+ *     the payload.  xfer_session_on_tcp_data() parses it; that function used to
+ *     have no caller and this file is now it.
  *
  * ---------------------------------------------------------------------------
- * WHY THE IDENTITY CHECK HAPPENS ON THE FIRST SLOT
+ * WHY THE CONTINUITY ARITHMETIC SURVIVED THE CHANGE UNTOUCHED
  * ---------------------------------------------------------------------------
- * eBadge spec §5.2 requires the data plane's size / crc32 / type / name to match
- * the BLE offer, and says a mismatch means close the connection and report 0x16.
- * Because EBFS repeats those fields on every slot, that comparison can happen
- * before the first payload byte reaches flash -- so a disagreement costs one
- * slot rather than a whole 2 MiB write followed by a CRC that was never going to
- * match.  xfer_session_check_identity() does the comparing and, on failure, has
- * already cut the stream (AT+XFERSTOP) and failed the session by the time it
- * returns.
+ * Every comparison below relates Offset, Payload Size and Total Size to each
+ * other, and all three are the 8711's own count of the same stream.  So the
+ * checks are self-consistent whatever the stream happens to contain -- they
+ * police framing, and framing did not change.  Nothing here needs to know where
+ * the file starts within the stream, which is exactly why the 40-byte shift can
+ * be handled one layer up instead of being smeared across this file.
  *
- * It is re-checked on every slot rather than only the first.  §6.2 requires the
- * fields to be identical across the file, the comparison is four integers and a
- * short string, and a sender that changes its mind mid-file is exactly the case
- * a first-slot-only check would wave through.
+ * ---------------------------------------------------------------------------
+ * WHERE THE IDENTITY CHECK WENT
+ * ---------------------------------------------------------------------------
+ * §5.2 requires the data plane's size / crc32 / type / name to match the BLE
+ * offer, and says a mismatch means close the connection and report 0x16.  That
+ * comparison now happens against the EBXF header, on the first slot, inside
+ * xfer_session_on_tcp_data() -> xfer_session_check_identity() -- which on
+ * failure has already cut the stream (AT+XFERSTOP) and failed the session by the
+ * time it returns.  It still costs one slot rather than a whole 2 MiB write
+ * followed by a CRC that was never going to match, so nothing was lost by moving
+ * it; what WAS lost is the per-slot repetition, and that is the honest outcome
+ * of the fields no longer being filled by anyone who read them.
+ *
+ * ---------------------------------------------------------------------------
+ * DATA OUTRUNS THE ASSOCIATION POLL
+ * ---------------------------------------------------------------------------
+ * A slot can legitimately arrive before this chip knows the phone associated.
+ * Nothing on the 8711 reports the join spontaneously, so port_softap polls
+ * AT+WLSTATE every 15 s and the round trip is 11..13 s; the phone meanwhile
+ * associates and opens the TCP connection at once.  So the session is still in
+ * WAIT_STA when the first EBFS slots land, and requiring RECV to route them --
+ * which is what this file used to do -- dropped them as "file with no session to
+ * route to (state=2)".
+ *
+ * The fix is to read the START slot as the association evidence it is: bytes
+ * cannot arrive from a station that never joined, and they say so sooner and
+ * more reliably than the poll.  deliver_on_l2() promotes WAIT_STA -> RECV on a
+ * START, and xfer_session_on_sta_joined() is idempotent so the poll's later
+ * answer costs nothing.
  *
  * ---------------------------------------------------------------------------
  * VALIDATION SPLIT
@@ -39,14 +74,15 @@
  * Here, per slot (§6.2): magic, version, Header Size, Payload Size bounds, all
  * offsets inside the slot BEFORE payload or name is touched, the per-chunk CRC32
  * (offset 28 -- NOT offset 12, which is ATMC's, and NOT the whole-file CRC at
- * offset 32), Session ID / Total Size / Chunk Count constant across the file,
+ * offset 32), Session ID / Total Size / Chunk Count constant across the stream,
  * START on the first slot with Offset and Chunk Index zero, Offset and Chunk
  * Index strictly consecutive, END with Offset+PayloadSize == TotalSize.
  *
- * Downstream: the whole-file CRC32 is xfer_session's, compared against the BLE
- * offer's value before it commits to flash.  The two CRCs answer different
- * questions -- the per-chunk one catches SPI corruption, the whole-file one
- * catches the phone sending the wrong file -- so both are wanted.
+ * Downstream, in xfer_session: the EBXF header, and the whole-file CRC32
+ * compared against the BLE offer's value before it commits to flash.  The two
+ * CRCs answer different questions -- the per-chunk one catches SPI corruption,
+ * the whole-file one catches the phone sending the wrong file -- so both are
+ * wanted.
  *
  * §6.2 says the 8773 should abort the session on an illegal slot, and that is
  * what happens: unlike a preview frame, a file has nothing to resynchronise to.
@@ -75,6 +111,7 @@
 #include <string.h>
 
 #include "ebfs_ingress.h"
+#include "ebxf_frame.h"
 #include "xfer_session.h"
 #include "../ebadge_task.h"
 #include "../ebadge_log.h"
@@ -166,14 +203,8 @@ typedef struct
 {
     const uint8_t *payload;
     uint16_t       len;
-    /* Identity, restated by every slot, for the §5.2 cross-check.  Carried
-     * across the hop rather than checked on this side because it compares
-     * against session state that only l2_task may read. */
-    uint32_t       total_size;
-    uint32_t       file_crc32;
-    uint8_t        file_type;
-    char           name[EBFS_NAME_MAX + 1];
-    bool           accepted;   /* out: false if the check failed             */
+    bool           is_start;   /* in: this is the file's first chunk           */
+    bool           accepted;   /* out: false if the session refused the bytes  */
 } ebfs_handoff_t;
 
 static ebfs_handoff_t s_handoff;
@@ -184,15 +215,38 @@ static void deliver_on_l2(void *arg)
 {
     ebfs_handoff_t *h = (ebfs_handoff_t *)arg;
 
-    /* Cross-plane check first: it can tear the session down, in which case the
-     * payload must NOT be written -- the whole point of checking here is to keep
-     * bytes belonging to the wrong file out of flash. */
-    h->accepted = xfer_session_check_identity(h->total_size, h->file_crc32,
-                                              h->file_type, h->name);
-    if (h->accepted)
+    /* Data outruns the association poll, so promote the session here.
+     *
+     * WAIT_STA -> RECV is otherwise driven only by port_softap's AT+WLSTATE
+     * poll seeing clients>0, and that poll runs every 15 s with an 11..13 s
+     * round trip.  The phone does not wait for any of it: it associates and
+     * opens the TCP connection immediately, so the first EBFS slots routinely
+     * arrive while we are still in WAIT_STA -- which used to drop them as
+     * "file with no session to route to".
+     *
+     * A START slot IS the association evidence the poll was going to fetch, and
+     * a stronger one: bytes cannot arrive from a station that never joined.  So
+     * take the edge from the data.  Only on START, so a mid-file slot from a
+     * session we already abandoned cannot resurrect it, and the call is
+     * idempotent so the poll's later answer is harmless. */
+    if (h->is_start && xfer_session_state() == XFER_SESSION_WAIT_STA)
     {
-        xfer_session_on_payload(h->payload, h->len);
+        EBADGE_LOG("ebfs: START arrived before the join poll -> entering RECV");
+        xfer_session_on_sta_joined();
     }
+
+    /* on_tcp_data(), not on_payload(): the payload is raw TCP, so the 40-byte
+     * EBXF header is still in front of the file and only that function knows to
+     * strip it.  It also runs the §5.2 cross-check against the BLE offer once
+     * the header is complete, and tears the session down on mismatch -- so the
+     * check that used to happen here, against EBFS header fields, is not missing
+     * but relocated to the one place that now has trustworthy values.
+     *
+     * Its return code is the verdict, and it has to be: after a successful last
+     * chunk the session commits and resets to IDLE, which is indistinguishable
+     * from the IDLE a teardown leaves behind.  Inferring acceptance from the
+     * state would therefore report every completed upload as a rejection. */
+    h->accepted = (xfer_session_on_tcp_data(h->payload, h->len) == 0);
 
     /* Only now may the transport thread return and let its slot be re-armed. */
     k_sem_give(&ebfs_handoff_done);
@@ -207,22 +261,12 @@ static void deliver_on_l2(void *arg)
  *
  * @return true if the session accepted it; false if it was rejected or the
  *         hand-off failed, in either case leaving nothing to continue with.
- */
-static bool deliver(const uint8_t *slot, const uint8_t *payload, uint16_t len)
+ */static bool deliver(const uint8_t *payload, uint16_t len, bool is_start)
 {
     s_handoff.payload    = payload;
     s_handoff.len        = len;
-    s_handoff.total_size = spi_at_get_le32(slot + EBFS_OFF_TOTAL_SIZE);
-    s_handoff.file_crc32 = spi_at_get_le32(slot + EBFS_OFF_FILE_CRC);
-    s_handoff.file_type  = slot[EBFS_OFF_FILE_TYPE];
+    s_handoff.is_start   = is_start;
     s_handoff.accepted   = false;
-
-    /* Name Length was bounds-checked by the caller before we got here, which is
-     * what makes this copy safe (§6.2: check every bound before touching name
-     * or payload). */
-    uint8_t nlen = slot[EBFS_OFF_NAME_LEN];
-    memcpy(s_handoff.name, slot + EBFS_OFF_NAME, nlen);
-    s_handoff.name[nlen] = '\0';
 
     k_sem_reset(&ebfs_handoff_done);
     if (ebadge_task_post_call(deliver_on_l2, &s_handoff) != 0)
@@ -296,10 +340,13 @@ static void on_ebfs_slot(const uint8_t *slot, size_t len)
         file_discard("bad payload size");
         return;
     }
-    /* §6.1: Name Length is 1..23.  Rejected rather than clamped -- a slot whose
-     * name field we cannot trust is one whose identity we cannot cross-check,
-     * and the check is the reason this path exists. */
-    if (nlen == 0U || nlen > EBFS_NAME_MAX)
+    /* §6.1 gives Name Length the range 1..23, but that assumed a peer that had
+     * parsed EBXF and could copy the name out of it.  The 8711 now forwards the
+     * TCP stream without looking at it, so it has no name to put here and 0 is
+     * the honest value -- rejecting it would reject every slot.  The upper bound
+     * is still enforced: it is a length field off the wire, and cheap to police
+     * even though nothing below indexes with it any more. */
+    if (nlen > EBFS_NAME_MAX)
     {
         file_discard("bad name length");
         return;
@@ -316,8 +363,74 @@ static void on_ebfs_slot(const uint8_t *slot, size_t len)
     /* Per-chunk CRC32 at offset 28, covering payload only -- never the header
      * and never the slot padding.  Checked before any state is updated so a
      * corrupt slot cannot advance the expected offset. */
-    if (ccrc != spi_at_crc32(payload, psize))
+    uint32_t ccrc_calc = spi_at_crc32(payload, psize);
+    if (ccrc != ccrc_calc)
     {
+        /* Dump the evidence before discarding.
+         *
+         * A mismatch here has several quite different causes and the bare
+         * "chunk crc" line cannot tell them apart, so print what separates
+         * them.  The START slot of the same file passes this check, which
+         * already rules out the whole-file explanations -- the algorithm, the
+         * CRC field offset, and the payload base offset are all proven right by
+         * that slot.  What is left is per-slot, and these are the discriminators:
+         *
+         *   - Which slot.  Offset / Chunk Index against the expected pair says
+         *     whether this is the second slot or the last one, and the last is
+         *     the interesting case because it is the only short payload.
+         *   - Length.  If the CRC covers a different number of bytes than
+         *     Payload Size claims, retrying the CRC over a couple of nearby
+         *     lengths is what shows it -- a hit at psize-N names the disagreement
+         *     outright, where the mismatch alone only says "wrong".
+         *   - Content.  If no length matches, the payload bytes themselves are
+         *     wrong (SPI corruption, or a slot whose payload never landed), and
+         *     the head/tail dump distinguishes "plausible file data" from
+         *     zeroes or a shifted copy of the header.
+         *
+         * Cost is bounded: this runs once per failure and the failure discards
+         * the file, so it cannot repeat per slot. */
+        EBADGE_WARN2("ebfs: chunk crc mismatch, got=0x%08x calc=0x%08x",
+                     (unsigned)ccrc, (unsigned)ccrc_calc);
+        EBADGE_WARN2("ebfs:   slot offset=%u chunk=%u",
+                     (unsigned)offset, (unsigned)cidx);
+        EBADGE_WARN2("ebfs:   expected offset=%u chunk=%u",
+                     (unsigned)s_asm.next_offset, (unsigned)s_asm.next_chunk);
+        EBADGE_WARN2("ebfs:   psize=%u total=%u",
+                     (unsigned)psize, (unsigned)total);
+        EBADGE_WARN2("ebfs:   flags=0x%02x nlen=%u",
+                     (unsigned)flags, (unsigned)nlen);
+
+        /* Try the CRC over nearby lengths.  A hit names the exact length the
+         * sender used, which is a far more actionable answer than "mismatch". */
+        for (uint16_t trial = 1U; trial <= 8U; trial++)
+        {
+            if (psize > trial &&
+                spi_at_crc32(payload, (size_t)(psize - trial)) == ccrc)
+            {
+                EBADGE_WARN2("ebfs:   >>> crc matches %u bytes, %u short of "
+                             "Payload Size", (unsigned)(psize - trial),
+                             (unsigned)trial);
+                break;
+            }
+            if ((size_t)WIFI_8711_FILE_HEADER_SIZE + psize + trial <= len &&
+                spi_at_crc32(payload, (size_t)(psize + trial)) == ccrc)
+            {
+                EBADGE_WARN2("ebfs:   >>> crc matches %u bytes, %u past "
+                             "Payload Size", (unsigned)(psize + trial),
+                             (unsigned)trial);
+                break;
+            }
+        }
+
+        /* Head tells us whether this looks like file content at all; tail is
+         * where a length disagreement shows up as padding or stale bytes. */
+        EBADGE_LOG_HEX("ebfs bad payload head", payload, 64);
+        if (psize > 32U)
+        {
+            EBADGE_LOG_HEX("ebfs bad payload tail",
+                           payload + (psize - 32U), 32);
+        }
+
         file_discard("chunk crc");
         return;
     }
@@ -340,7 +453,14 @@ static void on_ebfs_slot(const uint8_t *slot, size_t len)
                          (unsigned)offset, (unsigned)cidx);
             return;
         }
-        if (total == 0U || total > WIFI_8711_FILE_SIZE_MAX)
+        /* Total Size counts the stream, so a file at exactly the 2 MiB cap
+         * legitimately reports 2 MiB + 40 here.  Allowing the header keeps the
+         * bound a sanity check on a wire field rather than a second, stricter
+         * and differently-shifted copy of the size policy -- the real size limit
+         * is enforced by xfer_session against the BLE offer, on the file length
+         * proper, where 2 MiB actually means 2 MiB. */
+        if (total <= EBXF_HDR_LEN ||
+            total > (uint32_t)WIFI_8711_FILE_SIZE_MAX + EBXF_HDR_LEN)
         {
             EBADGE_WARN1("ebfs: START total_size=%u out of range, ignored",
                          (unsigned)total);
@@ -348,8 +468,15 @@ static void on_ebfs_slot(const uint8_t *slot, size_t len)
         }
 
         /* Only the file session can receive these; a preview stream never gets
-         * EBFS slots, which is the whole reason EBFS has its own magic. */
-        if (xfer_session_state() != XFER_SESSION_RECV)
+         * EBFS slots, which is the whole reason EBFS has its own magic.
+         *
+         * WAIT_STA counts as routable: the phone associates and starts sending
+         * without waiting to be noticed, so a START in WAIT_STA is the normal
+         * case rather than a stray, and deliver_on_l2() promotes the session on
+         * the strength of it.  Requiring RECV here is what produced the "file
+         * with no session to route to (state=2)" drop. */
+        xfer_session_state_t xst = xfer_session_state();
+        if (xst != XFER_SESSION_RECV && xst != XFER_SESSION_WAIT_STA)
         {
             /* Nobody asked for this.  Counted rather than logged per slot: an
              * 8711 left forwarding after a session ended would otherwise bury
@@ -358,7 +485,7 @@ static void on_ebfs_slot(const uint8_t *slot, size_t len)
             if ((s_slots_unrouted % 64U) == 1U)
             {
                 EBADGE_LOG2("ebfs: file with no session to route to "
-                            "(state=%d, x%u)", (int)xfer_session_state(),
+                            "(state=%d, x%u)", (int)xst,
                             (unsigned)s_slots_unrouted);
             }
             return;
@@ -371,7 +498,8 @@ static void on_ebfs_slot(const uint8_t *slot, size_t len)
         s_asm.next_offset = 0U;
         s_asm.next_chunk  = 0U;
 
-        EBADGE_LOG3("ebfs: file session=%u size=%u chunks=%u -> store",
+        EBADGE_LOG3("ebfs: stream session=%u bytes=%u chunks=%u "
+                    "(incl. EBXF hdr) -> store",
                     (unsigned)sid, (unsigned)total, (unsigned)ccnt);
     }
     else if (!s_asm.in_file)
@@ -415,7 +543,7 @@ static void on_ebfs_slot(const uint8_t *slot, size_t len)
     }
 
     /* ---- forward, then advance ------------------------------------------ */
-    if (!deliver(slot, payload, psize))
+    if (!deliver(payload, psize, is_start))
     {
         /* Rejected or lost; deliver() has already cleared the bookkeeping and,
          * where relevant, xfer_session has failed the session. */
@@ -428,7 +556,7 @@ static void on_ebfs_slot(const uint8_t *slot, size_t len)
     if (is_end)
     {
         s_files_ok++;
-        EBADGE_LOG2("ebfs: file session=%u complete (%u bytes)",
+        EBADGE_LOG2("ebfs: stream session=%u complete (%u bytes incl. hdr)",
                     (unsigned)s_asm.session_id, (unsigned)s_asm.next_offset);
         /* xfer_session saw the last byte inside deliver() above and has already
          * verified, committed and sent the ack.  Nothing left but to forget. */

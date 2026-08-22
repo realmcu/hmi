@@ -71,6 +71,26 @@ typedef void (*ebadge_tcp_on_data_cb_t)(const uint8_t *data, uint16_t len);
 /** Fires from the transport thread; MUST post_call into l2_task. */
 typedef void (*ebadge_tcp_on_close_cb_t)(ebadge_tcp_close_reason_t reason);
 
+/**
+ * @brief  Fires once the result handed to ebadge_port_tcp_ack() has been dealt
+ *         with, one way or the other.
+ *
+ * @param  ok    true if the transport confirmed it delivered the result; false
+ *               if it was refused, timed out, or abandoned.  Either way this is
+ *               the moment after which no further attempt will be made.
+ * @param  user  the pointer handed to ack()
+ *
+ * GUARANTEED to fire exactly once per ack(), and NEVER synchronously from inside
+ * ack() -- so a caller may stage state before the call and rely on it still
+ * being there afterwards.  That matters because the session uses this to order
+ * its BLE verdict behind the data-plane one, and a re-entrant callback would
+ * emit the verdict from inside the function that was setting it up.
+ *
+ * Fires from the transport thread or the system workqueue, never l2_task, so it
+ * MUST post_call before touching session state.
+ */
+typedef void (*ebadge_tcp_ack_done_cb_t)(bool ok, void *user);
+
 typedef struct
 {
     uint16_t                port;
@@ -90,19 +110,25 @@ int  ebadge_port_tcp_listen(const ebadge_tcp_listen_t *cfg);
  * @param  ok      true when length, CRC and any storage commit all succeeded
  * @param  reason  eBadge spec sec.2.6 transfer error code; ignored (and must be
  *                 0) when @p ok is true
+ * @param  done    optional; fires once the result has been delivered or given up
+ *                 on.  Pass NULL to fire and forget.
  *
  * Asynchronous and best effort: 0 means the result was handed to the transport,
- * not that the peer received it.  The transport typically also closes the
- * connection as part of delivering the result.
+ * not that the peer received it.  Wait for @p done to learn that.  The transport
+ * typically also closes the connection as part of delivering the result.
  *
  * Call this only once per session, and only after the verdict is final -- on the
  * 8711 it is what makes the phone's transfer end with a code instead of a bare
  * disconnect, and the chip only waits a bounded time for it.
  *
+ * @p done still fires when the return value is <0 or when there is no transport
+ * at all, so a caller sequencing work behind it cannot be left waiting forever.
+ *
  * @retval 0   handed over (or dropped harmlessly -- see the impl)
  * @retval <0  the result could not be delivered at all
  */
-int  ebadge_port_tcp_ack(bool ok, uint8_t reason);
+int  ebadge_port_tcp_ack(bool ok, uint8_t reason,
+                         ebadge_tcp_ack_done_cb_t done, void *user);
 
 /**
  * @brief  Cut the connection immediately, delivering no result.
