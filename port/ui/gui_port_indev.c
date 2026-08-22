@@ -72,18 +72,11 @@ static void enter_power_off(void)
 
     printk("[power-key] power off requested\n");
 
-    void *gui_thread = gui_server_get_thread_handle();
-    if (gui_thread == NULL || !gui_thread_suspend(gui_thread))
-    {
-        printk("[power-key] failed to suspend GUI thread\n");
-        power_off_requested = false;
-        return;
-    }
-
     wireless_power_set(false);
     btaon_fast_write_safe(POWER_OFF_AON_REG, POWER_OFF_AON_MAGIC);
     rtk_lcd_hal_set_display(false);
-    printk("[power-key] GUI suspended, entering power-down\n");
+    extern void gui_set_keep_active_time(uint32_t active_time);
+    gui_set_keep_active_time(0);
 
     int32_t set_ret = power_mode_set(POWER_POWERDOWN_MODE);
     int32_t resume_ret = power_mode_resume();
@@ -100,7 +93,6 @@ static void enter_power_off(void)
         }
         wireless_power_set(true);
         rtk_lcd_hal_set_display(true);
-        (void)gui_thread_resume(gui_thread);
     }
 }
 
