@@ -41,7 +41,7 @@ extern "C" {
 
 /* Debug input source: keep the sensor read as the 25 Hz pacing source, but
  * feed the embedded SD_001 Q9 trace into GSA instead of live sensor data. */
-#define HEALTH_USE_SD001_SAMPLE  1
+#define HEALTH_USE_SD001_SAMPLE  0
 
 /* OSIF uses larger numbers for higher priorities. Keep the worker below
  * app_task (priority 3) so sampling cannot preempt event dispatch. */
