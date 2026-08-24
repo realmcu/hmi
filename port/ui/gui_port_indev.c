@@ -43,6 +43,9 @@ static bool home_state = false;
 static uint32_t home_timestamp_ms_press = 0;
 static uint32_t home_timestamp_ms_release = 0;
 static bool power_off_requested = false;
+static bool power_key_press_accepted = false;
+static bool suppress_power_key_until_release = false;
+static struct k_work_delayable power_key_long_work;
 
 extern void rtk_lcd_hal_set_display(bool on);
 
@@ -62,7 +65,7 @@ static void exit_power_off(void)
     sys_reboot(SYS_REBOOT_COLD);
 }
 
-static void enter_power_off(void)
+void gui_port_power_off(void)
 {
     if (power_off_requested)
     {
@@ -93,6 +96,31 @@ static void enter_power_off(void)
         }
         wireless_power_set(true);
         rtk_lcd_hal_set_display(true);
+    }
+}
+
+static void power_key_long_work_handler(struct k_work *work)
+{
+    ARG_UNUSED(work);
+
+    if (!gpio_is_ready_dt(&power_key) || gpio_pin_get_dt(&power_key) <= 0)
+    {
+        return;
+    }
+
+    home_state = false;
+    home_timestamp_ms_release = home_timestamp_ms_press;
+    power_key_press_accepted = false;
+    if (power_off_requested)
+    {
+        printk("[power-key] wake long press reached %u ms\n", POWER_LONG_PRESS_MS);
+        exit_power_off();
+    }
+    else
+    {
+        printk("[power-key] power-off long press reached %u ms\n", POWER_LONG_PRESS_MS);
+        extern void ui_confirm_switchoff(uint32_t payload);
+        ui_confirm_switchoff(0);
     }
 }
 
@@ -205,51 +233,56 @@ void kb_get_data(void)
     //         key.press_timestamp, key.release_timestamp);
     if (GPIO_KEY_PRESSED == key.current_state)
     {
-        if (power_off_requested)
+        if (suppress_power_key_until_release)
         {
-            /* Keep the wake press private until its duration is known. */
             home_state = false;
-            home_timestamp_ms_press = key.press_timestamp;
-            home_timestamp_ms_release = key.press_timestamp;
-            printk("[power-key] wake press\n");
+            power_key_press_accepted = false;
+            printk("[power-key] startup press suppressed\n");
             return;
         }
 
-        home_state = true;
         home_timestamp_ms_press = key.press_timestamp;
-        // gui_log("key id %d state %d press %d release %d", key.key_id, key.current_state,
-        //         key.press_timestamp, key.release_timestamp);
+        home_timestamp_ms_release = key.press_timestamp;
+        home_state = !power_off_requested;
+        power_key_press_accepted = true;
+        (void)k_work_reschedule(&power_key_long_work, K_MSEC(POWER_LONG_PRESS_MS));
+        printk("[power-key] %s press, long action armed\n",
+               power_off_requested ? "wake" : "power-off");
     }
     else if (GPIO_KEY_RELEASED == key.current_state)
     {
         uint32_t duration = key.release_timestamp - key.press_timestamp;
 
-        home_timestamp_ms_press = key.press_timestamp;
-        if (power_off_requested)
+        (void)k_work_cancel_delayable(&power_key_long_work);
+        home_state = false;
+        if (suppress_power_key_until_release)
         {
-            home_timestamp_ms_release = key.press_timestamp;
-            home_state = false;
-            printk("[power-key] wake release %u ms\n", duration);
-            if (duration >= POWER_LONG_PRESS_MS)
-            {
-                exit_power_off();
-            }
+            suppress_power_key_until_release = false;
+            power_key_press_accepted = false;
+            home_timestamp_ms_press = key.release_timestamp;
+            home_timestamp_ms_release = key.release_timestamp;
+            printk("[power-key] startup release suppressed\n");
             return;
         }
 
-        if (duration >= POWER_LONG_PRESS_MS)
+        if (!power_key_press_accepted)
         {
-            /* Publish an invalid release before publishing state=false, so
-             * HoneyGUI cannot race this callback and enqueue a key event. */
+            home_timestamp_ms_press = key.release_timestamp;
+            home_timestamp_ms_release = key.release_timestamp;
+            printk("[power-key] unpaired release ignored\n");
+            return;
+        }
+        power_key_press_accepted = false;
+
+        home_timestamp_ms_press = key.press_timestamp;
+        if (power_off_requested || duration >= POWER_LONG_PRESS_MS)
+        {
             home_timestamp_ms_release = key.press_timestamp;
-            home_state = false;
-            printk("[power-key] long release %u ms\n", duration);
-            enter_power_off();
+            printk("[power-key] release %u ms, no action\n", duration);
             return;
         }
 
         home_timestamp_ms_release = key.release_timestamp;
-        home_state = false;
         printk("[power-key] short release %u ms\n", duration);
     }
 }
@@ -296,6 +329,13 @@ extern void gui_indev_info_register(struct gui_indev *info);
 void gui_port_indev_init(void)
 {
     gui_log("gui_port_indev_init - touch only");
+    k_work_init_delayable(&power_key_long_work, power_key_long_work_handler);
+    suppress_power_key_until_release = gpio_is_ready_dt(&power_key) &&
+                                       gpio_pin_get_dt(&power_key) > 0;
+    if (suppress_power_key_until_release)
+    {
+        printk("[power-key] startup key held, suppressing until release\n");
+    }
 
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(key1), okay)
     int32_t ret = gpio_button_register_callback(gpio_dev, key1,
