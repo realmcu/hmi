@@ -162,8 +162,45 @@ fdb_err_t fdb_bf_delete(fdb_bf_t db, const char *key);
 fdb_err_t fdb_bf_delete_by_addr(fdb_bf_t db, uint32_t addr);
 
 /**
- * Factory-reset the Big File area: drop every directory entry, then erase the
- * whole data partition.
+ * How much of the data partition fdb_bf_reset() erases.
+ *
+ * This is a choice about ERASE COST, not about correctness: either way every
+ * directory entry is dropped, so either way the files are gone and every figure
+ * the API reports falls back to empty.  fdb_bf_create() erases each range before
+ * it hands it out, so nothing downstream depends on the partition having been
+ * pre-erased.
+ *
+ * Spelled as an enum rather than a bool because `fdb_bf_reset(db, true, &n)` at
+ * a call site says nothing about what is true.
+ */
+typedef enum
+{
+    /**
+     * Drop the directory only.  Milliseconds: one KV delete per file, and a KV
+     * delete just flips a status field in place.
+     *
+     * The old bytes stay on flash until something allocates over them.  They are
+     * unreachable through this API -- no entry names them -- but they are still
+     * readable by anything that walks the raw partition.
+     */
+    FDB_BF_RESET_DIR_ONLY = 0,
+
+    /**
+     * Also erase the whole data partition, so no remnant of the old files is
+     * readable afterwards.
+     *
+     * SECONDS, and it scales with the partition, not with how much of it is in
+     * use: one sector erase per blk_size of the WHOLE partition.  On the eBadge's
+     * 5 MB bf_data at 4 KB sectors that is 1280 erases, and it costs the same
+     * whether one file was stored or thirty.  Do not put this on a path a user
+     * waits on unless the remnants matter.
+     */
+    FDB_BF_RESET_ERASE_DATA,
+} fdb_bf_reset_mode_t;
+
+/**
+ * Factory-reset the Big File area: drop every directory entry, and optionally
+ * erase the data partition too.
  *
  * Only KVs carrying the reserved FDB_BF_KEY_PREFIX are removed -- the directory
  * KVDB is shared with the application, and its ordinary KVs are left untouched.
@@ -175,21 +212,28 @@ fdb_err_t fdb_bf_delete_by_addr(fdb_bf_t db, uint32_t addr);
  * query, never stored, so all of them fall back to empty as a consequence of
  * clearing the directory. There is no separate counter to reset.
  *
- * Order is deliberate: the directory is cleared *before* the payload is erased.
+ * WHICH MODE TO PASS.  FDB_BF_RESET_DIR_ONLY unless you specifically need the old
+ * bytes gone: the erase is the entire cost of this call (milliseconds against
+ * seconds) and it buys nothing the directory clear has not already bought.  See
+ * fdb_bf_reset_mode_t.
+ *
+ * Order is deliberate when erasing: the directory is cleared *before* the payload.
  * A power loss during the (multi-second) erase then leaves entries gone and data
  * partly erased, which is consistent. The reverse order would leave entries
  * pointing at erased bytes, i.e. files that exist but read as 0xFF.
  *
  * @param db          the BF object
+ * @param mode        FDB_BF_RESET_DIR_ONLY or FDB_BF_RESET_ERASE_DATA
  * @param out_removed optional, receives the number of entries deleted; may be
  *                    NULL. It is filled in even when the erase step later fails.
  *
  * @return FDB_NO_ERR on success;
  *         FDB_BUSY if a write session (fdb_bf_create) is still open -- commit or
  *         abort it first, since resetting under it would strand its handle;
- *         FDB_ERASE_ERR if the payload erase failed (directory is already empty).
+ *         FDB_ERASE_ERR if the payload erase failed (directory is already empty,
+ *         so the files are gone regardless; only stale bytes survive).
  */
-fdb_err_t fdb_bf_reset(fdb_bf_t db, uint32_t *out_removed);
+fdb_err_t fdb_bf_reset(fdb_bf_t db, fdb_bf_reset_mode_t mode, uint32_t *out_removed);
 bool      fdb_bf_exists(fdb_bf_t db, const char *key);
 fdb_err_t fdb_bf_stat(fdb_bf_t db, const char *key, struct fdb_bf_dirent *out);
 fdb_err_t fdb_bf_foreach(fdb_bf_t db, fdb_bf_iter_cb cb, void *arg);

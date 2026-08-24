@@ -694,7 +694,7 @@ static uint32_t reset_collect(fdb_bf_t db, char keys[][FDB_KV_NAME_MAX], uint32_
     return n;
 }
 
-fdb_err_t fdb_bf_reset(fdb_bf_t db, uint32_t *out_removed)
+fdb_err_t fdb_bf_reset(fdb_bf_t db, fdb_bf_reset_mode_t mode, uint32_t *out_removed)
 {
     char keys[BF_RESET_BATCH][FDB_KV_NAME_MAX];
     uint32_t removed = 0;
@@ -712,8 +712,11 @@ fdb_err_t fdb_bf_reset(fdb_bf_t db, uint32_t *out_removed)
     }
 
     /* An open write session owns a reserved data range and would keep appending
-     * into bytes this call is about to erase, then commit an entry describing
-     * them. Refuse instead of stranding its handle. */
+     * into bytes this call is about to drop the entry for -- and, in
+     * FDB_BF_RESET_ERASE_DATA, erase under it -- then commit an entry describing
+     * them. Refuse instead of stranding its handle. Checked in both modes: the
+     * directory clear alone is already enough to make its eventual commit
+     * describe a file nothing else knows about. */
     for (i = 0; i < FDB_BF_MAX_OPEN_HANDLES; i++)
     {
         if (db->handles[i].in_use)
@@ -767,13 +770,25 @@ fdb_err_t fdb_bf_reset(fdb_bf_t db, uint32_t *out_removed)
         *out_removed = removed;
     }
 
-    /* 2. Erase the payload.
+    /* 2. Optionally erase the payload.
      *
-     * Not needed to make the files disappear (step 1 did that, and create()
-     * erases what it hands out), but asked for explicitly so a reset leaves no
-     * readable remnants of the old pictures behind. This is the expensive part:
-     * one sector erase per blk_size of the partition. The FAL port kicks the
-     * watchdog inside its erase loop. */
+     * Never needed to make the files disappear -- step 1 did that, and create()
+     * erases each range before handing it out, so the allocator does not care
+     * what is in the bytes it reuses. It buys exactly one thing: no readable
+     * remnant of the old pictures survives on the raw partition.
+     *
+     * It is also the entire cost of this call, and the cost is proportional to
+     * the PARTITION, not to what was stored in it: one sector erase per blk_size
+     * of the whole data area, the same 1280 erases on a 5 MB partition whether
+     * one file was cleared or thirty. Hence the default is dir-only and this is
+     * opt-in. The FAL port kicks the watchdog inside its erase loop. */
+    if (mode != FDB_BF_RESET_ERASE_DATA)
+    {
+        FDB_INFO("Reset the Big File directory: %u entries removed, data kept.\n",
+                 (unsigned)removed);
+        return FDB_NO_ERR;
+    }
+
     FDB_INFO("Resetting the Big File area: %u entries removed, erasing %u bytes.\n",
              (unsigned)removed, (unsigned)db->data_size);
 
