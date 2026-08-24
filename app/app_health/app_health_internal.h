@@ -111,12 +111,9 @@ int  health_db_init(void);
  * Returns 0 on success, negative on failure. */
 int  health_db_append_pedo(health_pedo_record_t *rec);
 
-/* Take the next record no consumer has seen yet, oldest first, advancing the
- * persisted watermark over it. Returns 1 when @c out was filled, 0 when
- * nothing unread remains, negative errno on a NULL argument or unusable
- * store. Backs app_health_history_read(); see that declaration in
- * app_health.h for the full contract. */
-int  health_db_read_next(health_pedo_record_t *out);
+/* The sequential read cursor is NOT declared here: health_db.c defines
+ * app_health_history_read() directly, since the batch cursor and the persisted
+ * watermark it advances are both file-static there. See app_health.h. */
 
 /* --------------------------------------------------------------
  * health_worker — private acquisition task.

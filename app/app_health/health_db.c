@@ -23,6 +23,7 @@
  * "return -EIO" no-op so the health module can log and carry on.
  */
 
+#include "app_health.h"          /* app_health_history_read() is defined here */
 #include "app_health_internal.h"
 #include "app_log.h"
 
@@ -222,7 +223,15 @@ static bool pedo_iter_adapter(fdb_tsl_t tsl, void *arg)
 
 /* Iterate records with ts_utc in [from, to]; @c to == 0 means no upper bound.
  * Returns the number of records visited. Private now that the sequential
- * reader below is the only consumer. */
+ * reader below is the only consumer.
+ *
+ * Always goes through fdb_tsl_iter_by_time(), never fdb_tsl_iter(), even for a
+ * full sweep (from == 0 is simply the lowest possible timestamp). The two are
+ * equivalent in coverage, but only iter_by_time() skips TSL slots whose status
+ * is FDB_TSL_UNUSED; fdb_tsl_iter() hands those to the callback with log_len
+ * set to the DB's max_len (128 for pedo) and log addr FDB_DATA_UNUSED, leaving
+ * pedo_iter_adapter()'s size check as the only thing standing between a
+ * never-written slot and the caller's buffer. */
 static size_t health_db_iter(uint32_t from, uint32_t to,
                              health_db_iter_cb_t cb, void *user)
 {
@@ -241,17 +250,12 @@ static size_t health_db_iter(uint32_t from, uint32_t to,
         .stop     = false,
     };
 
+    /* FDB compares timestamps as signed fdb_time_t, so the open upper bound is
+     * INT32_MAX rather than UINT32_MAX. */
+    fdb_time_t hi = (to == 0) ? (fdb_time_t)0x7FFFFFFF : (fdb_time_t)to;
+
     db_lock();
-    if (from == 0 && to == 0)
-    {
-        fdb_tsl_iter(tsdb, pedo_iter_adapter, &ctx);
-    }
-    else
-    {
-        fdb_time_t hi = (to == 0) ? (fdb_time_t)0x7FFFFFFF : (fdb_time_t)to;
-        fdb_tsl_iter_by_time(tsdb, (fdb_time_t)from, hi,
-                             pedo_iter_adapter, &ctx);
-    }
+    fdb_tsl_iter_by_time(tsdb, (fdb_time_t)from, hi, pedo_iter_adapter, &ctx);
     db_unlock();
     return ctx.visited;
 }
@@ -272,20 +276,25 @@ static size_t health_db_iter(uint32_t from, uint32_t to,
  * mid-batch loses nothing.
  *
  * Single reader by design: the BLE spec allows one sync session per link, and
- * health_db_iter() is untouched by this, so `health list` still sees
+ * health_db_iter() is untouched by this, so a full-range iteration still sees
  * everything regardless of how much has been synced.
  * -------------------------------------------------------------- */
 
 #define HISTORY_PREFETCH  8u
 
-static struct
+/* The sequential reader's whole state: a batch of records pulled from the TSDB
+ * plus how far into it the consumer has got. Single instance by design — see
+ * the "Single reader" note above. */
+typedef struct
 {
     bool     loaded;                          /* watermark read from KV yet? */
     uint32_t synced_ts;                       /* newest ts_utc handed out    */
     health_pedo_record_t buf[HISTORY_PREFETCH];
     uint8_t  n;                               /* records in buf              */
     uint8_t  taken;                           /* delivered out of buf        */
-} s_hist;
+} history_cursor_t;
+
+static history_cursor_t read_cursor;
 
 typedef struct
 {
@@ -302,7 +311,7 @@ static bool prefetch_fill_cb(const health_pedo_record_t *rec, void *user)
     return fill->n >= HISTORY_PREFETCH;
 }
 
-/* Pull the next batch into s_hist.buf. Returns records fetched, or -errno. */
+/* Pull the next batch into read_cursor.buf. Returns records fetched, or -errno. */
 static int history_refill(void)
 {
     if (health_db_init() != 0)
@@ -311,38 +320,45 @@ static int history_refill(void)
     }
 
     /* Loaded lazily so a KV read never sits on the module's startup path. */
-    if (!s_hist.loaded)
+    if (!read_cursor.loaded)
     {
-        (void)health_db_load_synced_ts(&s_hist.synced_ts);
-        s_hist.loaded = true;
+        (void)health_db_load_synced_ts(&read_cursor.synced_ts);
+        read_cursor.loaded = true;
     }
 
     prefetch_fill_t fill =
     {
-        .buf = s_hist.buf,
+        .buf = read_cursor.buf,
         .n   = 0u,
     };
 
     /* synced_ts is the last record already handed out, so start one second
-     * past it. Zero means nothing was ever synced: start at the oldest
-     * record, which health_db_iter spells as from == 0. */
-    uint32_t from = (s_hist.synced_ts == 0u) ? 0u : s_hist.synced_ts + 1u;
+     * past it. Skipping that second loses nothing: append_pedo() forces
+     * strictly increasing timestamps, so no two records share a second.
+     * Zero means nothing was ever synced — from == 0 then reads from the
+     * oldest record still in the TSDB, which after a rollover is not
+     * necessarily the oldest ever recorded. */
+    uint32_t from = (read_cursor.synced_ts == 0u) ? 0u : read_cursor.synced_ts + 1u;
     (void)health_db_iter(from, 0u, prefetch_fill_cb, &fill);
 
-    s_hist.n     = (uint8_t)fill.n;
-    s_hist.taken = 0u;
+    read_cursor.n     = (uint8_t)fill.n;
+    read_cursor.taken = 0u;
 
     return (int)fill.n;
 }
 
-int health_db_read_next(health_pedo_record_t *out)
+/* Public entry point, declared in app_health.h — see there for the full
+ * contract. Defined here rather than forwarded from app_health.c because the
+ * cursor it advances and the watermark it persists both live in this file;
+ * a forwarder would only restate the signature. */
+int app_health_history_read(health_pedo_record_t *out)
 {
     if (out == NULL)
     {
         return -EINVAL;
     }
 
-    if (s_hist.taken >= s_hist.n)
+    if (read_cursor.taken >= read_cursor.n)
     {
         /* A short batch last time means the store was exhausted then; retry
          * anyway, since the worker may have appended a bucket since. */
@@ -353,14 +369,15 @@ int health_db_read_next(health_pedo_record_t *out)
         }
     }
 
-    *out = s_hist.buf[s_hist.taken++];
+    *out = read_cursor.buf[read_cursor.taken++];
 
     /* Advance the watermark over what was actually delivered, and persist once
      * per drained batch rather than per record: a full 476-record sync then
      * costs ~60 KV writes instead of 476. Losing a batch's tail to a power cut
      * just re-sends those records, which the phone de-dupes. */
-    s_hist.synced_ts = out->ts_utc;
-    if (s_hist.taken >= s_hist.n && health_db_save_synced_ts(s_hist.synced_ts) != 0)
+    read_cursor.synced_ts = out->ts_utc;
+    if (read_cursor.taken >= read_cursor.n &&
+        health_db_save_synced_ts(read_cursor.synced_ts) != 0)
     {
         APP_LOGW("synced watermark save failed (will re-send on reboot)");
     }

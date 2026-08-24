@@ -48,15 +48,17 @@ void app_health_get_today(health_daily_rollup_t *out);
  *
  * Records are handed out once and only once — the read position is a
  * watermark in env KV, so it survives reboot and a phone receives each
- * 15-minute bucket exactly once. The records themselves stay in the TSDB
- * until rollover overwrites them, so `health list` still shows everything.
+ * 15-minute bucket exactly once. Reading does not consume: the records
+ * themselves stay in the TSDB until rollover overwrites them, so a full-range
+ * iteration still sees everything regardless of the watermark.
  *
  * No open/close: the watermark is the session. Take as many or as few as
  * you like; stopping early leaves the rest for the next call.
  *
- * @warning The watermark never rewinds. A record you take but fail to
- *          deliver cannot be re-read. Take one at a time if delivery can
- *          fail. `health synced reset` rewinds it manually.
+ * @warning The watermark never rewinds, and no API rewinds it: a record you
+ *          take but fail to deliver cannot be re-read. Take one at a time if
+ *          delivery can fail. Recovering from a bad watermark currently means
+ *          erasing the env KV partition — there is no reset entry point.
  *
  * @param out  Receives the record; untouched unless the return value is 1.
  * @return 1 = got a record, 0 = nothing unread left, negative errno on a

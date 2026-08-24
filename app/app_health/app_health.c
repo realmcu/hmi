@@ -61,14 +61,10 @@ _Static_assert(HEALTH_BUCKET_MIN == APP_TIME_TICK_MIN_STEP,
 static bool s_time_synced;
 static bool s_user_bound;
 
-/* Thin forwarders. The read cursor and the today rollup live in health_db and
- * health_worker respectively; these exist so consumers outside the module only
- * ever include app_health.h. */
-
-int app_health_history_read(health_pedo_record_t *out)
-{
-    return health_db_read_next(out);
-}
+/* Thin forwarder. The today rollup lives in health_worker; this exists so
+ * consumers outside the module only ever include app_health.h.
+ * app_health_history_read() needs no forwarder — health_db.c defines it
+ * directly, next to the cursor state it advances. */
 
 void app_health_get_today(health_daily_rollup_t *out)
 {
