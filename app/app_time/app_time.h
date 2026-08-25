@@ -45,6 +45,15 @@ typedef struct
 /** Store a validated local calendar value in the hardware RTC. */
 int app_time_set_local(const app_time_local_t *time);
 
+/**
+ * @brief  Render Unix seconds as local calendar fields.
+ *
+ * Applies the module's timezone offset, so the result is what a user would
+ * read off the watch face. For display and logging; @c out is left untouched
+ * when NULL is passed.
+ */
+void app_time_to_local(uint32_t utc_sec, app_time_local_t *out);
+
 #ifdef __cplusplus
 }
 #endif

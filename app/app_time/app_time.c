@@ -49,6 +49,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 APP_LOG_MODULE_REGISTER(app_time);
 
@@ -153,11 +154,51 @@ uint32_t app_time_now(void)
 }
 
 /* Local seconds-since-epoch. Only meaningful for deriving local boundaries
- * and day indices — never persist it, persist the UTC value instead. */
+ * and day indices — never persist it, persist the UTC value instead.
+ *
+ * The shift is computed in 64 bits: a 32-bit signed intermediate overflows for
+ * any UTC value past 2038-01-19, which would have collapsed local time to 0 and
+ * silently stopped the boundary ticks. Saturates instead of wrapping. */
 static uint32_t local_sec_from_utc(uint32_t utc_sec)
 {
-    int32_t shifted = (int32_t)utc_sec + (int32_t)s_tz_min * 60;
-    return (shifted < 0) ? 0u : (uint32_t)shifted;
+    int64_t shifted = (int64_t)utc_sec + (int64_t)s_tz_min * 60;
+
+    if (shifted < 0) { return 0u; }
+    if (shifted > (int64_t)0xFFFFFFFF) { return 0xFFFFFFFFu; }
+    return (uint32_t)shifted;
+}
+
+/* Inverse of civil_to_epoch(): Unix seconds -> local calendar fields, applying
+ * s_tz_min. Delegates the calendar arithmetic to gmtime_r() rather than running
+ * the Hinnant algorithm backwards — newlib is already linked and the driver
+ * layer already pulls gmtime_r in, so this costs ~70 B against ~240 B for a
+ * hand-rolled version, with libc's leap-year handling instead of ours.
+ *
+ * time_t is 64-bit in this toolchain, so the tz shift cannot overflow for any
+ * uint32_t input. Intended for rendering a stored UTC timestamp in logs and on
+ * screen — nothing should round-trip through it to do date arithmetic. */
+void app_time_to_local(uint32_t utc_sec, app_time_local_t *out)
+{
+    if (out == NULL)
+    {
+        return;
+    }
+
+    time_t shifted = (time_t)utc_sec + (time_t)s_tz_min * 60;
+    struct tm tm_buf;
+
+    if (gmtime_r(&shifted, &tm_buf) == NULL)
+    {
+        return;
+    }
+
+    out->year    = (uint16_t)(tm_buf.tm_year + 1900);
+    out->month   = (uint8_t)(tm_buf.tm_mon + 1);
+    out->day     = (uint8_t)tm_buf.tm_mday;
+    out->hour    = (uint8_t)tm_buf.tm_hour;
+    out->min     = (uint8_t)tm_buf.tm_min;
+    out->sec     = (uint8_t)tm_buf.tm_sec;
+    out->weekday = (uint8_t)tm_buf.tm_wday;
 }
 
 /* --------------------------------------------------------------
