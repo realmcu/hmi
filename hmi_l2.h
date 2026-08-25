@@ -27,9 +27,6 @@ extern "C" {
  *============================================================================*/
 
 #define HMI_L2_SET_TIME         0x01u
-#define HMI_L2_SET_ALARM        0x02u
-#define HMI_L2_GET_ALARM_REQ    0x03u
-#define HMI_L2_GET_ALARM_RSP    0x04u
 #define HMI_L2_SET_STEP_TARGET  0x05u
 #define HMI_L2_SET_USER_PROFILE 0x10u
 #define HMI_L2_SET_ANTI_LOST    0x20u
