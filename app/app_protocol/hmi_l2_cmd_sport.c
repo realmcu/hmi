@@ -37,6 +37,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 
 /* Session state. Only touched from l2_task (command handler) and from the
  * disconnect hook, which is bounced onto l2_task as well.
@@ -99,10 +100,10 @@ static uint16_t sport_encode_record(uint8_t *out, const health_pedo_record_t *r)
 {
     uint16_t p = 0;
 
-    out[p++] = (uint8_t)(r->ts_utc >> 24);
-    out[p++] = (uint8_t)(r->ts_utc >> 16);
-    out[p++] = (uint8_t)(r->ts_utc >> 8);
-    out[p++] = (uint8_t)(r->ts_utc);
+    out[p++] = (uint8_t)(r->ts >> 24);
+    out[p++] = (uint8_t)(r->ts >> 16);
+    out[p++] = (uint8_t)(r->ts >> 8);
+    out[p++] = (uint8_t)(r->ts);
 
     out[p++] = (uint8_t)(r->steps >> 8);
     out[p++] = (uint8_t)(r->steps);
@@ -181,16 +182,15 @@ static void sport_send_activity_page(void)
         pos += sport_encode_record(&val[pos], &rec);
         n++;
 
-        /* Log which interval just went out, as local wall-clock time: the wire
-         * carries ts_utc, but "which 15-minute bucket did the phone get" is the
-         * question being asked when reading this. Seconds are omitted because
-         * buckets are quarter-hour aligned. */
-        app_time_local_t lt;
-        app_time_to_local(rec.ts_utc, &lt);
+        /* Log which interval just went out, as wall-clock time. Seconds are
+         * omitted because buckets are quarter-hour aligned. */
+        struct tm lt;
+        app_time_to_calendar(rec.ts, &lt);
         PROTO_LOG("L2 SPORT rec %u: %04u-%02u-%02u %02u:%02u steps=%u",
-                  (unsigned)n, (unsigned)lt.year, (unsigned)lt.month,
-                  (unsigned)lt.day, (unsigned)lt.hour, (unsigned)lt.min,
-                  (unsigned)rec.steps);
+                  (unsigned)n,
+                  (unsigned)(lt.tm_year + 1900), (unsigned)(lt.tm_mon + 1),
+                  (unsigned)lt.tm_mday, (unsigned)lt.tm_hour,
+                  (unsigned)lt.tm_min, (unsigned)rec.steps);
     }
 
     /* Spec: an empty store must NOT produce a Record count=0 page -- go
