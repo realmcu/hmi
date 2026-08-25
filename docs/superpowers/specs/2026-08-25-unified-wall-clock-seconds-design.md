@@ -68,7 +68,8 @@ UTC —— 系统事实上运行的是"本地时间冒充 Unix 秒"的口径,只
 - 不做时区协商。固件中不存在时区概念(此前考虑过的
   "协议增加时区协商 key" 已撤销)。
 - 不追求跨时区旅行时历史数据在绝对时间轴上的连续性(见 §7 权衡)。
-- 不改闹钟表示(见 §4.3)。
+- 不设计闹钟。协议中的闹钟定义直接删除(见 §4.3),
+  将来实现 `app_alarm` 时另行设计。
 - 不改 0x21 按键测试时间戳(见 §4.4)。
 
 ## 3. 核心模型
@@ -115,13 +116,25 @@ UTC —— 系统事实上运行的是"本地时间冒充 Unix 秒"的口径,只
 
 - `s_tz_min`(`app_time.c:60`)—— 删除,时区概念不再存在。
 - `local_sec_from_utc()`(`app_time.c:162-169`)—— 删除,不再需要平移。
-- `utc` / `local` 这两个词 —— 从所有**表示秒数**的标识符和注释中移除,
+- `utc` / `local` 这两个词 —— 从所有标识符和注释中移除,
   统一为 wall clock seconds。
+- `app_time_local_t`(`app_time.h:34-43`)—— **删除**。它是
+  `struct tm` 的重复发明:七个字段逐一对应 `tm_year`/`tm_mon`/
+  `tm_mday`/`tm_hour`/`tm_min`/`tm_sec`/`tm_wday`,只是换了偏移约定
+  (完整年份 vs `-1900`,`1..12` vs `0..11`)。删除它并直接使用
+  `struct tm`,正是"尽量用 C 库"的落实。
 
-保留 `app_time_local_t` 类型名(§5.1 中该类型本身不删),
-因为它承载的是**日历字段集合**而非秒数,"local" 在此指"人类可读的
-本地日历表示",与秒数口径无关。若嫌歧义可更名
-`app_time_calendar_t`;本设计不强制,实现时择一并保持一致。
+删除 `app_time_local_t` 的连带影响:
+
+- `app_time_to_local(uint32_t, app_time_local_t*)` →
+  `app_time_to_calendar(uint32_t sec, struct tm *out)`,
+  实现退化为一次 `gmtime_r` 调用加空指针检查。
+- 唯一调用点 `hmi_l2_cmd_sport.c:189` 改用 `struct tm`,
+  日志格式化处需相应改为 `tm_year + 1900`、`tm_mon + 1`。
+  这个 `+1900` / `+1` 的转换是使用 `struct tm` 的既定代价,
+  换来的是不再维护一个平行类型。
+- `app_time_set_local(const app_time_local_t*)` →
+  `app_time_set(uint32_t sec)`,参数已是秒,该类型本就不再出现。
 
 ### 3.4 关于使用 C 库替代手写实现
 
@@ -139,9 +152,13 @@ UTC —— 系统事实上运行的是"本地时间冒充 Unix 秒"的口径,只
 它已验证、注释完整、不依赖 `TZ`,而 libc 在此没有不带时区的等价物。
 用 `mktime` 替代会重新引入时区依赖,是退步。
 
-`app_time_set_local()` 写 RTC 时需要"秒 → 日历字段",方向为正,
+`app_time_set()` 写 RTC 时需要"秒 → 日历字段",方向为正,
 使用 `gmtime_r`。副产品是 `tm_wday` 由 libc 免费提供,
 顺带修复 §5.2 记录的 weekday 缺陷。
+
+删除 `app_time_local_t`(§3.3)后,固件里表示日历字段的类型只剩两个,
+各有明确归属:`struct tm` 用于应用层渲染,`posix_rtc_time_t` 是驱动
+接口的硬件表示。二者之间的转换只发生在 `app_time.c` 内部一处。
 
 ## 4. 协议变更
 
@@ -174,11 +191,28 @@ Value 由 32-bit packed 日历字段改为 **4 bytes 大端墙上时钟秒**。
   该 Timestamp 已是应显示的时刻,直接渲染即可。此约束在新模型下
   是自然结果,不再是需要解释的例外。
 
-### 4.3 闹钟 0x02/0x04 —— 不变
+### 4.3 闹钟 0x02/0x04 —— 删除定义
 
-保持 40-bit 日历字段格式。闹钟携带 Day flags(周重复规则),
-表达的是重复规则而非单一时间点,秒数无法表示。
-文档中显式标注:这是协议中唯一使用日历字段表示时间的位置。
+**从协议文档中移除 0x02(闹钟设置)、0x03(获取闹钟列表请求)、
+0x04(获取闹钟列表返回)的定义。**
+
+依据:两侧均未实现,是纯纸面定义。已核验 —— 手机侧 `lib/services/`
+下无任何闹钟代码;固件侧仅有三处注释提及"未来的 `app_alarm`"
+(`app_time.h:20`、`app_time.c:8`、`app_event_defs.h:130`),
+无实现代码。
+
+删除而非保留的理由:原 40-bit 格式携带 Day flags(周重复规则),
+是协议中唯一使用日历字段表示时间的位置。保留它就必须在文档中长期
+维护一条"全部用秒,但闹钟例外"的说明,而这条例外服务的是一个尚不存在
+的功能。删除后**协议中再无任何日历字段,"全部用秒"零例外**。
+
+将来实现 `app_alarm` 时重新设计:重复闹钟的触发条件本质是
+"时分 + 星期掩码",与"某一时刻的秒数"是不同的东西,届时按实际需求
+定义,不受本设计约束。
+
+键位 0x02/0x03/0x04 视为保留不再分配,避免与历史实现混淆。
+固件侧 `hmi_l2.h` 中 `HMI_L2_SET_ALARM`、`HMI_L2_GET_ALARM_REQ`、
+`HMI_L2_GET_ALARM_RSP` 三个宏一并删除(无引用点)。
 
 ### 4.4 0x21 按键测试 Timestamp —— 不变
 
@@ -192,14 +226,15 @@ Value 由 32-bit packed 日历字段改为 **4 bytes 大端墙上时钟秒**。
 
 | 文件 | 改动 |
 |---|---|
-| `app/app_time/app_time.h` | `app_time_set_local(const app_time_local_t*)` → `app_time_set(uint32_t sec)`;`app_time_now()` 注释改为墙上时钟秒;`app_time_to_local()` 更名 `app_time_to_calendar()`,职责收窄为纯渲染 |
-| `app/app_time/app_time.c` | 删除 `s_tz_min`、`local_sec_from_utc()`;保留 `civil_to_epoch()` 供 `app_time_now()` 读 RTC 使用;`app_time_set()` 用 `gmtime_r` 把秒展开为 `posix_rtc_time_t`;`rtc_second_cb()` 中的天索引与刻钟判断直接用秒值,去掉平移;更新文件头注释,删除 "Local means UTC + s_tz_min" 段落 |
+| `app/app_time/app_time.h` | 删除 `app_time_local_t`(改用 `struct tm`);`app_time_set_local(const app_time_local_t*)` → `app_time_set(uint32_t sec)`;`app_time_to_local()` → `app_time_to_calendar(uint32_t, struct tm*)`;`app_time_now()` 注释改为墙上时钟秒;加 `#include <time.h>`;删除文件头 "Alarms / calendar do not live here" 中的闹钟指涉或改为中性表述 |
+| `app/app_time/app_time.c` | 删除 `s_tz_min`、`local_sec_from_utc()`;保留 `civil_to_epoch()` 供 `app_time_now()` 读 RTC 使用;`app_time_set()` 用 `gmtime_r` 把秒展开为 `posix_rtc_time_t`(`wday` 取 `tm_wday`);`app_time_to_calendar()` 退化为一次 `gmtime_r`;`rtc_second_cb()` 中的天索引与刻钟判断直接用秒值,去掉平移;更新文件头注释,删除 "Local means UTC + s_tz_min" 段落 |
 | `app/app_core/app_event_defs.h` | `app_evt_time_synced_t` 由六个日历字段改为单个 `uint32_t sec`;更新注释 |
 | `app/app_protocol/hmi_l2_cmd_settings.c` | 删除 `hmi_l2_decode_time()` 的位解包与 `days_in_month()`;改为读 4 字节大端秒;调用 `app_time_set()`;发布 `EVT_TIME_SYNCED` 载荷改为秒 |
 | `app/app_health/app_health_internal.h` | `health_pedo_record_t.ts_utc` → `ts`;注释 "UTC epoch seconds captured at flush moment" → 墙上时钟秒 |
 | `app/app_health/health_worker.c` | `ts_utc` → `ts`;`boundary_utc` → `boundary_sec` |
 | `app/app_health/health_db.c` | `ts_utc` → `ts`(共 10 处);`health_db_save_synced_ts()` 参数改名 |
-| `app/app_protocol/hmi_l2_cmd_sport.c` | `sport_encode_record()` 字段改名;`app_time_to_local` 调用改为 `app_time_to_calendar`(此时它确实只做渲染) |
+| `app/app_protocol/hmi_l2_cmd_sport.c` | `sport_encode_record()` 字段改名;`app_time_to_local` 调用改为 `app_time_to_calendar`,日志格式化改用 `tm_year + 1900` / `tm_mon + 1` |
+| `component/protocol/hmi_l2.h` | 删除 `HMI_L2_SET_ALARM`、`HMI_L2_GET_ALARM_REQ`、`HMI_L2_GET_ALARM_RSP`(§4.3,无引用点) |
 
 `ts_utc` → `ts` 是纯改名:字段类型、偏移、结构体布局均不变,
 **Flash 中已有记录不受影响,无需数据迁移**。
@@ -209,10 +244,12 @@ Value 由 32-bit packed 日历字段改为 **4 bytes 大端墙上时钟秒**。
 `hmi_l2_cmd_settings.c:54` 当前把 `weekday` 填 0 后写入 RTC,
 而 `posix_ioctl_rtc.h` 的约定是"驱动填不了时置 `0xFF`",
 0 表示星期日 —— 即当前实现向 RTC 谎报周日。若 Realtek port 将 wday
-写入硬件寄存器,或闹钟使用 `POSIX_RTC_ALARM_MASK_WEEKDAY`,会出错。
+写入硬件寄存器,或将来有消费者读取 RTC 的 wday 字段,会取到错值。
 
 新实现中 `app_time_set()` 用 `gmtime_r` 展开秒数,`tm_wday` 由 libc
-计算,直接填入 `posix_rtc_time_t.wday`,缺陷自然消失。
+计算,直接填入 `posix_rtc_time_t.wday`,缺陷自然消失 —— 这也是
+删除 `app_time_local_t`、改用 `struct tm` 的附带收益:
+原类型要求调用方自行填 `weekday`,而 libc 的 `struct tm` 是算好的。
 
 ### 5.3 不变的部分
 
@@ -305,8 +342,8 @@ UTC 字段,对本地对象返回本地字段 —— 因此 record 侧自动正�
 文档中记载该不兼容性。协议不引入版本门(SPORT 命令已有 version=1
 的先例,但本次不使用)。
 
-**"全部用秒"有一处例外。** 闹钟因携带重复规则而保留日历字段
-(§4.3),0x21 按键测试保留 2000 纪元(§4.4)。二者均在文档中显式标注。
+**"全部用秒"仅剩一处例外。** 0x21 按键测试保留 2000 纪元(§4.4),
+在文档中显式标注。闹钟定义已删除(§4.3),不再构成例外。
 
 ## 8. 验证
 
