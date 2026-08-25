@@ -5,12 +5,12 @@
  * pieces of state:
  *
  *   1. pedo TSDB — every flushed 15-minute bucket is appended as one
- *      health_pedo_record_t. Time key is the record's ts_utc (same value
+ *      health_pedo_record_t. Time key is the record's ts (same value
  *      the RTC-backed flashdb_get_time returns), so time-range queries
  *      done through fdb_tsl_iter_by_time match record content exactly.
  *
  *   2. env KVDB, key "health.synced" — the sequential-read watermark:
- *      ts_utc of the newest record handed to a consumer. Lives here rather
+ *      ts of the newest record handed to a consumer. Lives here rather
  *      than in the app layer because it relies on the strictly increasing
  *      timestamps this file enforces on append.
  *
@@ -89,20 +89,20 @@ int health_db_append_pedo(health_pedo_record_t *rec)
     db_lock();
     fdb_time_t last_time = 0;
     fdb_tsdb_control(tsdb, FDB_TSDB_CTRL_GET_LAST_TIME, &last_time);
-    if ((fdb_time_t)rec->ts_utc < last_time || last_time >= INT32_MAX)
+    if ((fdb_time_t)rec->ts < last_time || last_time >= INT32_MAX)
     {
         db_unlock();
         APP_LOGE("pedo timestamp rollback now=%u last=%d",
-                 (unsigned)rec->ts_utc, (int)last_time);
+                 (unsigned)rec->ts, (int)last_time);
         return -ERANGE;
     }
-    if ((fdb_time_t)rec->ts_utc == last_time)
+    if ((fdb_time_t)rec->ts == last_time)
     {
-        rec->ts_utc++;
+        rec->ts++;
     }
     fdb_err_t e = fdb_tsl_append_with_ts(tsdb,
                                          fdb_blob_make(&blob, rec, sizeof(*rec)),
-                                         (fdb_time_t)rec->ts_utc);
+                                         (fdb_time_t)rec->ts);
     db_unlock();
     if (e != FDB_NO_ERR)
     {
@@ -156,7 +156,7 @@ static int health_db_load_synced_ts(uint32_t *out_ts)
     return 0;
 }
 
-static int health_db_save_synced_ts(uint32_t ts_utc)
+static int health_db_save_synced_ts(uint32_t ts)
 {
     fdb_kvdb_t kvdb = flashdb_registry_get_env_kvdb();
     if (kvdb == NULL)
@@ -167,7 +167,7 @@ static int health_db_save_synced_ts(uint32_t ts_utc)
     struct fdb_blob blob;
     db_lock();
     fdb_err_t e = fdb_kv_set_blob(kvdb, HEALTH_SYNCED_KEY,
-                                  fdb_blob_make(&blob, &ts_utc, sizeof(ts_utc)));
+                                  fdb_blob_make(&blob, &ts, sizeof(ts)));
     db_unlock();
     if (e != FDB_NO_ERR)
     {
@@ -221,7 +221,7 @@ static bool pedo_iter_adapter(fdb_tsl_t tsl, void *arg)
     return false;
 }
 
-/* Iterate records with ts_utc in [from, to]; @c to == 0 means no upper bound.
+/* Iterate records with ts in [from, to]; @c to == 0 means no upper bound.
  * Returns the number of records visited. Private now that the sequential
  * reader below is the only consumer.
  *
@@ -264,7 +264,7 @@ static size_t health_db_iter(uint32_t from, uint32_t to,
  * Sequential history reads.
  *
  * A TSDB iteration cannot be suspended and resumed, so "where did a consumer
- * get to" is tracked here as a watermark: the ts_utc of the newest record
+ * get to" is tracked here as a watermark: the ts of the newest record
  * handed out. That is sound only because health_db_append_pedo() guarantees
  * strictly increasing timestamps — the same invariant this file enforces, so
  * the cursor belongs next to it.
@@ -288,7 +288,7 @@ static size_t health_db_iter(uint32_t from, uint32_t to,
 typedef struct
 {
     bool     loaded;                          /* watermark read from KV yet? */
-    uint32_t synced_ts;                       /* newest ts_utc handed out    */
+    uint32_t synced_ts;                       /* newest ts handed out    */
     health_pedo_record_t buf[HISTORY_PREFETCH];
     uint8_t  n;                               /* records in buf              */
     uint8_t  taken;                           /* delivered out of buf        */
@@ -375,7 +375,7 @@ int app_health_history_read(health_pedo_record_t *out)
      * per drained batch rather than per record: a full 476-record sync then
      * costs ~60 KV writes instead of 476. Losing a batch's tail to a power cut
      * just re-sends those records, which the phone de-dupes. */
-    read_cursor.synced_ts = out->ts_utc;
+    read_cursor.synced_ts = out->ts;
     if (read_cursor.taken >= read_cursor.n &&
         health_db_save_synced_ts(read_cursor.synced_ts) != 0)
     {

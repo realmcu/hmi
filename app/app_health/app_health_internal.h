@@ -60,7 +60,7 @@ extern "C" {
  * -------------------------------------------------------------- */
 typedef struct
 {
-    uint32_t ts_utc;        /* UTC epoch seconds captured at flush moment  */
+    uint32_t ts;            /* wall clock seconds at flush moment           */
     uint16_t steps;         /* clipped to 0xFFFF                            */
     uint16_t distance_m;    /* metres, clipped to 0xFFFF                    */
     uint16_t calories_dkcal; /* 0.1 kcal units, clipped to 0xFFFF           */
@@ -105,7 +105,7 @@ typedef struct
  * every other health_db_* call is a no-op returning failure). */
 int  health_db_init(void);
 
-/* Append one 18B pedometer record to the TSDB, using the record's ts_utc as
+/* Append one 18B pedometer record to the TSDB, using the record's ts as
  * the time key. An equal-to-last timestamp is advanced by one second and
  * reflected back into rec; a clock rollback is rejected with -ERANGE.
  * Returns 0 on success, negative on failure. */
@@ -147,13 +147,10 @@ bool health_worker_is_running(void);
  * app_health_get_today(). */
 void health_worker_get_today(health_daily_rollup_t *out);
 
-/* Bucket boundary reached: write the closed bucket to the TSDB. @c boundary_utc
- * is the boundary instant in Unix seconds and becomes the record's timestamp,
- * so it must be the value the tick reported rather than a fresh clock read.
- *
- * Writes flash synchronously on the calling task. A no-op when no worker is
- * running. */
-void health_worker_on_bucket_boundary(uint32_t boundary_utc);
+/* Bucket boundary reached: write the closed bucket to the TSDB. @c boundary_sec
+ * is the boundary instant in wall clock seconds and becomes the record's
+ * timestamp. A no-op when no worker is running. */
+void health_worker_on_bucket_boundary(uint32_t boundary_sec);
 
 /* Local day rolled over: zero today's running totals. */
 void health_worker_on_day_changed(void);

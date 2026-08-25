@@ -219,7 +219,7 @@ static void today_snapshot(health_daily_rollup_t *out)
  * Two callers: the bucket-boundary tick (on app_task, via
  * health_worker_on_bucket_boundary) and the worker's own stop path.
  *
- * @c boundary_utc is the record's timestamp. For a scheduled flush it is the
+ * @c boundary_sec is the record's timestamp. For a scheduled flush it is the
  * boundary app_time reported, NOT the moment this runs — the tick travels
  * through the event queue, so reading the clock here would drift the record
  * off the boundary. A partial flush passes 0 and gets the current time
@@ -233,7 +233,7 @@ static void today_snapshot(health_daily_rollup_t *out)
  * zero-value records. A rejected write puts the snapshot back into the bucket,
  * so no failure path loses steps.
  * -------------------------------------------------------------- */
-static void flush_step_bucket(bool partial_bucket, uint32_t boundary_utc)
+static void flush_step_bucket(bool partial_bucket, uint32_t boundary_sec)
 {
     mutex_take(s_flush_mutex);
 
@@ -266,7 +266,7 @@ static void flush_step_bucket(bool partial_bucket, uint32_t boundary_utc)
     /* A scheduled flush is stamped with the boundary the tick reported; the
      * stop path has no boundary to align to, so it asks app_time — the clock
      * owner — for the current instant. */
-    uint32_t ts = (boundary_utc != 0u) ? boundary_utc : app_time_now();
+    uint32_t ts = (boundary_sec != 0u) ? boundary_sec : app_time_now();
     if (ts == 0)
     {
         APP_LOGE("flush rejected: RTC time is invalid");
@@ -277,7 +277,7 @@ static void flush_step_bucket(bool partial_bucket, uint32_t boundary_utc)
 
     health_pedo_record_t rec =
     {
-        .ts_utc     = ts,
+        .ts     = ts,
         .steps      = (uint16_t)steps_clip,
         .distance_m = (uint16_t)dist_m,
         .calories_dkcal = (uint16_t)calories_dkcal,
@@ -325,16 +325,16 @@ static void flush_step_bucket(bool partial_bucket, uint32_t boundary_utc)
  *
  * A no-op when no worker is running: there is no bucket being filled, and
  * flushing would write a record for a period nothing was sampled. */
-void health_worker_on_bucket_boundary(uint32_t boundary_utc)
+void health_worker_on_bucket_boundary(uint32_t boundary_sec)
 {
-    if (boundary_utc == 0u) { return; }
+    if (boundary_sec == 0u) { return; }
 
     if (!health_worker_is_running())
     {
         return;
     }
 
-    flush_step_bucket(false, boundary_utc);
+    flush_step_bucket(false, boundary_sec);
 }
 
 /* Throw away everything accumulated for today. Used by the explicit-unbind
