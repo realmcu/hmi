@@ -13,6 +13,7 @@
 #include "system_status_api.h"
 #include "fmc_api_ext.h"
 #include "section.h"
+#include "app_dlps.h"
 
 
 #define DRV_LCD_WIDTH   360
@@ -148,9 +149,13 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
 }
 
 #else
-
 void port_gui_lcd_update(struct gui_dispdev *dc)
 {
+    if (!app_dlps_check_enter_bits(APP_DLPS_ENTER_CHECK_DISPLAY))
+    {
+        return;
+    }
+    
     uint32_t total_section_cnt = (rtk_lcd_hal_get_height() / LCD_SECTION_HEIGHT + ((
             rtk_lcd_hal_get_height() % LCD_SECTION_HEIGHT) ? 1 : 0));
 
@@ -179,13 +184,30 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
 
 }
 #endif
+
 static void gui_dc_lcd_power_on(void)
 {
-    gui_log("port_gui_lcd_power_on");
+    gui_log("port_gui_lcd_power_on\n");
+    if (app_dlps_check_enter_bits(APP_DLPS_ENTER_CHECK_DISPLAY))
+    {
+        return;
+    }
+    app_dlps_disable(APP_DLPS_ENTER_CHECK_DISPLAY);
+    rtk_lcd_hal_init();
+    sys_hall_auto_sleep_in_idle(false);
 }
+
 static void gui_dc_lcd_power_off(void)
 {
-    gui_log("port_gui_lcd_power_off");
+    gui_log("port_gui_lcd_power_off\n");
+    if (!app_dlps_check_enter_bits(APP_DLPS_ENTER_CHECK_DISPLAY))
+    {
+        return;
+    }
+    rtk_lcd_hal_set_display(false);
+    rtk_lcd_hal_lcd_enter_dlps();
+    sys_hall_auto_sleep_in_idle(true);
+    app_dlps_enable(APP_DLPS_ENTER_CHECK_DISPLAY);
 }
 static struct gui_dispdev dc =
 {
@@ -236,6 +258,6 @@ void gui_port_dc_init(void)
     gui_dc_info_register(&dc);
     gui_log("gui_port_dc_init ");
     gui_log("dc addr is 0x%x,line is %d", &dc, __LINE__);
-
+    app_dlps_disable(APP_DLPS_ENTER_CHECK_DISPLAY);
 }
 

@@ -114,6 +114,11 @@ static bool port_mq_recv(void *handle, void *buffer, uint32_t size, uint32_t tim
     return os_msg_recv(handle, buffer, timeout);
 }
 
+static void port_gui_sleep(void)
+{
+    gui_display_off();
+}
+
 #define GUI_HEAP_SIZE                                           (30 * 1024)
 
 __attribute__((aligned(4))) static uint8_t port_mem_heap[GUI_HEAP_SIZE] = {0};
@@ -134,7 +139,7 @@ static struct gui_os_api os_api =
     .f_malloc = NULL,
     .f_free = NULL,
     .f_realloc = NULL,
-    .gui_sleep_cb = NULL,
+    .gui_sleep_cb = port_gui_sleep,
 
     /*mem_size and lower_mem_size should be large than tlsf_size 3188 byte*/
     .mem_addr = (void *)port_mem_heap,

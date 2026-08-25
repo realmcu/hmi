@@ -47,8 +47,6 @@ static bool power_key_press_accepted = false;
 static bool suppress_power_key_until_release = false;
 static struct k_work_delayable power_key_long_work;
 
-extern void rtk_lcd_hal_set_display(bool on);
-
 static void wireless_power_set(bool on)
 {
     bt_power_mode_set(on ? BTPOWER_ACTIVE : BTPOWER_DEEP_SLEEP);
@@ -75,11 +73,13 @@ void gui_port_power_off(void)
 
     printk("[power-key] power off requested\n");
 
+    gui_dispdev_t *dc = gui_get_dc();
+    dc->lcd_power_off();
+
     wireless_power_set(false);
     btaon_fast_write_safe(POWER_OFF_AON_REG, POWER_OFF_AON_MAGIC);
-    rtk_lcd_hal_set_display(false);
     extern void gui_set_keep_active_time(uint32_t active_time);
-    gui_set_keep_active_time(0);
+    gui_set_keep_active_time(1000);
 
     int32_t set_ret = power_mode_set(POWER_POWERDOWN_MODE);
     int32_t resume_ret = power_mode_resume();
@@ -89,13 +89,9 @@ void gui_port_power_off(void)
     {
         printk("[power-key] power-down request failed\n");
         power_off_requested = false;
-        (void)power_mode_set(POWER_ACTIVE_MODE);
-        if (resume_ret == 0)
-        {
-            (void)power_mode_pause();
-        }
         wireless_power_set(true);
-        rtk_lcd_hal_set_display(true);
+        dc->lcd_power_on();
+        gui_set_keep_active_time(0xFFFFFFFF);
     }
 }
 
@@ -315,13 +311,18 @@ static void gpio_button_callback(void *key)
 
     kb_get_data();
 
-    // T_GPIO_KEY *key_btn = (T_GPIO_KEY *)key;
-    // if (key_btn->current_state == GPIO_KEY_RELEASED)
-    // {
-    //     gui_msg_t msg;
-    //     msg.event = GUI_EVENT_DISPLAY_ON;
-    //     gui_send_msg_to_server(&msg);
-    // }
+    T_GPIO_KEY *key_btn = (T_GPIO_KEY *)key;
+    if (key_btn->current_state == GPIO_KEY_RELEASED)
+    {
+        gui_msg_t msg = {.event = GUI_EVENT_RESET_ACTIVE_TIME};
+        gui_send_msg_to_server(&msg);
+        extern bool is_screenon;
+        if (!is_screenon && home_timestamp_ms_release - home_timestamp_ms_press < POWER_LONG_PRESS_MS)
+        {
+            extern void key_2_on_screen(void *obj, gui_event_t *e);
+            key_2_on_screen(NULL, NULL);
+        }
+    }
 }
 
 extern void gui_indev_info_register(struct gui_indev *info);

@@ -17,6 +17,7 @@
 #include "gui_port.h"
 #include "rtl876x_pinmux.h"
 #include "app_lower_init.h"
+#include "app_dlps.h"
 #include <pm.h>
 
 #if defined(CONFIG_WIFI_8711)
@@ -25,13 +26,15 @@
 
 int main(void)
 {
-    /* Keep normal application scheduling active. Power-down explicitly
-     * resumes PM only after a long press requests POWER_POWERDOWN_MODE. */
+    /* DLPS must be initialized and locked before any other initialization. */
+    app_dlps_init();
+    app_dlps_disable(APP_DLPS_ENTER_CHECK_INIT);
     (void)power_mode_pause();
     extern bool gui_port_power_on_gate(void);
     if (!gui_port_power_on_gate())
     {
         printk("[power-key] short wake, returning to power-down\n");
+        app_dlps_enable(APP_DLPS_ENTER_CHECK_INIT);
         (void)power_mode_set(POWER_POWERDOWN_MODE);
         (void)power_mode_resume();
         return 0;
@@ -97,5 +100,6 @@ int main(void)
     gui_server_init();
     gui_set_keep_active_time(0xFFFFFFFF);
 
+    app_dlps_enable(APP_DLPS_ENTER_CHECK_INIT);
     return 0;
 }
