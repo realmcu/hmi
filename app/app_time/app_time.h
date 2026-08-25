@@ -2,8 +2,8 @@
 #define __APP_TIME_H__
 
 #include "app_module.h"
-
 #include <stdint.h>
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,46 +13,34 @@ extern "C" {
  * @file  app_time.h
  * @brief Wall-clock semantics on top of the RTC driver.
  *
- * Sole writer of the hardware RTC, and the single source of truth for local
- * wall-clock boundaries: it publishes EVT_TIME_TICK_15MIN and
+ * Sole writer of the hardware RTC. Publishes EVT_TIME_TICK_15MIN and
  * EVT_TIME_DAY_CHANGED so consumers never re-derive them.
  *
- * Alarms / calendar do not live here — they belong to a future @c app_alarm.
+ * The scalar: uint32_t wall clock seconds from 1970-01-01 00:00:00, whose
+ * value IS the moment the watch face shows. The phone defines the anchor;
+ * this module never adds or subtracts an offset. gmtime_r() is the correct
+ * inverse -- not localtime_r/mktime, which consult TZ.
  */
 extern const app_module_t app_time_module;
 
-/**
- * Boundary tick period, minutes. EVT_TIME_TICK_15MIN fires at every local
- * multiple of this (:00/:15/:30/:45). Exposed because consumers that store
- * data per bucket must agree with it — see the _Static_assert in app_health.c.
- */
-#define APP_TIME_TICK_MIN_STEP   15u
+#define APP_TIME_TICK_MIN_STEP  15u
 
-/** Wall-clock time in Unix seconds; zero if the RTC is unset or unreadable. */
+/** Wall clock seconds; 0 if the RTC is unset or unreadable. */
 uint32_t app_time_now(void);
 
-typedef struct
-{
-    uint16_t year;
-    uint8_t  month;    /* 1..12 */
-    uint8_t  day;      /* 1..31 */
-    uint8_t  hour;     /* 0..23 */
-    uint8_t  min;      /* 0..59 */
-    uint8_t  sec;      /* 0..59 */
-    uint8_t  weekday;  /* 0 = Sunday */
-} app_time_local_t;
-
-/** Store a validated local calendar value in the hardware RTC. */
-int app_time_set_local(const app_time_local_t *time);
+/**
+ * Store wall clock seconds in the RTC. Uses gmtime_r to expand the scalar
+ * into calendar fields -- wday is computed by libc, not guessed.
+ * Returns 0 on success, negative on failure.
+ */
+int app_time_set(uint32_t sec);
 
 /**
- * @brief  Render Unix seconds as local calendar fields.
- *
- * Applies the module's timezone offset, so the result is what a user would
- * read off the watch face. For display and logging; @c out is left untouched
- * when NULL is passed.
+ * Expand wall clock seconds into struct tm calendar fields.
+ * Caller interprets tm_year+1900, tm_mon+1 per standard struct tm.
+ * No-op when out is NULL.
  */
-void app_time_to_local(uint32_t utc_sec, app_time_local_t *out);
+void app_time_to_calendar(uint32_t sec, struct tm *out);
 
 #ifdef __cplusplus
 }
