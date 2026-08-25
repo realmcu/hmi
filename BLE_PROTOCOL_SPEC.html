@@ -663,18 +663,6 @@ value，需先移除此掩码。</p>
 <td>时间设置</td>
 </tr>
 <tr>
-<td><code>0x02</code></td>
-<td>闹钟设置</td>
-</tr>
-<tr>
-<td><code>0x03</code></td>
-<td>获取设备闹钟列表请求</td>
-</tr>
-<tr>
-<td><code>0x04</code></td>
-<td>获取设备闹钟列表返回</td>
-</tr>
-<tr>
 <td><code>0x05</code></td>
 <td>计步目标设定</td>
 </tr>
@@ -709,103 +697,25 @@ value，需先移除此掩码。</p>
 </tbody>
 </table>
 <h4 id="0x01-时间设置">0x01 — 时间设置</h4>
-<p><strong>方向</strong>：手机 → 设备（每次绑定成功后需同步）| <strong>Value（32 bits）</strong>：</p>
+<p><strong>方向</strong>：手机 → 设备（每次绑定成功后需同步）<br />
+<strong>Value（4 bytes，Big-Endian）</strong>：墙上时钟秒（wall clock seconds），自 1970-01-01 00:00:00 起算。</p>
 <table>
 <thead>
 <tr>
-<th>字段</th>
-<th>宽度</th>
-<th>有效值</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Year</td>
-<td>6 bits</td>
-<td>0~63（从 2000 年起，13=2013）</td>
-</tr>
-<tr>
-<td>Month</td>
-<td>4 bits</td>
-<td>1~12</td>
-</tr>
-<tr>
-<td>Day</td>
-<td>5 bits</td>
-<td>1~31</td>
-</tr>
-<tr>
-<td>Hour</td>
-<td>5 bits</td>
-<td>0~23</td>
-</tr>
-<tr>
-<td>Minute</td>
-<td>6 bits</td>
-<td>0~59</td>
-</tr>
-<tr>
-<td>Second</td>
-<td>6 bits</td>
-<td>0~59</td>
-</tr>
-</tbody>
-</table>
-<h4 id="0x02-0x04-闹钟设置-获取闹钟列表返回">0x02 / 0x04 — 闹钟设置 / 获取闹钟列表返回</h4>
-<p>最多支持 <strong>8 个闹钟</strong>。<strong>Value（5×N bytes）</strong>，每个 Alarm item（40 bits）：</p>
-<table>
-<thead>
-<tr>
-<th>字段</th>
+<th>字节序</th>
 <th>宽度</th>
 <th>说明</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Year</td>
-<td>6 bits</td>
-<td>从 2000 年起</td>
-</tr>
-<tr>
-<td>Month</td>
-<td>4 bits</td>
-<td>1~12</td>
-</tr>
-<tr>
-<td>Day</td>
-<td>5 bits</td>
-<td>1~31</td>
-</tr>
-<tr>
-<td>Hour</td>
-<td>5 bits</td>
-<td>0~23</td>
-</tr>
-<tr>
-<td>Minute</td>
-<td>6 bits</td>
-<td>0~59</td>
-</tr>
-<tr>
-<td>Id</td>
-<td>3 bits</td>
-<td>闹钟编号（0~7）</td>
-</tr>
-<tr>
-<td>Reserve</td>
-<td>4 bits</td>
-<td>—</td>
-</tr>
-<tr>
-<td>Day flags</td>
-<td>7 bits</td>
-<td>低位→高位对应周一→周日；1=重复，0=不重复；全 0=只当天有效</td>
+<td>大端</td>
+<td>4 bytes</td>
+<td>其值为设备应当显示的时刻。手机负责把用户本地日历折算为秒；<strong>设备不做任何时区处理</strong>。有效范围 1970-01-01 至 2106-02-07。</td>
 </tr>
 </tbody>
 </table>
-<h4 id="0x03-获取设备闹钟列表请求">0x03 — 获取设备闹钟列表请求</h4>
-<p><strong>Value</strong>：空</p>
+<p><strong>不兼容变更</strong>（2026-08-25）：原格式为 32-bit packed 日历字段（Year 6 bits + Month 4 bits + Day 5 bits + Hour 5 bits + Minute 6 bits + Second 6 bits），现已废弃。固件与 App 必须同版本升级。</p>
 <h4 id="0x05-计步目标设定">0x05 — 计步目标设定</h4>
 <p><strong>Value（4 bytes，Big-Endian）</strong>：<br />
 <code>Target = Byte1&lt;&lt;24 | Byte2&lt;&lt;16 | Byte3&lt;&lt;8 | Byte4</code></p>
@@ -1177,8 +1087,8 @@ FlashDB 中的一条 15 分钟运动桶记录，同时携带该桶内的步数�
 <code>(Timestamp - 15 分钟, Timestamp]</code>，其中 <code>Timestamp</code> 是该桶的结束和
 落库时间，与 FlashDB 记录时间完全一致。该时间桶是设备运行期间的滚动
 15 分钟桶，不要求与自然日的 <code>00/15/30/45</code> 分钟边界对齐。</p>
-<p>手机不得把 Timestamp 当作桶开始时间，也不得再对 Timestamp 做时区、
-Date/Offset 或 15 分钟前移转换。</p>
+<p>Timestamp 即设备显示的墙上时钟时刻（wall clock seconds，1970 纪元），
+手机直接渲染即可，无需任何时区转换。</p>
 <table>
 <thead>
 <tr>
@@ -1221,7 +1131,7 @@ Date/Offset 或 15 分钟前移转换。</p>
 <td>Timestamp</td>
 <td>4 bytes</td>
 <td>大端</td>
-<td>Unix 时间戳（秒），与 FlashDB 记录时间一致</td>
+<td>墙上时钟秒（自 1970-01-01 起算，与设备显示一致），与 FlashDB 记录时间一致</td>
 </tr>
 <tr>
 <td>4</td>
@@ -1354,7 +1264,7 @@ L1 帧为 <code>158 bytes</code>。</p>
 <td>Timestamp</td>
 <td>4 bytes</td>
 <td>大端</td>
-<td>状态实际生效的 Unix 时间戳（秒），与 FlashDB 记录时间一致</td>
+<td>状态实际生效的墙上时钟秒（自 1970-01-01 起算），与 FlashDB 记录时间一致</td>
 </tr>
 <tr>
 <td>4</td>
@@ -1631,7 +1541,7 @@ End 的 Data type 必须与该会话请求和数据返回类型一致。睡眠�
 <tr>
 <td>Timestamp</td>
 <td>4 bytes</td>
-<td>从 2000 年起的秒数</td>
+<td>墙上时钟秒（自 1970-01-01 起算，与 §0x01 定义一致）</td>
 </tr>
 </tbody>
 </table>
