@@ -10,24 +10,34 @@
  * is broken".
  *
  * ---------------------------------------------------------------------------
- * WHY THIS ANSWERS FROM A CACHE
+ * WHY THIS PUTS NOTHING ON THE WIRE
  * ---------------------------------------------------------------------------
- * The credentials live in the 8711, and asking it costs 2..4 s on an idle SPI
+ * The credentials live in the 8711, and asking it costs ~10 s on an idle SPI
  * link.  This handler runs on l2_task -- the single serialiser for every BLE
  * command -- so waiting here would stall the whole control plane for seconds
  * and, worse, would make a command whose entire job is "tell me quickly" the
  * slowest one in the protocol.
  *
- * So port_softap holds the values in a cache and this reads them synchronously.
- * That is sound because the 8711 has no mechanism to change its own SSID /
- * password / IP / port: a cached answer is not a stale answer, it is the same
- * answer.  (The client count IS volatile, but 0x13 does not carry it.)
+ * It does not have to ask.  Since protocol v3.1 sec.7.1 the 8711 puts its whole
+ * Wi-Fi state in every ~1 Hz POLL payload, so port_softap already holds a copy
+ * that is at most about a second old and this reads it synchronously, in
+ * microseconds.
  *
- * A cache miss means the link has never answered -- no 8711, or it is not
- * running -- which is NOT_READY, not a failure.  The miss also provokes a query
- * inside port_softap, so an App that asks again will get the real values once
- * the link answers.  That retry is the App's job: nothing polls on its behalf,
- * so a single NOT_READY is not evidence that the credentials are unavailable.
+ * A FRESH copy, specifically -- ebadge_port_softap_info() refuses to answer from
+ * one older than a few seconds, and that gate is the whole reason this is safe.
+ * The state MERGES: a zero field means "no news", because an AP=DOWN block
+ * reports an empty SSID and the 8711 cannot change its own credentials anyway.
+ * So a block from ten seconds ago can name an SSID, password and port that are
+ * all still literally correct while there is no radio on the air -- a BLE
+ * disconnect switches it off (sec.12.2).  Answering 0x13 from that would send
+ * the phone looking for a network that is not there.
+ *
+ * False therefore means "down, still starting, or the state feed has stopped",
+ * which is NOT_READY rather than a failure, and the remedy is the App's: ask
+ * again.  A retry a beat later is likely to succeed.  Nothing is provoked from
+ * here -- if the feed really has stopped, port_softap's tick is already asking
+ * on the same expiry, and letting this path submit too would turn an App
+ * retrying 0x12 into an -EBUSY storm against the single-flight AT layer.
  *
  * ---------------------------------------------------------------------------
  * WHICH PORT THIS REPORTS
@@ -64,17 +74,20 @@ void handle_get_ap_info(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
 
     if (!ebadge_port_softap_info(&info, role, &port))
     {
-        EBADGE_LOG("GET_AP_INFO: no AP info known yet -> RESULT NOT_READY");
+        EBADGE_LOG("GET_AP_INFO: AP not up (or state feed stopped)"
+                   " -> RESULT NOT_READY");
         (void)ebadge_l2_result_send(EB_CMD_GET_AP_INFO, EB_RESULT_NOT_READY);
         return;
     }
 
     if (port == 0U)
     {
-        /* Credentials known, port not.  Only a WLSTATE reply carries the ports,
-         * so a WLSTARTAP-only cache has none -- and answering 0x13 with port 0
-         * would send the phone to associate and then connect nowhere.  NOT_READY
-         * is the same answer as a total miss because the remedy is the same. */
+        /* Credentials known, port not.  A block can name the AP without naming
+         * its servers -- a truncated WLSTATE reply loses the tail, and until the
+         * AP is fully up the 8711 reports the ports as 0 (sec.7.4 expresses "no
+         * value" as a zero value).  Answering 0x13 with port 0 would send the
+         * phone to associate and then connect nowhere.  NOT_READY is the same
+         * answer as a total miss because the remedy is the same. */
         EBADGE_LOG1("GET_AP_INFO: %s port not reported yet -> RESULT NOT_READY",
                     (role == EBADGE_AP_PORT_STREAM) ? "stream" : "file");
         (void)ebadge_l2_result_send(EB_CMD_GET_AP_INFO, EB_RESULT_NOT_READY);
@@ -82,10 +95,11 @@ void handle_get_ap_info(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
     }
 
     /* Emitted whether or not a transfer is in progress.  §4.9 frames this as
-     * recovery for an App that missed the 0x13, and the credentials are the
-     * same either way -- the 8711's AP is up from boot and is not raised per
-     * session.  Gating on session state would only mean an App that asked at
-     * the wrong moment got NOT_READY for an AP that was in fact ready. */
+     * recovery for an App that missed the 0x13, and the credentials do not belong
+     * to a session -- the radio's lifetime is the BLE connection (armed on
+     * connect, stopped on disconnect), not one transfer.  Gating on session state
+     * would only mean an App that asked at the wrong moment got NOT_READY for an
+     * AP that was in fact ready. */
     EBADGE_LOG(EB_DIR_FROM_PHONE "0x12 GET_AP_INFO -> answering with the %s port",
                (role == EBADGE_AP_PORT_STREAM) ? "stream" : "file");
     eb_emit_ap_info(&info, port);

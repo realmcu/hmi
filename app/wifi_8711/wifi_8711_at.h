@@ -4,17 +4,23 @@
  *
  * SCOPE: this layer owns the ATMC half of the slot protocol and nothing else.
  * It builds COMMAND slots, matches RESPONSE slots against the sequence it sent,
- * swallows POLL heartbeats, times out a command that is never answered, and
- * restores idle TX content when a transaction ends.  It does NOT know what any
- * particular command means -- "AT+WLSTATE" is just a string to it.  The
- * semantic layer (SSID / password / client count) is wifi_8711_at_ap.h.
+ * times out a command that is never answered, and restores idle TX content when
+ * a transaction ends.  It does NOT know what any particular command means --
+ * "AT+WLSTATE" is just a string to it.  The semantic layer (SSID / password /
+ * client count) is wifi_8711_at_ap.h.
+ *
+ * The one exception, and it is a routing decision rather than an interpretation:
+ * a POLL payload and an unsolicited RESPONSE both carry the Wi-Fi state block
+ * (sec.7.4), and this layer hands both to wifi_8711_at_ap_ingest() rather than
+ * dropping them.  It does not look inside; it only knows which slots are nobody's
+ * reply.  POLL used to be swallowed here, which discarded a 1 Hz status feed.
  *
  * It sits on top of wifi_8711_xfer.h, which moves 4096-byte slots, and below
  * wifi_8711_at_ap.h + the protocol stack's port_softap.
  *
  *      port_softap / cmd_get_ap_info      <- protocol stack, l2_task
  *          |
- *      wifi_8711_at_ap.h                  <- text -> struct, AP cache
+ *      wifi_8711_at_ap.h                  <- text -> struct, global Wi-Fi state
  *          |
  *      wifi_8711_at.h                     <- THIS FILE: command/response
  *          |
@@ -26,10 +32,11 @@
  * The 8711 is the SPI master: it owns SCLK and CS, and this side cannot
  * transmit at will -- it can only *stage* a slot and wait to be clocked.  A
  * command therefore needs one transaction to go out and another to bring the
- * reply back.  While the link is idle the 8711 polls roughly every 2 s, so the
- * reply lands 2..4 s after the call; during a JPEG stream every JPGS slot also
- * carries MISO, so a staged command rides along and the same exchange completes
- * in milliseconds (protocol sec.4.1 item 3, sec.12).
+ * reply back.  While the link is idle the 8711 polls roughly every 1 s (sec.12.6
+ * halved the old 2 s beat), and the measured round trip is longer than the
+ * arithmetic suggests -- see WIFI_8711_AT_TIMEOUT_MS.  During a JPEG stream every
+ * JPGS slot also carries MISO, so a staged command rides along and the same
+ * exchange completes in milliseconds (sec.4.1 item 3).
  *
  * There is no way to shorten the idle case from this side.  B2W is a readiness
  * gate, not a request line: sec.11.1 requires it to be raised on every re-arm
@@ -74,15 +81,19 @@ extern "C" {
  *
  *  The arithmetic was wrong because the 8711 does not answer in the POLL that
  *  follows the one which collected the command: it needs its own turnaround, and
- *  the ~2 s figure in sec.4.1 item 6 is a nominal idle rate rather than a bound.
- *  So the real cost is closer to five POLL periods than two, and a threshold set
- *  just under it fails 100% of the time while looking like a link fault.
+ *  the nominal idle beat is a rate rather than a bound.  So the real cost was
+ *  closer to five POLL periods than two, and a threshold set just under it fails
+ *  100% of the time while looking like a link fault.
  *
- *  20 s is the observed worst case plus roughly 2x headroom.  Long, but the
- *  alternative is not a faster answer -- the 8711 owns the clock and nothing on
- *  this side can hurry it -- it is a failure report for a reply that did arrive.
- *  Callers must not block on this: they are on l2_task and answer from a cache
- *  (see ebadge_port_softap.c). */
+ *  Kept at 20 s after sec.12.6 halved the beat, rather than halved with it: the
+ *  measurement above is what this is sized off, and nothing has re-measured the
+ *  round trip on the faster beat.  A shorter deadline would be a guess, and the
+ *  cost of this one being long is only how quickly a genuinely dead link is
+ *  reported -- the Wi-Fi state has its own, much shorter staleness rule in
+ *  ebadge_port_softap.c, which no longer depends on this at all.
+ *
+ *  Callers must not block on this: they are on l2_task and answer from the global
+ *  Wi-Fi state (see ebadge_port_softap.c). */
 #define WIFI_8711_AT_TIMEOUT_MS   20000U
 
 /** Longest response text handed to a callback, including the NUL.
@@ -165,9 +176,10 @@ typedef void (*wifi_8711_file_sink_t)(const uint8_t *slot, size_t len);
  *  it would do nothing at all while implying callers must order around it.
  *
  *  Consequence worth knowing: JPGS slots only reach the sink below once the
- *  transport is running, so nothing is received until the first AT command has
- *  been submitted by somebody.  port_softap's boot-time AP query is what does
- *  that in practice.
+ *  transport is running, and so does the POLL beat that feeds the global Wi-Fi
+ *  state -- so nothing is received, and the state stays empty, until the first AT
+ *  command has been submitted by somebody.  port_softap's AT+WLSTARTAP on BLE
+ *  connect is what does that in practice.
  *----------------------------------------------------------------------------*/
 
 /**
@@ -207,7 +219,8 @@ void wifi_8711_at_set_file_sink(wifi_8711_file_sink_t cb);
  * @param  cb    completion callback; may be NULL to fire-and-forget
  * @param  user  opaque, handed back to @p cb
  *
- * @retval 0          staged; @p cb fires in ~2..4 s on an idle link
+ * @retval 0          staged; @p cb fires several seconds later on an idle link
+ *                    (see WIFI_8711_AT_TIMEOUT_MS for why "several" is not two)
  * @retval -EBUSY     another command is already outstanding (single flight)
  * @retval -ENODEV    wifi_8711_init() never succeeded -- no link on this build
  * @retval -EMSGSIZE  command text >= 128 B
@@ -237,8 +250,22 @@ typedef struct
     uint32_t submits;       /**< commands staged                              */
     uint32_t responses;     /**< RESPONSE slots matching our sequence         */
     uint32_t stale;         /**< RESPONSE slots for some older sequence       */
+
+    /** 8711-initiated state pushes (sec.4.1 item 6).
+     *
+     *  Counted apart from `stale` because they arrive on the SAME slot type and
+     *  used to be indistinguishable from it: sec.7.3 gives them an independent
+     *  sequence, so they can never match a pending command, and before they were
+     *  recognised every one of them was logged as a dropped stale reply. */
+    uint32_t notifications;
+
     uint32_t timeouts;      /**< commands that were never answered            */
-    uint32_t polls;         /**< POLL heartbeats -- proof of life             */
+
+    /** POLL heartbeats -- proof of life, and since sec.7.1 the Wi-Fi state feed.
+     *  About one per second on an idle link, so this doubles as a rough uptime
+     *  for the SPI link. */
+    uint32_t polls;
+
     uint32_t jpg_slots;     /**< JPGS slots seen                              */
     uint32_t file_slots;    /**< EBFS slots seen                              */
     uint32_t bad_magic;     /**< slots that were none of ATMC / JPGS / EBFS   */
@@ -247,6 +274,30 @@ typedef struct
 
 void wifi_8711_at_get_stats(wifi_8711_at_stats_t *out);
 void wifi_8711_at_reset_stats(void);
+
+/**
+ * @brief  How long since a JPGS or EBFS slot last arrived, in ms.
+ *
+ * The strongest evidence the AP is up that this device can obtain, and it is
+ * stronger than the sec.7.4 state block: the block is the 8711 DESCRIBING its
+ * radio, whereas a data-plane slot is a phone having associated with that radio
+ * and pushed bytes through a TCP connection on it.  A description can be wrong or
+ * merely optimistic; traffic cannot.
+ *
+ * WHY ONLY THESE TWO SLOT TYPES.  ATMC deliberately does not count.  POLL arrives
+ * about once a second whether the AP is up or down -- it is proof the SPI link is
+ * alive, which is a different claim, and treating it as AP evidence would mean the
+ * AP never looked down.
+ *
+ * @return ms since the last such slot, or UINT32_MAX if none has ever arrived.
+ *         UINT32_MAX is also what a caller gets before the transport starts, so
+ *         "no evidence" and "very old evidence" answer the same way -- which is
+ *         correct for every current caller, since both mean "do not skip the
+ *         question you were about to ask".
+ *
+ * CONTEXT: any thread.  Lock-free -- see the note on s_dataplane_ms.
+ */
+uint32_t wifi_8711_at_dataplane_age_ms(void);
 
 /** Human-readable name for a result code, for logging. */
 const char *wifi_8711_at_result_str(wifi_8711_at_result_t res);

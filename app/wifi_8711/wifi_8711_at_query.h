@@ -52,11 +52,16 @@ extern "C" {
 int wifi_8711_at_query_ap_info(void);
 
 /**
- * @brief  Ask the 8711 to start / read back its SoftAP ("AT+WLSTARTAP").
+ * @brief  Ask the 8711 to start its SoftAP ("AT+WLSTARTAP"), log the verdict.
  *
  * Idempotent on the 8711 side, and its SoftAP already self-starts at boot, so
  * this exists for the case where wifi_8711_at_query_ap_info() comes back
  * saying the AP is not running.
+ *
+ * It logs only whether the radio came up.  The reply does echo SSID= and
+ * PASSWORD=, and the layer below reads neither (see wifi_8711_at_ap.h: WLSTATE is
+ * the single source for the credentials), so use wifi_8711_at_query_ap_info() to
+ * see them.
  *
  * Same asynchronous contract as above.
  */

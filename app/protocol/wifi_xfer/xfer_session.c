@@ -45,6 +45,10 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <errno.h>
+
+#include <zephyr/toolchain.h>       /* BUILD_ASSERT */
 
 #include "xfer_session.h"
 #include "stream_session.h"
@@ -52,6 +56,7 @@
 #include "ebxf_frame.h"
 #include "jpgs_ingress.h"
 #include "ebfs_ingress.h"
+#include "xfer_cache.h"
 
 #include "../ebadge_cmd.h"
 #include "../ebadge_l2.h"
@@ -62,6 +67,79 @@
 #include "../port/ebadge_port_softap.h"
 #include "../port/ebadge_port_tcp.h"
 #include "../port/ebadge_port_storage.h"
+#include "../port/ebadge_psram_map.h"
+
+/* Prepend a HoneyGUI image header to the stored file, so what lands on flash is
+ * something the display layer can render straight out of XIP without a copy or a
+ * fixup pass.  Default on; clear it to store the bare EBXF packet.
+ *
+ * draw_img.c:284 casts the resource address to gui_jpeg_file_head_t and reads
+ * img_header.type, then hands (jpeg, size) to the hardware decoder.  Without
+ * these 16 bytes that cast lands on the first bytes of the JPEG itself, so type
+ * is whatever 0xFFD8 happens to decode to and the resource is not usable as an
+ * image at all.
+ *
+ * def_file.h is the only GUI header pulled in here, and only for that struct --
+ * it costs def_color.h and libc.  draw_img.h, where the type constant lives,
+ * drags in guidef.h/gui_api.h/gui_matrix.h and is deliberately not included; see
+ * XS_GUI_IMG_TYPE_JPEG below. */
+#ifndef XS_INSERT_GUI_IMG_HDR
+#define XS_INSERT_GUI_IMG_HDR 1
+#endif
+
+#if XS_INSERT_GUI_IMG_HDR
+#include "def_file.h"            /* gui_rgb_data_head_t, gui_jpeg_file_head_t */
+
+/* GUI_FormatType JPEG, from realgui/engine/draw/draw_img.h:53.  Spelled out
+ * rather than included for the reason given above; the BUILD_ASSERT on the
+ * struct layout cannot catch a drift in this one, so it is worth naming its
+ * source.  A change here would show up as a resource the display layer refuses
+ * to decode, not as a build failure. */
+#define XS_GUI_IMG_TYPE_JPEG   12
+
+/* Declared width / height of the stored image.
+ *
+ * The panel geometry, NOT the JPEG's own: the offer carries no dimensions and the
+ * SOF marker sits somewhere in a body that has not arrived yet, so there is
+ * nothing truer to write at this point.  The decoder replaces them with the real
+ * values when it runs, so these only have to be sane before that.  Kept as
+ * literals because the protocol layer has no business including the LCD port's
+ * DRV_LCD_WIDTH. */
+#define XS_GUI_IMG_W          466
+#define XS_GUI_IMG_H          466
+
+/* Bytes of GUI header written between the EBXF framing and the JPEG body:
+ * 8B gui_rgb_data_head_t + 4B size + 4B alignment padding.
+ *
+ * Spelled as its own type rather than by casting a byte buffer to
+ * gui_jpeg_file_head_t: that struct carries a 1 KiB jpeg[] tail, so it cannot go
+ * on the stack, and casting a uint8_t[16] to it would leave the uint32_t members
+ * potentially unaligned as well as aliasing a char array.  The BUILD_ASSERTs
+ * below are what keep this mirror honest -- if the GUI struct grows a field or
+ * changes a width, the build stops here instead of writing a header the display
+ * layer will misread. */
+typedef struct
+{
+    gui_rgb_data_head_t img_header;
+    uint32_t            size;
+    uint32_t            dummy;
+} xs_gui_img_hdr_t;
+
+#define XS_GUI_IMG_HDR_LEN     sizeof(xs_gui_img_hdr_t)
+
+BUILD_ASSERT(XS_GUI_IMG_HDR_LEN == 16U,
+             "GUI image header prefix is no longer 16 bytes -- the App and the "
+             "boot-time resource rebuild both assume that width");
+BUILD_ASSERT(XS_GUI_IMG_HDR_LEN == offsetof(gui_jpeg_file_head_t, jpeg),
+             "xs_gui_img_hdr_t no longer mirrors gui_jpeg_file_head_t's prefix");
+BUILD_ASSERT(offsetof(xs_gui_img_hdr_t, size) ==
+             offsetof(gui_jpeg_file_head_t, size),
+             "GUI image header size field moved");
+BUILD_ASSERT(sizeof(gui_rgb_data_head_t) == 8U,
+             "gui_rgb_data_head_t is no longer 8 bytes");
+#else
+#define XS_GUI_IMG_HDR_LEN     0U
+#endif
 
 /*----------------------------------------------------------------------------*
  *  Config
@@ -92,36 +170,49 @@
 #define XS_PROGRESS_MS         200
 #define XS_PROGRESS_STEP_PCT     5
 
-/* Largest file the upload data plane can carry, in bytes.
+/* Bytes per wp_write call when flushing the cache to flash.
  *
- * 2 MiB is the 8711's port-9000 single-file cap (SPI spec v2.2 §6), and the BLE
- * spec's §8.3 suggests the same figure pending a final value.
- *
- * This used to be 61440, which was a real limit copied from the wrong channel:
- * 60 KiB is the *frame* cap on the preview port 5004, where a whole JPEG crosses
- * as one frame.  A file on port 9000 is fragmented into EBFS slots by the 8711
- * and has no such ceiling, so the old value refused ordinary wallpapers with
- * TOO_LARGE.  The two caps must stay distinct -- see WIFI_8711_FILE_SIZE_MAX
- * and WIFI_8711_JPEG_FRAME_MAX.
- *
- * Deliberately a literal rather than the driver macro: that one lives behind
- * CONFIG_WIFI_8711 and this file is transport agnostic on purpose (it also
- * serves the 0x02 BLE path).  A BUILD_ASSERT would be better but would drag the
- * driver header in; the comment above is the contract. */
-#define XS_MAX_FILE_SIZE     (2u * 1024u * 1024u)
+ * An upper bound is required, not a tuning choice: wp_write takes a uint16_t
+ * length, so a 1 MB file cannot go in one call.  4 KB matches the NOR sector, so
+ * each call lands on one erase unit, and it gives the FAL erase/program loop --
+ * which kicks the watchdog -- a turn between chunks. */
+#define XS_FLASH_WRITE_CHUNK  4096u
 
-/* Framing bytes reserved on flash in front of the file content.
+/* Largest file this device can receive, in bytes.
  *
- * The EBXF path stores the whole TCP packet -- 40-byte header plus body -- so the
- * reservation must cover both.  The JPGS path stores no framing at all (the 8711
- * strips it), and this is still reserved there because wp_begin runs on the
- * WAIT_STA -> RECV edge, before any data has arrived to say which path this
- * transfer will take.  Over-reserving by 40 bytes is the cheap side of that
- * guess; under-reserving would fail the last write of a max-size file.
+ * Now bounded by the PSRAM receive cache, not by the transport: a whole file is
+ * buffered before any of it reaches flash (see xfer_cache.h), so the buffer is
+ * the binding limit and there is no point declaring a larger one.  The cache is
+ * 1 MB, comfortably under the two transport caps below, so an offer we accept is
+ * one all three can carry.
  *
- * What actually got stored is reported to wp_commit as the content offset, and
- * that comes from ebxf_seen rather than from here. */
-#define XS_EBXF_STORED_LEN   EBXF_HDR_LEN
+ * For the record, those transport caps: 2 MiB is the 8711's port-9000 single-file
+ * cap (SPI spec v2.2 §6) and the BLE spec §8.3 suggests the same pending a final
+ * value.  Neither is reachable now.  Not to be confused with the 60 KiB *frame*
+ * cap on preview port 5004 -- an earlier revision of this macro used that figure
+ * and refused ordinary wallpapers with TOO_LARGE.  See WIFI_8711_FILE_SIZE_MAX
+ * and WIFI_8711_JPEG_FRAME_MAX; the two must stay distinct. */
+#define XS_MAX_FILE_SIZE     EB_PSRAM_XFER_CACHE_SIZE
+
+BUILD_ASSERT(XS_MAX_FILE_SIZE <= 2u * 1024u * 1024u,
+             "the receive cache is larger than the 8711's port-9000 single-file "
+             "cap, so an accepted offer could exceed what the transport carries");
+
+/* Framing bytes stored on flash in front of the file content.
+ *
+ * The EBXF path stores the whole TCP packet -- 40-byte header plus body -- plus the
+ * 16-byte GUI image header inserted between them when XS_INSERT_GUI_IMG_HDR is on.
+ * The JPGS path stores no framing at all, because the 8711 strips it.
+ *
+ * Which of the two applies is now KNOWN when the reservation is made: the whole
+ * file is buffered first, so wp_begin runs from commit_from_cache() with ebxf_seen
+ * already settled and asks for exactly what will be written.  It used to run on the
+ * WAIT_STA -> RECV edge, before any data had arrived to say which path this transfer
+ * would take, and had to over-reserve by 56 bytes on the JPGS path as a result.
+ *
+ * What actually got stored is reported to wp_commit as the content offset, and that
+ * comes from ebxf_seen rather than from here. */
+#define XS_EBXF_STORED_LEN   (EBXF_HDR_LEN + XS_GUI_IMG_HDR_LEN)
 
 /*----------------------------------------------------------------------------*
  *  Session state  (l2_task-owned; no locking)
@@ -160,6 +251,15 @@ typedef struct
     bool     done_ok;
     uint8_t  done_reason;         /* §2.6 code; meaningful when !done_ok   */
     uint16_t done_file_id;
+
+    /* Set when the cache holds a verified file that has not been stored yet.
+     *
+     * The store deliberately happens AFTER the data-plane ack goes out (see the
+     * ordering note where this is set), so between those two moments the session is
+     * in COMPLETING with a good file in PSRAM and nothing on flash.  This flag is
+     * what tells the ack-settled path there is still work to do, and distinguishes
+     * that from a COMPLETING that is merely waiting to report a failure. */
+    bool     store_pending;
     /* Static-lifetime string literal from the failing call site; only read
      * after the ack settles, which is why it cannot be a buffer we own. */
     const char *done_detail;
@@ -183,6 +283,10 @@ typedef struct
 } xfer_ctx_t;
 
 static xfer_ctx_t s_x;
+
+/* Defined below, next to the receive path it belongs with, but called from
+ * emit_held_verdict() which comes first. */
+static int commit_from_cache(uint16_t *out_file_id);
 
 /*----------------------------------------------------------------------------*
  *  Local helpers -- notify emission
@@ -271,6 +375,10 @@ static void tear_down_data_plane(void)
      * first slot look corrupt. */
     jpgs_ingress_reset();
     ebfs_ingress_reset();
+    /* And the buffered file.  Leaving it would let the next transfer's first chunk
+     * append onto the remains of this one, and since the cache is what gets written
+     * to flash, that would store a file made of two. */
+    xfer_cache_reset();
     if (s_x.wp_handle > 0)
     {
         (void)ebadge_port_storage_wp_abort(s_x.wp_handle);
@@ -325,6 +433,39 @@ static void emit_held_verdict(bool ack_ok)
     jpgs_ingress_reset();
     ebfs_ingress_reset();
 
+    /* Store the file, now that the phone has its answer and the data plane is
+     * quiet.  This is the multi-sector erase plus the page programs, and this is
+     * the cheapest moment in the whole session to spend them: nothing is in
+     * flight, no slot needs re-arming, and no deadline is running.
+     *
+     * A failure here flips the verdict that is about to go out over BLE.  That is
+     * the one asymmetry left by acking before storing: the data plane has already
+     * been told the bytes arrived intact, which was true and still is, while BLE --
+     * the plane the App is required to believe (spec §5.3) -- carries the verdict
+     * on whether the file was actually kept.  So an App watching only TCP can see
+     * a success for a file that failed to store; it has to read the 0x15/0x16. */
+    if (s_x.store_pending)
+    {
+        s_x.store_pending = false;
+
+        uint16_t file_id = 0;
+        if (commit_from_cache(&file_id) == 0)
+        {
+            s_x.done_file_id = file_id;
+        }
+        else
+        {
+            EBADGE_ERR("xfer: verified file failed to store -> reporting FAIL");
+            s_x.done_ok     = false;
+            s_x.done_reason = EB_XFER_ERR_STORAGE_FULL;
+            s_x.done_detail = "store failed";
+        }
+    }
+    /* Whatever happened, the cache is done with -- commit_from_cache() clears it on
+     * success, and a failure must not leave a stale file for the next transfer to
+     * inherit. */
+    xfer_cache_reset();
+
     if (s_x.done_ok)
     {
         emit_done(s_x.done_file_id);
@@ -333,6 +474,36 @@ static void emit_held_verdict(bool ack_ok)
     {
         emit_fail(s_x.done_reason, s_x.done_detail);
     }
+
+#if EBADGE_SOFTAP_PER_TRANSFER_LIFETIME
+    /* The BLE verdict is out, so the hotspot has nothing left to serve -- schedule
+     * it down.  SCHEDULE, not switch off, and that distinction is the whole reason
+     * this is a separate call rather than ebadge_port_softap_shutdown():
+     *
+     *   - The verdict is not actually delivered yet.  [+XFERACK]:OK only means the
+     *     8711 accepted the ack command (spec sec.10.3); it then builds the EBXR and
+     *     closes the TCP connection itself, and the 0x15/0x16 above has only just
+     *     been queued on the BLE link.  Cutting the radio here -- which is what an
+     *     earlier version of this code did -- can destroy the data-plane result the
+     *     App may be reading.
+     *   - A phone sending several images re-claims the AP inside the settling
+     *     window, and ebadge_port_softap_start() cancels the schedule, so a burst
+     *     pays one teardown at the end instead of one per image.
+     *   - The preview stream shares this radio.  A stream that starts inside the
+     *     window keeps it up, which port_softap checks for rather than trusting the
+     *     cancel alone.
+     *
+     * A transfer that arrives after the teardown does get a bring-up to wait for:
+     * softap_start() re-arms when it finds the AP down, and answers NOT_READY
+     * meanwhile.  That is the cost of not leaving a beacon on air between
+     * transfers, and it is paid by the transfer that needs it rather than by every
+     * BLE connection.
+     *
+     * ebadge_port_softap_stop() above has already released our claim, so the join
+     * poll has stopped and this module is not touching the AT link. */
+    ebadge_port_softap_shutdown_when_idle();
+#endif
+
     reset_ctx();
 }
 
@@ -373,7 +544,12 @@ static void fail_and_reset(uint8_t reason, const char *detail)
 {
     /* Free the flash reservation and stop the ingress now: the verdict is
      * already decided, so any further inbound byte is waste.  The connection
-     * itself stays armed for the ack -- tear_down_data_plane() would close it. */
+     * itself stays armed for the ack -- tear_down_data_plane() would close it.
+     *
+     * The reservation is usually absent now: on the failing paths that matter --
+     * a bad header, a length or CRC mismatch -- the file only ever existed in the
+     * PSRAM cache, so there is nothing on flash to undo.  The check stays because a
+     * failure DURING the store (commit_from_cache) can still leave one open. */
     if (s_x.wp_handle > 0)
     {
         (void)ebadge_port_storage_wp_abort(s_x.wp_handle);
@@ -381,12 +557,18 @@ static void fail_and_reset(uint8_t reason, const char *detail)
     }
     jpgs_ingress_reset();
     ebfs_ingress_reset();
+    /* Drop the buffered bytes: this session will not be storing them, and the next
+     * one must not start on top of them. */
+    xfer_cache_reset();
 
     s_x.state        = XFER_SESSION_COMPLETING;
     s_x.done_pending = true;
     s_x.done_ok      = false;
     s_x.done_reason  = reason;
     s_x.done_detail  = detail;
+    /* No store to do -- this path has no verified file.  Explicit because
+     * emit_held_verdict() runs for failures too and would otherwise try. */
+    s_x.store_pending = false;
     s_x.deadline_ack = ebadge_task_now_ms() + XS_ACK_WAIT_MS;
 
     (void)ebadge_port_tcp_ack(false, reason, ack_settled_from_driver, NULL);
@@ -412,6 +594,14 @@ static void abort_and_reset(uint8_t reason, const char *detail)
 
     tear_down_data_plane();
     emit_fail(reason, detail);
+#if EBADGE_SOFTAP_PER_TRANSFER_LIFETIME
+    /* Same rule as the success path: the BLE report has gone out, so schedule the
+     * radio down rather than leave a beacon on air for a transfer that is over.
+     * Scheduled, so a phone that reacts to this 0x16 by retrying re-claims the AP
+     * inside the settling window and pays no bring-up.  See emit_held_verdict() for
+     * why the delay is not optional. */
+    ebadge_port_softap_shutdown_when_idle();
+#endif
     reset_ctx();
 }
 
@@ -420,10 +610,11 @@ static void abort_and_reset(uint8_t reason, const char *detail)
  *----------------------------------------------------------------------------*/
 static void on_softap_joined_from_driver(void)
 {
-    /* Already on l2_task -- port_softap marshals the edge itself, because it
-     * discovers it from an AT reply on the transport thread and has to re-check
-     * the session is still alive after the hop anyway.  Calling
-     * ebadge_task_post_call() again here would only add a second hop. */
+    /* Already on l2_task, and no hop was needed to get here: port_softap reads
+     * CLIENTS= off the pushed Wi-Fi state from its own tick, which runs on
+     * l2_task.  It used to learn this from an AT reply on the transport thread
+     * and marshal the edge itself; the marshalling is gone with the query.
+     * Calling ebadge_task_post_call() here would only add a hop. */
     xfer_session_on_sta_joined();
 }
 
@@ -695,9 +886,38 @@ void xfer_session_user_decision(bool accept)
     /* Ask the radio what the AP IS -- do not invent it.  The 8711 owns the
      * SoftAP and its credentials cannot be set from this side, so a hardcoded
      * SSID here would send the phone looking for a network that does not
-     * exist.  See ebadge_port_softap.h. */
+     * exist.  See ebadge_port_softap.h.
+     *
+     * "Ask" costs nothing on the wire: the 8711 pushes its Wi-Fi state on the
+     * ~1 Hz POLL beat, so this reads a copy at most a second old and returns in
+     * microseconds -- which matters because this runs on l2_task and an AT round
+     * trip is ~10 s.  This call does NOT wait for a bring-up; one takes seconds to
+     * tens of seconds and could not finish inside it. */
     ebadge_softap_info_t info;
     uint16_t             tcp_port = 0;
+
+#if EBADGE_SOFTAP_PER_TRANSFER_LIFETIME
+    /* Ask for the radio before asking about it.
+     *
+     * Under this arrangement the AP is not guaranteed to be up just because a phone
+     * is connected: the BLE-connect arm raised it, but a transfer that has since
+     * finished scheduled it back down, so by the second offer of a connection "AP is
+     * down" is the routine case.
+     *
+     * This cannot make the AP ready for THIS offer -- a bring-up is seconds to tens
+     * of seconds; see ebadge_port_softap.h -- and it is not trying to.  What it does
+     * is make the AP_START below worth retrying, and cancel a pending idle-down if a
+     * previous transfer is still inside its settling window (in which case the radio
+     * is up, this is a no-op, and the transfer proceeds with no bring-up at all --
+     * the coalescing case).
+     *
+     * Here rather than at the top of xfer_session_offer(): every reason to reject the
+     * offer has already answered 0x16 and returned, so this is the first point at
+     * which a transfer is definitely going to be attempted.  Raising the radio for an
+     * offer that is then rejected would leave nothing to schedule it down again. */
+    ebadge_port_softap_arm_on_l2("file offer accepted");
+#endif
+
     /* EBADGE_AP_PORT_FILE, because this session sends an EBXF header + body: the
      * 8711 only accepts that shape on FILE_PORT= (9000).  Naming the role rather
      * than taking "the port" is what stops this from being handed 5004, which
@@ -706,9 +926,10 @@ void xfer_session_user_decision(bool accept)
                                       on_softap_joined_from_driver);
     if (rc != 0)
     {
-        /* -EAGAIN means the credentials are not known yet, which on the wire is
-         * still AP_START: §2.6 has no "ask me again" transfer reason, and the
-         * App's recovery is the same either way -- retry the offer. */
+        /* -EAGAIN means the AP is down, still starting, or its state feed has
+         * stopped -- on the wire all three are still AP_START: §2.6 has no "ask
+         * me again" transfer reason, and the App's recovery is the same either
+         * way, retry the offer.  A retry a beat later is likely to succeed. */
         EBADGE_ERR1("xfer: softap_start FAIL (%d) -> XFER_FAIL AP_START", rc);
         fail_and_reset(EB_XFER_ERR_AP_START, "softap start");
         return;
@@ -759,26 +980,187 @@ void xfer_session_on_sta_joined(void)
         EBADGE_WARN1("sta_joined in wrong state=%d", (int)s_x.state);
         return;
     }
-    /* Open write session; ready to receive.
+
+    /* Nothing is opened on flash here, and that is the point of this design.
      *
-     * Reserve the EBXF header alongside the file: the whole TCP packet is stored,
-     * so the reservation has to cover the framing too or the last 40 bytes of a
-     * file sized at the cap would hit FDB_NO_SPACE in wp_write.
+     * This edge has two independent triggers -- port_softap's WLSTATE poll, on
+     * l2_task with nothing in flight, and ebfs_ingress promoting from inside the
+     * START slot's hand-off, with the transport thread blocked waiting for us.
+     * Whichever wins is a timing race we do not control.  When the second one won,
+     * the wp_begin that used to be here ran its multi-sector NOR erase while the
+     * transport thread could not re-arm the slot, and the 8711 abandons a slot whose
+     * READY does not come back within 1000 ms (protocol sec.3.2) -- so the next chunk
+     * was consumed from TCP and dropped, surfacing as a CRC mismatch several chunks
+     * later with nothing pointing at the cause.
      *
-     * XS_EBXF_STORED_LEN, not EBXF_HDR_LEN directly, because this same function
-     * serves the JPGS path where the 8711 strips the framing and there is no
-     * header to store -- see the macro. */
-    s_x.wp_handle = ebadge_port_storage_wp_begin(s_x.name,
-                                                 s_x.size + XS_EBXF_STORED_LEN,
-                                                 s_x.file_type);
-    if (s_x.wp_handle < 0)
-    {
-        fail_and_reset(EB_XFER_ERR_STORAGE_FULL, "wp_begin");
-        return;
-    }
+     * Now the receive path only fills the PSRAM cache, and every flash operation --
+     * the erase included -- happens after the last chunk, from commit_from_cache().
+     * Making this transition free is what makes the race harmless: both triggers now
+     * do nothing but change a state variable, so it no longer matters which wins. */
+    xfer_cache_reset();
+
     s_x.state        = XFER_SESSION_RECV;
     s_x.last_data_ms = ebadge_task_now_ms();
-    EBADGE_LOG("xfer: RECV started");
+    EBADGE_LOG("xfer: RECV started (buffering to PSRAM)");
+}
+
+/**
+ * Write the verified file to flash and commit it.  Runs once, after the whole
+ * file is buffered, has passed both checks, and the data-plane ack has gone out.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY EVERY FLASH OPERATION IS HERE AND NOT ON THE RECEIVE PATH
+ * ---------------------------------------------------------------------------
+ * Nothing is in flight by the time this runs: the sender has sent its last byte
+ * and has already been told the result.  So the multi-sector erase inside
+ * wp_begin, which used to sit on the WAIT_STA -> RECV edge and cost a dropped slot
+ * when that edge came from the data path, can stall here for as long as it needs
+ * and cost nothing.
+ *
+ * ---------------------------------------------------------------------------
+ * REPORTS NOTHING, ON PURPOSE
+ * ---------------------------------------------------------------------------
+ * Every other failure path in this file calls fail_and_reset(), which stages a
+ * data-plane ack and parks in COMPLETING.  This one must not: by the time it runs
+ * the ack has already settled, and staging a second one would be answering a
+ * transaction that is over.  So it cleans up its own reservation and returns a
+ * code, and the caller decides what the App is told.
+ *
+ * @return 0 on success, with @p out_file_id filled in; <0 on failure, with the
+ *         reservation already aborted and nothing emitted on either plane.
+ */
+static int commit_from_cache(uint16_t *out_file_id)
+{
+    const uint8_t *body     = xfer_cache_data();
+    uint32_t       body_len = xfer_cache_len();
+
+    if (body == NULL || body_len == 0)
+    {
+        EBADGE_ERR("xfer: commit with an empty cache");
+        return -1;
+    }
+
+    /* Reserve the file content plus whatever framing goes in front of it.  Only
+     * now is the framing actually known -- ebxf_seen has been settled by the data
+     * itself -- so unlike the old wp_begin on the WAIT_STA edge, this asks for what
+     * will really be written rather than guessing the larger of the two paths. */
+    uint32_t framing = s_x.ebxf_seen ? XS_EBXF_STORED_LEN : 0U;
+
+    int h = ebadge_port_storage_wp_begin(s_x.name, body_len + framing,
+                                         s_x.file_type);
+    if (h < 0)
+    {
+        EBADGE_ERR1("xfer: wp_begin failed rc=%d", h);
+        return -1;
+    }
+    s_x.wp_handle = h;
+
+    if (s_x.ebxf_seen)
+    {
+        /* The 40-byte EBXF header, so what lands on flash is the whole TCP packet
+         * rather than just its body.  It was validated when it arrived and held in
+         * s_x.ebxf_hdr since; writing it here rather than there is what keeps the
+         * receive path free of flash entirely.
+         *
+         * Deliberately NOT in the CRC: that accumulator is compared against the
+         * offer's whole-FILE CRC32, which the sender computed over the content
+         * alone.  Nor in bytes_recv, which is measured against the offered size. */
+        if (ebadge_port_storage_wp_write(s_x.wp_handle, s_x.ebxf_hdr,
+                                         EBXF_HDR_LEN) < 0)
+        {
+            goto abort_reservation;
+        }
+
+#if XS_INSERT_GUI_IMG_HDR
+        /* Then the GUI image header, between the framing and the body, so the
+         * stored file is directly what draw_img.c expects to be handed: it casts
+         * the resource address to gui_jpeg_file_head_t, switches on
+         * img_header.type, and passes (jpeg, size) to the decoder.
+         *
+         * Only type / w / h / size are set; everything else is zero, which is what
+         * the reference layout says and what the flags mean anyway (no scan, no
+         * resize, not compressed, not IDU).
+         *
+         * w and h are the panel size rather than the image's own.  The JPEG
+         * dimensions could in principle be parsed now that the whole file is in
+         * hand, but the decoder overwrites img_w/img_h from the real stream when it
+         * runs (draw_img.c:301), so parsing them would buy nothing but a SOF walker
+         * to maintain.  These two only have to be sane before the decode.
+         *
+         * Excluded from the CRC and from bytes_recv for the same reason as the EBXF
+         * header above.  Both are accounted for in the wp_begin reservation via
+         * XS_EBXF_STORED_LEN. */
+        xs_gui_img_hdr_t gui_hdr;
+
+        memset(&gui_hdr, 0, sizeof(gui_hdr));
+        gui_hdr.img_header.type = (char)XS_GUI_IMG_TYPE_JPEG;
+        gui_hdr.img_header.w    = (short)XS_GUI_IMG_W;
+        gui_hdr.img_header.h    = (short)XS_GUI_IMG_H;
+        gui_hdr.size            = body_len;
+
+        if (ebadge_port_storage_wp_write(s_x.wp_handle,
+                                         (const uint8_t *)&gui_hdr,
+                                         (uint16_t)sizeof(gui_hdr)) < 0)
+        {
+            goto abort_reservation;
+        }
+        EBADGE_LOG3("xfer: gui img hdr written type=%d %dx%d",
+                    (int)XS_GUI_IMG_TYPE_JPEG, (int)XS_GUI_IMG_W,
+                    (int)XS_GUI_IMG_H);
+#endif
+    }
+
+    /* The body, in chunks.  wp_write takes a uint16_t length, so a 1 MB file
+     * cannot go in one call regardless -- and splitting it also gives the FAL
+     * erase/program loop, which kicks the watchdog, regular opportunities to run. */
+    uint32_t off = 0;
+    while (off < body_len)
+    {
+        uint32_t n = body_len - off;
+        if (n > XS_FLASH_WRITE_CHUNK) { n = XS_FLASH_WRITE_CHUNK; }
+
+        if (ebadge_port_storage_wp_write(s_x.wp_handle, body + off,
+                                         (uint16_t)n) < 0)
+        {
+            EBADGE_ERR2("xfer: wp_write failed at off=%u len=%u",
+                        (unsigned)off, (unsigned)n);
+            goto abort_reservation;
+        }
+        off += n;
+    }
+
+    /* EBXF_HDR_LEN, deliberately NOT XS_EBXF_STORED_LEN.  This offset is what the
+     * UI skips when it is handed the resource address, and the GUI image header is
+     * the one thing in front of the body that the UI must NOT skip -- see the write
+     * above.  Widening it to cover both headers would hide from the display layer
+     * exactly the bytes that were written for it.
+     *
+     * Consequence worth knowing: with the GUI header enabled, crc32_running covers
+     * the body only, so it does NOT cover the whole stored range from this offset
+     * onwards.  Re-verifying the CRC off flash therefore means skipping the GUI
+     * header too.  Nothing does today -- the value is stored for a future reader,
+     * not checked on the read path -- and the alternative (CRC the header we
+     * invented) would no longer be the value the sender promised, which is the one
+     * worth keeping. */
+    int crc_rc = ebadge_port_storage_wp_commit(s_x.wp_handle,
+                                               s_x.crc32_running,
+                                               s_x.ebxf_seen ? EBXF_HDR_LEN : 0U,
+                                               out_file_id);
+    s_x.wp_handle = 0;
+    if (crc_rc < 0)
+    {
+        EBADGE_ERR1("xfer: wp_commit failed rc=%d", crc_rc);
+        return -1;
+    }
+
+    /* The buffer has served its purpose and the next transfer starts from zero. */
+    xfer_cache_reset();
+    return 0;
+
+abort_reservation:
+    (void)ebadge_port_storage_wp_abort(s_x.wp_handle);
+    s_x.wp_handle = 0;
+    return -1;
 }
 
 /**
@@ -795,11 +1177,18 @@ int xfer_session_on_payload(const uint8_t *data, uint16_t len)
     uint32_t now = ebadge_task_now_ms();
     s_x.last_data_ms = now;
 
-    /* Append + accumulate CRC + progress notify. */
-    int rc = ebadge_port_storage_wp_write(s_x.wp_handle, data, len);
+    /* Buffer + accumulate CRC + progress notify.  No flash here -- see
+     * commit_from_cache() for where the writes went and why. */
+    int rc = xfer_cache_append(data, len);
     if (rc < 0)
     {
-        fail_and_reset(EB_XFER_ERR_STORAGE_FULL, "wp_write");
+        /* -ENOSPC means the sender has gone past the size it declared, which the
+         * length check below would have caught anyway; reporting it here is just
+         * earlier and names the real cause. */
+        EBADGE_ERR2("xfer: cache append failed rc=%d len=%d", rc, (int)len);
+        fail_and_reset(rc == -ENOSPC ? EB_XFER_ERR_TOO_LARGE
+                       : EB_XFER_ERR_STORAGE_FULL,
+                       "cache append");
         return -1;
     }
     s_x.crc32_running = eb_crc32_update(s_x.crc32_running, data, len);
@@ -844,45 +1233,41 @@ int xfer_session_on_payload(const uint8_t *data, uint16_t len)
         {
             EBADGE_ERR2("xfer: CRC mismatch got=0x%08x exp=0x%08x",
                         s_x.crc32_running, s_x.crc32_expected);
+            /* Nothing to undo on flash: the file only ever existed in the cache,
+             * so a failed transfer costs no erase and leaves no reservation. */
             fail_and_reset(EB_XFER_ERR_VERIFY, "crc32");
             return -1;
         }
 
-        uint16_t file_id = 0;
-        /* Commit only now, with the verified CRC: the compare above is what
-         * makes this the "verification passed" path, and commit is the point of
-         * no return.
-         *
-         * This is also the slowest thing between the last slot and the ack, and
-         * the ack has a deadline -- the 8711 holds the connection for 120 s and
-         * then closes it with no result at all (SPI spec §6.3).  Anything added
-         * here eats into that window. */
-        int crc_rc = ebadge_port_storage_wp_commit(s_x.wp_handle,
-                                                   s_x.crc32_running,
-                                                   s_x.ebxf_seen
-                                                   ? EBXF_HDR_LEN : 0U,
-                                                   &file_id);
-        s_x.wp_handle = 0;
-        if (crc_rc < 0)
-        {
-            fail_and_reset(EB_XFER_ERR_STORAGE_FULL, "wp_commit");
-            return -1;
-        }
+        EBADGE_LOG1("xfer: verified %u bytes in cache -> acking, then storing",
+                    (unsigned)s_x.bytes_recv);
 
-        /* Stay in COMPLETING and hand the result to the data plane.  The BLE
-         * 0x15 DONE is NOT sent here: it goes out from emit_held_verdict() once
-         * the XFERACK has actually left, so the phone cannot be told over BLE that
-         * the transfer finished while the upload it is still holding open has
-         * heard nothing.  See the ordering note above emit_held_verdict().
+        /* Verification passed, so the answer is known.  Ack the data plane NOW,
+         * BEFORE touching flash.
          *
-         * file_id is stashed because the notify is built later, on a callback that
-         * has no access to this frame.  The data plane is NOT torn down here
-         * either -- the ack is staged against that connection. */
+         * This ordering is the point of the whole redesign.  The phone is holding a
+         * TCP connection open waiting for a result, the 8711 abandons that
+         * connection after 120 s with no result at all (SPI spec §6.3), and storing
+         * the file is the slowest thing we do -- an erase of one 4 KB sector per
+         * 4 KB of file, plus the page programs.  Answering first spends none of the
+         * phone's patience on our flash.
+         *
+         * It is honest, not optimistic: the CRC check above is what the App is being
+         * told about -- "the bytes you sent arrived intact" -- and that is settled.
+         * Storage is our problem after that, and a storage failure is reported over
+         * BLE by the ack-settled path below rather than by retracting this.
+         *
+         * The commit itself runs from emit_held_verdict(), once this ack settles.
+         * Not here, because the ack is a queued AT transaction: doing the erase
+         * before it has actually left would put the stall back in front of the
+         * answer and undo the reordering. */
+        s_x.state        = XFER_SESSION_COMPLETING;
         s_x.done_pending = true;
         s_x.done_ok      = true;
         s_x.done_reason  = 0U;
         s_x.done_detail  = NULL;
-        s_x.done_file_id = file_id;
+        s_x.done_file_id = 0U;          /* assigned by the commit, after the ack */
+        s_x.store_pending = true;
         s_x.deadline_ack = ebadge_task_now_ms() + XS_ACK_WAIT_MS;
 
         (void)ebadge_port_tcp_ack(true, 0, ack_settled_from_driver, NULL);
@@ -1019,27 +1404,16 @@ int xfer_session_on_tcp_data(const uint8_t *data, uint16_t len)
                     hdr.file_name, (unsigned)hdr.file_size, hdr.crc32);
         s_x.ebxf_seen = true;
 
-        /* Store the header as well, so what lands on flash is the whole TCP
-         * packet rather than just its body.
+        /* The validated header is NOT written to flash here.  It stays in
+         * s_x.ebxf_hdr and goes down with the rest of the file from
+         * commit_from_cache(), along with the GUI image header that follows it.
          *
-         * It is written here, once the header has been validated -- not as it
-         * arrived.  A header that fails the parse or the identity check belongs
-         * to a transfer that is about to be cut, and writing it first would leave
-         * those 40 bytes in a reservation that is then aborted.
-         *
-         * Deliberately NOT fed to the running CRC: that accumulator is compared
-         * against the offer's whole-FILE CRC32, which the sender computed over
-         * the content alone.  Nor is it counted in bytes_recv, which is measured
-         * against the offered file size and drives the progress notify.  The
-         * header's 40 bytes are accounted for once, in the reservation made at
-         * wp_begin, and once more as the content_offset handed to wp_commit. */
-        int hrc = ebadge_port_storage_wp_write(s_x.wp_handle, s_x.ebxf_hdr,
-                                               EBXF_HDR_LEN);
-        if (hrc < 0)
-        {
-            fail_and_reset(EB_XFER_ERR_STORAGE_FULL, "wp_write ebxf hdr");
-            return -1;
-        }
+         * That is what keeps this function -- which runs from the EBFS slot
+         * hand-off, with the transport thread blocked waiting for it -- free of
+         * flash entirely.  A page program here would have been cheap; the erase
+         * that used to precede it on this same path was not, and keeping the rule
+         * simple ("the receive path never touches flash") is what stops the next
+         * change from reintroducing it. */
     }
 
     if (consumed < len)
@@ -1077,5 +1451,12 @@ void xfer_session_abort(void)
     tear_down_data_plane();
     /* No notify -- the BLE link is probably gone (we are called from
      * the disconnect hook).  A subsequent OFFER will start fresh.        */
+    /* The radio is not switched off here.  It used to be, and that made the AP's
+     * fate depend on whether a transfer happened to be in flight at disconnect
+     * time: this function returns early when the session is IDLE, so a phone that
+     * connected, sent nothing and left would leave the AP up forever.  The GAP
+     * disconnect hook (ebadge_port_ble.c) now calls
+     * ebadge_port_softap_shutdown() unconditionally, which covers both cases with
+     * one rule. */
     reset_ctx();
 }

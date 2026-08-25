@@ -10,8 +10,13 @@
  *
  *   Physical layer : SPI Mode 3, 8-bit, MSB-first, CS active-low, ~20 MHz,
  *                    full-duplex, fixed 4096 bytes per transaction.
- *   Master         : RTL8711FA (drives SCLK/CS, polls every ~2 s).
+ *   Master         : RTL8711FA (drives SCLK/CS, polls every ~1 s when idle).
  *   Slave          : RTL8773GTP (this side; passive, replies on the next poll).
+ *
+ * The idle beat was 2 s until protocol v3.1 sec.12.6 halved it.  Anything on
+ * this side that sizes a timeout off "how long until the next chance to be
+ * clocked" is therefore twice as generous as it used to be -- which is what
+ * makes a few-second staleness rule on the Wi-Fi state practical.
  *
  * Usage (RTL8773G slave):
  *   1) To send a command, fill a 4096-byte TX slot:
@@ -49,7 +54,16 @@ extern "C" {
 /* Packet types (header byte at offset 5). */
 #define SPI_AT_TYPE_COMMAND     1U           /* 8773 -> 8711 (has payload)    */
 #define SPI_AT_TYPE_RESPONSE    2U           /* 8711 -> 8773 (has payload)    */
-#define SPI_AT_TYPE_POLL        3U           /* 8711 -> 8773 heartbeat, empty */
+
+/*
+ * 8711 -> 8773 heartbeat.  NOT empty since protocol v3.1 sec.7.1: the payload
+ * now carries the whole Wi-Fi state block (sec.7.4), Length is its real byte
+ * count and the CRC covers it like any other payload.  Code that hardcoded
+ * "POLL length is 0" started failing its checks; spi_at_parse_packet() below is
+ * generic and was unaffected, but a receiver that ignores the payload throws
+ * away a free 1 Hz status feed.
+ */
+#define SPI_AT_TYPE_POLL        3U
 
 #define SPI_AT_HEADER_SIZE      32U
 #define SPI_AT_PAYLOAD_SIZE     (SPI_AT_SLOT_SIZE - SPI_AT_HEADER_SIZE) /* 4064 */
@@ -310,7 +324,109 @@ static inline size_t spi_at_copy_payload(const spi_at_packet_t *pkt,
 /* ------------------------------------------------------------------------- */
 
 #define SPI_AT_CMD_WLSTATE      "AT+WLSTATE\r\n"   /* query SoftAP state      */
-#define SPI_AT_CMD_WLSTARTAP    "AT+WLSTARTAP\r\n" /* start / read back AP    */
+#define SPI_AT_CMD_WLSTARTAP    "AT+WLSTARTAP\r\n" /* start the SoftAP        */
+
+/* ------------------------------------------------------------------------- */
+/* The Wi-Fi state block (sec.7.4)                                           */
+/*                                                                           */
+/* ONE text with THREE carriers, which is the fact the whole Wi-Fi state      */
+/* handling on this side is built around:                                     */
+/*                                                                           */
+/*   - the POLL payload            (~1 Hz, no terminator line)                */
+/*   - the AT+WLSTATE response     (same block + "[+WLSTATE]:OK"/":ERROR")    */
+/*   - an unsolicited notification (same block + "[+WLSTATE]:OK", pushed once */
+/*                                  when a requested start succeeds)          */
+/*                                                                           */
+/* So one parser serves all three, and the difference between them is only    */
+/* which line, if any, is appended.                                          */
+/*                                                                           */
+/* The LAYOUT IS FIXED: every key appears every time, in this order, whatever */
+/* the AP state.  "No value" is expressed as a zero value, never as a missing */
+/* line -- so a parser must not branch on the state before reading the keys.  */
+/*                                                                           */
+/*   AP=UP|STARTING|DOWN                                                     */
+/*   SSID=<...>          PASSWORD=<...>    CHANNEL=<n>                        */
+/*   IP=<a.b.c.d>        PORT=<n>          FILE_PORT=<n>                      */
+/*   CLIENTS=<n>                                                             */
+/*   CLIENT=1 MAC=.. IP=.. RSSI=..    (0..CLIENTS lines; CLIENTS= is the only */
+/*                                     authoritative count, do not count      */
+/*                                     lines.  A just-associated STA shows    */
+/*                                     IP=0.0.0.0 until DHCP -- associated    */
+/*                                     but not yet leased, not a failure.)    */
+/* ------------------------------------------------------------------------- */
+
+/** First line of the block, and the only tri-state in it. */
+#define SPI_AT_KEY_AP           "AP="
+
+/** No one has requested the AP yet.  Since v3.1 sec.12.2 the 8711 does NOT
+ *  self-start it, so this state persists until we send AT+WLSTARTAP -- both
+ *  sides waiting for the other is exactly what it looked like in the field. */
+#define SPI_AT_AP_DOWN          "DOWN"
+
+/** The request was accepted and the bring-up (or its 5 s retry) is running.
+ *  Wait; do NOT re-send WLSTARTAP.  A real bring-up takes seconds to tens of
+ *  seconds. */
+#define SPI_AT_AP_STARTING      "STARTING"
+
+/** The credentials in the same block are real and usable. */
+#define SPI_AT_AP_UP            "UP"
+
+/** Terminator lines of an AT+WLSTATE reply (sec.10.1).  ":ERROR" here means
+ *  "the AP is not available right now" and is deliberately distinguishable
+ *  from the bare "[AT]:ERROR" that means the command was not even matched --
+ *  the block itself is present either way. */
+#define SPI_AT_RSP_WLSTATE_OK       "[+WLSTATE]:OK"
+#define SPI_AT_RSP_WLSTATE_ERROR    "[+WLSTATE]:ERROR"
+
+/*
+ * Expected line from AT+WLSTARTAP (sec.10.2).
+ *
+ * ":OK" means THE REQUEST WAS ACCEPTED, not that the AP is up -- a bring-up
+ * takes seconds to tens of seconds and the 8711 answers immediately so as not
+ * to freeze the SPI control link while it runs.  Which of the two it is comes
+ * from the STATE= line below.
+ *
+ * Since v3.1 sec.12.8 the reply carries NO credentials.  It used to repeat
+ * SSID= and PASSWORD=, and this side ignored both on the grounds that WLSTATE
+ * is the one complete source; the vendor then removed them for the same
+ * reason from the other end -- the SSID is derived from the MAC at bring-up
+ * time, so a copy emitted at REQUEST time may describe a value that does not
+ * exist yet.
+ *
+ * Failure is the shared "[AT]:ERROR" -- unlike WLSTOPAP there is no
+ * command-specific error line.
+ */
+#define SPI_AT_RSP_WLSTARTAP_OK     "[+WLSTARTAP]:OK"
+
+/** Lifecycle line following the OK.  UP = already running (the call was
+ *  redundant), STARTING = bring-up now in progress. */
+#define SPI_AT_RSP_STARTAP_STATE_UP        "STATE=UP"
+#define SPI_AT_RSP_STARTAP_STATE_STARTING  "STATE=STARTING"
+
+/*
+ * Take the SoftAP down.
+ *
+ * The counterpart to WLSTARTAP, and the first command on this surface that
+ * actually CHANGES the radio's state rather than reporting it -- so unlike the
+ * two above it is not idempotent, and unlike them its reply carries no fields.
+ *
+ *   [+WLSTOPAP]:OK      the AP is down.
+ *   [+WLSTOPAP]:ERROR   the AP was not running to begin with, OR a start is
+ *                       still in progress.  Those two are not distinguishable
+ *                       from the reply, which is why callers must not read
+ *                       ERROR as "the AP is still up" -- see the note in
+ *                       wifi_8711_at_ap_stop().
+ *
+ * Note the failure line is command-specific ("[+WLSTOPAP]:ERROR"), not the
+ * shared "[AT]:ERROR" that an unrecognised command returns.  Both have to be
+ * treated as a refusal: against an 8711 build predating this command it is the
+ * generic one that comes back.
+ */
+#define SPI_AT_CMD_WLSTOPAP     "AT+WLSTOPAP\r\n"  /* stop the SoftAP         */
+
+/** Expected lines from AT+WLSTOPAP. */
+#define SPI_AT_RSP_WLSTOPAP_OK      "[+WLSTOPAP]:OK"
+#define SPI_AT_RSP_WLSTOPAP_ERROR   "[+WLSTOPAP]:ERROR"
 
 /*
  * File-transfer control, added in protocol v2.2 (sec.10.3 / 10.4).  Both act on

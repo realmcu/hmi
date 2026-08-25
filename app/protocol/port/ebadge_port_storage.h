@@ -50,8 +50,13 @@ int  ebadge_port_storage_stat(ebadge_storage_stat_t *out);
  * @brief  Open a write session for a fresh file.
  *
  * Reserves and erases the whole @p size range up front, so this blocks for one
- * NOR erase per 4KB block (~15 blocks for a 60KB wallpaper).  Call it from the
- * session state machine with no slot in flight, never from a data callback.
+ * NOR erase per 4KB block (~15 blocks for a 60KB wallpaper, measured at over a
+ * second).  The 8711 abandons a slot whose READY does not return within 1000 ms
+ * and has already consumed those bytes from TCP, so anywhere this can be reached
+ * while a transfer is in progress it destroys the transfer.  "No slot in flight"
+ * turned out to be too weak a rule to state here, because a state edge that has
+ * none can still be reached from inside one: xfer_session.c now calls this only
+ * after the whole file is buffered, verified and acked.
  *
  * @param  name       Nul-terminated file name (utf-8, <=EB_MAX_FILE_NAME).
  *                    Informational only: the on-flash key is derived from the
@@ -96,27 +101,45 @@ int  ebadge_port_storage_wp_commit(int handle, uint32_t data_crc,
 int  ebadge_port_storage_wp_abort(int handle);
 
 /**
- * @brief  Erase every stored file and reset the storage records.
+ * @brief  Erase every stored file, and optionally scrub the payload too.
  *
- * Clears the whole user-writable area: every file directory entry is dropped,
- * the payload partition is erased, and all derived figures reported by
- * ebadge_port_storage_stat() (wp_count, wp_used_bytes, free_bytes) fall back to
- * empty.  There is no undo.
+ * Drops every file directory entry, so the files are gone and all derived
+ * figures reported by ebadge_port_storage_stat() (wp_count, wp_used_bytes,
+ * free_bytes) fall back to empty.  There is no undo.
  *
- * Blocks for the full partition erase -- seconds, not milliseconds -- so call it
- * from a task context that may stall, never from a data callback or an ISR.
+ * @p erase_data is a cost/scrub trade-off, NOT a correctness switch.  The files
+ * are equally gone either way -- a write session erases each range before it
+ * writes to it, so nothing later reads a byte this call left behind:
+ *
+ *   false (default) -- milliseconds.  One directory delete per file.  The old
+ *                      image bytes stay on flash, unreachable through this API
+ *                      but readable by anything walking the raw partition.
+ *   true            -- SECONDS, and the wait is proportional to the PARTITION
+ *                      rather than to what was in it: the whole user-writable
+ *                      area is erased a sector at a time (1280 erases on the
+ *                      5 MB bf_data), the same cost for one stored file as for
+ *                      thirty.  Only worth paying when the remnants matter.
+ *
+ * Blocks either way, so call it from a task context that may stall, never from a
+ * data callback or an ISR -- and note that with @p erase_data true "may stall"
+ * means seconds, which is longer than the 8711 will hold a slot for (see
+ * ebadge_port_storage_wp_begin()).
+ *
  * Rejected while a write session is open; abort the transfer first.
  *
  * The caller is responsible for whatever holds file addresses at the app level
  * (the UI's wallpaper list is built once at boot from the directory and is NOT
  * refreshed by this call).
  *
+ * @param  erase_data   true to also erase the payload area; false to drop the
+ *                      directory only.  Pass false unless the old bytes must be
+ *                      unreadable.
  * @param  out_removed  Optional; receives the number of files erased.  It is
  *                      filled in even when the call fails partway.
  * @return 0 on success; -1 storage backend not ready; -2 a write session is
  *         open; -3 the payload erase failed (the files are already gone).
  */
-int  ebadge_port_storage_reset(uint32_t *out_removed);
+int  ebadge_port_storage_reset(bool erase_data, uint32_t *out_removed);
 
 #ifdef __cplusplus
 }

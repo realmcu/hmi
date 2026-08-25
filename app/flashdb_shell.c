@@ -91,18 +91,42 @@ static int cmd_reset(const struct shell *sh, size_t argc, char **argv)
 {
     uint32_t removed = 0;
     fdb_err_t rc;
+    bool erase_data = false;
 
     /* Destructive and not undoable, so it takes an explicit confirmation word
      * rather than trusting a bare `fdb reset` typed by mistake. */
-    if (argc != 2 || strcmp(argv[1], "yes") != 0)
+    if (argc < 2 || strcmp(argv[1], "yes") != 0)
     {
-        shell_error(sh, "erases ALL big files. run: fdb reset yes");
+        shell_error(sh, "erases ALL big files. run: fdb reset yes [erase]");
         return -EINVAL;
     }
 
-    shell_print(sh, "resetting BF area (erase may take a few seconds)...");
+    /* The payload erase is a separate word because it is a separate decision:
+     * `yes` alone already removes every file in milliseconds, and `erase` buys
+     * only "the old bytes are unreadable" for a multi-second wait that scales
+     * with the partition rather than with what was stored in it. */
+    if (argc == 3 && strcmp(argv[2], "erase") == 0)
+    {
+        erase_data = true;
+    }
+    else if (argc > 2)
+    {
+        shell_error(sh, "unexpected '%s' -- run: fdb reset yes [erase]", argv[2]);
+        return -EINVAL;
+    }
 
-    rc = fdb_bf_reset(app_get_bf(), &removed);
+    if (erase_data)
+    {
+        shell_print(sh, "resetting BF area + erasing data (takes seconds)...");
+    }
+    else
+    {
+        shell_print(sh, "dropping BF directory (data kept -- add 'erase' to scrub)...");
+    }
+
+    rc = fdb_bf_reset(app_get_bf(),
+                      erase_data ? FDB_BF_RESET_ERASE_DATA : FDB_BF_RESET_DIR_ONLY,
+                      &removed);
     if (rc != FDB_NO_ERR)
     {
         /* removed is filled in even on failure -- report it so a partial reset
@@ -112,8 +136,8 @@ static int cmd_reset(const struct shell *sh, size_t argc, char **argv)
         return -EIO;
     }
 
-    shell_print(sh, "BF reset done: %u entries removed, data partition erased",
-                removed);
+    shell_print(sh, "BF reset done: %u entries removed, data partition %s",
+                removed, erase_data ? "erased" : "left as-is");
     shell_warn(sh, "the UI's file list still holds the old addresses -- reboot");
     return 0;
 }
@@ -121,7 +145,9 @@ static int cmd_reset(const struct shell *sh, size_t argc, char **argv)
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_fdb,
                                SHELL_CMD(space, NULL, "BF partition space usage", cmd_space),
                                SHELL_CMD(list,  NULL, "list all big files", cmd_list),
-                               SHELL_CMD(reset, NULL, "erase ALL big files: fdb reset yes", cmd_reset),
+                               SHELL_CMD(reset, NULL,
+                                         "erase ALL big files: fdb reset yes [erase]",
+                                         cmd_reset),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(fdb, &sub_fdb, "FlashDB big-file diagnostics", NULL);

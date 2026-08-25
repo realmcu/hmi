@@ -53,7 +53,7 @@
 #define FDB_REGION_OFFSET           (0x800000UL - 0x1000UL)     /* FIXME: adjust to your layout */
 
 #define FDB_KVDB_SIZE               (256UL  * 1024)           /* 256 KB for KV + BF directory */
-#define FDB_BF_DATA_SIZE            ((0x200000UL ))           /* ~2.25 MB for big-file data   */
+#define FDB_BF_DATA_SIZE            ((0xa00000UL ))           /* ~2.25 MB for big-file data   */
 
 /* Derived: partition offsets from the start of the flash device */
 #define FDB_KVDB_PART_OFFSET        (FDB_REGION_OFFSET)

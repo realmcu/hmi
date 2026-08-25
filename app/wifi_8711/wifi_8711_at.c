@@ -30,6 +30,11 @@
 #include "wifi_8711.h"
 #include "wifi_8711_xfer.h"
 #include "wifi_8711_at.h"
+/* For wifi_8711_at_ap_ingest() only.  A layering exception on purpose: sec.7.4
+ * puts the Wi-Fi state block on two slots that are nobody's reply -- the POLL
+ * payload and an unsolicited RESPONSE -- so the routing decision can only be made
+ * here, where slots are classified.  This file still does not read the block. */
+#include "wifi_8711_at_ap.h"
 #include "spi_at_protocol.h"
 #include "../protocol/ebadge_log.h"
 
@@ -49,6 +54,17 @@ static void                *s_pending_user;
 static wifi_8711_jpg_sink_t s_jpg_sink;
 static wifi_8711_file_sink_t s_file_sink;
 static wifi_8711_at_stats_t s_stats;
+
+/* When a JPGS or EBFS slot last arrived -- see wifi_8711_at_dataplane_age_ms()
+ * for what reads it and why.  0 means "no evidence", which is why the accessor
+ * reports UINT32_MAX rather than an age for it.
+ *
+ * Written on the transport thread, read on l2_task, with no lock.  A 32-bit
+ * aligned store is single-copy atomic on this core, and the only consequence of
+ * a reader catching the previous value is that it judges the data plane one slot
+ * staler than it is -- which errs towards asking a question rather than towards
+ * skipping one.  The s_stats counters beside it are shared the same way. */
+static uint32_t s_dataplane_ms;
 
 /* Timeout is a delayed work item rather than a thread: it fires at most once
  * per transaction and the handler only needs to log and complete, so a whole
@@ -152,6 +168,25 @@ static void at_timeout_work(struct k_work *work)
  *  Runs with B2W low for its whole duration, which back-pressures the 8711, so
  *  it must return promptly.  A few log lines are acceptable; blocking is not.
  *----------------------------------------------------------------------------*/
+
+/** Record that the data plane just carried traffic.
+ *
+ *  Only JPGS and EBFS stamp this, deliberately.  ATMC does not: POLL arrives on
+ *  a link whose AP may be down (it is the SPI link talking, not the radio),
+ *  whereas a JPGS or EBFS slot means a phone associated with the AP and opened a
+ *  TCP connection through it.  That is the distinction the readers depend on.
+ *
+ *  k_uptime_get_32() can legitimately return 0 on the first millisecond after
+ *  boot, which would read as "no evidence".  Clamping to 1 costs a millisecond of
+ *  precision at a moment when no data plane can exist yet, and keeps 0 meaning
+ *  exactly one thing. */
+static void dataplane_stamp(void)
+{
+    uint32_t now = k_uptime_get_32();
+
+    s_dataplane_ms = (now == 0U) ? 1U : now;
+}
+
 static void at_slot_sink(const uint8_t *rx, size_t len)
 {
     if (rx == NULL || len < WIFI_8711_HEADER_SIZE)
@@ -164,6 +199,7 @@ static void at_slot_sink(const uint8_t *rx, size_t len)
     if (magic == WIFI_8711_JPG_MAGIC)
     {
         s_stats.jpg_slots++;
+        dataplane_stamp();
         if (s_jpg_sink != NULL)
         {
             s_jpg_sink(rx, len);
@@ -179,6 +215,7 @@ static void at_slot_sink(const uint8_t *rx, size_t len)
          * AT+XFERSTOP through mid-upload.  Nothing here or downstream may assume
          * START..END is contiguous on the wire. */
         s_stats.file_slots++;
+        dataplane_stamp();
         if (s_file_sink != NULL)
         {
             s_file_sink(rx, len);
@@ -221,15 +258,35 @@ static void at_slot_sink(const uint8_t *rx, size_t len)
 
     if (pkt.type == SPI_AT_TYPE_POLL)
     {
-        /* Heartbeat.  Counted always; logged only while a command is outstanding.
+        /* The heartbeat, and since sec.7.1 also the primary Wi-Fi state feed: its
+         * payload is the whole sec.7.4 state block, once a second, whether anyone
+         * asked or not.  Handing it to the AP layer here is what makes a single
+         * global Wi-Fi state possible -- everything else on that surface is either
+         * a way to change the state or a way to ask for it one beat sooner.
          *
-         * Unconditionally would be one line every few seconds for the life of the
-         * device, which pushes the reply we are waiting for out of the scroll
-         * buffer.  While waiting, though, each POLL is the useful datum: it says
-         * the link is alive and the 8711 simply has not answered yet, which is a
-         * completely different fault from silence.  Bounded by the deadline, so
-         * the burst cannot outlast one transaction. */
+         * The payload was empty until sec.12.7 and used to be discarded.  Note the
+         * generic Length/CRC check above already covered it, which is why the
+         * change broke nothing and merely wasted a free 1 Hz status feed.
+         *
+         * A POLL whose payload does not parse is NOT worth a log line: it happens
+         * once per second, so a mismatch would bury the log within a minute.  The
+         * counter below is the visible signal. */
         s_stats.polls++;
+        if (pkt.length != 0U)
+        {
+            char text[WIFI_8711_AT_TEXT_MAX];
+
+            (void)spi_at_copy_payload(&pkt, text, sizeof(text));
+            (void)wifi_8711_at_ap_ingest(text);
+        }
+
+        /* Logged only while a command is outstanding.  Unconditionally would be
+         * one line per second for the life of the device, which pushes the reply
+         * we are waiting for out of the scroll buffer.  While waiting, though,
+         * each POLL is the useful datum: it says the link is alive and the 8711
+         * simply has not answered yet, which is a completely different fault from
+         * silence.  Bounded by the deadline, so the burst cannot outlast one
+         * transaction. */
         if (s_pending_seq != 0U)
         {
             EBADGE_LOG(EB_DIR_FROM_8711 "POLL #%u (waiting on seq=%u)",
@@ -276,9 +333,28 @@ static void at_slot_sink(const uint8_t *rx, size_t len)
 
     if (!at_claim(pkt.sequence, &cb, &user))
     {
-        /* Either the command already timed out, or this is a reply to an older
-         * sequence.  Both are "stale": completing the current transaction with
+        /* Nobody is waiting for this sequence.  Two very different things land
+         * here, and telling them apart is what keeps the global Wi-Fi state fed.
+         *
+         * The first is an UNSOLICITED NOTIFICATION (sec.4.1 item 6): when a
+         * requested start succeeds the 8711 pushes the state block on its own, and
+         * sec.7.3 gives those pushes an INDEPENDENT sequence counter -- so they can
+         * never match a pending command and would always be discarded here.  That
+         * is worth having: it is the one carrier that reports a completed bring-up
+         * without waiting for the next beat.  Ingest decides which this is, since
+         * only a real state block parses.
+         *
+         * The second is a genuinely stale reply -- a command that already timed
+         * out, or an older sequence.  Completing the current transaction with
          * someone else's answer would be worse than dropping it. */
+        if (wifi_8711_at_ap_ingest(text))
+        {
+            s_stats.notifications++;
+            EBADGE_LOG1(EB_DIR_FROM_8711 "unsolicited Wi-Fi state (seq=%u)",
+                        (unsigned)pkt.sequence);
+            return;
+        }
+
         s_stats.stale++;
         EBADGE_WARN2("wifi8711 at: stale RESPONSE seq=%u (pending=%u), dropped",
                      (unsigned)pkt.sequence, (unsigned)s_pending_seq);
@@ -364,7 +440,7 @@ int wifi_8711_at_submit(const char *cmd, wifi_8711_at_cb_t cb, void *user)
      * promoted into the DMA buffer at an ARM, so on a not-yet-started transport
      * this ordering puts the command into the very first armed slot; the other
      * way round the first slot goes out all-zero and the command waits for the
-     * next ARM -- a whole POLL period, up to ~2 s wasted for nothing. */
+     * next ARM -- a whole POLL period, ~1 s wasted for nothing. */
     rc = wifi_8711_xfer_test_at(cmd, &seq);
     if (rc != 0)
     {
@@ -414,8 +490,8 @@ int wifi_8711_at_submit(const char *cmd, wifi_8711_at_cb_t cb, void *user)
      * eventually produce -- the pair is what makes a vendor-side rename or an
      * argument we got wrong visible, instead of just "no usable AP state". */
     EBADGE_LOG(EB_DIR_TO_8711 "AT command seq=%u: %s", (unsigned)seq, cmd);
-    EBADGE_LOG(EB_DIR_TO_8711 "8711 owns the clock -- reply in ~2-4 s when idle,"
-               " deadline %u ms", (unsigned)WIFI_8711_AT_TIMEOUT_MS);
+    EBADGE_LOG(EB_DIR_TO_8711 "8711 owns the clock -- reply takes seconds on an"
+               " idle link, deadline %u ms", (unsigned)WIFI_8711_AT_TIMEOUT_MS);
     return 0;
 
 fail_release:
@@ -465,6 +541,13 @@ void wifi_8711_at_get_stats(wifi_8711_at_stats_t *out)
 void wifi_8711_at_reset_stats(void)
 {
     memset(&s_stats, 0, sizeof(s_stats));
+}
+
+uint32_t wifi_8711_at_dataplane_age_ms(void)
+{
+    uint32_t stamp = s_dataplane_ms;
+
+    return (stamp == 0U) ? UINT32_MAX : (k_uptime_get_32() - stamp);
 }
 
 const char *wifi_8711_at_result_str(wifi_8711_at_result_t res)

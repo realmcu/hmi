@@ -23,7 +23,8 @@
 
 #if defined(CONFIG_WIFI_8711)
 
-/** Print the parsed AP state.  Runs on the AT layer's callback context. */
+/** Print the parsed AP state from a WLSTATE reply.  Runs on the AT layer's
+ *  callback context. */
 static void query_done(bool ok, const wifi_8711_ap_info_t *info, void *user)
 {
     const char *what = (const char *)user;
@@ -38,7 +39,12 @@ static void query_done(bool ok, const wifi_8711_ap_info_t *info, void *user)
     }
 
     EBADGE_LOG("---- 8711 SoftAP state ----");
-    EBADGE_LOG2("%s: ssid=\"%s\"", what, info->ssid);
+    /* The AP= line first, because it decides what the rest means: everything
+     * below is zero unless the state is UP (sec.7.4 expresses "no value" as a
+     * zero value), so an ssid="" under AP=DOWN is the expected reading rather
+     * than a fault to go looking for. */
+    EBADGE_LOG2("%s: state=%s", what, wifi_8711_ap_state_str(info->state));
+    EBADGE_LOG1("ssid=\"%s\"", info->ssid);
     /* The password is printed deliberately: it is a fixed vendor constant that
      * the 8711 prints in its own boot log, and the whole point of this hook is
      * to confirm the phone will be told the right one. */
@@ -59,6 +65,37 @@ static void query_done(bool ok, const wifi_8711_ap_info_t *info, void *user)
     EBADGE_LOG("---------------------------");
 }
 
+/** Print the outcome of a start.  Runs on the AT layer's callback context.
+ *
+ *  Deliberately NOT query_done(): a start's reply is a verdict, so the only field
+ *  of the info struct it fills is `state` (wifi_8711_at_ap.h).  Printing the
+ *  credential block from it would show ssid="" and port=0 after a *successful*
+ *  start and read as "the AP has no SSID" -- which is exactly the wrong thing for
+ *  a hook whose job is to make the link's state legible. */
+static void start_done(bool ok, const wifi_8711_ap_info_t *info, void *user)
+{
+    ARG_UNUSED(user);
+
+    if (!ok)
+    {
+        /* wifi_8711_at_ap.c has already said why. */
+        EBADGE_WARN("wifi8711 WLSTARTAP: not confirmed");
+        return;
+    }
+
+    /* "Accepted", not "up" -- and the state says which of the two this was.  This
+     * line used to claim the radio was up on any OK, which is wrong for the
+     * common case: a real bring-up takes seconds to tens of seconds and the 8711
+     * answers immediately so as not to freeze the SPI link while it runs.
+     *
+     * Nobody needs to follow up with WLSTATE either.  Since sec.7.1 the state
+     * block arrives on the POLL beat about once a second, so the credentials show
+     * up on their own -- run `wifi 8711 at state` only to see them sooner. */
+    EBADGE_LOG1("wifi8711 WLSTARTAP: request accepted, state=%s (credentials"
+                " arrive on the ~1 Hz state beat)",
+                wifi_8711_ap_state_str(info->state));
+}
+
 int wifi_8711_at_query_ap_info(void)
 {
     return wifi_8711_at_ap_query(query_done, "WLSTATE");
@@ -66,7 +103,7 @@ int wifi_8711_at_query_ap_info(void)
 
 int wifi_8711_at_start_ap(void)
 {
-    return wifi_8711_at_ap_start(query_done, "WLSTARTAP");
+    return wifi_8711_at_ap_start(start_done, NULL);
 }
 
 #endif /* CONFIG_WIFI_8711 */

@@ -309,7 +309,7 @@ int ebadge_port_storage_wp_abort(int handle)
     return 0;
 }
 
-int ebadge_port_storage_reset(uint32_t *out_removed)
+int ebadge_port_storage_reset(bool erase_data, uint32_t *out_removed)
 {
     uint32_t removed = 0;
 
@@ -324,14 +324,19 @@ int ebadge_port_storage_reset(uint32_t *out_removed)
         return -2;
     }
 
-    fdb_err_t rc = fdb_bf_reset(app_get_bf(), &removed);
+    fdb_err_t rc = fdb_bf_reset(app_get_bf(),
+                                erase_data ? FDB_BF_RESET_ERASE_DATA
+                                : FDB_BF_RESET_DIR_ONLY,
+                                &removed);
     if (out_removed) { *out_removed = removed; }
 
     if (rc == FDB_NO_ERR)
     {
         /* No id bookkeeping to clear: pick_file_id() probes the directory each
          * time, so an empty directory already means ids restart from 1. */
-        EBADGE_LOG1("port_storage: reset ok, %u files erased", (unsigned)removed);
+        EBADGE_LOG2("port_storage: reset ok, %u files removed (%s)",
+                    (unsigned)removed,
+                    erase_data ? "data erased" : "data kept");
         return 0;
     }
 

@@ -18,6 +18,7 @@
 #include "stdio.h"
 #include "gui_api.h"
 #include "trace.h"
+#include "ebadge_psram_map.h"   /* EB_PSRAM_GUI_LOWER_BASE / _SIZE */
 
 LOG_MODULE_REGISTER(GUI_MODULE, LOG_LEVEL_INF);
 
@@ -139,8 +140,12 @@ static struct gui_os_api os_api =
     .mem_addr = (void *)port_mem_heap,
     .mem_size = GUI_HEAP_SIZE,
 
-    .lower_mem_addr = (void *)(SPIC1_MEM_BASE),
-    .lower_mem_size = 0x400000,
+    /* Base and size come from ebadge_psram_map.h, which is the one place the
+     * SPIC1 division is written down.  This used to be SPIC1_MEM_BASE + the full
+     * 0x400000, which overlapped the SPI slot buffers at 0x22380000 by 128 KB --
+     * see that header for why nothing caught it. */
+    .lower_mem_addr = (void *)(EB_PSRAM_GUI_LOWER_BASE),
+    .lower_mem_size = EB_PSRAM_GUI_LOWER_SIZE,
     .mem_threshold_size = 10 * 1024,
 
     /*enable this if use printf*/

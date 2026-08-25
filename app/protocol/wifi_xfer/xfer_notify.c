@@ -51,9 +51,9 @@ void eb_emit_ap_info(const ebadge_softap_info_t *info, uint16_t tcp_port)
     /* Log the credentials as the phone will receive them, at the last moment
      * before they go on the wire.  This is the only line that can be trusted to
      * answer "what was the phone told?" -- the AT-layer parse logs describe a
-     * reply, and a reply is not what we forwarded: the cache merges, so a parsed
-     * ip=0 is discarded rather than sent.  Reading a zero there as "we sent the
-     * phone a zero" is a wrong turn worth designing out.
+     * reply, and a reply is not what we forwarded: the global state merges, so a
+     * parsed ip=0 is discarded rather than sent.  Reading a zero there as "we sent
+     * the phone a zero" is a wrong turn worth designing out.
      *
      * Password logged as a length only.  The SSID is broadcast anyway, but a PSK
      * in a bring-up log tends to outlive the bring-up. */

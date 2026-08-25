@@ -28,6 +28,7 @@
 #include "hmi_ble_gap_msg.h"          /* hmi_le_msg_cback_register */
 
 #include "ebadge_port_ble.h"
+#include "ebadge_port_softap.h"
 #include "../ebadge_task.h"
 #include "../ebadge_log.h"
 #include "../wifi_xfer/xfer_session.h"
@@ -116,6 +117,14 @@ static void on_gap_msg(T_IO_MSG *msg)
         s_conn_handle = le_get_conn_handle(
                             gap.msg_data.gap_conn_state_change.conn_id);
         EBADGE_LOG1("connected conn_handle=0x%x", s_conn_handle);
+        /* Start the 8711's SoftAP now rather than when the first offer arrives.
+         * The offer is answered synchronously from a credential cache that
+         * l2_task must not block to fill, so a cold cache at that moment is a
+         * NOT_READY the App has to retry -- and after the bounded boot attempts
+         * are spent, nothing fills it unless something asks.  A phone connecting
+         * is the earliest reliable sign that it is about to.  Bounded and
+         * self-marshalling; see ebadge_port_softap_arm().                     */
+        ebadge_port_softap_arm();
         break;
 
     case GAP_CONN_STATE_DISCONNECTED:
@@ -133,6 +142,34 @@ static void on_gap_msg(T_IO_MSG *msg)
          * body and then dropped would otherwise leave the RX stream in raw
          * mode, swallowing the next connection's frames as file bytes.     */
         (void)ebadge_task_post_call((ebadge_post_fn_t)ebadge_task_rx_reset, NULL);
+        /* Now the AP can go.  This is the earliest moment at which nothing can
+         * still want it: the phone is gone, so there is no association to break, no
+         * TCP connection to cut and no 0x15/0x16 in flight to strand.
+         *
+         * This is the ONLY thing that lowers the radio, paired with the arm on the
+         * connect above -- the AP's lifetime is the connection's.  Deliberately NOT
+         * done when a transfer finishes: a phone that sends several images in a row
+         * would then pay a full AP bring-up between each one -- the network vanishes,
+         * and it has to notice, re-scan and re-associate before the next offer can be
+         * accepted -- and the teardown would land while the ack's TCP connection
+         * might still be closing.  Keeping the AP up for the life of the BLE
+         * connection costs a beacon for as long as a phone is actually there, which
+         * is the one time it is earning it.
+         *
+         * EBADGE_SOFTAP_PER_TRANSFER_LIFETIME is the other arrangement, and it is
+         * off; see ebadge_port_softap.h.
+         *
+         * Posted, not called: the three aborts above are queued and each releases its
+         * claim on the AP through ebadge_port_softap_stop().  The queue is FIFO, so
+         * posting last is what puts the radio teardown after them -- and it also puts
+         * it on l2_task, which is the context ebadge_port_softap_shutdown() documents.
+         *
+         * Unconditional, unlike the abort paths, which return early when no session
+         * is in flight: a phone that connected, transferred nothing and left would
+         * otherwise leave the AP up until the next transfer.  A stop with no AP
+         * running is answered [+WLSTOPAP]:ERROR and costs nothing.             */
+        (void)ebadge_task_post_call((ebadge_post_fn_t)ebadge_port_softap_shutdown,
+                                    NULL);
         EBADGE_LOG("disconnected");
         break;
 

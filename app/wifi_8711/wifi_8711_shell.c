@@ -41,6 +41,7 @@
 #include "wifi_8711_at.h"     /* WIFI_8711_AT_TIMEOUT_MS, for the margin check */
 #include "wifi_8711_at_query.h"
 #include "wifi_8711_at_xfer.h"
+#include "wifi_8711_at_ap.h"  /* apstop goes through the real transaction layer */
 #include "spi_at_protocol.h"
 #include "../protocol/ebadge_log.h"   /* EBADGE_HEXDUMP_DEFAULT, for the banner */
 
@@ -157,7 +158,8 @@ static int cmd_pattern(const struct shell *sh, size_t argc, char **argv)
         return rc;
     }
     /* Staged, not sent: the 8711 owns the clock, so it goes out on whichever
-     * slot the 8711 chooses to run next -- up to ~2 s away at idle POLL rate. */
+     * slot the 8711 chooses to run next -- about a second away at the idle POLL
+     * rate (sec.12.6 halved the old 2 s beat). */
     shell_print(sh, "staged \"8773TEST\" + seed=%u + ramp; goes out on the next slot",
                 (unsigned)seed);
     return 0;
@@ -185,9 +187,12 @@ static int cmd_at(const struct shell *sh, size_t argc, char **argv)
         return -EINVAL;
     }
 
-    /* Only these two commands exist in the 8711's firmware (sec.9); anything
-     * else comes back as [AT]:ERROR, so there is no point in accepting free
-     * text here and pretending otherwise. */
+    /* Only the two read-only commands are offered here.  AT+WLSTOPAP exists too
+     * (sec.10.2) but has a dedicated subcommand: its reply is a verdict that wants
+     * interpreting rather than a slot to hexdump, and switching the radio off is a
+     * side effect that does not belong on a raw framing probe.  Anything else comes
+     * back as [AT]:ERROR, so there is no point in accepting free text here and
+     * pretending otherwise. */
     if (strcmp(argv[1], "state") == 0)
     {
         text = SPI_AT_CMD_WLSTATE;
@@ -198,7 +203,8 @@ static int cmd_at(const struct shell *sh, size_t argc, char **argv)
     }
     else
     {
-        shell_error(sh, "unknown command; only `state` and `startap` exist");
+        shell_error(sh, "unknown command; `state` and `startap` here, `apstop` for"
+                    " AT+WLSTOPAP");
         return -EINVAL;
     }
 
@@ -314,8 +320,15 @@ static int cmd_stats(const struct shell *sh, size_t argc, char **argv)
      *  Cadence -- the 8711's idle POLL rate, measured
      *
      *  This is the number every upper-layer deadline should be sized from, and
-     *  it is NOT the ~2 s in sec.4.1 item 6: that figure is what sized the AT
-     *  timeout at 8 s, and a reply measured at 10.3 s then failed every time.
+     *  it is NOT the nominal beat in the spec (~1 s since sec.12.6, ~2 s before
+     *  it): that figure is what sized the AT timeout at 8 s, and a reply measured
+     *  at 10.3 s then failed every time.  The nominal beat is a rate, not a bound
+     *  on the round trip.
+     *
+     *  It is also the number the Wi-Fi state staleness rule in
+     *  ebadge_port_softap.c is sized off -- if the measured gap here is regularly
+     *  above ~1 s, that 6 s rule will trip on a healthy link and provoke a query
+     *  per interval.
      *------------------------------------------------------------------------*/
     shell_print(sh, "--- cadence ---");
     if (st.slot_gaps == 0U)
@@ -438,8 +451,8 @@ static int cmd_rx(const struct shell *sh, size_t argc, char **argv)
 
 /* `rx` shows one slot on demand; this shows every slot as it lands.  Kept as a
  * switch rather than always-on because the dump runs on the transport thread
- * with B2W low, which is free at the 2 s idle POLL rate and a real throttle
- * during a JPEG burst. */
+ * with B2W low, which is affordable at the ~1 s idle POLL rate and a real
+ * throttle during a JPEG burst. */
 static int cmd_rxdump(const struct shell *sh, size_t argc, char **argv)
 {
     if (argc != 2)
@@ -472,7 +485,12 @@ static int cmd_rxdump(const struct shell *sh, size_t argc, char **argv)
 /* Same path the BLE 0xFF debug subcmd 0x01 takes, minus the phone: starts the
  * transport if needed, installs the logging sink, stages the query.  Having one
  * shared implementation is the point -- a shell-only variant would let the two
- * drift and then the shell would "work" while the BLE command did not. */
+ * drift and then the shell would "work" while the BLE command did not.
+ *
+ * Worth knowing before reaching for this: since sec.7.1 the same state block
+ * arrives unasked on the POLL beat, so this only buys seeing it one beat sooner.
+ * What it genuinely tests is whether the link answers a COMMAND -- a separate
+ * question from whether the feed is alive. */
 static int cmd_apinfo(const struct shell *sh, size_t argc, char **argv)
 {
     ARG_UNUSED(argc);
@@ -486,7 +504,60 @@ static int cmd_apinfo(const struct shell *sh, size_t argc, char **argv)
         return rc;
     }
     shell_print(sh, "AP-info query staged; the reply is printed to the log");
-    shell_print(sh, "the 8711 owns the clock -- expect it in ~2-4 s");
+    /* Measured, not derived from the beat: an idle-link round trip came back at
+     * ~10.3 s, which is what WIFI_8711_AT_TIMEOUT_MS is sized off.  Saying "~2-4 s"
+     * here (the old text) made every normal reply look late. */
+    shell_print(sh, "the 8711 owns the clock -- expect it in ~10 s on an idle link");
+    return 0;
+}
+
+/* Take the AP down from the console (SPI spec sec.10.3).
+ *
+ * Separate from `at startap` rather than an `at stopap` alias, because this one
+ * changes the radio's state instead of describing it, and its reply is a verdict
+ * worth printing in words rather than a slot worth hexdumping.
+ *
+ * In normal operation nothing here is needed: the protocol stack switches the AP
+ * off through ebadge_port_softap_shutdown() when the phone disconnects over BLE.
+ * This exists to check that half on its own -- watch the next POLL-fed state
+ * block report AP=DOWN, which since sec.7.1 needs no query at all. */
+static void shell_ap_stop_done(bool ok, void *user)
+{
+    ARG_UNUSED(user);
+
+    /* Printed to the log, not to `sh`: this lands on the transport thread ~11-13 s
+     * later, by which time the shell has long since returned and the struct shell
+     * we were called with may belong to a different command. */
+    if (ok)
+    {
+        EBADGE_LOG("wifi8711 shell: AP stopped ([+WLSTOPAP]:OK)");
+    }
+    else
+    {
+        EBADGE_LOG("wifi8711 shell: stop refused -- AP was already down, a start is"
+                   " in progress, or this 8711 has no WLSTOPAP");
+    }
+}
+
+static int cmd_apstop(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    int rc = wifi_8711_at_ap_stop(shell_ap_stop_done, NULL);
+    if (rc != 0)
+    {
+        shell_error(sh, "wifi_8711_at_ap_stop() = %d%s", rc,
+                    (rc == -EBUSY) ? " (another AT command outstanding)"
+                    : (rc == -ENODEV) ? " (wifi_8711_init() never"
+                    " succeeded)" : "");
+        return rc;
+    }
+    shell_print(sh, "AT+WLSTOPAP staged; the verdict is printed to the log");
+    /* Worth saying out loud: an ERROR here is not a fault.  The 8711 answers ERROR
+     * for an AP that was already down, which is the expected reply on a second
+     * run. */
+    shell_print(sh, "ERROR is a normal answer if the AP was already down");
     return 0;
 }
 
@@ -591,6 +662,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_wifi8711,
                                          cmd_at),
                                SHELL_CMD(apinfo,  NULL, "query AP info + auto-start transport + log the reply",
                                          cmd_apinfo),
+                               SHELL_CMD(apstop,  NULL, "switch the SoftAP off (AT+WLSTOPAP); ERROR = it was already down",
+                                         cmd_apstop),
                                SHELL_CMD(xferctl, NULL,
                                          "transfer control (v2.2 sec.10): xferctl <ack <status> [reason] | stop | stats>",
                                          cmd_xfer_ctrl),

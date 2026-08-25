@@ -117,9 +117,16 @@
  * Two things follow from the back-pressure, and they are the reason this file
  * does not do more than it does:
  *
- *  - The multi-block NOR erase belongs in wp_begin (driven from the WAIT_STA ->
- *    RECV edge, with no slot in flight), never here.  ebadge_port_storage.c
- *    keeps it there.
+ *  - No flash operation may run while a slot is in flight -- not here, and not
+ *    on any path this callback reaches.  The 8711 gives ~1000 ms of
+ *    back-pressure (sec.3.2) and then abandons the slot with its bytes already
+ *    consumed from TCP, so a multi-sector NOR erase does not fit inside the
+ *    window no matter which state edge triggers it.  This used to say the erase
+ *    "belongs in wp_begin, driven from the WAIT_STA -> RECV edge", which was
+ *    true only until that edge could itself be reached from inside a slot; then
+ *    it silently became the bug it was written to prevent.  xfer_session.c now
+ *    buffers the whole file in PSRAM and does every flash operation after the
+ *    ack, so there is no erase left to misplace.
  *  - Tier-2 flow control for the *preview* path (sec.5.1: after the END slot
  *    B2W must stay LOW until JPU decode and LCDC display have finished,
  *    because the 8711 blocks on that rising edge before answering "DONE <seq>"

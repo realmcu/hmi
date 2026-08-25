@@ -156,6 +156,13 @@ static void fail_and_reset(uint8_t reason, const char *detail)
 {
     tear_down_data_plane();
     eb_emit_fail(reason, detail);
+#if EBADGE_SOFTAP_PER_TRANSFER_LIFETIME
+    /* The report has gone out, so the hotspot has nothing left to serve.  See
+     * xfer_session's emit_held_verdict() and ebadge_port_softap.h on why this is
+     * SCHEDULED and not immediate: a phone that reacts to this 0x16 by re-offering
+     * lands inside the settling window and pays no bring-up. */
+    ebadge_port_softap_shutdown_when_idle();
+#endif
     reset_ctx();
 }
 
@@ -168,6 +175,13 @@ static void finish_and_reset(const char *why)
                 (unsigned)s_s.frames_ok, (unsigned)s_s.frames_bad);
     s_s.state = STREAM_SESSION_COMPLETING;
     tear_down_data_plane();
+#if EBADGE_SOFTAP_PER_TRANSFER_LIFETIME
+    /* There is no report to wait behind on this path -- the App hung up, which is
+     * how the preview ends -- but the delay is still wanted: leaving the preview and
+     * immediately sending a file is a normal thing for a phone to do, and the window
+     * is what lets that file transfer reuse this radio. */
+    ebadge_port_softap_shutdown_when_idle();
+#endif
     reset_ctx();
 }
 
@@ -176,9 +190,9 @@ static void finish_and_reset(const char *why)
  *----------------------------------------------------------------------------*/
 static void on_softap_joined_from_driver(void)
 {
-    /* Already on l2_task: port_softap marshals the edge itself (it learns of
-     * the association from an AT reply on the transport thread).  A second
-     * post_call here would only add a hop. */
+    /* Already on l2_task: port_softap reads CLIENTS= off the pushed Wi-Fi state
+     * from its own tick, which runs on l2_task, so nothing had to be marshalled.
+     * A post_call here would only add a hop. */
     stream_session_on_sta_joined();
 }
 
@@ -352,9 +366,31 @@ void stream_session_offer(const char *name, uint8_t file_type, uint8_t fps)
      *
      * The credentials come FROM the radio: the 8711 owns the SoftAP and its
      * SSID/password cannot be set from this side, so anything hardcoded here
-     * would point the phone at a network that does not exist.               */
+     * would point the phone at a network that does not exist.  Reading them is
+     * free -- the 8711 pushes its Wi-Fi state on the ~1 Hz POLL beat, so this
+     * answers from a copy at most a second old without touching the wire.   */
     ebadge_softap_info_t info;
     uint16_t             tcp_port = 0;
+
+#if EBADGE_SOFTAP_PER_TRANSFER_LIFETIME
+    /* Ask for the radio before asking about it.  Same reasoning as the file
+     * offer's, and it applies here for the same reason: under this arrangement the
+     * AP is not up for the whole BLE connection -- a finished transfer or a finished
+     * preview schedules it down -- so an offer arriving after one of those finds it
+     * down as a matter of course rather than as a fault.
+     *
+     * It cannot ready the AP for THIS offer (a bring-up is seconds to tens of
+     * seconds; see ebadge_port_softap.h).  It makes the AP_START rejection below
+     * worth retrying, and it cancels a pending idle-down -- which is the case that
+     * actually matters here, since a preview opened right after a file transfer
+     * lands inside that settling window and then needs no bring-up at all.
+     *
+     * Below the validation, not above it: an offer that is rejected for a wrong
+     * file_type or a busy peer must not leave a radio up with nothing scheduled to
+     * bring it back down. */
+    ebadge_port_softap_arm_on_l2("preview offer accepted");
+#endif
+
     /* EBADGE_AP_PORT_STREAM, because this session sends bare JPEG frames: the
      * 8711's PORT= (5004) is the only server that accepts them, and the file
      * port would expect an EBXF header it will never get. */

@@ -23,15 +23,25 @@
  * trusted -- the endpoints below are the place to start.
  *
  * ---------------------------------------------------------------------------
- * CHARGE STATE IS STILL A STUB
+ * CHARGE STATE COMES FROM A PIN, NOT FROM THE VOLTAGE
  * ---------------------------------------------------------------------------
- * Reporting it needs either the ROM charger module (charger_api_get_charger_state)
- * or an external charger's status pin, and this port was asked for voltage only.
- * DISCHARGING is reported unconditionally, which is at least the common case; it
- * is NOT inferred from a rising voltage, because a couple of samples of noise
- * would then read as "charging" and flicker on the phone.
+ * The charger IC drives P5_2 (pad 38 = GPIOB17) high while it is charging, and
+ * that pin is the whole answer -- see charger-status-gpios in
+ * boards/rtl87x3g_evb.overlay.  It is deliberately NOT inferred from a rising
+ * voltage instead: a couple of samples of ADC noise would then read as
+ * "charging" and flicker on the phone.
+ *
+ * What the pin cannot tell us is FULL.  A charger that has finished releases the
+ * line, so "done charging on the cable" and "running on the battery" are the
+ * same level, and separating them needs a cable-presence signal this board does
+ * not bring out.  So EBADGE_BATT_FULL is never reported -- a 100% DISCHARGING is
+ * honest, whereas guessing FULL from percent == 100 would claim a charger state
+ * on the evidence of a voltage reading.
  */
 #include <stdint.h>
+
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
 
 #include "ebadge_port_env.h"
 #include "ebadge_port_vbat.h"
@@ -51,6 +61,73 @@
  *  for the same reason in reverse.  The accompanying log line says plainly that
  *  the number is a placeholder.                                              */
 #define VBAT_UNKNOWN_PCT    50u
+
+/*----------------------------------------------------------------------------*
+ *  Charger status pin
+ *
+ *  Guarded on DT_NODE_HAS_PROP rather than assumed present: this file also
+ *  builds for boards whose overlay does not bring the charger line out, and a
+ *  missing property would otherwise be a GPIO_DT_SPEC_GET syntax error rather
+ *  than a legible "no pin here".
+ *----------------------------------------------------------------------------*/
+#define CHG_NODE            DT_PATH(zephyr_user)
+
+#if DT_NODE_HAS_PROP(CHG_NODE, charger_status_gpios)
+#define CHG_PIN_PRESENT     1
+static const struct gpio_dt_spec s_chg_gpio =
+    GPIO_DT_SPEC_GET(CHG_NODE, charger_status_gpios);
+#else
+#define CHG_PIN_PRESENT     0
+#endif
+
+/**
+ * Read the charger line, or report "no idea" when there is nothing to read.
+ *
+ * Configured lazily rather than from an init hook because the three callers sit
+ * on three different threads -- the 0x17 BLE handler on l2_task, the main-face UI
+ * refresh, and the vbat shell command -- and the earliest of them can run before
+ * ebadge_task_init().  gpio_pin_configure_dt() is idempotent, so the unguarded
+ * flag below costs at worst one redundant configure if two threads land here at
+ * the same moment; nothing observable depends on which of them wins.
+ *
+ * @return true when @p out_charging holds a real answer.
+ */
+static bool charger_pin_charging(bool *out_charging)
+{
+#if CHG_PIN_PRESENT
+    static bool s_ready;
+
+    if (!s_ready)
+    {
+        if (!gpio_is_ready_dt(&s_chg_gpio))
+        {
+            EBADGE_WARN("port_env: charger-status GPIO not ready");
+            return false;
+        }
+        int rc = gpio_pin_configure_dt(&s_chg_gpio, GPIO_INPUT);
+        if (rc != 0)
+        {
+            EBADGE_WARN1("port_env: charger-status configure failed rc=%d", rc);
+            return false;
+        }
+        s_ready = true;
+    }
+
+    /* _dt, so the overlay's GPIO_ACTIVE_HIGH is what defines "1 = charging" --
+     * the polarity lives in the devicetree next to the pin number, not here. */
+    int level = gpio_pin_get_dt(&s_chg_gpio);
+    if (level < 0)
+    {
+        EBADGE_WARN1("port_env: charger-status read failed rc=%d", level);
+        return false;
+    }
+    *out_charging = (level != 0);
+    return true;
+#else
+    (void)out_charging;
+    return false;
+#endif
+}
 
 static uint8_t mv_to_percent(uint16_t mv)
 {
@@ -78,13 +155,19 @@ int ebadge_port_env_battery(ebadge_batt_t *out)
     }
 
     uint16_t mv = 0;
+    bool     charging = false;
 
     out->mv_valid = ebadge_port_vbat_mv(&mv);
     out->mv       = out->mv_valid ? mv : 0U;
     out->percent  = out->mv_valid ? mv_to_percent(mv) : VBAT_UNKNOWN_PCT;
-    /* TODO(port): real charge state -- needs charger_api_get_charger_state() or
-     * an external charger status pin.  See the file header. */
-    out->state    = EBADGE_BATT_DISCHARGING;
+    /* An unreadable pin reports DISCHARGING, same as a low one.  The wire format
+     * has no "unknown" for this field, and of the two states it does have,
+     * DISCHARGING is the one that does not promise the user a charger is
+     * connected.  The warning inside charger_pin_charging() is what distinguishes
+     * the two cases in the log. */
+    out->state    = (charger_pin_charging(&charging) && charging)
+                    ? EBADGE_BATT_CHARGING
+                    : EBADGE_BATT_DISCHARGING;
 
     if (out->mv_valid)
     {
@@ -92,9 +175,11 @@ int ebadge_port_env_battery(ebadge_batt_t *out)
          * bug worth catching during bring-up: a code stuck at 0 or 0xfff means
          * the ADC is not converting, while a sane code with a silly voltage
          * means ADC_GetRes()'s calibration data is not there. */
-        EBADGE_LOG("port_env: vbat=%u mV (adc raw=%u) -> %u%%",
+        EBADGE_LOG("port_env: vbat=%u mV (adc raw=%u) -> %u%% %s",
                    (unsigned)mv, (unsigned)ebadge_port_vbat_raw(),
-                   (unsigned)out->percent);
+                   (unsigned)out->percent,
+                   (out->state == EBADGE_BATT_CHARGING) ? "charging"
+                   : "discharging");
     }
     else
     {

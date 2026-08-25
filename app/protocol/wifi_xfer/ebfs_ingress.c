@@ -84,6 +84,17 @@
  * the whole-file one catches the phone sending the wrong file -- so both are
  * wanted.
  *
+ * ---------------------------------------------------------------------------
+ * NO SLOT PAYS FOR THE FLASH WRITE
+ * ---------------------------------------------------------------------------
+ * §6.3 gives the EBFS END slot no display-completion semantics, so unlike the
+ * JPGS path there is no long B2W-low window to hide slow work in.  Every slot's
+ * processing back-pressures TCP directly, and the 8711 abandons a slot whose
+ * READY does not return within 1000 ms with those bytes already consumed from
+ * TCP -- a multi-sector NOR erase does not fit.  So xfer_session buffers the
+ * whole file in PSRAM, verifies it, acks, and only then erases and writes,
+ * inside the 120 s the 8711 will wait for our AT+XFERACK.
+ *
  * §6.2 says the 8773 should abort the session on an illegal slot, and that is
  * what happens: unlike a preview frame, a file has nothing to resynchronise to.
  * A JPGS frame can be dropped and the next START picked up because frames are
@@ -99,12 +110,6 @@
  * l2_task, which preempts us, so the payload is handed over with
  * ebadge_task_post_call() and this thread waits for it to be consumed before
  * letting the slot be re-armed for DMA.
- *
- * One thing is NOT like the JPGS path: §6.3 gives the EBFS END slot no
- * display-completion semantics.  The last slot completes the ordinary four-phase
- * handshake, so there is no long B2W-low window to hide the flash commit in --
- * every slot's processing back-pressures TCP directly, and the final commit
- * happens inside the 120 s the 8711 will wait for our AT+XFERACK.
  */
 #include <stdint.h>
 #include <stddef.h>
@@ -155,7 +160,8 @@
  *  Reassembly bookkeeping
  *
  *  No file buffer: payload goes straight to xfer_session, which appends it to
- *  flash.  Only what is needed to police §6.2 lives here.
+ *  the PSRAM receive cache -- not to flash.  Only what is needed to police §6.2
+ *  lives here.
  *----------------------------------------------------------------------------*/
 typedef struct
 {
@@ -422,12 +428,52 @@ static void on_ebfs_slot(const uint8_t *slot, size_t len)
             }
         }
 
-        /* Head tells us whether this looks like file content at all; tail is
-         * where a length disagreement shows up as padding or stale bytes. */
-        EBADGE_LOG_HEX("ebfs bad payload head", payload, 64);
+        /* Dump the WHOLE slot, header included, not a head and a tail.
+         *
+         * The head/tail pair that used to be here showed 64 of the 4032 bytes the
+         * CRC covers -- 1.6% -- so a corruption anywhere in the middle left both
+         * excerpts looking perfectly healthy while the CRC still failed.  That is
+         * the wrong shape of evidence for the question being asked: we are trying
+         * to find WHERE the bytes stop matching what was sent, and that cannot be
+         * answered by two windows chosen in advance.
+         *
+         * From offset 0, so the 64-byte EBFS header is in the same dump as the
+         * payload it describes.  Every field the lines above print in decimal is
+         * then also visible as the bytes actually on the wire, which is what
+         * separates "the field was wrong" from "we read the field wrong".
+         *
+         * COST, and why it is acceptable exactly here: this runs on the transport
+         * thread with B2W held low, so the 8711 is stalled for the duration --
+         * 4096 bytes is 256 rows, ~19 KB of console output, ~75 ms at 2 Mbaud
+         * (uart2, board overlay).  That is well past the 1000 ms READY budget's
+         * comfort zone but it does not matter: this path has already called
+         * file_discard(), so the transfer is over and there is no subsequent slot
+         * whose bytes could be lost.  It also cannot repeat per slot for the same
+         * reason -- the file is gone after the first failure.
+         *
+         * ebadge_log_hexdump() rather than EBADGE_LOG_HEX(): the latter caps at 32
+         * bytes internally while still printing the length it was ASKED for, so
+         * "head len=64" was in fact 32 bytes plus an ellipsis. */
+        ebadge_log_hexdump("ebfs bad slot", slot, (uint32_t)len,
+                           (uint32_t)len);
+
+        /* Where the CRC range sits INSIDE the dump above, in the dump's own
+         * offsets.  Without this the reader has to add 64 to everything by hand,
+         * and the one row that matters most -- the last one the CRC covers -- is
+         * the easiest to miscount. */
+        EBADGE_WARN2("ebfs:   crc covers dump offsets 0x%04x..0x%04x",
+                     (unsigned)WIFI_8711_FILE_HEADER_SIZE,
+                     (unsigned)(WIFI_8711_FILE_HEADER_SIZE + psize));
+
+        /* Kept as a compact restatement of the two windows that matter most --
+         * the CRC's first and last bytes -- so the interesting rows can be found
+         * without scrolling 256 lines.  payload+psize-32 is the end of the CRC
+         * range, and on a full slot it is also the end of the DMA target buffer,
+         * which is where a short DMA write leaves stale bytes behind. */
+        EBADGE_LOG_HEX("ebfs   crc range head", payload, 32);
         if (psize > 32U)
         {
-            EBADGE_LOG_HEX("ebfs bad payload tail",
+            EBADGE_LOG_HEX("ebfs   crc range tail",
                            payload + (psize - 32U), 32);
         }
 

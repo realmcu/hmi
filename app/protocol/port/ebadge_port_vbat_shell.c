@@ -52,7 +52,7 @@ static int cmd_vbat(const struct shell *sh, size_t argc, char **argv)
     shell_print(sh, "  %-12s %u (0x%03X)", "adc raw", ebadge_port_vbat_raw(),
                 ebadge_port_vbat_raw());
     shell_print(sh, "  %-12s %u %%", "percent", b.percent);
-    shell_print(sh, "  %-12s %u (0=discharging 1=charging 2=full; stub)",
+    shell_print(sh, "  %-12s %u (0=discharging 1=charging; from P5_2, high=charging)",
                 "charge", (unsigned)b.state);
 
     /* Flag the two readings that mean "the number is a lie" so nobody has to

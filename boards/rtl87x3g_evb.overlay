@@ -15,6 +15,29 @@
 };
 
 / {
+	/*
+	 * Charger status input for 0x18 BATTERY's charge field.
+	 *
+	 * P5_2 = pad 38 = GPIOB17, driven by the charger IC: HIGH means charging.
+	 * Active high is therefore the electrical truth, not a convention -- a
+	 * gpio_pin_get_dt() of 1 is "charging" with no inversion anywhere.
+	 *
+	 * No pull is requested: the charger drives this line in both states, and a
+	 * pull that fought it would only mask a disconnected pin -- which is exactly
+	 * the fault worth seeing during bring-up.
+	 *
+	 * In /zephyr,user rather than a node of its own because a single input pin
+	 * with no peripheral behind it does not earn a compatible + binding; Zephyr
+	 * infers a binding for this path (gen_defines.py, infer_binding_for_paths).
+	 *
+	 * P5_2 appears as LCD_QSPI_RST in lcd_st77916_360_360_qspi.c, which is a
+	 * different panel -- this board runs the ST7801N (RST=P4_0), so the pin is
+	 * free here.  Confirmed against the hardware.
+	 */
+	zephyr,user {
+		charger-status-gpios = <&gpiob 17 GPIO_ACTIVE_HIGH>;	/* P5_2 */
+	};
+
 	gpio_keys: gpio_keys{
 		compatible = "realtek,gpio-keys";
 		debounce-interval-ms = <30>;

@@ -85,9 +85,14 @@
 	 *
 	 * Address: app_lower_init.c:app_mpu_config() maps
 	 * SPIC1_MEM_BASE(0x22000000)..+0x400000 as MPU region 2 with attr 0x44
-	 * (non-cacheable).  port/ui/gui_port_os.c now takes its 3 MB lower heap
-	 * from SPIC3, so SPIC1 past the 512 KB DSP reserve is unclaimed;
-	 * 0x22380000 is kept from the previous revision to stay clear of it.
+	 * (non-cacheable).  Who else owns what inside that window is written down
+	 * in app/protocol/port/ebadge_psram_map.h, which BUILD_ASSERTs this node's
+	 * reg against its own numbers -- so 0x22380000 is not a free choice here.
+	 * Moving it means editing that header too, and it will tell you if you
+	 * forget.  (An earlier revision of this comment claimed the GUI heap had
+	 * moved to SPIC3 and that SPIC1 up here was unclaimed.  It had not: the
+	 * heap was still SPIC1 + the full 0x400000 and overlapped this node by
+	 * 128 KB.  That is why the map header exists.)
 	 *
 	 * The region is NOLOAD (not zeroed at boot) and SPIC1 PSRAM only comes
 	 * up inside app_system_lower_init(), so anything placed here must be
