@@ -35,12 +35,9 @@ enum
 
     /* Time (0x300~)
      *
-     * The tick events below are aligned to LOCAL wall-clock boundaries
-     * (UTC + timezone offset, default +480 / Beijing), not to UTC and not to
-     * uptime. Two devices booted at different moments therefore fire them at
-     * the same wall-clock instant, which is what makes them usable as the
-     * single source of truth for "which 15-minute bucket are we in" and
-     * "has the day rolled over".
+     * Tick events fire on wall-clock boundaries: the payload is wall
+     * clock seconds (1970 epoch), which IS the moment the watch face
+     * shows. No timezone offset exists anywhere in this path.
      */
     EVT_TIME_SYNCED          = 0x0300, /* payload: app_evt_time_synced_t, wall clock has been set from phone */
     /* 0x0301 was a per-minute demo tick; retired with the app_time skeleton.
@@ -123,24 +120,15 @@ typedef struct { uint8_t percent;  } app_evt_power_level_t;
 typedef struct { bool    charging; } app_evt_power_charging_t;
 
 /**
- * @brief  New wall-clock value published on EVT_TIME_SYNCED.
+ * @brief  New wall clock value published on EVT_TIME_SYNCED.
  *
- * Producers (BLE settings command, shell "date" style helpers, ...) fill
- * this in and publish; @c app_time is the sole subscriber that actually
- * writes the hardware RTC. Other modules (UI, health windows, alarms)
- * may listen to snap their own state to the new wall clock.
- *
- * Only calendar fields are carried; @c weekday is derived by whoever
- * needs it.
+ * sec is wall clock seconds (1970 epoch): the moment the watch face
+ * should display. app_time is the sole subscriber that writes the RTC.
+ * Other modules may listen to snap their state to the new wall clock.
  */
 typedef struct
 {
-    uint16_t year;
-    uint8_t  month;    /* 1..12 */
-    uint8_t  day;      /* 1..31 */
-    uint8_t  hour;     /* 0..23 */
-    uint8_t  min;      /* 0..59 */
-    uint8_t  sec;      /* 0..59 */
+    uint32_t sec;
 } app_evt_time_synced_t;
 
 /**
