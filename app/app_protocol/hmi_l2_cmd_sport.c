@@ -33,6 +33,7 @@
 #include "app_event.h"
 #include "app_event_defs.h"
 #include "app_health.h"
+#include "app_time.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -179,6 +180,17 @@ static void sport_send_activity_page(void)
 
         pos += sport_encode_record(&val[pos], &rec);
         n++;
+
+        /* Log which interval just went out, as local wall-clock time: the wire
+         * carries ts_utc, but "which 15-minute bucket did the phone get" is the
+         * question being asked when reading this. Seconds are omitted because
+         * buckets are quarter-hour aligned. */
+        app_time_local_t lt;
+        app_time_to_local(rec.ts_utc, &lt);
+        PROTO_LOG("L2 SPORT rec %u: %04u-%02u-%02u %02u:%02u steps=%u",
+                  (unsigned)n, (unsigned)lt.year, (unsigned)lt.month,
+                  (unsigned)lt.day, (unsigned)lt.hour, (unsigned)lt.min,
+                  (unsigned)rec.steps);
     }
 
     /* Spec: an empty store must NOT produce a Record count=0 page -- go
