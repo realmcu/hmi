@@ -50,8 +50,7 @@ calendar value in the hardware RTC",都表明 RTC 存的是本地日历值。
   Hour(5) + Minute(6) + Second(6),无时区字段,全文未出现 "UTC"。
 - 运动/睡眠记录 Timestamp:标注为"Unix 时间戳(秒),与 FlashDB
   记录时间一致"。
-- 全文唯一一次出现"时区":"手机不得把 Timestamp 当作桶开始时间,
-  也不得再对 Timestamp 做时区、Date/Offset 或 15 分钟前移转换。"
+- 运动桶原定义把 Timestamp 当作结束/落库时间，手机不得将它前移 15 分钟。
 
 后两条并读可知,文档意图是手机拿到 Timestamp 直接当墙上时间显示。
 既然手机不换算,而手机下发的又是用户本地日历值,则整条链上实际不存在
@@ -192,6 +191,10 @@ Value 由 32-bit packed 日历字段改为 **4 bytes 大端墙上时钟秒**。
 - 现有"手机不得再对 Timestamp 做时区转换"一句保留,但改为正面陈述:
   该 Timestamp 已是应显示的时刻,直接渲染即可。此约束在新模型下
   是自然结果,不再是需要解释的例外。
+- 运动记录的 Timestamp 定义为自然刻钟逻辑桶起点，统计区间为
+  `[Timestamp, Timestamp + 15 分钟)`。完整桶和 partial bucket 都按
+  `00/15/30/45` 对齐；partial 只表示该逻辑区间未被完整采集，协议不表达
+  实际采集起止时间。手机直接按 Timestamp 聚合日期和时段。
 
 ### 4.3 闹钟 0x02/0x04 —— 删除定义
 
@@ -243,7 +246,7 @@ Timestamp 由"从 2000 年起的秒数"改为**墙上时钟秒(1970 纪元)**,
 | `app/app_time/app_time.c` | 删除 `s_tz_min`、`local_sec_from_utc()`;保留 `civil_to_epoch()` 供 `app_time_now()` 读 RTC 使用;`app_time_set()` 用 `gmtime_r` 把秒展开为 `posix_rtc_time_t`(`wday` 取 `tm_wday`);`app_time_to_calendar()` 退化为一次 `gmtime_r`;`rtc_second_cb()` 中的天索引与刻钟判断直接用秒值,去掉平移;更新文件头注释,删除 "Local means UTC + s_tz_min" 段落 |
 | `app/app_core/app_event_defs.h` | `app_evt_time_synced_t` 由六个日历字段改为单个 `uint32_t sec`;更新注释 |
 | `app/app_protocol/hmi_l2_cmd_settings.c` | 删除 `hmi_l2_decode_time()` 的位解包与 `days_in_month()`;改为读 4 字节大端秒;调用 `app_time_set()`;发布 `EVT_TIME_SYNCED` 载荷改为秒 |
-| `app/app_health/app_health_internal.h` | `health_pedo_record_t.ts_utc` → `ts`;注释 "UTC epoch seconds captured at flush moment" → 墙上时钟秒 |
+| `app/app_health/app_health_internal.h` | `health_pedo_record_t.ts_utc` → `ts`;注释统一为墙上时钟秒，运动记录进一步明确为自然刻钟桶起点 |
 | `app/app_health/health_worker.c` | `ts_utc` → `ts`;`boundary_utc` → `boundary_sec` |
 | `app/app_health/health_db.c` | `ts_utc` → `ts`(共 10 处);`health_db_save_synced_ts()` 参数改名 |
 | `app/app_protocol/hmi_l2_cmd_sport.c` | `sport_encode_record()` 字段改名;`app_time_to_local` 调用改为 `app_time_to_calendar`,日志格式化改用 `tm_year + 1900` / `tm_mon + 1` |
@@ -389,13 +392,15 @@ UTC 字段,对本地对象返回本地字段 —— 因此 record 侧自动正�
 
 ### 8.3 现存数据兼容
 
-`ts_utc` → `ts` 本身是纯改名，业务记录的字段类型、偏移和内容均不变；
-但默认的 `fdb_time_t` 是有符号 32 位，2038 年后的值会变为负数。固件需
+`ts_utc` → `ts` 本身是纯改名；但运动记录 Timestamp 从闭合边界改为逻辑桶
+起点后，旧记录与新记录不能混合解释。另外，默认的 `fdb_time_t` 是有符号
+32 位，2038 年后的值会变为负数。固件需
 启用 `FDB_USING_TIMESTAMP_64BIT`，这会改变 FlashDB 的扇区头和日志索引
 布局，旧 TSDB 分区不能原地兼容。
 
-当前开发阶段采用一次性重建策略：KVDB 保存 pedo 布局版本；首次启动
-64 位布局固件时仅擦除 `fdb_tsdb1`，将 `health.synced` 水位归零，最后
+当前开发阶段采用一次性重建策略：KVDB 保存 pedo 布局版本；64 位时间戳
+布局或运动桶 Timestamp 语义变化时提升版本，首次启动新版本固件仅擦除
+`fdb_tsdb1`，将 `health.synced` 水位归零，最后
 写入新布局版本。KVDB 其它配置和 BF 数据不受影响。标记最后写入，因此
 迁移期间掉电会在下次启动时安全重试。量产后若要求保留历史数据，应另行
 实现离线导出/导入，而不能依赖 FlashDB 自动识别旧布局。

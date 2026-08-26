@@ -60,7 +60,7 @@ extern "C" {
  * -------------------------------------------------------------- */
 typedef struct
 {
-    uint32_t ts;            /* wall clock seconds at flush moment           */
+    uint32_t ts;            /* natural 15-minute bucket start, wall seconds */
     uint16_t steps;         /* clipped to 0xFFFF                            */
     uint16_t distance_m;    /* metres, clipped to 0xFFFF                    */
     uint16_t calories_dkcal; /* 0.1 kcal units, clipped to 0xFFFF           */
@@ -106,8 +106,8 @@ typedef struct
 int  health_db_init(void);
 
 /* Append one 18B pedometer record to the TSDB, using the record's ts as
- * the time key. An equal-to-last timestamp is advanced by one second and
- * reflected back into rec; a clock rollback is rejected with -ERANGE.
+ * the time key. A duplicate bucket is rejected with -EEXIST, and a clock
+ * rollback is rejected with -ERANGE; timestamps are never adjusted.
  * Returns 0 on success, negative on failure. */
 int  health_db_append_pedo(health_pedo_record_t *rec);
 
@@ -148,8 +148,8 @@ bool health_worker_is_running(void);
 void health_worker_get_today(health_daily_rollup_t *out);
 
 /* Bucket boundary reached: write the closed bucket to the TSDB. @c boundary_sec
- * is the boundary instant in wall clock seconds and becomes the record's
- * timestamp. A no-op when no worker is running. */
+ * is its exclusive end in wall clock seconds; the preceding natural-quarter
+ * boundary becomes the record timestamp. A no-op when no worker is running. */
 void health_worker_on_bucket_boundary(uint32_t boundary_sec);
 
 /* Local day rolled over: zero today's running totals. */

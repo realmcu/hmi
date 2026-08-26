@@ -14,7 +14,7 @@
 #define LOGE(fmt, ...)  FDB_PRINT(LOG_TAG " [ERR] " fmt "\n", ##__VA_ARGS__)
 
 #define PEDO_LAYOUT_KEY         "flashdb.pedo_layout"
-#define PEDO_LAYOUT_VERSION     2u
+#define PEDO_LAYOUT_VERSION     3u
 #define HEALTH_SYNCED_KEY       "health.synced"
 
 /* 各 db 的就绪标志——单独控制，方便某个 db init 失败时其它仍可用。 */
@@ -30,10 +30,11 @@ static struct fdb_tsdb s_pedo_tsdb;   /* "pedo"  @ fdb_tsdb1 分区 */
 static struct fdb_bf   s_asset_bf;    /* dir 在 env kvdb，data @ bf_data 分区 */
 #endif
 
-/* FDB_USING_TIMESTAMP_64BIT changes both the TSDB sector header and each log
- * index. FlashDB's magic word does not encode that choice, so a 32-bit layout
- * cannot be detected safely by fdb_tsdb_init(). Keep the migration marker in
- * the independent KVDB and erase only the pedometer partition when needed.
+/* The pedometer layout marker covers storage format and record timestamp
+ * semantics. Version 2 enabled FlashDB 64-bit timestamps; version 3 changes
+ * sport timestamps from closing instants to natural-quarter bucket starts.
+ * Keep the marker in the independent KVDB and erase only the pedometer
+ * partition when either kind of incompatible change is introduced.
  *
  * The marker is written last. A reset during migration therefore causes the
  * whole operation to be retried on the next boot instead of accepting a
@@ -78,7 +79,8 @@ static int migrate_pedo_layout(void)
         return -1;
     }
 
-    LOGI("pedo TSDB migrated to 64-bit timestamp layout");
+    LOGI("pedo TSDB migrated to layout version %u",
+         (unsigned)PEDO_LAYOUT_VERSION);
     return 0;
 }
 

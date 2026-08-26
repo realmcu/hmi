@@ -18,7 +18,7 @@
  *
  * Persisting is driven from outside this task: EVT_TIME_TICK_15MIN arrives on
  * app_task, and health_worker_on_bucket_boundary() drains s_bucket_acc, builds
- * a health_pedo_record_t stamped with the boundary the tick reported, hands it
+ * a health_pedo_record_t stamped with the closed bucket's start boundary, hands it
  * to health_db_append, snapshots today and notifies app_health — all on the
  * event dispatcher, so a sector erase there stalls event dispatch.
  *
@@ -219,11 +219,11 @@ static void today_snapshot(health_daily_rollup_t *out)
  * Two callers: the bucket-boundary tick (on app_task, via
  * health_worker_on_bucket_boundary) and the worker's own stop path.
  *
- * @c boundary_sec is the record's timestamp. For a scheduled flush it is the
- * boundary app_time reported, NOT the moment this runs — the tick travels
- * through the event queue, so reading the clock here would drift the record
- * off the boundary. A partial flush passes 0 and gets the current time
- * instead, since there is no boundary to align to.
+ * @c boundary_sec is the closing boundary reported by app_time. A scheduled
+ * flush uses the preceding natural-quarter boundary as the record timestamp.
+ * A partial flush passes 0 and maps the current time to the start of its
+ * natural-quarter bucket. Thus every record describes [ts, ts + 15 minutes),
+ * even when PARTIAL_BUCKET says only part of that logical interval was sampled.
  *
  * Drains the bucket only — the today total is fed directly by the sample
  * callback and is never drained here, so a flush failure cannot make today's
@@ -263,13 +263,34 @@ static void flush_step_bucket(bool partial_bucket, uint32_t boundary_sec)
     uint32_t calories_dkcal = snap.calories_x100 / 10000u;
     if (calories_dkcal > 0xFFFF) { calories_dkcal = 0xFFFF; }
 
-    /* A scheduled flush is stamped with the boundary the tick reported; the
-     * stop path has no boundary to align to, so it asks app_time — the clock
-     * owner — for the current instant. */
-    uint32_t ts = (boundary_sec != 0u) ? boundary_sec : app_time_now();
-    if (ts == 0)
+    const uint32_t bucket_sec = HEALTH_BUCKET_MIN * 60u;
+    uint32_t ts;
+    if (boundary_sec != 0u)
     {
-        APP_LOGE("flush rejected: RTC time is invalid");
+        if (boundary_sec < bucket_sec)
+        {
+            APP_LOGE("flush rejected: bucket boundary is invalid");
+            bucket_merge_back(&snap, mode);
+            mutex_give(s_flush_mutex);
+            return;
+        }
+        ts = boundary_sec - bucket_sec;
+    }
+    else
+    {
+        uint32_t now = app_time_now();
+        if (now == 0u)
+        {
+            APP_LOGE("flush rejected: RTC time is invalid");
+            bucket_merge_back(&snap, mode);
+            mutex_give(s_flush_mutex);
+            return;
+        }
+        ts = now - (now % bucket_sec);
+    }
+    if (ts == 0u)
+    {
+        APP_LOGE("flush rejected: bucket start is invalid");
         bucket_merge_back(&snap, mode);
         mutex_give(s_flush_mutex);
         return;

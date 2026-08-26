@@ -102,14 +102,9 @@ int health_db_append_pedo(health_pedo_record_t *rec)
     }
     if (rec_time == last_time)
     {
-        if (rec->ts == UINT32_MAX)
-        {
-            db_unlock();
-            APP_LOGE("pedo timestamp cannot advance past UINT32_MAX");
-            return -ERANGE;
-        }
-        rec->ts++;
-        rec_time++;
+        db_unlock();
+        APP_LOGE("duplicate pedo bucket timestamp=%u", (unsigned)rec->ts);
+        return -EEXIST;
     }
     fdb_err_t e = fdb_tsl_append_with_ts(tsdb,
                                          fdb_blob_make(&blob, rec, sizeof(*rec)),

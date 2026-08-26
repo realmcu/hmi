@@ -144,9 +144,10 @@ static void on_evt_user_unbound(app_event_id_t id, const void *payload,
  * Forwarding them rather than re-deriving them keeps a single
  * definition of "which 15-minute bucket are we in" for the whole firmware.
  *
- * At wall-clock midnight app_time publishes DAY_CHANGED before TICK_15MIN, so
- * today's totals are cleared before the bucket that opens the new day is
- * handed over. */
+ * At wall-clock midnight app_time publishes DAY_CHANGED before TICK_15MIN.
+ * The running day total is therefore cleared before the tick persists the
+ * preceding day's [23:45, 00:00) bucket. The bucket accumulator is independent
+ * of that day-total reset, so its samples are retained. */
 static void on_evt_time_tick_15min(app_event_id_t id, const void *payload,
                                    size_t len, void *user)
 {
