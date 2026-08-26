@@ -24,6 +24,9 @@
 #include "wifi_8711.h"
 #endif
 
+
+#define APP_EBADGE_VERSION "0.0.2"
+
 int main(void)
 {
     /* DLPS must be initialized and locked before any other initialization. */
@@ -57,7 +60,7 @@ int main(void)
 
 
     app_system_lower_init();
-    printf("Hello World! %s\n", CONFIG_BOARD_TARGET);
+    printf("\nHello World! Version: %s, %s\n", APP_EBADGE_VERSION, CONFIG_BOARD_TARGET);
     printf("[main] thread id: %p, name: %s, priority: %d\n",
            k_current_get(),
            k_thread_name_get(k_current_get()),

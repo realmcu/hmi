@@ -155,7 +155,7 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
     {
         return;
     }
-    
+
     uint32_t total_section_cnt = (rtk_lcd_hal_get_height() / LCD_SECTION_HEIGHT + ((
             rtk_lcd_hal_get_height() % LCD_SECTION_HEIGHT) ? 1 : 0));
 
@@ -205,7 +205,7 @@ static void gui_dc_lcd_power_off(void)
         return;
     }
     rtk_lcd_hal_set_display(false);
-    rtk_lcd_hal_lcd_enter_dlps();
+    // rtk_lcd_hal_lcd_enter_dlps();
     sys_hall_auto_sleep_in_idle(true);
     app_dlps_enable(APP_DLPS_ENTER_CHECK_DISPLAY);
 }
