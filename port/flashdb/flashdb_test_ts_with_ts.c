@@ -143,8 +143,8 @@ static int run_iter_all(fdb_tsdb_t tsdb)
 /* ------------------------------------------------------------------ */
 static void run_query_count(fdb_tsdb_t tsdb, int expect)
 {
-    LOGI("--- query_count over [0, INT32_MAX] ---");
-    size_t cnt = fdb_tsl_query_count(tsdb, 0, (fdb_time_t)0x7FFFFFFF, FDB_TSL_WRITE);
+    LOGI("--- query_count over [0, UINT32_MAX] ---");
+    size_t cnt = fdb_tsl_query_count(tsdb, 0, (fdb_time_t)UINT32_MAX, FDB_TSL_WRITE);
     LOGI("query_count = %zu (iter reported %d)  %s",
          cnt, expect,
          (int)cnt == expect ? "[OK]" : "[MISMATCH]");

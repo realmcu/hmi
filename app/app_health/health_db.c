@@ -38,6 +38,9 @@ APP_LOG_MODULE_REGISTER(health_db);
 
 #define HEALTH_SYNCED_KEY  "health.synced"
 
+_Static_assert(sizeof(fdb_time_t) >= sizeof(int64_t),
+               "health TSDB requires FDB_USING_TIMESTAMP_64BIT");
+
 static void *s_health_db_lock;
 
 static void db_lock(void)
@@ -89,20 +92,28 @@ int health_db_append_pedo(health_pedo_record_t *rec)
     db_lock();
     fdb_time_t last_time = 0;
     fdb_tsdb_control(tsdb, FDB_TSDB_CTRL_GET_LAST_TIME, &last_time);
-    if ((fdb_time_t)rec->ts < last_time || last_time >= INT32_MAX)
+    fdb_time_t rec_time = (fdb_time_t)rec->ts;
+    if (rec_time < last_time || last_time > (fdb_time_t)UINT32_MAX)
     {
         db_unlock();
-        APP_LOGE("pedo timestamp rollback now=%u last=%d",
-                 (unsigned)rec->ts, (int)last_time);
+        APP_LOGE("pedo timestamp rollback now=%u last=%lld",
+                 (unsigned)rec->ts, (long long)last_time);
         return -ERANGE;
     }
-    if ((fdb_time_t)rec->ts == last_time)
+    if (rec_time == last_time)
     {
+        if (rec->ts == UINT32_MAX)
+        {
+            db_unlock();
+            APP_LOGE("pedo timestamp cannot advance past UINT32_MAX");
+            return -ERANGE;
+        }
         rec->ts++;
+        rec_time++;
     }
     fdb_err_t e = fdb_tsl_append_with_ts(tsdb,
                                          fdb_blob_make(&blob, rec, sizeof(*rec)),
-                                         (fdb_time_t)rec->ts);
+                                         rec_time);
     db_unlock();
     if (e != FDB_NO_ERR)
     {
@@ -250,9 +261,8 @@ static size_t health_db_iter(uint32_t from, uint32_t to,
         .stop     = false,
     };
 
-    /* FDB compares timestamps as signed fdb_time_t, so the open upper bound is
-     * INT32_MAX rather than UINT32_MAX. */
-    fdb_time_t hi = (to == 0) ? (fdb_time_t)0x7FFFFFFF : (fdb_time_t)to;
+    /* fdb_time_t is 64-bit, while the protocol scalar remains uint32_t. */
+    fdb_time_t hi = (to == 0u) ? (fdb_time_t)UINT32_MAX : (fdb_time_t)to;
 
     db_lock();
     fdb_tsl_iter_by_time(tsdb, (fdb_time_t)from, hi, pedo_iter_adapter, &ctx);

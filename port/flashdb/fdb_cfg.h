@@ -15,6 +15,17 @@
 /* Enable Time Series Database (TSDB) */
 #define FDB_USING_TSDB
 
+/*
+ * Store TSDB index timestamps as signed 64-bit values. The application-level
+ * wall clock remains uint32_t (1970..2106), but the default signed 32-bit
+ * fdb_time_t would reinterpret values after 2038-01-19 as negative.
+ *
+ * This changes the on-flash TSDB sector-header and log-index layouts. Devices
+ * upgrading from a build that used 32-bit timestamps must erase/recreate the
+ * fdb_tsdb1 (pedo) partition as part of that breaking development upgrade.
+ */
+#define FDB_USING_TIMESTAMP_64BIT
+
 /* Enable Big File extension (depends on KVDB + FAL_MODE) */
 #define FDB_USING_BF
 
