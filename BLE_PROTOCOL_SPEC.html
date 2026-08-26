@@ -1082,11 +1082,11 @@ FlashDB TSDB 中，线上记录与对应 FlashDB 记录字段一一对应。多�
 FlashDB 中的一条 15 分钟运动桶记录，同时携带该桶内的步数、距离、
 卡路里和平均心率。平均心率是否有效由 <code>Flags.HAS_HR</code> 指示；它不是独立
 的实时心率采样。</p>
-<p>每个桶的配置宽度固定为 15 分钟。正常完整桶在墙上时钟的
-<code>00/15/30/45</code> 分钟边界闭合，统计区间为
-<code>(Timestamp - 15 分钟, Timestamp]</code>。其中 <code>Timestamp</code> 是桶的结束和
-落库时间，与 FlashDB 记录时间完全一致。仅因关机、解绑、低电或调试而提前
-落库的 partial bucket 可以不落在自然刻钟边界。</p>
+<p>每个桶的配置宽度固定为 15 分钟，并与墙上时钟的
+<code>00/15/30/45</code> 分钟边界对齐。统计区间为左闭右开区间
+<code>[Timestamp, Timestamp + 15 分钟)</code>，其中 <code>Timestamp</code> 是逻辑桶的
+起始时间，与 FlashDB 记录时间完全一致。正常桶和 partial bucket 的
+<code>Timestamp</code> 都必须落在自然刻钟边界。</p>
 <p>Timestamp 即设备显示的墙上时钟时刻（wall clock seconds，1970 纪元），
 手机直接渲染即可，无需任何时区转换。</p>
 <table>
@@ -1131,7 +1131,7 @@ FlashDB 中的一条 15 分钟运动桶记录，同时携带该桶内的步数�
 <td>Timestamp</td>
 <td>4 bytes</td>
 <td>大端</td>
-<td>墙上时钟秒（自 1970-01-01 起算，与设备显示一致），与 FlashDB 记录时间一致</td>
+<td>自然刻钟逻辑桶的起始墙上时钟秒（自 1970-01-01 起算，与设备显示一致），与 FlashDB 记录时间一致</td>
 </tr>
 <tr>
 <td>4</td>
@@ -1195,9 +1195,14 @@ FlashDB 中的一条 15 分钟运动桶记录，同时携带该桶内的步数�
 必须设置 <code>Flags.PARTIAL_BUCKET=1</code>。<code>Bucket minutes</code> 仍固定为 <code>15</code>，表示
 该记录属于 15 分钟统计模型；它不表示 partial bucket 的实际采集时长。
 正常完整桶必须设置 <code>Flags.PARTIAL_BUCKET=0</code>。</p>
-<p><code>Timestamp</code> 始终直接使用 FlashDB 记录的落库时间。对于 partial bucket，
-手机只能将其标记为“不完整的 15 分钟桶”，不得根据 <code>Bucket minutes</code>
-推断实际采集开始时间，也不得修改记录本身的 Timestamp。</p>
+<p><code>Timestamp</code> 始终是所属自然刻钟逻辑桶的起始时间。例如设备仅在
+<code>10:07~10:12</code> 采集并提前落库，该记录仍属于 <code>[10:00, 10:15)</code>，
+<code>Timestamp=10:00</code> 且 <code>PARTIAL_BUCKET=1</code>。手机只能将其标记为
+“不完整的 15 分钟桶”；当前协议不表达实际采集起止时间，不得根据
+<code>Bucket minutes</code> 反推。设备保证同一自然刻钟最多产生一条运动记录。</p>
+<p>手机必须直接按 <code>Timestamp</code> 进行日期和时段聚合，不得减一秒或减
+15 分钟。例如在 <code>2026-08-27 00:00:00</code> 闭合的最后一个桶使用
+<code>Timestamp=2026-08-26 23:45:00</code>，因此归属 <code>2026-08-26</code>。</p>
 <p>单条记录示例：</p>
 <pre><code class="language-text">Timestamp       = 0x12345678
 Steps           = 0x1122
