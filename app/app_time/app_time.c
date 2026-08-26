@@ -59,11 +59,11 @@ int app_time_set(uint32_t sec)
         .yday   = 0xFFFFu,
         .nsec   = 0u,
     };
-    int rc = posix_ioctl(rtc, POSIX_RTC_IOCTL_SET_TIME, &rtc_time);
+    int rc = posix_ioctl(rtc, POSIX_RTC_IOCTL_SET_CALENDAR, &rtc_time);
     posix_close(rtc);
     if (rc != POSIX_OK)
     {
-        APP_LOGE("RTC SET_TIME failed rc=%d", rc);
+        APP_LOGE("RTC SET_CALENDAR failed rc=%d", rc);
         return -1;
     }
 
@@ -106,7 +106,7 @@ uint32_t app_time_now(void)
     if (rtc == POSIX_FD_NULL) { return 0; }
 
     posix_rtc_time_t t;
-    int rc = posix_ioctl(rtc, POSIX_RTC_IOCTL_GET_TIME, &t);
+    int rc = posix_ioctl(rtc, POSIX_RTC_IOCTL_GET_CALENDAR, &t);
     posix_close(rtc);
     return (rc != POSIX_OK) ? 0 : civil_to_epoch(&t);
 }
@@ -123,7 +123,7 @@ static uint32_t rtc_now_from_isr(void)
 {
     posix_rtc_time_t t;
     if (s_rtc_fd == POSIX_FD_NULL) { return 0u; }
-    if (posix_ioctl(s_rtc_fd, POSIX_RTC_IOCTL_GET_TIME, &t) != POSIX_OK) { return 0u; }
+    if (posix_ioctl(s_rtc_fd, POSIX_RTC_IOCTL_GET_CALENDAR, &t) != POSIX_OK) { return 0u; }
     return civil_to_epoch(&t);
 }
 

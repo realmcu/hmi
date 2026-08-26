@@ -67,7 +67,7 @@ fdb_time_t flashdb_get_time(void)
     }
 
     posix_rtc_time_t rt;
-    if (posix_ioctl(s_rtc_fd, POSIX_RTC_IOCTL_GET_TIME, &rt) != POSIX_OK)
+    if (posix_ioctl(s_rtc_fd, POSIX_RTC_IOCTL_GET_CALENDAR, &rt) != POSIX_OK)
     {
         return s_last_time;
     }

@@ -16,9 +16,9 @@ int posix_ioctl(posix_fd_t fd, unsigned long cmd, void *arg)
     (void)fd;
     switch (cmd)
     {
-    case POSIX_RTC_IOCTL_GET_TIME:
+    case POSIX_RTC_IOCTL_GET_CALENDAR:
         *(posix_rtc_time_t *)arg = stub_rtc; return POSIX_OK;
-    case POSIX_RTC_IOCTL_SET_TIME:
+    case POSIX_RTC_IOCTL_SET_CALENDAR:
         stub_rtc = *(posix_rtc_time_t *)arg; return POSIX_OK;
     case POSIX_RTC_IOCTL_SET_UPDATE_CB:
         stub_tick_cb = ((posix_rtc_update_t *)arg)->callback; return POSIX_OK;
