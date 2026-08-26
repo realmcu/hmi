@@ -16,6 +16,7 @@
 
 #include <fal_def.h>
 #include <fmc_api.h>
+#include "os_sync.h"
 #include "fal_cfg.h"
 
 /* ============================================================
@@ -72,14 +73,17 @@ static int rtk_flash_erase(long offset, size_t size)
     uint32_t abs_addr = RTK_FLASH_START_ADDR + (uint32_t)offset;
     uint32_t end_addr = abs_addr + (uint32_t)size;
 
+    uint32_t irq_key = os_lock();
     for (uint32_t addr = abs_addr; addr < end_addr; addr += RTK_FLASH_BLOCK_SIZE)
     {
         if (!fmc_flash_nor_erase(addr, FMC_FLASH_NOR_ERASE_SECTOR))
         {
+            os_unlock(irq_key);
             log_e("Flash erase failed, abs_addr=0x%08x", addr);
             return -1;
         }
     }
+    os_unlock(irq_key);
     return (int)size;
 }
 
