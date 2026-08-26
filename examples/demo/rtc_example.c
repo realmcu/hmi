@@ -64,11 +64,11 @@ void example_rtc(void)
         .yday   = 0xFFFF,
         .nsec   = 0,
     };
-    posix_ioctl(rtc, POSIX_RTC_IOCTL_SET_TIME, &now);
+    posix_ioctl(rtc, POSIX_RTC_IOCTL_SET_CALENDAR, &now);
 
     /* === 3. 读回时间 === */
     posix_rtc_time_t rd;
-    posix_ioctl(rtc, POSIX_RTC_IOCTL_GET_TIME, &rd);
+    posix_ioctl(rtc, POSIX_RTC_IOCTL_GET_CALENDAR, &rd);
     /* rd.year=2026, rd.month=7, ... */
 
     /* === 4. 装闹钟：5 秒后触发（只匹配 second 字段） === */
@@ -173,13 +173,13 @@ static int cmd_rtc(const struct shell *sh, size_t argc, char **argv)
     if (strcmp(argv[1], "get") == 0)
     {
         posix_rtc_time_t t;
-        int ret = posix_ioctl(s_rtc_fd, POSIX_RTC_IOCTL_GET_TIME, &t);
+        int ret = posix_ioctl(s_rtc_fd, POSIX_RTC_IOCTL_GET_CALENDAR, &t);
         if (ret == POSIX_ERR_AGAIN)
         {
             shell_warn(sh, "time not set yet, use 'posix_rtc set ...' first");
             return 0;
         }
-        if (ret != POSIX_OK) { shell_error(sh, "GET_TIME ret=%d", ret); return -1; }
+        if (ret != POSIX_OK) { shell_error(sh, "GET_CALENDAR ret=%d", ret); return -1; }
         shell_print(sh, "%04u-%02u-%02u %02u:%02u:%02u",
                     t.year, t.month, t.mday, t.hour, t.minute, t.second);
         return 0;
@@ -204,8 +204,8 @@ static int cmd_rtc(const struct shell *sh, size_t argc, char **argv)
             .yday   = 0xFFFF,
             .nsec   = 0,
         };
-        int ret = posix_ioctl(s_rtc_fd, POSIX_RTC_IOCTL_SET_TIME, &t);
-        if (ret != POSIX_OK) { shell_error(sh, "SET_TIME ret=%d", ret); return -1; }
+        int ret = posix_ioctl(s_rtc_fd, POSIX_RTC_IOCTL_SET_CALENDAR, &t);
+        if (ret != POSIX_OK) { shell_error(sh, "SET_CALENDAR ret=%d", ret); return -1; }
         shell_print(sh, "ok");
         return 0;
     }
@@ -220,8 +220,8 @@ static int cmd_rtc(const struct shell *sh, size_t argc, char **argv)
         }
 
         posix_rtc_time_t now;
-        int ret = posix_ioctl(s_rtc_fd, POSIX_RTC_IOCTL_GET_TIME, &now);
-        if (ret != POSIX_OK) { shell_error(sh, "GET_TIME ret=%d", ret); return -1; }
+        int ret = posix_ioctl(s_rtc_fd, POSIX_RTC_IOCTL_GET_CALENDAR, &now);
+        if (ret != POSIX_OK) { shell_error(sh, "GET_CALENDAR ret=%d", ret); return -1; }
 
         posix_rtc_alarm_t al =
         {

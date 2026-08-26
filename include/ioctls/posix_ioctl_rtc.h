@@ -102,8 +102,8 @@ typedef struct
 } posix_rtc_caps_t;
 
 /* -------- ioctl 命令 -------- */
-#define POSIX_RTC_IOCTL_GET_TIME         POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 1)
-#define POSIX_RTC_IOCTL_SET_TIME         POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 2)
+#define POSIX_RTC_IOCTL_GET_CALENDAR     POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 1)
+#define POSIX_RTC_IOCTL_SET_CALENDAR     POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 2)
 #define POSIX_RTC_IOCTL_GET_CAPS         POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 3)
 
 /* 闹钟：SET_ALARM 用 posix_rtc_alarm_t（含 callback），

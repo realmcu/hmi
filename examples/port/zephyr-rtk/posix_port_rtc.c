@@ -144,7 +144,7 @@ static void rtc_time_to_zephyr(const posix_rtc_time_t *p, struct rtc_time *z)
  * 用 __DATE__/__TIME__ 作为默认时间。仅"比 2000-01-01 强"的兜底：
  *   - 烧录 → 上电之间的时间差没有校准
  *   - 增量编译时，只有本 .c 重编 __DATE__/__TIME__ 才会更新
- * 精确墙钟仍需上层用 NTP / 用户设定 SET_TIME 覆盖。
+ * 精确墙钟仍需上层用 NTP / 用户设定 SET_CALENDAR 覆盖。
  *
  * __DATE__ 格式："Jul 16 2026"（日 1-9 前有空格）
  * __TIME__ 格式："12:34:56"
@@ -297,7 +297,7 @@ static int rtc_ioctl(void *drv_data, void *file_priv,
 
     switch (cmd)
     {
-    case POSIX_RTC_IOCTL_GET_TIME:
+    case POSIX_RTC_IOCTL_GET_CALENDAR:
         {
             if (!arg) { return POSIX_ERR_INVAL; }
             struct rtc_time z;
@@ -308,7 +308,7 @@ static int rtc_ioctl(void *drv_data, void *file_priv,
             return POSIX_OK;
         }
 
-    case POSIX_RTC_IOCTL_SET_TIME:
+    case POSIX_RTC_IOCTL_SET_CALENDAR:
         {
             if (posix_port_in_isr()) { return POSIX_ERR_ISR; }
             if (!arg) { return POSIX_ERR_INVAL; }
