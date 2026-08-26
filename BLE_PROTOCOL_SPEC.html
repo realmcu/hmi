@@ -220,7 +220,6 @@ li { margin: 4px 0; }
 <li><a href="#l1-header-字节布局big-endian">L1 Header 字节布局（Big-Endian）</a></li>
 <li><a href="#crc16-计算范围">CRC16 计算范围</a></li>
 <li><a href="#l2-header-字节布局big-endian">L2 Header 字节布局（Big-Endian）</a></li>
-<li><a href="#date-字段16-bits各命令通用">Date 字段（16 bits，各命令通用）</a></li>
 </ul>
 </li>
 </ul>
@@ -1083,10 +1082,11 @@ FlashDB TSDB 中，线上记录与对应 FlashDB 记录字段一一对应。多�
 FlashDB 中的一条 15 分钟运动桶记录，同时携带该桶内的步数、距离、
 卡路里和平均心率。平均心率是否有效由 <code>Flags.HAS_HR</code> 指示；它不是独立
 的实时心率采样。</p>
-<p>每个桶的配置宽度固定为 15 分钟。正常记录的统计区间为
-<code>(Timestamp - 15 分钟, Timestamp]</code>，其中 <code>Timestamp</code> 是该桶的结束和
-落库时间，与 FlashDB 记录时间完全一致。该时间桶是设备运行期间的滚动
-15 分钟桶，不要求与自然日的 <code>00/15/30/45</code> 分钟边界对齐。</p>
+<p>每个桶的配置宽度固定为 15 分钟。正常完整桶在墙上时钟的
+<code>00/15/30/45</code> 分钟边界闭合，统计区间为
+<code>(Timestamp - 15 分钟, Timestamp]</code>。其中 <code>Timestamp</code> 是桶的结束和
+落库时间，与 FlashDB 记录时间完全一致。仅因关机、解绑、低电或调试而提前
+落库的 partial bucket 可以不落在自然刻钟边界。</p>
 <p>Timestamp 即设备显示的墙上时钟时刻（wall clock seconds，1970 纪元），
 手机直接渲染即可，无需任何时区转换。</p>
 <table>
@@ -1221,7 +1221,7 @@ Reserved        = 0x00000000
 <p><strong>方向</strong>：设备→手机<br />
 <strong>Value</strong>：Record count（1 byte）+ N × Sleep record（8 bytes）</p>
 <p>睡眠使用独立的 FlashDB Sleep TSDB。睡眠算法每次确认状态变化时，以该状态
-实际生效的 Unix 时间戳写入一条 <code>sleep_state_record_t</code>。算法产生的回溯
+实际生效的墙上时钟秒写入一条 <code>sleep_state_record_t</code>。算法产生的回溯
 分钟数必须在写入 FlashDB 前折算到 Timestamp，协议层不再转换时间。</p>
 <table>
 <thead>
@@ -2262,12 +2262,6 @@ Byte 7:  [7:0]  Sequence ID 低字节
 <pre><code>Byte 0:  [7:0]  Command ID
 Byte 1:  [7:4]  Version
          [3:0]  Reserve
-</code></pre>
-<h3 id="date-字段16-bits各命令通用">Date 字段（16 bits，各命令通用）</h3>
-<pre><code>[15]    Reserve
-[14:9]  Year   (0~63, 从 2000 年起)
-[8:5]   Month  (1~12)
-[4:0]   Day    (1~31)
 </code></pre>
 </main>
 </div>
