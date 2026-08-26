@@ -37,17 +37,17 @@ enum
      *
      * Tick events fire on wall-clock boundaries: the payload is wall
      * clock seconds (1970 epoch), which IS the moment the watch face
-     * shows. No timezone offset exists anywhere in this path.
+     * shows. The value flows through this path unchanged.
      */
     EVT_TIME_SYNCED          = 0x0300, /* payload: app_evt_time_synced_t, wall clock has been set from phone */
     /* 0x0301 was a per-minute demo tick; retired with the app_time skeleton.
      * Left unused rather than reassigned so old logs stay unambiguous. */
-    /* Both carry uint32_t: the boundary instant in Unix seconds. That is the
-     * boundary itself, not the moment of delivery — dispatch goes through the
+    /* Both carry uint32_t wall clock seconds. The value is the boundary
+     * itself, not the moment of delivery — dispatch goes through the
      * queue, so a subscriber may run a few ms late and must timestamp data
      * with this value rather than re-reading the clock. */
-    EVT_TIME_TICK_15MIN      = 0x0302, /* payload: uint32_t utc_sec, at local :00/:15/:30/:45 */
-    EVT_TIME_DAY_CHANGED     = 0x0303, /* payload: uint32_t utc_sec, at local midnight */
+    EVT_TIME_TICK_15MIN      = 0x0302, /* payload: uint32_t sec, at wall-clock :00/:15/:30/:45 */
+    EVT_TIME_DAY_CHANGED     = 0x0303, /* payload: uint32_t sec, at wall-clock midnight */
 
     /* Setting (0x400~) */
     EVT_SETTING_CHANGED      = 0x0400, /* payload: app_evt_setting_changed_t */

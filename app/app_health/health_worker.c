@@ -23,11 +23,11 @@
  * event dispatcher, so a sector erase there stalls event dispatch.
  *
  * Boundary ownership: this module no longer decides when a bucket ends.
- * app_time owns the wall clock and the timezone offset and publishes the
- * local :00/:15/:30/:45 boundaries, so every consumer agrees on which bucket
+ * app_time owns the wall clock and publishes the :00/:15/:30/:45 boundaries,
+ * so every consumer agrees on which bucket
  * is current and two devices booted at different moments still align — which
- * is what makes cross-device aggregation on the phone possible. The local-day
- * rollover arrives the same way, as EVT_TIME_DAY_CHANGED.
+ * is what makes cross-device aggregation on the phone possible. The wall-clock
+ * day rollover arrives the same way, as EVT_TIME_DAY_CHANGED.
  *
  * The worker is owned entirely by this module and uses the platform OSIF
  * task abstraction rather than an RTOS-specific API.
@@ -64,7 +64,7 @@ APP_LOG_MODULE_REGISTER(health_worker);
  * today total is kept here in raw form rather than as a health_daily_rollup_t.
  *
  *  - s_bucket_acc is drained by the flush routine every HEALTH_BUCKET_MIN.
- *  - s_today_acc spans the whole UTC day and is NOT touched by flush, so
+ *  - s_today_acc spans the whole wall-clock day and is NOT touched by flush, so
  *    "today" reflects the walk in progress, not just what has been persisted.
  *
  * Both are updated in the same critical section as the sample that produced
@@ -82,7 +82,7 @@ static uint8_t      s_bucket_last_mode;
 static uint32_t     s_bucket_samples;
 
 /* Zeroed by health_worker_on_day_changed(); app_time owns the notion of
- * "the local day rolled over", so no day index is tracked here. */
+ * "the wall-clock day rolled over", so no day index is tracked here. */
 static health_acc_t s_today_acc;
 
 static bool s_stop_requested;
@@ -127,7 +127,7 @@ void health_worker_on_day_changed(void)
     mutex_take(s_state_mutex);
     memset(&s_today_acc, 0, sizeof(s_today_acc));
     mutex_give(s_state_mutex);
-    APP_LOGI("local day changed: today totals reset");
+    APP_LOGI("wall-clock day changed: today totals reset");
 }
 
 static void pedometer_update_cb(gsa_pedo_info_t *info)

@@ -37,7 +37,7 @@ extern "C" {
 extern const app_module_t app_health_module;
 
 /**
- * @brief  Copy of the current UTC-day rollup (steps/distance/calories).
+ * @brief  Copy of the current wall-clock-day rollup (steps/distance/calories).
  *
  * Copies the latest in-memory rollup. Zero-initialised until the worker
  * is seeded or records its first bucket. */

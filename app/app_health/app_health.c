@@ -11,7 +11,7 @@
  * satisfied since boot:
  *
  *   A) EVT_TIME_SYNCED — the phone has set the wall clock, so every
- *      persisted record can carry a real UTC timestamp.
+ *      persisted record can carry a valid wall clock timestamp.
  *   B) EVT_USER_BOUND  — the phone has completed the bind handshake,
  *      i.e. the user has explicitly opted in to letting the device
  *      collect and store their activity data.
@@ -140,11 +140,11 @@ static void on_evt_user_unbound(app_event_id_t id, const void *payload,
     health_worker_stop(HEALTH_STOP_DISCARD);
 }
 
-/* Both time events come from app_time, which owns the wall clock and the
- * timezone offset — forwarding them rather than re-deriving them keeps a single
+/* Both time events come from app_time, which owns the wall clock boundaries.
+ * Forwarding them rather than re-deriving them keeps a single
  * definition of "which 15-minute bucket are we in" for the whole firmware.
  *
- * At local midnight app_time publishes DAY_CHANGED before TICK_15MIN, so
+ * At wall-clock midnight app_time publishes DAY_CHANGED before TICK_15MIN, so
  * today's totals are cleared before the bucket that opens the new day is
  * handed over. */
 static void on_evt_time_tick_15min(app_event_id_t id, const void *payload,

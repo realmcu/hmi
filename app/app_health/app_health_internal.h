@@ -82,8 +82,8 @@ _Static_assert(sizeof(health_pedo_record_t) == 18,
  * Aggregated view of "today so far", rendered on demand from
  * health_worker's RAM accumulator. Never persisted: a reboot restarts the
  * day at zero, and the per-bucket TSDB records are the durable history.
- * The accumulator behind it is zeroed when the UTC day rolls over, which is
- * detected on read rather than by a midnight timer.
+ * The accumulator behind it is zeroed when the wall-clock day rolls over,
+ * which is detected on read rather than by a midnight timer.
  * -------------------------------------------------------------- */
 typedef struct
 {

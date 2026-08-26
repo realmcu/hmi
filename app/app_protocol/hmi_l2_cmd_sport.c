@@ -235,7 +235,7 @@ static void sport_on_req(const hmi_l2_kv_t *kv)
      * version 0 dialect, where SPORT_REQ carried no Data type at all. Do not
      * paper over it: version 0 also packs sport records as 8-byte bitfields
      * (vs. our 18-byte fields), dates as packed year/month/day + an 11-bit
-     * intra-day offset (vs. Unix timestamps), and requires MORE/START/END to
+     * intra-day offset (vs. wall clock seconds), and requires MORE/START/END to
      * carry an EMPTY value -- a v1 device reply would fail to parse on a v0
      * peer anyway. Defaulting the Data type here would buy nothing. */
     if (kv->val == NULL || kv->val_len != 1u)

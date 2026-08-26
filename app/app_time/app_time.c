@@ -134,7 +134,7 @@ static void rtc_second_cb(posix_fd_t fd, void *arg)
     uint32_t now = rtc_now_from_isr();
     if (now == 0u) { return; }
 
-    /* Pure division: no timezone offset. Day boundary IS calendar midnight. */
+    /* The wall-clock day boundary is calendar midnight. */
     uint32_t day = now / 86400u;
 
     bool day_rolled = false;
