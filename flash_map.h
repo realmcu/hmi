@@ -1,8 +1,4 @@
-/*
- * Copyright (c) 2026, Realtek Semiconductor Corporation
- *
- * SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
- */
+/** Copyright(c) 2018, Realtek Semiconductor Corporation.All rights reserved.*/
 
 #ifndef _FLASH_MAP_H_
 #define _FLASH_MAP_H_
@@ -13,28 +9,26 @@
 
 
 /* ========== High Level Flash Layout Configuration ========== */
-#define EQ_FITTING_ADDR                 0x70000000
-#define EQ_FITTING_SIZE                 0x00000400  //1K Bytes
-#define RSV_ADDR                        0x70000400
-#define RSV_SIZE                        0x00001C00  //7K Bytes
+#define EQ_FITTING_ADDR                 0x00000000
+#define EQ_FITTING_SIZE                 0x00000000  //0K Bytes
+#define RSV_ADDR                        0x70000000
+#define RSV_SIZE                        0x00002000  //8K Bytes
 #define OEM_CFG_ADDR                    0x70002000
 #define OEM_CFG_SIZE                    0x00001400  //5K Bytes
 #define BOOT_PATCH0_ADDR                0x70004000
 #define BOOT_PATCH0_SIZE                0x00003000  //12K Bytes
 #define BOOT_PATCH1_ADDR                0x70007000
 #define BOOT_PATCH1_SIZE                0x00003000  //12K Bytes
-#define PLATFORM_EXT_ADDR               0x7000A000
-#define PLATFORM_EXT_SIZE               0x00000000  //0K Bytes
-#define LOWERSTACK_EXT_ADDR             0x7000A000
-#define LOWERSTACK_EXT_SIZE             0x00000000  //0K Bytes
 #define UPPERSTACK_ADDR                 0x7000A000
 #define UPPERSTACK_SIZE                 0x0003F000  //252K Bytes
 #define OTA_BANK0_ADDR                  0x70049000
 #define OTA_BANK0_SIZE                  0x00255000  //2388K Bytes
 #define OTA_BANK1_ADDR                  0x7029E000
 #define OTA_BANK1_SIZE                  0x00255000  //2388K Bytes
-#define VP_DATA_ADDR                    0x704F3000
-#define VP_DATA_SIZE                    0x00032000  //200K Bytes
+#define VP_DATA_ADDR                    0x00000000
+#define VP_DATA_SIZE                    0x00000000  //0K Bytes
+#define FTL_ADDR                        0x704F3000
+#define FTL_SIZE                        0x00015000  //84K Bytes
 #define BKP_DATA1_ADDR                  0x00000000
 #define BKP_DATA1_SIZE                  0x00000000  //0K Bytes
 #define BKP_DATA2_ADDR                  0x70525000
@@ -44,11 +38,11 @@
 #define APP_DEFINED_SECTION_ADDR        0x70527000
 #define APP_DEFINED_SECTION_SIZE        0x0000F000  //60K Bytes
 #define USER_DATA1_ADDR                 0x70536000
-#define USER_DATA1_SIZE                 0x00A9C000  //10864K Bytes
+#define USER_DATA1_SIZE                 0x01AC9000  //27428K Bytes
 #define USER_DATA1_WITH_HEADER          1
-#define USER_DATA2_ADDR                 0x70FD2000
-#define USER_DATA2_SIZE                 0x00019000  //100K Bytes
-#define USER_DATA2_WITH_HEADER          1
+#define USER_DATA2_ADDR                 0x00000000
+#define USER_DATA2_SIZE                 0x00000000  //0K Bytes
+#define USER_DATA2_WITH_HEADER          0
 #define USER_DATA3_ADDR                 0x00000000
 #define USER_DATA3_SIZE                 0x00000000  //0K Bytes
 #define USER_DATA3_WITH_HEADER          0
@@ -67,8 +61,6 @@
 #define USER_DATA8_ADDR                 0x00000000
 #define USER_DATA8_SIZE                 0x00000000  //0K Bytes
 #define USER_DATA8_WITH_HEADER          0
-#define FTL_ADDR                        0x70FEB000
-#define FTL_SIZE                        0x00015000  //84K Bytes
 
 /* ========== OTA Bank0 Flash Layout Configuration ========== */
 #define BANK0_OTA_HDR_ADDR              0x70049000

@@ -25,7 +25,7 @@
 #endif
 
 
-#define APP_EBADGE_VERSION "0.0.2"
+#define APP_EBADGE_VERSION "0.0.3"
 
 int main(void)
 {
