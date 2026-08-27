@@ -4,6 +4,7 @@
 
 - `build.sh` —— `west build` 封装
 - `flash-linux.sh` —— 原生 Linux 下用 Linux 版 `mpcli` 烧录（本机当前用这个）
+- `flash-remote-app.sh` —— Linux 编译电脑通过工位电脑的远程烧录服务下载 `bin/app.bin`，无需本地串口
 - `flash-wsl.sh` —— WSL 里驱动 Windows 版 `mpcli.exe` 烧录（旧环境留档，Linux 下不用）
 - `flash-win32.bat` —— Windows 原生 cmd 下直接调 `mpcli.exe` 烧录（不进 WSL）
 - `flash-runtime-linux.sh` / `flash-runtime-wsl.sh` / `flash-runtime-win32.bat` —— 烧录**整套 runtime**（boot patch / upperstack / stack & sys patch / DSP / Config，共 11 个镜像），与上面三个「只烧 app.bin」的脚本一一对应，见「2.5 烧录 runtime」
@@ -40,6 +41,28 @@ DRY=1 scripts/build.sh                  # 只打印将要执行的命令，不�
 ---
 
 ## 2. 下载
+
+### 远程下载（编译电脑）
+
+工位电脑启动 `remote_flash_server.exe` 并在界面中启动 SSH 反向隧道后，Linux 编译电脑执行：
+
+```bash
+scripts/flash-remote-app.sh
+```
+
+默认连接 `127.0.0.1:18790`，上传 `<repo>/bin/app.bin`，并使用与本地 App 烧录相同的
+MPCLI 参数。服务地址、固件、地址和波特率可覆盖：
+
+```bash
+scripts/flash-remote-app.sh 127.0.0.1:18790
+SERVER=127.0.0.1:18790 FW=/path/to/app.bin scripts/flash-remote-app.sh
+ADDR=0x7009E000 BAUD=2000000 scripts/flash-remote-app.sh
+DRY=1 scripts/flash-remote-app.sh
+```
+
+远程下载不传 `-c`，下载串口由工位电脑的服务端界面选择。
+
+### 本地下载
 
 用 `scripts/flash-linux.sh` 在原生 Linux 下直接调用 **Linux 版 `mpcli`**（原生 ELF，v4.0.0.7）。烧录参数对齐 `flash-wsl.sh`。
 

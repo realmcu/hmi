@@ -9,6 +9,9 @@ dist/
 *.egg-info/
 *.egg
 
+# Remote flash server runtime uploads and task data
+/tool/mpcli/flash_server_data/
+
 # Virtual environments
 .venv/
 venv/
