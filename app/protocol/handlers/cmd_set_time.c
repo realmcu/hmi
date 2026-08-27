@@ -186,7 +186,7 @@ void handle_set_time(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
         return;
     }
 
-    int rc = posix_ioctl(rtc, POSIX_RTC_IOCTL_SET_TIME, &now);
+    int rc = posix_ioctl(rtc, POSIX_RTC_IOCTL_SET_CALENDAR, &now);
     (void)posix_close(rtc);
 
     if (rc != POSIX_OK)
