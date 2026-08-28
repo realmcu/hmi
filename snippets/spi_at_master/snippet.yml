@@ -1,0 +1,15 @@
+# SUPERSEDED -- 已被 snippets/wifi/ 取代（重构阶段 5 删除）
+#
+# snippets/wifi/ 与本 snippet 的 DT 内容和 Kconfig 符号**完全相同**（阶段 0
+# 刻意做成逐字节等价，只改了文件名和注释），所以：
+#
+#   -Snippet wifi          <- 用这个
+#   -Snippet spi_at_master <- 旧名字，编出来的固件一样，但会用 build_*_spi_at_master
+#                             目录，且不会随后续阶段更新
+#
+# 后续阶段（AT 解析器、Wi-Fi/socket 语义层、数据面）只改 snippets/wifi/，
+# 这个目录从现在起就是冻结的。见 note/spi-master-at-refactor-plan.md 阶段 5。
+name: spi_at_master
+append:
+  EXTRA_CONF_FILE: spi_at_master.conf
+  EXTRA_DTC_OVERLAY_FILE: spi_at_master.overlay

@@ -151,22 +151,36 @@ BUILD_ASSERT(sizeof(gui_rgb_data_head_t) == 8U,
 
 /* How long the BLE verdict waits for the data-plane ack before going out anyway.
  *
- * The ack is retried for TCP_CTRL_RETRY_MAX * TCP_CTRL_RETRY_MS (~4 s) plus one
- * AT transaction, and an AT round trip has been seen at 11..13 s on hardware
- * when it queues behind a WLSTATE poll.  20 s covers that with margin and still
- * leaves the App an answer well inside its own patience.
+ * The ack is now eight bytes we write ourselves: AT+SKTSENDRAW on the phone's own
+ * seed link, retried for TCP_CTRL_RETRY_MAX * TCP_CTRL_RETRY_MS (~4 s) plus the
+ * transaction itself.  A SKTSENDRAW is short -- a command, the 8711's ">>>", the
+ * payload, an OK -- so the honest budget is a few hundred milliseconds per try.
+ *
+ * What makes the figure much larger than that is queueing rather than latency: the
+ * AT link is single-flight and at_client queues four deep, so a SKTSENDRAW
+ * submitted behind an AT+WLSTARTAP waits for it, and that command does not answer
+ * until the radio is on the air -- up to ~25 s (AT_WIFI_AP_START_TIMEOUT_MS).
+ * That is the one command long enough to matter, and it cannot be ruled out here:
+ * under the per-transfer radio lifetime an offer arms the AP, and a transfer that
+ * finishes very quickly could still find that start in flight.
+ *
+ * 30 s therefore covers the worst real ordering with margin, and still leaves the
+ * App an answer inside its own patience (XS_OVERALL_MS is 180 s).
  *
  * This is a backstop, not the normal path: port_tcp settles every ack exactly
  * once, so reaching this deadline means the completion was lost, not merely
  * slow.  Without it a lost completion would park the session in COMPLETING for
  * good -- the overall deadline below fires first in practice, but it would
  * report a timeout for a transfer that actually succeeded. */
-#define XS_ACK_WAIT_MS       20000u
+#define XS_ACK_WAIT_MS       30000u
 
-/* The TCP port is NOT ours to choose -- the 8711 runs the server and reports the
- * upload port in its WLSTATE reply (9000 in practice; 5004 is the separate
- * preview port).  EB_AP_DEFAULT_PORT is kept out of this file deliberately so
- * nobody reintroduces a hardcoded one. */
+/* The two TCP ports ARE ours to choose now -- ebadge_port_tcp.c creates both
+ * listeners with AT+SKTSERVER from the constants in ebadge_port_softap.h, and
+ * 0x13 AP_INFO reports whichever one the session asked for.  They used to be
+ * discovered from the 8711's WLSTATE reply, which is why nothing in this file
+ * names a number: the port a session uses arrives from
+ * ebadge_port_softap_start()'s out_port, and keeping it that way is what stops a
+ * hardcoded one drifting from the listener that actually exists. */
 #define XS_PROGRESS_MS         200
 #define XS_PROGRESS_STEP_PCT     5
 
@@ -180,23 +194,25 @@ BUILD_ASSERT(sizeof(gui_rgb_data_head_t) == 8U,
 
 /* Largest file this device can receive, in bytes.
  *
- * Now bounded by the PSRAM receive cache, not by the transport: a whole file is
- * buffered before any of it reaches flash (see xfer_cache.h), so the buffer is
- * the binding limit and there is no point declaring a larger one.  The cache is
- * 1 MB, comfortably under the two transport caps below, so an offer we accept is
- * one all three can carry.
+ * Bounded by the PSRAM receive cache, and now by nothing else: a whole file is
+ * buffered before any of it reaches flash (see xfer_cache.h), so the buffer is the
+ * binding limit and there is no point declaring a larger one.
  *
- * For the record, those transport caps: 2 MiB is the 8711's port-9000 single-file
- * cap (SPI spec v2.2 §6) and the BLE spec §8.3 suggests the same pending a final
- * value.  Neither is reachable now.  Not to be confused with the 60 KiB *frame*
- * cap on preview port 5004 -- an earlier revision of this macro used that figure
- * and refused ordinary wallpapers with TOO_LARGE.  See WIFI_8711_FILE_SIZE_MAX
- * and WIFI_8711_JPEG_FRAME_MAX; the two must stay distinct. */
+ * THE TRANSPORT NO LONGER HAS A SAY.  The in-house firmware imposed a 2 MiB
+ * single-file cap on port 9000 and a 60 KiB cap per preview FRAME, because it was
+ * parsing both and had buffers of its own.  The standard firmware parses neither
+ * -- it is a network card, and both ports are plain byte streams -- so the only
+ * remaining ceilings are ours: this one, and jpgs_ingress's frame buffer
+ * (EB_PSRAM_STREAM_FRAME_SIZE, 128 KB).
+ *
+ * The distinction between those two still matters, which is why they are separate
+ * numbers in separate files.  An earlier revision of THIS macro used the 60 KiB
+ * frame figure and refused ordinary wallpapers with TOO_LARGE. */
 #define XS_MAX_FILE_SIZE     EB_PSRAM_XFER_CACHE_SIZE
 
 BUILD_ASSERT(XS_MAX_FILE_SIZE <= 2u * 1024u * 1024u,
-             "the receive cache is larger than the 8711's port-9000 single-file "
-             "cap, so an accepted offer could exceed what the transport carries");
+             "an accepted offer would exceed the 2 MiB the BLE spec sec.8.3 "
+             "suggests as the single-file ceiling");
 
 /* Framing bytes stored on flash in front of the file content.
  *
@@ -610,21 +626,27 @@ static void abort_and_reset(uint8_t reason, const char *detail)
  *----------------------------------------------------------------------------*/
 static void on_softap_joined_from_driver(void)
 {
-    /* Already on l2_task, and no hop was needed to get here: port_softap reads
-     * CLIENTS= off the pushed Wi-Fi state from its own tick, which runs on
-     * l2_task.  It used to learn this from an AT reply on the transport thread
-     * and marshal the edge itself; the marshalling is gone with the query.
-     * Calling ebadge_task_post_call() here would only add a hop. */
+    /* Already on l2_task, and no hop is needed to get here: the edge starts as an
+     * at_socket connect event on the transport thread, and port_tcp marshals it
+     * before it ever reaches port_softap.  A post_call here would only add a
+     * second hop.
+     *
+     * Which is also why "a station joined" now means "a phone opened the TCP
+     * connection" rather than "it associated": the standard Wi-Fi command set
+     * emits no association event of any kind, so the first thing we can observe
+     * about a phone is its socket.  Strictly later than the association, and
+     * strictly better as a signal -- the old state block could report a client
+     * that had a DHCP lease and no intention of connecting. */
     xfer_session_on_sta_joined();
 }
 
 static void on_tcp_data_from_driver(const uint8_t *data, uint16_t len)
 {
-    /* on driver thread; the impl of port_tcp is expected to allocate a
-     * heap copy + post_call.  Here we only receive the "already on
-     * l2_task" version through xfer_session_on_tcp_data(); this
-     * function itself is the raw callback registered with port_tcp and
-     * must therefore heap-copy + post.                                   */
+    /* CONTEXT: the SPI transport thread, and `data` points into the slot buffer
+     * port_tcp was handed -- it dies when this returns and the buffer is re-armed
+     * for DMA.  So a heap copy plus a hop to l2_task, both mandatory: session
+     * state has no locks and l2_task (priority 3) preempts the transport thread
+     * (5), so a direct call could land in the middle of fail_and_reset(). */
     if (len == 0) { return; }
     uint8_t *copy = (uint8_t *)malloc(len);
     if (!copy) { return; }
@@ -637,14 +659,22 @@ static void on_tcp_data_from_driver(const uint8_t *data, uint16_t len)
     c->p = copy; c->n = len;
     /* Trampoline fn defined below to unpack and free.                    */
     extern void xfer_data_trampoline(void *arg);
-    (void)ebadge_task_post_call(xfer_data_trampoline, c);
+    if (ebadge_task_post_call(xfer_data_trampoline, c) != EBADGE_OK)
+    {
+        free(copy);
+        free(c);
+    }
 }
 
 void xfer_data_trampoline(void *arg)
 {
     struct chunk { uint8_t *p; uint16_t n; } *c = arg;
     if (!c) { return; }
-    xfer_session_on_tcp_data(c->p, c->n);
+    /* Through ebfs_ingress rather than straight into on_tcp_data(): it owns the
+     * "is anything arriving at all?" counters and the RECV state guard, which are
+     * the two things that distinguish "the phone is not sending" from "the phone
+     * is sending and we are refusing".  It calls on_tcp_data() itself. */
+    ebfs_ingress_on_tcp_data(c->p, c->n);
     free(c->p);
     free(c);
 }

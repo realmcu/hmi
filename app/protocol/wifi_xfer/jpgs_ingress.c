@@ -1,544 +1,353 @@
 /**
  * @file    jpgs_ingress.c
- * @brief   Where Wi-Fi payload bytes enter this chip, get reassembled from JPGS
- *          slots, verified, and routed to whichever session asked for them.
+ * @brief   Finds preview-frame boundaries in a raw TCP byte stream.
  *
  * ---------------------------------------------------------------------------
- * THE ONE THING TO UNDERSTAND: THERE IS NO TCP SOCKET ON THIS CHIP
+ * WHAT THIS FILE USED TO BE, AND WHY ALMOST NONE OF IT SURVIVED
  * ---------------------------------------------------------------------------
- * stream_session / xfer_session are written against ebadge_port_tcp.h, as if
- * this device terminated the phone's TCP connection.  It does not.  The real
- * topology is (phone-to-8711-jpeg-tcp-protocol.md sec.1):
+ * It used to reassemble JPGS slots: a 32-byte header per 4 KiB slot carrying a
+ * frame sequence number, a total size, an offset, a chunk index, and a CRC32 over
+ * the payload -- all of it produced by custom 8711 firmware that had parsed the
+ * phone's "JPG <size> <seq>" line and knew where each frame began and ended.
  *
- *     phone --Wi-Fi/TCP:5004--> 8711FA --SPI JPGS slots--> 8773G (us)
+ * The standard firmware does none of that.  It is a network card: the preview
+ * port delivers exactly the bytes the phone wrote, in whatever sizes they happen
+ * to arrive, with no framing of any kind.  So every field that file validated is
+ * gone, along with the validation:
  *
- * The 8711 is the SoftAP *and* the TCP server.  It accepts the connection,
- * parses the phone's "JPG <size> <seq>" framing itself, and forwards the
- * payload to us as JPGS slots on the SPI link.  So the bytes arrive here
- * already stripped of TCP and of the phone-side framing -- port_tcp's on_data
- * will never fire from a socket, because there is no socket.  This file is that
- * on_data: it calls the session entry points directly, which is why it holds
- * the only two callers of xfer_session_on_payload() /
- * stream_session_on_frame_chunk() outside port_tcp.
+ *   frame sequence     no longer exists.  Frames are delimited by their own
+ *                      content now, and a sequence number was only ever the
+ *                      8711 restating what it had already found.
+ *   total size         not known until FF D9 arrives.  This is the change that
+ *                      forces a buffer -- see below.
+ *   offset/chunk index no longer exists.  TCP does not reorder or gap; a stream
+ *                      that arrives at all arrives in order, which is exactly
+ *                      what the continuity arithmetic was checking.
+ *   per-slot CRC32     no longer exists.  TCP's own checksum covers the phone-to
+ *                      -8711 hop and the SPI transport covers the 8711-to-us hop,
+ *                      so the property is still held -- just not by us.
  *
- * ---------------------------------------------------------------------------
- * THE SECOND THING: THERE IS NO EBXF/EBXS HEADER ON THIS PATH EITHER
- * ---------------------------------------------------------------------------
- * §5.2 / §6.2 of the eBadge spec put a 40-byte EBXF header in front of a file
- * and a 14-byte EBXS header in front of every preview frame.  Neither can reach
- * this chip *on this path*.  The 8711's preview server (firmware example
- * tcp_jpg_spi_forwarder, port 5004) validates that every payload *is a JPEG* --
- * it checks the first two bytes are FF D8 and the last two FF D9, and answers
- * `ERR <seq> JPEG` otherwise (phone-to-8711-jpeg-tcp-protocol.md sec.4
- * constraints and sec.6.2).  A payload prefixed with "EBXF" fails that check at
- * the TCP door and is never forwarded, so a session waiting for those 40 bytes
- * would parse FF D8.. as a bad magic and fail every transfer.
- *
- * That is why the two entry points used here are the *headerless* ones:
- *
- *   xfer_session_on_payload()        pure file bytes; identity (name, type,
- *                                    size, crc32) comes from the BLE 0x10
- *                                    offer, which EBXF only ever restated
- *   stream_session_on_frame_chunk()  frame bytes plus the geometry EBXS would
- *                                    have carried -- taken from the JPGS
- *                                    header's TotalSize / Offset / END instead
- *
- * SPI v2.2 note: the EBXF header DOES reach this chip -- via the *other* port.
- * Port 9000 accepts `EBXF + body` and the 8711 forwards that stream verbatim in
- * EBFS slot payloads without parsing it, so the 40 bytes arrive as payload and
- * xfer_session_on_tcp_data() is live for them.  That is ebfs_ingress.c's path,
- * not this one, and it is where the §5.2 cross-check against the offer happens.
- * stream_session_on_tcp_data() remains without a caller, correct for a firmware
- * that terminates TCP on this chip.
+ * What remains is the one thing the 8711 no longer does: deciding where a frame
+ * starts and stops.
  *
  * ---------------------------------------------------------------------------
- * HOW A FILE AND A PREVIEW FRAME ARE TOLD APART -- BY SESSION, NOT BY WIRE
+ * WHY THERE IS A WHOLE-FRAME BUFFER NOW, WHICH THERE DELIBERATELY WAS NOT BEFORE
  * ---------------------------------------------------------------------------
- * A JPGS slot carries frame geometry and nothing else: no name, no type, no
- * whole-file CRC.  So the wire cannot say whether a frame is a wallpaper being
- * stored or a preview frame being displayed, and sniffing the content would be
- * guessing -- doubly so given both are guaranteed to be valid JPEGs.
+ * The old file went out of its way NOT to buffer: it forwarded each slot's
+ * payload as it arrived and passed the geometry along from the slot header, on the
+ * grounds that a 60 KiB frame buffer would cost more RAM than the rest of the
+ * protocol stack.  That reasoning was sound and is now inapplicable, because the
+ * geometry it was passing along does not exist until the frame is complete.
  *
- * (EBFS, added in SPI v2.2, *can* say: it has its own magic, and its payload
- * carries the phone's EBXF header with the whole identity in it.  A file uploaded
- * on port 9000 therefore never reaches this file at all.  The routing below still
- * admits JPGS-to-file because port 5004 remains able to carry a bare-JPEG
- * wallpaper, and a phone that has not moved to 9000 must keep working.)
+ * stream_session_on_frame_chunk() needs (offset, frame_size, is_last) per chunk.
+ * frame_size is only knowable at FF D9.  So either the sink learns to accept a
+ * frame of unknown length -- which a JPEG decoder cannot, it needs to know how
+ * much to read -- or the frame is buffered until its length is known.  It is
+ * buffered, in PSRAM rather than SRAM, because 128 KB of SRAM does not exist on
+ * this chip and PSRAM's slowness does not matter for something written once and
+ * read once per frame.
  *
- * The answer is the same rule the EBXF and EBXS headers already used for their
- * shared "EBXF" magic: *whichever BLE offer opened the session decides*.
- * 0x10 XFER_OFFER -> xfer_session -> store it.  0x08 STREAM_OFFER
- * -> stream_session -> display it.  The two sessions are mutually exclusive
- * (one radio, one SoftAP, one TCP port), so at most one is non-IDLE and the
- * routing is unambiguous.  If neither is, the frame is unsolicited and is
- * dropped -- deliberately not "guess it is preview", because a stray frame
- * rendered over the UI is worse than one that never appears.
- *
- * ---------------------------------------------------------------------------
- * WHAT IS VERIFIED HERE, AND WHAT IS VERIFIED ELSEWHERE
- * ---------------------------------------------------------------------------
- * Here (sec.5.2, per slot):  magic, version, payload bounds, per-slot payload
- * CRC32 (offset 28 -- NOT offset 12, that is ATMC's), START on the first slot,
- * Frame Sequence and Total Size constant across the frame, Offset and Chunk
- * Index strictly consecutive, END with Offset+PayloadSize == TotalSize.  Any
- * violation discards the whole in-progress frame and waits for the next START.
- *
- * Downstream: the file's *whole-file* CRC32 is xfer_session's job (it compares
- * against the 0x10 offer's value before committing to flash).  The preview path
- * has no second CRC any more -- EBXS's per-frame one is gone with the header,
- * and the per-slot CRC here is finer-grained than it was, so nothing is lost.
- * A per-slot CRC catches SPI corruption, which is a different failure from
- * "the phone sent us the wrong file".
+ * The consequence worth stating: the frame reaches the sink only once it is
+ * COMPLETE, so a decoder is never handed a prefix of unknown length.  It still
+ * arrives in slices -- the sink's len is a uint16_t and a frame may be larger than
+ * 64 KB -- but every slice carries the final frame_size, which is the property the
+ * old chunk-by-chunk delivery could not offer.
  *
  * ---------------------------------------------------------------------------
- * BACK-PRESSURE, AND WHY THE PAYLOAD STILL HOPS TO l2_task
+ * THE SCANNER, AND THE ONE WAY IT IS KNOWN TO BE FOOLABLE
  * ---------------------------------------------------------------------------
- * The sink runs on the transport thread with B2W already low, and the 8711
- * cannot clock another slot until we return and the transport re-arms.  So the
- * time spent in here is natural flow control rather than a race: a slow flash
- * write delays the next slot instead of losing it.
+ * SOI is FF D8, EOI is FF D9, and the scan is for those two byte pairs.  Both may
+ * straddle a delivery boundary, so the last byte of every buffer is remembered.
  *
- * That makes it tempting to call xfer_session_on_tcp_data() straight from this
- * callback.  It would be wrong.  Session state is owned by l2_task and has no
- * locks by design -- the 100 ms tick that expires the RECV / overall deadlines
- * runs there, and l2_task is priority 3 against the transport thread's 5, so it
- * preempts.  A direct call could therefore land in the middle of
- * fail_and_reset() and append to a write handle that was just aborted.
+ * The known false positive is an EXIF thumbnail: a JPEG whose APP1 segment
+ * contains a second, smaller JPEG carries an inner FF D8 ... FF D9 pair, and a
+ * naive scan ends the frame at the thumbnail's EOI.  What that produces is a
+ * truncated frame that fails to decode, followed by a resynchronisation on the
+ * next real SOI -- so it degrades to a dropped frame rather than to a wedge.
  *
- * So the payload is handed over with ebadge_task_post_call() and this thread
- * *waits* for l2_task to finish with it.  The wait is what makes the borrow
- * safe: the buffer is the transport's slot, valid only for the duration of the
- * callback, so returning before l2_task has consumed it would hand it a pointer
- * into a buffer about to be re-armed for DMA.  Waiting also preserves the
- * back-pressure above rather than defeating it -- the delay simply happens on
- * this thread instead of inside it, and no copy or allocation is needed for a
- * payload that arrives ~16 times per frame.
+ * It is not defended against here, because doing so properly means walking the
+ * JPEG segment structure (read each marker's length, skip its payload, and only
+ * then look for EOI), and that is a decoder's job rather than a transport's.  What
+ * makes the exposure acceptable is that the phone generates these frames for
+ * preview: it is encoding them itself, at a size it chose, and an encoder emitting
+ * EXIF thumbnails into a live preview stream would be doing something strange.
+ * If a real phone turns out to do it, the fix is segment walking and this comment
+ * is where to start.
  *
- * Two things follow from the back-pressure, and they are the reason this file
- * does not do more than it does:
+ * A second, milder case: a byte pair that happens to fall inside entropy-coded
+ * data cannot be FF D9, because the JPEG standard requires an encoder to byte-stuff
+ * a literal FF in that data as FF 00.  So the scan is safe there by construction.
  *
- *  - No flash operation may run while a slot is in flight -- not here, and not
- *    on any path this callback reaches.  The 8711 gives ~1000 ms of
- *    back-pressure (sec.3.2) and then abandons the slot with its bytes already
- *    consumed from TCP, so a multi-sector NOR erase does not fit inside the
- *    window no matter which state edge triggers it.  This used to say the erase
- *    "belongs in wp_begin, driven from the WAIT_STA -> RECV edge", which was
- *    true only until that edge could itself be reached from inside a slot; then
- *    it silently became the bug it was written to prevent.  xfer_session.c now
- *    buffers the whole file in PSRAM and does every flash operation after the
- *    ack, so there is no erase left to misplace.
- *  - Tier-2 flow control for the *preview* path (sec.5.1: after the END slot
- *    B2W must stay LOW until JPU decode and LCDC display have finished,
- *    because the 8711 blocks on that rising edge before answering "DONE <seq>"
- *    to the phone) is a transport-layer change in wifi_8711_xfer, not something
- *    this file can do.  Until a decoder is actually wired that is moot: nothing
- *    here blocks on display, so the window never stalls.
+ * ---------------------------------------------------------------------------
+ * ROUTING: STILL BY SESSION, NO LONGER BY PORT ALONE
+ * ---------------------------------------------------------------------------
+ * This module is registered as the PREVIEW port's data path only, which the old
+ * one was not -- it was the sink for every JPGS slot regardless of which session
+ * wanted it, so it had to ask.  The port is now the answer: bytes on the stream
+ * port belong to stream_session, and a file uploaded on the file port never
+ * reaches this file at all.
+ *
+ * The old JPGS-to-file route is therefore gone.  It existed because port 5004
+ * could carry a bare-JPEG wallpaper from a phone that had not moved to the file
+ * port, and with the standard firmware there is no such thing: the file port
+ * exists, the phone is told which port to use in the 0x13 AP_INFO, and a wallpaper
+ * arriving on the preview port would be a phone ignoring what it was told.
+ *
+ * ---------------------------------------------------------------------------
+ * THREADING
+ * ---------------------------------------------------------------------------
+ * stream_session installs its own on_data with port_tcp, and that callback
+ * heap-copies and posts to l2_task.  So by the time this module's entry point
+ * runs, it is already on l2_task and there is nothing to marshal -- which is why
+ * the K_SEM handoff, the static descriptor, and the 2000 ms deadlock guard that
+ * used to be here are all gone.  They existed to move slot payload off the
+ * transport thread without copying it; the copy now happens one layer up, where
+ * it also serves the file path.
  */
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
 
 #include "jpgs_ingress.h"
-#include "xfer_session.h"
 #include "stream_session.h"
 #include "../ebadge_task.h"
 #include "../ebadge_log.h"
 
 #if defined(CONFIG_WIFI_8711)
-#include <zephyr/kernel.h>
-#include "wifi_8711.h"
-#include "wifi_8711_at.h"
-#include "spi_at_protocol.h"
+#include "../port/ebadge_psram_map.h"
+
+/** JPEG markers.  Two bytes each, and either may straddle a delivery. */
+#define JPEG_MARK_FF   0xFFU
+#define JPEG_SOI_2ND   0xD8U
+#define JPEG_EOI_2ND   0xD9U
+
+/** Where the frame is assembled.  PSRAM, non-cacheable, see ebadge_psram_map.h.
+ *
+ *  A pointer to a fixed address rather than an array, for the same reason the
+ *  receive cache is: 128 KB of .bss would not fit, and the address has to agree
+ *  with the map's BUILD_ASSERTs, which only work on the macro. */
+static uint8_t *const s_frame = (uint8_t *)EB_PSRAM_STREAM_FRAME_BASE;
+#define JPGS_FRAME_MAX   EB_PSRAM_STREAM_FRAME_SIZE
 
 /*----------------------------------------------------------------------------*
- *  JPGS header field offsets (sec.5.1).  All little-endian.
+ *  Scanner state
  *
- *  Spelled out rather than reusing SPI_AT_OFF_* : those are ATMC's, and the two
- *  layouts disagree in exactly the place that matters most -- the payload CRC32
- *  is at offset 28 here and at offset 12 there.
+ *  Small enough to be worth spelling out: everything needed to resume a scan
+ *  mid-marker across an arbitrary delivery boundary.
  *----------------------------------------------------------------------------*/
-#define JPGS_OFF_MAGIC        0U
-#define JPGS_OFF_VERSION      4U
-#define JPGS_OFF_FLAGS        5U
-#define JPGS_OFF_HDR_SIZE     6U
-#define JPGS_OFF_FRAME_SEQ    8U
-#define JPGS_OFF_TOTAL_SIZE  12U
-#define JPGS_OFF_OFFSET      16U
-#define JPGS_OFF_PAYLOAD_SZ  20U
-#define JPGS_OFF_CHUNK_IDX   22U
-#define JPGS_OFF_CHUNK_CNT   24U
-#define JPGS_OFF_PAYLOAD_CRC 28U
-
-/*----------------------------------------------------------------------------*
- *  Reassembly state
- *
- *  There is no frame buffer: payload is forwarded chunk-wise to the session as
- *  each slot arrives, so only the *bookkeeping* needed to police sec.5.2 lives
- *  here.  That is deliberate -- a 60 KiB buffer would cost more RAM than the
- *  whole protocol stack, and both consumers already stream (xfer_session appends
- *  to flash, stream_session hands chunks to its sink).  It does mean a frame
- *  that fails validation half way has already had its good prefix forwarded;
- *  the session layer's own CRC is what catches that, and for the file path a
- *  failed CRC means no commit, so nothing partial ever becomes visible.
- *----------------------------------------------------------------------------*/
-
-/** Which session a frame in progress is being routed to. */
-typedef enum
-{
-    JPGS_DEST_NONE = 0,     /* no frame in progress                          */
-    JPGS_DEST_FILE,         /* 0x10 opened it -> xfer_session, store         */
-    JPGS_DEST_STREAM,       /* 0x08 opened it -> stream_session, display     */
-} jpgs_dest_t;
-
 typedef struct
 {
-    bool        in_frame;       /* a START was seen and not yet invalidated  */
-    jpgs_dest_t dest;           /* fixed at START, so a mid-frame session
-                                 * change cannot split one frame in two      */
-    uint32_t    frame_seq;
-    uint32_t    total_size;
-    uint32_t    next_offset;    /* Offset the next slot must carry           */
-    uint16_t    next_chunk;     /* Chunk Index the next slot must carry      */
-} jpgs_asm_t;
+    bool     in_frame;      /* an SOI was seen and no EOI yet                 */
+    uint32_t got;           /* bytes buffered, including the SOI              */
+    bool     pending_ff;    /* the previous byte was FF; it may open a marker */
+    bool     overflow;      /* the frame outgrew the buffer -- resync on SOI  */
+} jpgs_scan_t;
 
-static jpgs_asm_t s_asm;
+static jpgs_scan_t s_scan;
 
 /* Lifetime counters -- they span sessions and keep counting when nothing is
  * listening, which is what makes them useful for "is the link alive at all?". */
-static uint32_t s_slots;
+static uint32_t s_bytes;
 static uint32_t s_frames_ok;
 static uint32_t s_frames_dropped;
-static uint32_t s_slots_unrouted;
 
 /*----------------------------------------------------------------------------*
  *  Helpers
  *----------------------------------------------------------------------------*/
 
-/** Abandon the frame in progress and wait for the next START (sec.5.2). */
+/** Abandon the frame in progress and wait for the next SOI. */
 static void frame_discard(const char *why)
 {
-    if (s_asm.in_frame)
+    if (s_scan.in_frame)
     {
         s_frames_dropped++;
-        EBADGE_WARN2("jpgs: frame seq=%u discarded (%s)",
-                     (unsigned)s_asm.frame_seq, why);
+        EBADGE_WARN2("jpgs: frame dropped after %u bytes (%s)",
+                     (unsigned)s_scan.got, why);
     }
-    else
-    {
-        /* Not in a frame: this is a stray non-START slot, i.e. the tail of a
-         * frame we already gave up on.  Expected during recovery, so it is not
-         * worth a line of its own. */
-        EBADGE_LOG1("jpgs: slot ignored while resyncing (%s)", why);
-    }
-    memset(&s_asm, 0, sizeof(s_asm));
+    memset(&s_scan, 0, sizeof(s_scan));
 }
 
-/**
- * Decide where a *new* frame goes.  Called only on a START slot, so the choice
- * is stable for the whole frame even if a session ends mid-frame.
- */
-static jpgs_dest_t route_new_frame(void)
+/** One byte into the frame buffer, or note the overflow.
+ *
+ *  Overflow is sticky rather than an immediate discard, because the frame is not
+ *  resynchronisable until the next SOI: dropping the state now would let the very
+ *  next FF D8 inside this oversized frame's entropy data -- if any survived the
+ *  byte-stuffing rule -- start a bogus frame.  Waiting for a real boundary is the
+ *  same policy the rest of the scanner follows. */
+static void frame_put(uint8_t b)
 {
-    /* File first: xfer_session is the one with a deadline and a half-written
-     * flash file at stake, so if both were somehow non-IDLE it is the one that
-     * must not be starved.  In practice the offer paths make that impossible. */
-    if (xfer_session_state() != XFER_SESSION_IDLE)
+    if (s_scan.got < JPGS_FRAME_MAX)
     {
-        return JPGS_DEST_FILE;
+        s_frame[s_scan.got++] = b;
+        return;
     }
-    if (stream_session_state() != STREAM_SESSION_IDLE)
+    if (!s_scan.overflow)
     {
-        return JPGS_DEST_STREAM;
+        s_scan.overflow = true;
+        EBADGE_WARN1("jpgs: frame exceeds %u bytes -- dropping to the next SOI",
+                     (unsigned)JPGS_FRAME_MAX);
     }
-    return JPGS_DEST_NONE;
+}
+
+/** A complete frame is in the buffer.  Hand it over and start again. */
+static void frame_complete(void)
+{
+    if (s_scan.overflow)
+    {
+        /* The EOI we just found belongs to a frame whose middle we threw away,
+         * so what is in the buffer is a prefix and a suffix with a hole between
+         * them.  Counted as dropped rather than delivered: a decoder handed this
+         * would fail in a way that reads as corruption on the wire. */
+        frame_discard("overflowed");
+        return;
+    }
+
+    s_frames_ok++;
+    if (s_frames_ok == 1U || (s_frames_ok % 30U) == 0U)
+    {
+        EBADGE_LOG2("jpgs: frame #%u complete, %u bytes",
+                    (unsigned)s_frames_ok, (unsigned)s_scan.got);
+    }
+
+    /* Delivered in slices, because the sink's len is a uint16_t and the buffer is
+     * 128 KB.  32 KB per slice rather than 65535 so the arithmetic has obvious
+     * headroom against the type rather than sitting exactly on its edge -- an
+     * off-by-one there would silently deliver a zero-length final slice.
+     *
+     * Every slice carries the FINAL frame_size, which is the whole point of having
+     * buffered: the old path passed a size taken from the JPGS header, and the
+     * decoder had no way to know a frame was short until it ran out of bytes. */
+    uint32_t off = 0U;
+    while (off < s_scan.got)
+    {
+        uint32_t left  = s_scan.got - off;
+        uint16_t slice = (left > 0x8000U) ? 0x8000U : (uint16_t)left;
+
+        stream_session_on_frame_chunk(s_frame + off, slice, off, s_scan.got,
+                                      (off + slice) >= s_scan.got);
+        off += slice;
+    }
+
+    memset(&s_scan, 0, sizeof(s_scan));
 }
 
 /*----------------------------------------------------------------------------*
- *  Hand-off to l2_task
- *
- *  One static descriptor is enough: the transport thread blocks until l2_task
- *  has consumed it, so there is never a second hand-off in flight.
+ *  Entry point
  *----------------------------------------------------------------------------*/
-typedef struct
-{
-    const uint8_t *payload;
-    uint16_t       len;
-    jpgs_dest_t    dest;
-    /* Frame geometry, for the stream path only: it is what the EBXS header
-     * would have carried, and the sink needs it to know where in the frame a
-     * chunk belongs.  The file path gets its geometry from the BLE offer. */
-    uint32_t       offset;
-    uint32_t       total;
-    bool           is_last;
-} jpgs_handoff_t;
-
-static jpgs_handoff_t s_handoff;
-static K_SEM_DEFINE(handoff_done, 0, 1);
-
-/** Runs on l2_task, where touching session state is legal. */
-static void deliver_on_l2(void *arg)
-{
-    jpgs_handoff_t *h = (jpgs_handoff_t *)arg;
-
-    switch (h->dest)
-    {
-    case JPGS_DEST_FILE:
-        /* Same race as on the EBFS path: routing admits the session from
-         * WAIT_STA onwards (dest is chosen on state != IDLE), but on_payload()
-         * only accepts RECV, so without this the first frames of a wallpaper
-         * would be dropped silently while the 15 s join poll caught up.
-         * Inbound data is the association evidence -- take the edge from it.
-         * Idempotent, so the poll's later answer stays harmless. */
-        if (xfer_session_state() == XFER_SESSION_WAIT_STA)
-        {
-            EBADGE_LOG("jpgs: data arrived before the join poll -> entering RECV");
-            xfer_session_on_sta_joined();
-        }
-        /* Appends to flash via ebadge_port_storage; see the back-pressure note
-         * in the file header for why blocking the transport here is wanted.
-         * on_payload(), not on_tcp_data(): there is no EBXF header on this
-         * path -- see the framing section of the file header. */
-        (void)xfer_session_on_payload(h->payload, h->len);
-        break;
-    case JPGS_DEST_STREAM:
-        stream_session_on_frame_chunk(h->payload, h->len, h->offset,
-                                      h->total, h->is_last);
-        break;
-    default:
-        break;
-    }
-
-    /* Only now may the transport thread return and let its slot be re-armed. */
-    k_sem_give(&handoff_done);
-}
 
 /**
- * Hand payload to the session that owns the frame in progress, and wait.
+ * Raw preview-port bytes.  CONTEXT: l2_task -- stream_session's on_data has
+ * already copied and posted them, so session state may be touched freely.
  *
- * The timeout is a deadlock guard, not a normal path: if l2_task is wedged, a
- * transport thread parked here forever would take the whole SPI link down with
- * it and hide the real fault.  It is generous because the work on the other
- * side includes a NOR page program.
+ * The loop is byte-at-a-time rather than a memchr for FF, which is slower and
+ * chosen anyway: a preview frame is tens of KB at a handful of frames per second,
+ * so this is thousands of bytes per 100 ms tick on a 100 MHz core -- not a budget
+ * worth optimising against the cost of a scanner whose resume-across-boundary
+ * logic has two forms.  The single-byte form is the one that is obviously correct
+ * at every boundary, which is where this kind of code goes wrong.
  */
-#define JPGS_HANDOFF_TIMEOUT_MS  2000
-
-static void deliver(const uint8_t *payload, uint16_t len, bool is_last)
+void jpgs_ingress_on_tcp_data(const uint8_t *data, uint16_t len)
 {
-    if (s_asm.dest != JPGS_DEST_FILE && s_asm.dest != JPGS_DEST_STREAM)
+    if (data == NULL || len == 0U)
     {
         return;
     }
+    s_bytes += len;
 
-    s_handoff.payload = payload;
-    s_handoff.len     = len;
-    s_handoff.dest    = s_asm.dest;
-    s_handoff.offset  = s_asm.next_offset;
-    s_handoff.total   = s_asm.total_size;
-    s_handoff.is_last = is_last;
-
-    k_sem_reset(&handoff_done);
-    if (ebadge_task_post_call(deliver_on_l2, &s_handoff) != 0)
+    for (uint16_t i = 0U; i < len; i++)
     {
-        /* Queue full: the payload is lost, so the frame is now incomplete.
-         * Discarding it is the honest outcome -- for a file the session's own
-         * CRC would fail anyway, and this way it fails with a clear reason. */
-        frame_discard("l2 queue full");
-        return;
-    }
+        uint8_t b = data[i];
 
-    if (k_sem_take(&handoff_done, K_MSEC(JPGS_HANDOFF_TIMEOUT_MS)) != 0)
-    {
-        /* Returning now would let the slot be re-armed for DMA while l2_task
-         * may still be reading it, so say so loudly: this is a real fault, not
-         * a dropped frame. */
-        EBADGE_ERR1("jpgs: l2 handoff timed out after %d ms",
-                    JPGS_HANDOFF_TIMEOUT_MS);
-        frame_discard("handoff timeout");
-    }
-}
-
-/**
- * JPGS slot sink.  CONTEXT: transport thread, with B2W held low for the whole
- * call, which back-pressures the 8711.  Must not block indefinitely; a flash
- * append is acceptable (and is the point), a wait on another thread is not.
- */
-static void on_jpg_slot(const uint8_t *slot, size_t len)
-{
-    if (slot == NULL || len < WIFI_8711_HEADER_SIZE)
-    {
-        return;
-    }
-
-    s_slots++;
-
-    /* ---- header sanity (sec.5.1) ------------------------------------- */
-    uint8_t  version  = slot[JPGS_OFF_VERSION];
-    uint8_t  flags    = slot[JPGS_OFF_FLAGS];
-    uint16_t hdr_size = spi_at_get_le16(slot + JPGS_OFF_HDR_SIZE);
-    uint32_t seq      = spi_at_get_le32(slot + JPGS_OFF_FRAME_SEQ);
-    uint32_t total    = spi_at_get_le32(slot + JPGS_OFF_TOTAL_SIZE);
-    uint32_t offset   = spi_at_get_le32(slot + JPGS_OFF_OFFSET);
-    uint16_t psize    = spi_at_get_le16(slot + JPGS_OFF_PAYLOAD_SZ);
-    uint16_t cidx     = spi_at_get_le16(slot + JPGS_OFF_CHUNK_IDX);
-    uint32_t pcrc     = spi_at_get_le32(slot + JPGS_OFF_PAYLOAD_CRC);
-
-    if (version != WIFI_8711_JPG_VERSION || hdr_size != WIFI_8711_HEADER_SIZE)
-    {
-        frame_discard("bad version/hdr_size");
-        return;
-    }
-    if (psize == 0U || psize > WIFI_8711_JPG_PAYLOAD_MAX ||
-        (size_t)WIFI_8711_HEADER_SIZE + psize > len)
-    {
-        frame_discard("bad payload size");
-        return;
-    }
-
-    const uint8_t *payload = slot + WIFI_8711_HEADER_SIZE;
-
-    /* Payload CRC32 at offset 28, covering payload only -- never the header.
-     * Checked before any state is updated so a corrupt slot cannot advance the
-     * expected offset. */
-    if (pcrc != spi_at_crc32(payload, psize))
-    {
-        frame_discard("payload crc");
-        return;
-    }
-
-    bool is_start = (flags & WIFI_8711_JPG_FLAG_START) != 0U;
-    bool is_end   = (flags & WIFI_8711_JPG_FLAG_END)   != 0U;
-
-    /* ---- START: begin a frame (sec.5.2 first-chunk rules) ------------ */
-    if (is_start)
-    {
-        if (s_asm.in_frame)
+        if (s_scan.pending_ff)
         {
-            /* A new START while a frame is open means the previous one never
-             * finished -- the sender gave up on it, so we do too. */
-            frame_discard("new START mid-frame");
-        }
-        if (offset != 0U || cidx != 0U)
-        {
-            EBADGE_WARN2("jpgs: START with offset=%u chunk=%u, ignored",
-                         (unsigned)offset, (unsigned)cidx);
-            return;
-        }
-        if (total == 0U || total > WIFI_8711_JPEG_FRAME_MAX)
-        {
-            EBADGE_WARN1("jpgs: START total_size=%u out of range, ignored",
-                         (unsigned)total);
-            return;
-        }
+            s_scan.pending_ff = false;
 
-        jpgs_dest_t dest = route_new_frame();
-        if (dest == JPGS_DEST_NONE)
-        {
-            /* Nobody asked for this.  Counted rather than logged per slot: an
-             * 8711 left streaming after a session ended would otherwise bury
-             * the log at ~16 slots per frame. */
-            s_slots_unrouted++;
-            if ((s_slots_unrouted % 64U) == 1U)
+            if (b == JPEG_SOI_2ND)
             {
-                EBADGE_LOG1("jpgs: frame with no session to route to (x%u)",
-                            (unsigned)s_slots_unrouted);
+                /* SOI.  If a frame was already open this is the sender having
+                 * abandoned it -- the previous frame's EOI never arrived -- so
+                 * take the new one and count the loss. */
+                if (s_scan.in_frame)
+                {
+                    frame_discard("new SOI mid-frame");
+                }
+                s_scan.in_frame = true;
+                s_scan.got      = 0U;
+                s_scan.overflow = false;
+                frame_put(JPEG_MARK_FF);
+                frame_put(b);
+                continue;
             }
-            return;
+
+            if (b == JPEG_EOI_2ND && s_scan.in_frame)
+            {
+                frame_put(JPEG_MARK_FF);
+                frame_put(b);
+                frame_complete();
+                continue;
+            }
+
+            /* Some other marker, or data.  The FF belongs to the frame as much as
+             * anything else does, so it goes in and so does this byte -- and the
+             * byte falls through to the checks below rather than being consumed
+             * here, because it may itself be the FF of the next marker. */
+            if (s_scan.in_frame)
+            {
+                frame_put(JPEG_MARK_FF);
+            }
         }
 
-        s_asm.in_frame    = true;
-        s_asm.dest        = dest;
-        s_asm.frame_seq   = seq;
-        s_asm.total_size  = total;
-        s_asm.next_offset = 0U;
-        s_asm.next_chunk  = 0U;
+        if (b == JPEG_MARK_FF)
+        {
+            /* Deferred: whether this byte is part of a marker or a stuffed
+             * literal is not knowable until the next one.  Held out of the buffer
+             * until then, which is why every path above that resolves a pending
+             * FF writes it explicitly. */
+            s_scan.pending_ff = true;
+            continue;
+        }
 
-        EBADGE_LOG3("jpgs: frame seq=%u size=%u -> %s", (unsigned)seq,
-                    (unsigned)total,
-                    (dest == JPGS_DEST_FILE) ? "file" : "stream");
-    }
-    else if (!s_asm.in_frame)
-    {
-        /* Mid-frame slot with no frame open: either we discarded the frame and
-         * are waiting for the next START, or the link came up mid-frame. */
-        s_slots_unrouted++;
-        return;
-    }
-
-    /* ---- continuation constraints (sec.5.2) -------------------------- */
-    if (seq != s_asm.frame_seq || total != s_asm.total_size)
-    {
-        frame_discard("seq/total changed mid-frame");
-        return;
-    }
-    if (offset != s_asm.next_offset || cidx != s_asm.next_chunk)
-    {
-        frame_discard("out-of-order chunk");
-        return;
-    }
-    if ((uint64_t)offset + psize > s_asm.total_size)
-    {
-        frame_discard("payload overruns total_size");
-        return;
-    }
-    if (is_end && ((uint64_t)offset + psize != s_asm.total_size))
-    {
-        frame_discard("END short of total_size");
-        return;
-    }
-    if (!is_end && ((uint64_t)offset + psize == s_asm.total_size))
-    {
-        /* The frame is complete but END was not set.  Trusting the byte count
-         * over the flag would leave the sender and us disagreeing about where
-         * the next frame starts, which resyncs badly. */
-        frame_discard("complete without END flag");
-        return;
-    }
-
-    /* ---- forward, then advance ---------------------------------------
-     *
-     * deliver() may itself discard the frame (queue full / handoff timeout), so
-     * re-check before advancing: otherwise the counters below would resurrect a
-     * frame that was just abandoned. */
-    deliver(payload, psize, is_end);
-    if (!s_asm.in_frame)
-    {
-        return;
-    }
-
-    s_asm.next_offset += psize;
-    s_asm.next_chunk++;
-
-    if (is_end)
-    {
-        s_frames_ok++;
-        EBADGE_LOG2("jpgs: frame seq=%u complete (%u bytes)",
-                    (unsigned)s_asm.frame_seq, (unsigned)s_asm.next_offset);
-        memset(&s_asm, 0, sizeof(s_asm));
+        if (s_scan.in_frame)
+        {
+            frame_put(b);
+        }
+        /* Not in a frame and not an FF: bytes before the first SOI, or the tail of
+         * a frame we abandoned.  Silently dropped -- this is the normal state
+         * between frames and during resynchronisation. */
     }
 }
 
 void jpgs_ingress_init(void)
 {
-    memset(&s_asm, 0, sizeof(s_asm));
-    wifi_8711_at_set_jpg_sink(on_jpg_slot);
-    EBADGE_LOG("jpgs: sink registered (reassembling, routed by session)");
+    memset(&s_scan, 0, sizeof(s_scan));
+    /* Nothing to register.  The old init installed a slot sink on the 8711 AT
+     * layer; the path is now port_tcp -> stream_session -> here, and
+     * stream_session is what registers with port_tcp.  Kept as a call site so
+     * ebadge_task_init()'s wiring list still names this module, and so the
+     * counters are provably zeroed before any byte can arrive. */
+    EBADGE_LOG("jpgs: JPEG boundary scanner ready (preview port)");
 }
 
 void jpgs_ingress_reset(void)
 {
-    if (s_asm.in_frame)
+    if (s_scan.in_frame)
     {
-        EBADGE_LOG1("jpgs: reset, dropping frame seq=%u",
-                    (unsigned)s_asm.frame_seq);
+        EBADGE_LOG1("jpgs: reset, dropping a partial frame (%u bytes)",
+                    (unsigned)s_scan.got);
     }
-    memset(&s_asm, 0, sizeof(s_asm));
+    memset(&s_scan, 0, sizeof(s_scan));
 }
 
-uint32_t jpgs_ingress_slots(void)         { return s_slots; }
-uint32_t jpgs_ingress_frames_ok(void)     { return s_frames_ok; }
+uint32_t jpgs_ingress_slots(void)          { return s_bytes; }
+uint32_t jpgs_ingress_frames_ok(void)      { return s_frames_ok; }
 uint32_t jpgs_ingress_frames_dropped(void) { return s_frames_dropped; }
 
 #else /* !CONFIG_WIFI_8711 */
+
+void jpgs_ingress_on_tcp_data(const uint8_t *data, uint16_t len)
+{
+    (void)data; (void)len;
+}
 
 void jpgs_ingress_init(void)
 {
@@ -546,9 +355,9 @@ void jpgs_ingress_init(void)
      * rather than a warning: this is a build configuration, not a fault. */
 }
 
-void jpgs_ingress_reset(void)             { }
-uint32_t jpgs_ingress_slots(void)         { return 0U; }
-uint32_t jpgs_ingress_frames_ok(void)     { return 0U; }
+void jpgs_ingress_reset(void)              { }
+uint32_t jpgs_ingress_slots(void)          { return 0U; }
+uint32_t jpgs_ingress_frames_ok(void)      { return 0U; }
 uint32_t jpgs_ingress_frames_dropped(void) { return 0U; }
 
 #endif /* CONFIG_WIFI_8711 */

@@ -33,6 +33,7 @@
 #include "xfer_notify.h"
 #include "ebxs_frame.h"
 #include "ebxf_frame.h"        /* EBXR ack + eb_crc32_update                 */
+#include "jpgs_ingress.h"      /* the JPEG boundary scanner in front of us   */
 
 #include "../ebadge_cmd.h"
 #include "../ebadge_l2.h"
@@ -190,9 +191,15 @@ static void finish_and_reset(const char *why)
  *----------------------------------------------------------------------------*/
 static void on_softap_joined_from_driver(void)
 {
-    /* Already on l2_task: port_softap reads CLIENTS= off the pushed Wi-Fi state
-     * from its own tick, which runs on l2_task, so nothing had to be marshalled.
-     * A post_call here would only add a hop. */
+    /* Already on l2_task: the edge starts as an at_socket connect event on the
+     * transport thread and port_tcp marshals it before port_softap ever sees it.
+     * A post_call here would only add a second hop.
+     *
+     * Note what "joined" means on this stack: a phone opened the TCP connection.
+     * The standard Wi-Fi command set emits no association events, so the socket is
+     * the first observable event -- which for a preview is if anything the better
+     * signal, since the sec.6.5 10 s "associated -> connected" budget it arms is a
+     * budget this edge has already spent. */
     stream_session_on_sta_joined();
 }
 
@@ -202,7 +209,14 @@ static void ss_data_trampoline(void *arg)
 {
     struct ss_chunk *c = arg;
     if (!c) { return; }
-    stream_session_on_tcp_data(c->p, c->n);
+    /* Through jpgs_ingress, NOT stream_session_on_tcp_data().  The preview port
+     * carries bare JPEG frames with no header of any kind, so what is needed here
+     * is boundary detection (FF D8 .. FF D9) -- and that is jpgs_ingress's whole
+     * job.  It calls stream_session_on_frame_chunk() once a frame is whole.
+     *
+     * on_tcp_data() parses EBXS headers instead, and is still without a caller for
+     * the same reason it always was: nothing puts an EBXS header on this port. */
+    jpgs_ingress_on_tcp_data(c->p, c->n);
     free(c->p);
     free(c);
 }

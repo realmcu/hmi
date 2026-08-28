@@ -1,0 +1,45 @@
+#
+# Copyright (c) 2026, Realtek Semiconductor Corporation
+#
+# SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+#
+
+menu "SPI AT master (8711 bring-up harness)"
+
+config SPI_AT_MASTER
+	bool "AT-over-SPI toward the 8711, WE are the master"
+	select SPI
+	select SPI_RTL87X3G_DMA
+	select DMA
+	select GPIO
+	default n
+	help
+	  Bring-up harness for the reversed-role SPI link: we drive SCLK and CS
+	  at 25 MHz, the 8711 is the slave, and the two sync lines swap direction
+	  (P4_1 becomes our input, P2_7 our output).  Frames are 16 KiB slots
+	  carrying an 'A','T',len16 header, matching the vendor reference
+	  example/atcmd_host/atcmd_host_spi.
+
+	  Turned on by the wifi snippet, which also supplies the spi1_hs /
+	  spi_at_master_resources / spi_at_master_device / psram1_nc devicetree
+	  nodes this module binds to.  Enabling the symbol alone will not
+	  build -- the DT nodes must come with it.
+
+	  Selected by WIFI_8711, which is the role-agnostic "an external 8711
+	  exists" switch that app/protocol's guards test.  It used to be
+	  `depends on !WIFI_8711` instead, because that symbol then meant the
+	  SLAVE stack and both claim P4_2..P4_5 -- the slave role is retired and
+	  the two are now one arrangement rather than two.  The mutual exclusion
+	  that remains is inside app/wifi_8711/, gated on WIFI_8711_ROLE_SLAVE.
+
+config SPI_AT_MASTER_SHELL
+	bool "atm shell command group"
+	depends on SPI_AT_MASTER && SHELL
+	default y
+	help
+	  Register the `atm` shell commands: forward a typed AT command line to
+	  the 8711 over SPI, hexdump both directions, and read back the sync
+	  line levels and counters.  This is the whole user interface of the
+	  harness, so it defaults on -- without it the module transmits nothing.
+
+endmenu

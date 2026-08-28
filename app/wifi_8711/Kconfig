@@ -4,42 +4,62 @@
 # SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
 #
 
-menu "WIFI 8711 (SPI slave transport) module"
+menu "WIFI 8711 (external Wi-Fi companion) module"
 
 config WIFI_8711
 	bool "External 8711 Wi-Fi chip over SPI"
+	select SPI_AT_MASTER
 	default n
 	help
-	  Enable the SPI link toward the external 8711FA Wi-Fi chip: the SPI
-	  slave transport plus the JPGS/ATMC slot engine.  TCP/IP and the SoftAP
-	  live in the 8711's own firmware, so this brings up no Zephyr net stack.
+	  "An external 8711FA Wi-Fi companion exists."  Role-agnostic on
+	  purpose: this is the symbol every Wi-Fi caller in app/protocol
+	  (port_softap, port_tcp, jpgs_ingress, ebfs_ingress, cmd_debug) is
+	  already guarded on, so it is what "pause the Wi-Fi features" turns
+	  off -- each of those files has a working #else stub.
 
-	  Turned on by the wifi_8711 snippet
-	  (applications/eBadge_8773g_8711f/snippets/wifi_8711), which also
-	  supplies the spi0_slave / wifi_8711_resources / psram1_nc devicetree
-	  nodes this module binds to.  Enabling the symbol on its own will not
-	  build -- the DT nodes must come with it.
+	  It selects SPI_AT_MASTER, which is the transport: WE drive SCLK and
+	  CS and the 8711 runs Realtek's standard AT command set.  Turned on by
+	  the wifi snippet, which also supplies the devicetree nodes that
+	  transport binds to -- enabling the symbol on its own will not build.
+
+	  It used to mean the SLAVE stack in app/wifi_8711/ instead.  That code
+	  is now gated on WIFI_8711_ROLE_SLAVE (default n) rather than on this
+	  symbol, because otherwise turning "an 8711 exists" on would compile a
+	  module bound to spi0_slave, a node the wifi overlay does not provide.
 
 config WIFI_8711_ROLE_SLAVE
-	bool "SPI slave role"
+	bool "SPI slave role (retired -- the custom-firmware stack)"
 	depends on WIFI_8711
 	select SPI
 	select SPI_SLAVE
-	default y
+	default n
 	help
-	  Build the SPI slave side: the 8711 drives SCLK and CS, we park a
-	  4096-byte slot in TX DMA and wait to be clocked.  This is the only role
-	  the v2.0 protocol allows (note/refer/spi-at-command-protocol 1.md
-	  sec.1) -- the 8773G cannot generate a clock at all, so there is no
-	  master variant to fall back to.  Keep it enabled.
+	  Build app/wifi_8711/: the SPI slave transport plus the JPGS/ATMC slot
+	  engine, talking to an 8711 running the CUSTOM in-house AT firmware
+	  that understood the eBadge protocol.  The 8711 drove SCLK and CS and
+	  we parked a 4096-byte slot in TX DMA waiting to be clocked.
+
+	  RETIRED, and default n for two reasons rather than one: the standard
+	  firmware replaced it, and the slave role capped the link at 10 MHz
+	  where the master role reaches 25.  Kept buildable for bisecting
+	  against known-good behaviour, not for shipping.
+
+	  Needs the wifi_8711 snippet, not the wifi one -- it binds to
+	  spi0_slave, and spi_rtl87x3g.c BUILD_ASSERTs that spi1 and spi1_hs
+	  are not both okay, so the two overlays cannot be combined.
 
 config WIFI_8711_TEST
 	bool "wifi8711 shell command group"
-	depends on WIFI_8711 && SHELL
+	depends on WIFI_8711_ROLE_SLAVE && SHELL
 	default n
 	help
-	  Register the `wifi8711` shell commands for bring-up: probe the DT
-	  bindings, drive the B2W line, and read W2B.  Useful before the eBadge
-	  port_softap / port_tcp layers exist.
+	  Register the `wifi8711` shell commands for the slave transport: probe
+	  the DT bindings, drive the B2W line, and read W2B.
+
+	  Depends on the ROLE_SLAVE symbol rather than on WIFI_8711, because
+	  wifi_8711_shell.c lives in the module that symbol gates -- hanging it
+	  off "an 8711 exists" would ask CMake for a source file the guard above
+	  excluded.  The master role's equivalent is the `atm` group
+	  (SPI_AT_MASTER_SHELL).
 
 endmenu

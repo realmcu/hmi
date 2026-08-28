@@ -1,0 +1,222 @@
+/*
+ * Copyright (c) 2026, Realtek Semiconductor Corporation
+ *
+ * SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+ */
+
+/*
+ * AT-over-SPI toward the external 8711FA -- WE ARE THE MASTER.
+ *
+ * Enabled via the spi_at_master snippet (pairs with spi_at_master.conf):
+ *   west build -b rtl87x3g_evb applications/eBadge_8773g_8711f -p always \
+ *     -S flash_16M_bank0 -S spi_at_master
+ *
+ * Do NOT pass this together with -S wifi_8711.  They are mutually exclusive:
+ * both claim P4_2..P4_5, spi_rtl87x3g.c:961 BUILD_ASSERTs that spi1 and spi1_hs
+ * are not both okay, and CONFIG_SPI_AT_MASTER depends on !WIFI_8711.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY spi1_hs AND NOT spi0_slave / spi0 / spi1 / spi2
+ * ---------------------------------------------------------------------------
+ * The clock is 25 MHz and we generate it, so max-bus-freq is now load-bearing
+ * rather than decoration.  In rtl87x3g.dtsi:
+ *
+ *   spi0        20 MHz
+ *   spi0_slave  no max-bus-freq at all (the old role: the 8711 clocked us)
+ *   spi1        20 MHz
+ *   spi1_hs     50 MHz          <- the only node that can carry 25 MHz
+ *   spi2        20 MHz
+ *
+ * spi_rtl87x3g_configure() rejects frequency > max_bus_freq outright for a
+ * master (spi_rtl87x3g.c:506, -EINVAL) -- it does not clamp.  So 25 MHz on any
+ * of the 20 MHz nodes fails at bring-up, and spi1_hs is not a preference.
+ *
+ * The four bus PADS are unchanged from the slave build (P4_2..P4_5); only the
+ * pinmux GROUP changes, to the HS_FUNC1 group where SPI1 master lives.  "Same
+ * wires, different controller" -- no board rework is implied.
+ *
+ * Pin assignment:
+ *
+ *   SPI1 CLK   P4_2  (GPIOB9)   -> 8711, we drive it now
+ *   SPI1 MISO  P4_3  (GPIOB10)  <- 8711 SO, our input
+ *   SPI1 MOSI  P4_4  (GPIOB11)  -> 8711 SI, our output
+ *   SPI1 CS    P4_5  (GPIOB12)  -> 8711 SS_N, active low, driven by the controller
+ *   S2M        P4_1  (GPIOB8)   <- 8711, GO-AHEAD: our INPUT, idles LOW
+ *   M2S        P2_7  (GPIOA22)  -> 8711, REQUEST: our OUTPUT, idles HIGH
+ *
+ * The last two lines are REVERSED from the slave build -- see the comment on
+ * the resources node below.  That is the one mistake this file exists to make
+ * hard, because it is invisible at build time.
+ *
+ * P4_2..P4_5 belong to this bus alone: boards/rtl87x3g_evb.overlay routes I2C2
+ * to P2_3/P2_4, and the active LCD (ST7801N) sits on P9_x with RST=P4_0,
+ * TE=P2_2, BL=P2_5.  So P4_1..P4_5 and P2_7 are clear.
+ */
+
+#include <zephyr/dt-bindings/gpio/realtek-rtl87x3g-gpio.h>
+#include <zephyr/dt-bindings/pinctrl/rtl87x3g-pinctrl.h>
+
+/ {
+	/*
+	 * The two out-of-band handshake lines.
+	 *
+	 * THEY ARE REVERSED FROM snippets/wifi_8711.  The pads kept their
+	 * numbers and swapped their directions:
+	 *
+	 *              wifi_8711 (slave)     HERE (master)
+	 *   P4_1       b2w, our OUTPUT       s2m, our INPUT
+	 *   P2_7       w2b, our INPUT        m2s, our OUTPUT
+	 *
+	 * So this stanza copied from the other snippet compiles perfectly and
+	 * drives the wrong pin in the wrong direction, and nothing catches it
+	 * until a scope goes on the board.  The property names are m2s/s2m --
+	 * relative to who holds the master role, which is now us -- precisely
+	 * so the two vocabularies cannot be mixed silently.
+	 */
+	spi_at_master_resources: spi_at_master_resources {
+		compatible = "spi-at-master-irq";
+
+		/* M2S / REQUEST: our output.  Asserted = "prepare to receive".
+		 *
+		 * GPIO_ACTIVE_LOW is what encodes "idles HIGH, asserted LOW":
+		 * with it, GPIO_OUTPUT_INACTIVE at init parks the pad HIGH and
+		 * gpio_pin_set_dt(.., 1) pulls it low.  Dropping the flag would
+		 * invert the entire handshake while still compiling. */
+		m2s-gpios = <&gpioa 22 GPIO_ACTIVE_LOW>;	/* P2_7 */
+
+		/* S2M / GO-AHEAD: our interrupt input, idles LOW, asserted HIGH.
+		 *
+		 * Pull-down for the same reason the slave build pulled w2b down:
+		 * before the 8711 is powered this pad would otherwise float, and
+		 * a floating line that reads high is indistinguishable from a
+		 * permanent go-ahead -- the transport would clock empty slots at
+		 * a dead peer. */
+		s2m-gpios = <&gpiob 8 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;	/* P4_1 */
+	};
+
+	/*
+	 * Non-cacheable DMA staging for the two 16 KiB slots, plus the 16 KiB
+	 * staging copy that feeds the TX slot (48 KiB total).
+	 *
+	 * Why not DTCM: 48 KiB against ~82 KiB for the whole application is not
+	 * affordable, and both slots are touched by GDMA.  This window is
+	 * already mapped non-cacheable by app_lower_init.c:app_mpu_config()
+	 * (MPU region 2 over SPIC1_MEM_BASE+0x400000, attr 0x44), so the SPI
+	 * path needs no SCB_CleanDCache_by_Addr -- the maintenance bug that bit
+	 * the H264 render buffers once SPIC3 became cacheable cannot recur here.
+	 *
+	 * The address is NOT a free choice: app/protocol/port/ebadge_psram_map.h
+	 * BUILD_ASSERTs its own layout against this node's reg, so moving it
+	 * means editing that header, and it will complain if you forget.  Kept
+	 * identical to the wifi_8711 snippet's node -- same address, same size,
+	 * same name -- so the two snippets stay swappable and the map header
+	 * needs no #ifdef.
+	 *
+	 * NOLOAD (not zeroed at boot) and SPIC1 PSRAM only comes up inside
+	 * app_system_lower_init(), so nothing placed here may carry a static
+	 * initialiser.  spi_at_master_init() memsets both slots for that reason.
+	 */
+	psram1_nc_region: psram1_nc_region {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		psram1_nc: memory@22380000 {
+			compatible = "zephyr,memory-region";
+			reg = <0x22380000 DT_SIZE_K(128)>;
+			zephyr,memory-region = "PSRAM1_NC";
+		};
+	};
+};
+
+/* SPI1 high-speed, master.
+ *
+ * status="okay" here is what pulls the driver in at all: CONFIG_SPI_RTL87X3G is
+ * `default y` but gated on DT_HAS_REALTEK_RTL87X3G_SPI_ENABLED.
+ *
+ * No `is-slave` property, which is the whole difference in the driver: without
+ * it spi_rtl87x3g_configure() programs SPI_BaudRatePrescaler from bus_freq (:553)
+ * and enforces the frequency ceiling (:506), and transceive drives CS.
+ *
+ * Above 20 MHz the driver switches the clock source itself
+ * (spi_rtl87x3g_set_hs_clock, :152): PLL1 at 200 MHz divided by 2 = 100 MHz bus,
+ * so 25 MHz comes out as an exact prescaler of 4.  That path only fires for
+ * SPI1_HS -- another reason the node choice is not cosmetic.
+ */
+&spi1_hs {
+	status = "okay";
+	pinctrl-0 = <&spi_at_master_pinmux>;
+	pinctrl-names = "default";
+
+	/* GDMA: channels 0/1, handshakes TX = 6, RX = 7 (GDMA_Handshake_SPI1_TX
+	 * / _RX, rtl876x_gdma_def.h:851).  NOT the 55/56 the slave snippet uses
+	 * -- those are the SPI-slave peripheral.  Channels 0/1 are free: uart3
+	 * in boards/rtl87x3g_evb.overlay holds 2/3.
+	 *
+	 * The cfg words decode (dma_rtl87x3g.h) to, for tx / rx respectively:
+	 *   direction     MEM_TO_PERIPH / PERIPH_TO_MEM
+	 *   addr inc      src inc, dst fixed / src fixed, dst inc
+	 *   data size     1 byte both ends, both channels
+	 *   burst msize   16 both ends, both channels
+	 *   priority      1 / 0
+	 * A 16 KiB block is well inside the GDMA block limit, so no chaining --
+	 * and the watch's master build runs the same 16 KiB slot through these
+	 * same two cfg words, so the numbers are proven rather than derived. */
+	dmas = <&dma0 0 6 0x16c21>, <&dma0 1 7 0x6c0a>;	/* tx, rx */
+	dma-names = "tx", "rx";
+
+	/* One-cycle RX sampling delay (SPI_SetRxSampleDly, :585).  At 25 MHz the
+	 * round trip out to the 8711 and back on MISO is a real fraction of a
+	 * 40 ns bit, so sampling on the nominal edge is marginal.  The watch's
+	 * master overlay carries the same value at a far lower clock, which is
+	 * the closest thing to a measurement available before board bring-up --
+	 * if RX decodes as all-0x00/0xFF this is the first knob, not the mode. */
+	rx-sample-delay = <1>;
+
+	/* The 8711 as a device on our bus.  A master HAS a peer, so unlike the
+	 * slave snippet there is a child node and the transport uses
+	 * SPI_DT_SPEC_GET, which carries spi-max-frequency into spi_config.
+	 *
+	 * No cs-gpios: P4_5 is driven by the controller through the HS pinmux
+	 * group below, so spi_context_cs_control() is correctly a no-op. */
+	spi_at_master_device: spi_at_master_device@0 {
+		compatible = "spi-at-master-device";
+		reg = <0>;
+		/* Must equal SPI_AT_SCLK_HZ in app/spi_at_master/spi_at_master.h.
+		 * Nothing checks the two against each other -- the header value
+		 * is only logged, this one is what the hardware does. */
+		spi-max-frequency = <25000000>;
+		status = "okay";
+	};
+};
+
+&pinctrl {
+	/* All four pads through the HIGH-SPEED group (HS_FUNC1), which is where
+	 * SPI1 MASTER lives.  This is the exact opposite of the slave snippet,
+	 * which had to use the ordinary group -- and both are correct for their
+	 * role, so neither comment is stale:
+	 *
+	 *   as slave, HS_FUNC1 carries only the slave INPUTS, so SO/MISO never
+	 *   drives and the peer reads back 0xFF (protocol sec.2.2);
+	 *   as master, HS_FUNC1 is the only group that has SPI1 master functions
+	 *   at all -- the ordinary SPI_*_SLAVE selectors would configure the
+	 *   slave peripheral on pads whose controller is spi1_hs.
+	 *
+	 * DIR_OUT on all four, MISO included, matches the watch's master overlay
+	 * and the slave one: in pinmux mode the selected function owns the
+	 * direction and the dir bit only matters for PAD_SW_MODE.
+	 *
+	 * Group name is snippet-prefixed so it cannot clash with the
+	 * i2c2_default / i2c0_default / uart3_default groups in the board
+	 * overlay, nor with spi0_slave_wifi_default in the other snippet.
+	 */
+	spi_at_master_pinmux: spi_at_master_pinmux {
+		group1 {
+			psels = <RTL87X3G_PSEL(HS_P4_2_SPI1_CLK,  P4_2, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(HS_P4_3_SPI1_MISO, P4_3, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(HS_P4_4_SPI1_MOSI, P4_4, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(HS_P4_5_SPI1_CSN,  P4_5, DIR_OUT, DRV_HIGH, PULL_UP)>;
+		};
+	};
+};
+
+/* &dma0 and &gpioa / &gpiob are already status="okay" in
+ * boards/rtl87x3g_evb.overlay; repeating them here would be a no-op. */

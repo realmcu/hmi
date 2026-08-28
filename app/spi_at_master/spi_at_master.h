@@ -1,0 +1,328 @@
+/**
+ * @file    spi_at_master.h
+ * @brief   AT-over-SPI toward the RTL8711 -- WE ARE THE MASTER.
+ *
+ * SCOPE: a bring-up harness, not a product path.  It moves one AT command line
+ * from the serial shell to the 8711 and hexdumps both directions.  There is no
+ * Wi-Fi state machine, no SoftAP, no JPEG/file ingress -- those all belong to
+ * the old slave-role stack (app/wifi_8711) and are deliberately not built while
+ * this module is in, see "WHY THIS IS A SECOND MODULE" below.
+ *
+ * The protocol and the flow are taken from the vendor reference
+ *   rtl8711faf/ameba-rtos/example/atcmd_host/atcmd_host_spi
+ * rather than invented here, so that a disagreement with the 8711 side can be
+ * settled by reading one file on each end.
+ *
+ * ---------------------------------------------------------------------------
+ * ROLE, AND WHY THE CONTROLLER HAD TO CHANGE
+ * ---------------------------------------------------------------------------
+ * We drive SCLK and CS now; the 8711 does not.  That forced a different SPI
+ * controller, which is worth knowing before wondering why the node name moved:
+ *
+ *   spi0_slave (the old role) carries `is-slave` and has no max-bus-freq at all
+ *   -- the 8711 supplied the clock, so there was nothing to rate.
+ *   spi0 / spi1 / spi2 are rated max-bus-freq = 20 MHz in rtl87x3g.dtsi.
+ *   spi1_hs is rated 50 MHz.
+ *
+ * 25 MHz therefore has exactly one home on this SoC: spi1_hs.  Asking for
+ * 25 MHz on any of the 20 MHz nodes is not a soft limit -- it is a hard -EINVAL
+ * from spi_rtl87x3g_configure() (spi_rtl87x3g.c:506).
+ *
+ * The four bus PADS are unchanged (P4_2..P4_5).  Only the pinmux GROUP changes,
+ * from the ordinary SPI_*_SLAVE functions to the HS_FUNC1 group, which is where
+ * SPI1 master lives.  So "same wires, different controller" is the accurate
+ * summary -- no board rework is implied by this module.
+ *
+ * ---------------------------------------------------------------------------
+ * THE TWO SYNC LINES ARE REVERSED FROM THE SLAVE BUILD
+ * ---------------------------------------------------------------------------
+ * This is the single easiest thing to get backwards, because the pads kept
+ * their numbers and swapped their directions:
+ *
+ *                  slave build (app/wifi_8711)   THIS module
+ *   P4_1  GPIOB8   B2W, our OUTPUT               S2M, our INPUT
+ *   P2_7  GPIOA22  W2B, our INPUT                M2S, our OUTPUT
+ *
+ * So a DT overlay copied from the old snippet compiles perfectly and drives the
+ * wrong pin in the wrong direction.  Nothing catches that at build time; the
+ * names below are chosen to be relative-to-master (m2s/s2m) precisely so the
+ * two cannot be confused in code.
+ *
+ * Idle levels, per the 8711 side and the reference:
+ *
+ *   M2S (out) idles HIGH, asserted LOW  = "prepare to receive"
+ *   S2M (in)  idles LOW,  asserted HIGH = "ready" / "I want to send"
+ *
+ * In devicetree that is expressed as GPIO_ACTIVE_LOW on m2s-gpios, which is why
+ * GPIO_OUTPUT_INACTIVE at init produces a HIGH pad and gpio_pin_set_dt(.., 1)
+ * pulls it low.  Reading the raw numbers instead of the logical ones is the
+ * usual way this gets misread.
+ *
+ * ---------------------------------------------------------------------------
+ * TRANSACTION SHAPE -- S2M IS THE GO-AHEAD FOR *BOTH* DIRECTIONS
+ * ---------------------------------------------------------------------------
+ * The non-obvious part of the reference, and the part that makes the whole
+ * thing work: the master's loop blocks on the S2M rising edge before EVERY
+ * transfer, uplink or downlink.  M2S-low is only a REQUEST; it never starts a
+ * transfer by itself.
+ *
+ *   uplink    we stage a frame -> assert M2S low -> 8711 arms and raises S2M
+ *             -> we clock SPI_AT_SLOT_SIZE both ways -> release M2S high
+ *   downlink  8711 raises S2M on its own -> we clock the same fixed slot,
+ *             sending an invalid-magic dummy on MOSI -> release M2S high
+ *
+ * Both cases are the same code path with the same fixed-size full-duplex
+ * transfer, which is why there is one transaction function and not two.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE TRANSFER IS SYNCHRONOUS HERE, UNLIKE THE SLAVE BUILD
+ * ---------------------------------------------------------------------------
+ * The slave transport had to split ISR and thread, because on this driver the
+ * completion callback runs in the DMA ISR while the context lock is still held
+ * (spi_context.h:206 releases it only after the callback returns), so re-arming
+ * from the callback would k_sem_take(K_FOREVER) inside an ISR.
+ *
+ * As master that constraint evaporates: nothing has to be armed in advance, so
+ * the thread can simply call the blocking spi_transceive() and the whole
+ * re-arm hazard disappears.  This is the one place where being master is
+ * genuinely simpler, and it is worth taking.
+ *
+ * ---------------------------------------------------------------------------
+ * NEVER PASS A NULL BUFFER TO THIS DRIVER
+ * ---------------------------------------------------------------------------
+ * spi_rtl87x3g.c:324/335 k_malloc()s a whole chunk-sized bounce buffer whenever
+ * tx_buf or rx_buf is NULL, and frees it after.  At a 16 KiB slot that is a
+ * 16 KiB malloc per transfer against a 2 KiB k_malloc arena -- it fails with
+ * -ENOMEM rather than degrading.  So both directions always point at real
+ * storage, and a downlink-only slot sends a dummy frame instead of a NULL TX.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS A SECOND MODULE INSTEAD OF AN EDIT TO app/wifi_8711
+ * ---------------------------------------------------------------------------
+ * The slave stack is working code with a protocol (ATMC/JPGS/EBFS, 4096 B
+ * slots, CRC32, sequence de-dup) that this change retires but does not
+ * disprove -- the 8711 firmware it talks to still exists.  Converting it in
+ * place would leave neither role intact while the new one is unproven.
+ *
+ * The two are mutually exclusive by construction, three ways over:
+ *   - CONFIG_SPI_AT_MASTER depends on !WIFI_8711 in Kconfig
+ *   - both would claim P4_2..P4_5, and spi_rtl87x3g.c:961 BUILD_ASSERTs that
+ *     spi1 and spi1_hs are not both okay
+ *   - each is delivered by its own snippet, and you pass one -S or the other
+ *
+ * That exclusivity is also how "pause the Wi-Fi features" is implemented: every
+ * caller of the AT layer in app/protocol (port_softap, port_tcp, jpgs_ingress,
+ * ebfs_ingress, cmd_debug) is already wrapped in #if defined(CONFIG_WIFI_8711)
+ * with a working #else stub.  Building without that symbol therefore parks all
+ * of them on their stubs with ZERO edits to protocol code -- which is the whole
+ * reason this was done by Kconfig rather than by deleting call sites.
+ */
+#ifndef _SPI_AT_MASTER_H_
+#define _SPI_AT_MASTER_H_
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*----------------------------------------------------------------------------*
+ *  Frame geometry  (reference: example_atcmd_host_spi.c:18-27, :330-338)
+ *
+ *  Every transfer is exactly SPI_AT_SLOT_SIZE bytes on the wire in both
+ *  directions regardless of payload -- the length field bounds what the peer
+ *  READS, not what gets clocked.  Trailing bytes are don't-care.
+ *
+ *      offset 0   0x41 'A'
+ *      offset 1   0x54 'T'
+ *      offset 2   payload length, uint16 LITTLE-endian
+ *      offset 4   payload
+ *----------------------------------------------------------------------------*/
+#define SPI_AT_SLOT_SIZE        16384U      /* == reference ATCMD_SPI_DMA_SIZE */
+#define SPI_AT_HDR_SIZE         4U
+
+/** The reference reserves 8 bytes, not 4: 4 for the header above plus 4 for a
+ *  trailing checksum that its CHECKSUM_EN is 0 for.  The reservation is kept
+ *  byte-for-byte so both ends agree on the maximum payload even though neither
+ *  computes the checksum today -- shrinking it here would silently let us send
+ *  a frame the 8711 rejects on length the day someone enables it there. */
+#define SPI_AT_CHKSUM_RSVD      4U
+#define SPI_AT_PAYLOAD_MAX      (SPI_AT_SLOT_SIZE - SPI_AT_HDR_SIZE - \
+                                 SPI_AT_CHKSUM_RSVD)     /* 16376 */
+
+#define SPI_AT_MAGIC_0          0x41U       /* 'A' */
+#define SPI_AT_MAGIC_1          0x54U       /* 'T' */
+
+/** First byte of a downlink-only dummy frame.  Any value that is not 'A' works;
+ *  the point is that the 8711 must not mistake an empty uplink for a command.
+ *  Only byte 0 is stamped -- the peer bounds its read by the length field, so
+ *  zeroing 16 KiB per idle slot would cost real time for no effect. */
+#define SPI_AT_DUMMY_MAGIC      0xFFU
+
+/** SPI mode, as the reference configures it (SPI_MODE 0 = CPOL 0, CPHA 0).
+ *  The old slave build ran mode 3.  Both ends must agree; a mismatch shows up
+ *  as an all-0x00/all-0xFF RX rather than as an error, so this is the first
+ *  thing to check when nothing decodes. */
+#define SPI_AT_SPI_MODE_CPOL    0
+#define SPI_AT_SPI_MODE_CPHA    0
+
+/** Bus clock.  25 MHz per the hardware brief; the reference asks for 20 MHz.
+ *  Only spi1_hs can carry this -- see the controller note in the file header. */
+#define SPI_AT_SCLK_HZ          25000000U
+
+/** How long we wait for the 8711 to answer an M2S assert with an S2M rise.
+ *  1000 ms matches the peer's own READY budget, so a timeout here means the
+ *  8711 really is not participating rather than merely being slow. */
+#define SPI_AT_READY_TIMEOUT_MS 1000U
+
+/*----------------------------------------------------------------------------*
+ *  Counters
+ *
+ *  Split by failure mode rather than merged into one error count, because each
+ *  line points at a different half of the link.
+ *----------------------------------------------------------------------------*/
+typedef struct
+{
+    uint32_t tx_frames;      /**< uplink frames actually clocked out          */
+    uint32_t rx_frames;      /**< slots received with a valid header          */
+    uint32_t rx_empty;       /**< valid header, length 0 (a pure ack slot)    */
+    uint32_t rx_bad_magic;   /**< first two bytes were not 'A','T'            */
+    uint32_t rx_bad_len;     /**< header ok, length past SPI_AT_PAYLOAD_MAX   */
+    uint32_t xfer_err;       /**< spi_transceive() returned negative          */
+    uint32_t ready_timeout;  /**< asserted M2S, no S2M rise within the budget */
+    uint32_t s2m_edges;      /**< S2M rising edges seen by the ISR            */
+    uint32_t slots;          /**< transactions completed, both directions     */
+    int32_t  last_result;    /**< raw return of the last spi_transceive()     */
+} spi_at_master_stats_t;
+
+/**
+ * @brief  Sink for a received payload, called on the transport thread.
+ *
+ * @param  payload  points into the RX slot -- valid only for this call
+ * @param  len      0..SPI_AT_PAYLOAD_MAX
+ *
+ * Not an ISR context, so logging and locks are fine.  It must still return
+ * promptly: M2S stays asserted for its duration, which back-pressures the peer.
+ */
+typedef void (*spi_at_master_rx_cb_t)(const uint8_t *payload, uint16_t len);
+
+/**
+ * @brief  Resolve the DT nodes, configure the bus and both sync lines, start
+ *         the transport thread.
+ *
+ * Leaves M2S released (HIGH) and the S2M rising-edge interrupt armed.  If S2M
+ * is ALREADY high at this point -- the 8711 booted first and is waiting -- the
+ * edge is gone forever, so init synthesises one rather than deadlocking on it.
+ *
+ * @retval 0        ready
+ * @retval -ENODEV  bus or a GPIO port did not come up
+ * @retval <0       driver errno from gpio/spi configuration
+ */
+int spi_at_master_init(void);
+
+/** True once spi_at_master_init() has succeeded. */
+bool spi_at_master_ready(void);
+
+/**
+ * @brief  Send one AT payload: stage it, then assert M2S to request the slot.
+ *
+ * Returns as soon as the frame is staged -- it goes out when the 8711 answers
+ * with S2M.  Use spi_at_master_wait_rx() to wait for the reply.
+ *
+ * If the 8711 never answers, the request is abandoned after
+ * SPI_AT_READY_TIMEOUT_MS: M2S is released, the staged frame is dropped and
+ * ready_timeout is bumped.  So -EBUSY is always transient -- it never latches
+ * the harness into a state only a reboot clears.
+ *
+ * Only one frame may be in flight; this is a bring-up harness and a queue would
+ * hide ordering bugs rather than fix them.
+ *
+ * @param  payload  bytes to place after the header (CRLF included if the peer
+ *                  wants it -- this layer appends nothing)
+ * @param  len      1..SPI_AT_PAYLOAD_MAX
+ * @retval 0          staged, M2S asserted
+ * @retval -ENODEV    not initialised
+ * @retval -EINVAL    NULL payload or len 0
+ * @retval -EMSGSIZE  len > SPI_AT_PAYLOAD_MAX
+ * @retval -EBUSY     a frame is already staged and not yet sent
+ */
+int spi_at_master_send(const uint8_t *payload, uint16_t len);
+
+/**
+ * @brief  spi_at_master_send() for a text command, appending CRLF if absent.
+ *
+ * The 8711's line parser terminates on CRLF, so a command typed without one
+ * would be accepted here and then sit unparsed at the far end -- a silent
+ * failure that looks like a dead link.  Hence the fix-up lives in the sender.
+ */
+int spi_at_master_send_text(const char *text);
+
+/**
+ * @brief  Install the payload sink.  NULL only counts.
+ *
+ * The hexdump is independent of this and stays on regardless, because during
+ * bring-up the bytes are the answer and a parser is not required to see them.
+ */
+void spi_at_master_set_rx_cb(spi_at_master_rx_cb_t cb);
+
+/**
+ * @brief  Block until a slot with a valid header arrives.
+ *
+ * @retval 0        a slot arrived
+ * @retval -EAGAIN  nothing in time -- the expected result against a peer whose
+ *                  AT firmware is not running
+ */
+int spi_at_master_wait_rx(uint32_t timeout_ms);
+
+/**
+ * @brief  Hexdump control, runtime rather than compile-time.
+ *
+ * A dump runs on the transport thread with M2S still asserted, so it throttles
+ * the peer.  Harmless while typing single commands, not harmless under a burst
+ * -- being able to stop it without a reflash is the point.
+ */
+void spi_at_master_set_dump(bool tx_on, bool rx_on);
+void spi_at_master_get_dump(bool *tx_on, bool *rx_on);
+
+/** How many bytes an OUTGOING dump shows, and the largest command line the text
+ *  helpers accept.  This one doubles as a stack-buffer size in two places
+ *  (spi_at_master_send_text() and the shell's `atm send`), so it cannot grow
+ *  freely -- see SPI_AT_DUMP_RX_MAX for the receive side, which has no such tie.
+ *  Uplink is AT command lines of tens of bytes, so 256 is already generous. */
+#define SPI_AT_DUMP_MAX         256U
+
+/** How many bytes an INCOMING dump shows.
+ *
+ * Deliberately larger than the TX limit, and deliberately a separate macro: what
+ * the 8711 sends back is the half we are debugging, and a reply clipped at 256 B
+ * hides exactly the tail that says whether the frame ended properly.
+ *
+ * 1536 covers a full-MTU-ish reply intact while still bounding the one time a
+ * peer sends a whole 16 KiB slot -- at 16 B/row that is 96 rows, roughly 8 KB of
+ * console text, which at the board's 2 Mbaud console (uart2) is about 40 ms.
+ * The dump runs on the transport thread with M2S still asserted (see
+ * spi_at_master_set_dump), so that delay throttles the peer -- 40 ms is well
+ * inside the 1000 ms READY budget, whereas dumping an entire 16 KiB slot would
+ * be ~430 ms and start eating into it.  That margin is the reason for the cap.
+ *
+ * This value is NOT a buffer size anywhere: ebadge_log_hexdump() formats one
+ * 16-byte row at a time into an 80-byte stack buffer, so raising it costs
+ * console time and nothing else.  That is what makes it safe to set here. */
+#define SPI_AT_DUMP_RX_MAX      1536U
+
+void spi_at_master_get_stats(spi_at_master_stats_t *out);
+void spi_at_master_reset_stats(void);
+
+/** Logical levels of the two sync lines, for `atm info`.  Negative = not ready.
+ *  m2s reads back what WE have asserted, not the pad -- the question a caller
+ *  asks is "what have we told the 8711", which a loaded pad would not answer. */
+int spi_at_master_get_m2s(void);
+int spi_at_master_get_s2m(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* _SPI_AT_MASTER_H_ */

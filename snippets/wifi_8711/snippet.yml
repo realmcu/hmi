@@ -1,3 +1,15 @@
+# RETIRED -- 本机做 SPI 从机的外挂 Wi-Fi（重构阶段 5 删除）
+#
+# 已被 snippets/wifi/ 取代（本机做 SPI 主机 @25MHz + Realtek 标准 AT 命令集）。
+# 保留仅作过渡期回退参照，见 note/spi-master-at-refactor-plan.md 阶段 5。
+#
+# 这个 snippet 仍然可用（-Snippet wifi_8711 能编出旧固件），但它打开
+# CONFIG_WIFI_8711 并把 P4_2..P4_5 配成从机，与 snippets/wifi/ 互斥：
+# 两者都占同一组 pad，且 spi_rtl87x3g.c:961 BUILD_ASSERT 不允许 spi1 与
+# spi1_hs 同时 okay。不要同时传。
+#
+# 握手线在两者之间是反向的（P4_1/P2_7 pad 号不变、方向对调），从这里抄
+# overlay 到新工程会编译通过并驱动错误的引脚，详见 app/wifi_8711/README.md。
 name: wifi_8711
 append:
   EXTRA_CONF_FILE: wifi_8711.conf

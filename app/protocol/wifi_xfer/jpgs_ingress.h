@@ -1,19 +1,24 @@
 /**
  * @file    jpgs_ingress.h
- * @brief   Wi-Fi payload ingress from the 8711 (SPI JPGS slots).
+ * @brief   Preview-frame boundary detection for the raw TCP stream.
  *
- * The phone's TCP connection terminates on the 8711, not here, so both stored
- * files and preview frames reach this chip as JPGS slots over SPI rather than
- * through ebadge_port_tcp.  This module owns that entry point: it validates and
- * reassembles the slots, then routes the payload to whichever session is live
- * -- xfer_session (opened by 0x10, stores to flash) or stream_session (opened
- * by 0x08, displays).  The wire cannot tell the two apart; the session can.
+ * The phone's TCP connection terminates on the 8711, not here, but the 8711 is a
+ * network card rather than a protocol peer: the preview port hands us exactly the
+ * bytes the phone wrote, unframed.  This module is what finds the frames in them
+ * -- FF D8 to FF D9 -- buffers each one, and calls
+ * stream_session_on_frame_chunk() when it is whole.
  *
- * Read the file header of jpgs_ingress.c before changing anything here.  Two
- * rules in particular are easy to break silently: the payload CRC32 lives at
- * offset 28 (offset 12 is ATMC's, a different packet type), and the preview
- * path's tier-2 flow control requires B2W to stay low until the frame has been
- * displayed -- which is a wifi_8711_xfer change, not one that belongs here.
+ * It used to reassemble JPGS slots and route the payload to whichever session was
+ * live.  Both halves are gone: the slots no longer exist, and the port already
+ * answers the routing question (preview bytes belong to stream_session; a file
+ * arrives on the other port and never reaches here).  Read the file header of
+ * jpgs_ingress.c for what that removed and what it added -- in particular the
+ * whole-frame buffer, which the old design deliberately avoided and this one
+ * cannot, because a frame's length is unknowable until its EOI arrives.
+ *
+ * The one known weakness is an EXIF thumbnail's inner FF D9 ending the frame
+ * early.  It degrades to a dropped frame; the .c header says why it is not
+ * defended against here.
  */
 #ifndef _EBADGE_JPGS_INGRESS_H_
 #define _EBADGE_JPGS_INGRESS_H_
@@ -25,32 +30,49 @@ extern "C" {
 #endif
 
 /**
- * @brief  Register the JPGS slot sink on the 8711 AT layer.
+ * @brief  Zero the scanner.  Call once from ebadge_task_init().
  *
- * Call once from ebadge_task_init().  Without it, JPGS slots are dropped by the
- * AT layer with no counter -- so "the 8711 is forwarding nothing" and "we are
- * ignoring what it forwards" would look identical.
+ * Registers nothing -- stream_session is what registers with port_tcp, and this
+ * module sits behind it.  The call exists so the wiring list in ebadge_task_init()
+ * still names this module, and so the counters are provably zero before the first
+ * byte can arrive.
  */
 void jpgs_ingress_init(void);
 
 /**
- * @brief  Drop any frame being reassembled and resync on the next START.
+ * @brief  Raw bytes from the preview TCP port.
  *
- * For use when a session ends abruptly (BLE disconnect, abort): the 8711 may
- * still be mid-frame, and without this the leftover chunks would be measured
- * against a frame the new session never started.
+ * Called by stream_session, which owns the port_tcp registration and has already
+ * marshalled the bytes onto l2_task.  Arbitrary lengths and arbitrary boundaries
+ * are expected: a marker may be split across two calls, and a call may contain the
+ * end of one frame and the start of the next.
+ */
+void jpgs_ingress_on_tcp_data(const uint8_t *data, uint16_t len);
+
+/**
+ * @brief  Drop any frame being assembled and resync on the next SOI.
+ *
+ * For use when a session ends abruptly (BLE disconnect, abort): the phone may be
+ * mid-frame, and without this the leftover bytes would be prepended to whatever
+ * the next session receives.
  */
 void jpgs_ingress_reset(void);
 
-/** JPGS slots seen since boot.  Bring-up instrument: non-zero proves the 8711
- *  is forwarding something, independently of whether it validates. */
+/** Preview-port bytes seen since boot.  Bring-up instrument: non-zero proves the
+ *  phone is sending and the 8711 is forwarding, independently of whether any
+ *  frame is well-formed.
+ *
+ *  Named _slots for source compatibility with the JPGS-slot version this
+ *  replaced; there are no slots any more.  The callers are log lines, so renaming
+ *  it buys nothing and costs a sweep. */
 uint32_t jpgs_ingress_slots(void);
 
-/** Frames reassembled and CRC-checked end to end since boot. */
+/** Frames delimited FF D8..FF D9 and handed to stream_session since boot. */
 uint32_t jpgs_ingress_frames_ok(void);
 
-/** Frames abandoned on a bad CRC / illegal or out-of-order chunk (sec.5.2).
- *  Read alongside frames_ok: a healthy link drops none. */
+/** Frames abandoned: a new SOI before the previous EOI, or a frame larger than
+ *  the reassembly buffer.  Read alongside frames_ok -- a healthy preview drops
+ *  none, and a steady trickle here is the EXIF-thumbnail case in the .c header. */
 uint32_t jpgs_ingress_frames_dropped(void);
 
 #ifdef __cplusplus

@@ -20,24 +20,35 @@
  * which is precisely what this command exists to rule out.
  *
  * THE WI-FI SUBCMDS ARE ASYNCHRONOUS AND THEIR RESULT IS NOT THE ANSWER.
- * The 8711 is the SPI master: it owns SCLK/CS and polls roughly every 2 s while
- * idle, so this side can only stage a slot and wait to be clocked.  A reply
- * therefore needs one poll out and one poll back, arriving 2..4 s later on the
- * transport thread -- long after this handler has returned.  Blocking here to
- * wait for it would stall the l2 task (the single serialiser for every BLE
- * command) for seconds, so we do not: SUCCEED means "the query was queued", and
- * the reply is printed to the device log by wifi_8711_at_query.c.
+ * We are the SPI master now, so a command leaves as soon as it is submitted
+ * rather than waiting to be clocked -- but the ANSWER still cannot be waited for
+ * here.  AT+WLSTATE costs a round trip, and AT+WLSTARTAP does not print OK until
+ * the radio is genuinely on the air, which its own handler polls for at 1 Hz for
+ * up to 20 iterations.  Blocking on either would stall l2_task -- the single
+ * serialiser for every BLE command -- for seconds or tens of seconds.
  *
- * The two transfer-control subcmds (0x04 XFER_STOP / 0x05 XFER_ACK) act on
- * whatever file connection the 8711 currently holds open.  With no upload in
- * flight they are answered "[AT]:ERROR", which surfaces in the log a few seconds
- * later -- that is the expected outcome of poking them idly, not a fault.  The
- * firmware sends both by itself from xfer_session via ebadge_port_tcp; these
- * exist to exercise the 8711 end of v2.2 sec.10 without a phone.
+ * So SUCCEED means "accepted for submission", and the reply is printed to the
+ * device log by at_wifi.c when it lands.
+ *
+ * WHAT THE TRANSFER SUBCMDS TALK TO NOW.  0x04 and 0x05 used to be AT+XFERSTOP /
+ * AT+XFERACK -- commands the in-house firmware implemented, which built the EBXR
+ * itself out of a status and a reason we handed it.  The standard command set has
+ * no such thing: the 8711 is a network card, and the EBXR is eight bytes WE push
+ * over the phone's own TCP connection with AT+SKTSENDRAW.
+ *
+ * They therefore act on ebadge_port_tcp, which is the module that owns those
+ * bytes now.  Two consequences for anyone poking them by hand:
+ *
+ *   - with no phone connected there is no seed link to write to, so both are
+ *     no-ops.  Answered NOT_READY rather than FAILED: nothing is broken, there is
+ *     simply no connection, which is the normal outcome of poking them idly.
+ *   - 0x05 sends a REAL verdict to a REAL phone.  Used mid-upload it ends that
+ *     upload with the code typed here.  That is the point of it, and also what is
+ *     worth knowing before typing one.
  *
  * An App that wants the AP credentials as DATA should send 0x12 GET_AP_INFO,
- * which answers 0x13 from a warm cache; these subcmds are for a human watching
- * the console during bring-up.
+ * which answers 0x13 from what we told the 8711 to be; these subcmds are for a
+ * human watching the console during bring-up.
  */
 #include <stdint.h>
 #include <errno.h>
@@ -46,16 +57,18 @@
 #include "../ebadge_errcode.h"
 #include "../ebadge_log.h"
 #if defined(CONFIG_WIFI_8711)
-#include "wifi_8711_at_query.h"
-#include "wifi_8711_at_xfer.h"
+#include "at_wifi.h"
+#include "../port/ebadge_port_softap.h"
+#include "../port/ebadge_port_tcp.h"
 #endif
 
 /**
- * @brief  Map an errno-style return from the Wi-Fi layer onto an EB_RESULT_*.
+ * @brief  Map an errno-style return from the Wi-Fi / socket layers onto an
+ *         EB_RESULT_*.
  *
- * -ENODEV means the 8711 link never initialised, which is a "not ready", not a
- * failure -- the App can retry.  -EBUSY means the single-flight AT layer is
- * occupied, which is also transient.  Everything else is a real failure.
+ * The distinction that matters is transient versus permanent: an App told FAILED
+ * goes looking for a fault, and most of what can come back from these layers is
+ * "ask again in a moment" instead.
  */
 #if defined(CONFIG_WIFI_8711)
 static uint8_t wifi_rc_to_result(int rc)
@@ -66,27 +79,33 @@ static uint8_t wifi_rc_to_result(int rc)
     }
     if (rc == -ENODEV)
     {
+        /* The AT layer was never initialised -- no 8711 answered its boot marker,
+         * or ebadge_task_init() has not run.  A "not ready", not a failure. */
         return EB_RESULT_NOT_READY;
     }
-    if (rc == -ENOTSUP)
+    if (rc == -ENOTCONN)
     {
-        /* The 8711 has told us it does not implement this command.  NOT_READY
-         * rather than FAILED: nothing is broken, and retrying is pointless until
-         * the peer firmware gains it. */
+        /* No phone has opened a TCP connection, so there is no seed link to act
+         * on.  This is what both transfer subcmds return when poked idly, and it
+         * is the expected answer rather than a fault. */
         return EB_RESULT_NOT_READY;
     }
-    if (rc == -EINVAL)
+    if (rc == -EINVAL || rc == -EMSGSIZE)
     {
-        /* Caller's own argument was rejected before anything went on the wire --
-         * XFERACK with a success status and a non-zero reason is the one that
-         * does this.  A real failure, and the App's to fix. */
+        /* The argument was rejected before anything went on the wire.  A real
+         * failure, and the caller's to fix. */
         return EB_RESULT_FAILED;
     }
-    /* -EBUSY: the AT layer is single flight and something else has it -- most
-     * likely port_softap's background AP poll.  BUSY, not FAILED: retrying in a
-     * few seconds will work, and telling the App it failed would send it
-     * looking for a fault that is not there. */
-    return (rc == -EBUSY) ? EB_RESULT_BUSY : EB_RESULT_FAILED;
+    /* -EBUSY: a parse of the same command is already outstanding (at_wifi keeps
+     *         one accumulator, so it refuses a second WLSTATE rather than merging
+     *         two answers).
+     * -ENOSPC: at_client's submit queue is full -- four commands are already
+     *         waiting, which clears in the time the one in flight takes.
+     * -EALREADY: an AT+WLSTARTAP is on the wire, and one takes up to ~25 s.
+     *
+     * All three are BUSY: retrying in a few seconds will work. */
+    return ((rc == -EBUSY) || (rc == -ENOSPC) || (rc == -EALREADY))
+           ? EB_RESULT_BUSY : EB_RESULT_FAILED;
 }
 #endif
 
@@ -103,14 +122,19 @@ static uint8_t debug_dispatch_sub(uint8_t sub, const ebadge_tlv_t *val)
 
     case EB_DBG_SUB_WIFI_AP_INFO:
 #if defined(CONFIG_WIFI_8711)
-        /* AT+WLSTATE -- the 8711 answers with SSID / PASSWD / IP / PORT /
-         * CLIENTS as plain text.  Staged only; see the file header. */
+        /* AT+WLSTATE -- the 8711 answers with column-aligned "KEY => VALUE" text
+         * meant for a person.  at_wifi parses out the two facts we cannot already
+         * know (is it really an AP, how many clients) and logs them; see the file
+         * header for why the answer does not come back through here.
+         *
+         * NULL callback on purpose: this subcmd exists so a human can see the
+         * reply, and at_wifi logs it whether anybody asked or not. */
         EBADGE_LOG("DEBUG: WIFI_AP_INFO -> AT+WLSTATE (reply goes to the log)");
-        return wifi_rc_to_result(wifi_8711_at_query_ap_info());
+        return wifi_rc_to_result(at_wifi_ap_query(NULL, NULL));
 #else
-        /* Built without the wifi_8711 snippet: there is no SPI link at all.
-         * Say so rather than reporting a generic failure, because the fix is
-         * a build flag, not anything on the wire. */
+        /* Built without the wifi snippet: there is no SPI link at all.  Say so
+         * rather than reporting a generic failure, because the fix is a build
+         * flag, not anything on the wire. */
         EBADGE_WARN("DEBUG: WIFI_AP_INFO but CONFIG_WIFI_8711=n");
         (void)val;
         return EB_RESULT_NOT_READY;
@@ -118,8 +142,17 @@ static uint8_t debug_dispatch_sub(uint8_t sub, const ebadge_tlv_t *val)
 
     case EB_DBG_SUB_WIFI_START_AP:
 #if defined(CONFIG_WIFI_8711)
-        EBADGE_LOG("DEBUG: WIFI_START_AP -> AT+WLSTARTAP (reply goes to the log)");
-        return wifi_rc_to_result(wifi_8711_at_start_ap());
+        /* Through port_softap rather than straight at at_wifi_ap_start(), because
+         * the credentials are port_softap's to choose -- it derives them from the
+         * BLE address and 0x13 AP_INFO reports what it chose.  Calling at_wifi
+         * directly from here would put a DIFFERENT SSID on the air from the one
+         * the phone was told to look for.
+         *
+         * A no-op when the AP is already up or a bring-up is in flight, so this is
+         * safe to poke repeatedly; it cannot restart a 25 s command mid-flight. */
+        EBADGE_LOG("DEBUG: WIFI_START_AP -> port_softap arm (reply goes to the log)");
+        ebadge_port_softap_arm();
+        return EB_RESULT_SUCCEED;
 #else
         EBADGE_WARN("DEBUG: WIFI_START_AP but CONFIG_WIFI_8711=n");
         (void)val;
@@ -128,11 +161,16 @@ static uint8_t debug_dispatch_sub(uint8_t sub, const ebadge_tlv_t *val)
 
     case EB_DBG_SUB_XFER_STOP:
 #if defined(CONFIG_WIFI_8711)
-        /* Cut the current file connection.  No argument, and no EBXR: this is
-         * the "stop now" half of v2.2 sec.10, the same command xfer_session
-         * sends when the data plane disagrees with the BLE offer. */
-        EBADGE_LOG("DEBUG: XFER_STOP -> AT+XFERSTOP (reply goes to the log)");
-        return wifi_rc_to_result(wifi_8711_at_xfer_stop(NULL, NULL));
+        /* Cut the phone's connection with no EBXR -- the "stop now" half, the same
+         * thing xfer_session does when the EBXF header contradicts the BLE offer.
+         * On the wire it is AT+SKTDEL on the seed link. */
+        if (!ebadge_port_tcp_connected())
+        {
+            EBADGE_WARN("DEBUG: XFER_STOP but no phone is connected");
+            return EB_RESULT_NOT_READY;
+        }
+        EBADGE_LOG("DEBUG: XFER_STOP -> cutting the TCP connection");
+        return wifi_rc_to_result(ebadge_port_tcp_abort());
 #else
         EBADGE_WARN("DEBUG: XFER_STOP but CONFIG_WIFI_8711=n");
         (void)val;
@@ -151,13 +189,26 @@ static uint8_t debug_dispatch_sub(uint8_t sub, const ebadge_tlv_t *val)
                 EBADGE_WARN("DEBUG: XFER_ACK needs VALUE = <status>[,<reason>]");
                 return EB_RESULT_FAILED;
             }
-            uint8_t status = val->val[0];
+            if (!ebadge_port_tcp_connected())
+            {
+                EBADGE_WARN("DEBUG: XFER_ACK but no phone is connected");
+                return EB_RESULT_NOT_READY;
+            }
+
+            /* Byte 0 keeps the EBXR's own polarity -- 1 is success, 0 is failure --
+             * because that is what a person reading the spec's sec.6.3 table will
+             * type.  It is the opposite of the BLE result codes in V1.3 sec.2.5,
+             * deliberately, and ebadge_port_tcp_ack() takes a bool so the
+             * conversion happens here and only here. */
+            bool    ok     = (val->val[0] != 0U);
             uint8_t reason = (val->len >= 2U) ? val->val[1] : 0U;
 
-            EBADGE_LOG2("DEBUG: XFER_ACK -> AT+XFERACK=%u,%u",
-                        (unsigned)status, (unsigned)reason);
-            return wifi_rc_to_result(wifi_8711_at_xfer_ack(status, reason,
-                                                           NULL, NULL));
+            EBADGE_LOG2("DEBUG: XFER_ACK -> EBXR status=%u reason=%u",
+                        (unsigned)val->val[0], (unsigned)reason);
+            /* NULL done: nothing here is sequencing behind the verdict.  The
+             * session's own ack() passes a callback because its BLE 0x15/0x16 has
+             * to follow the data-plane one; a hand-typed one has no such order. */
+            return wifi_rc_to_result(ebadge_port_tcp_ack(ok, reason, NULL, NULL));
         }
 #else
         EBADGE_WARN("DEBUG: XFER_ACK but CONFIG_WIFI_8711=n");

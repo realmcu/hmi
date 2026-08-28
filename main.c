@@ -20,8 +20,12 @@
 #include "app_dlps.h"
 #include <pm.h>
 
-#if defined(CONFIG_WIFI_8711)
-#include "wifi_8711.h"
+/* AT-over-SPI toward the 8711, with US as the master.  Only the transport is
+ * started here -- everything above it (at_client, at_wifi, at_socket) is brought
+ * up by ebadge_task_init() through the port layer, because that is the layer that
+ * knows when a radio is wanted. */
+#if defined(CONFIG_SPI_AT_MASTER)
+#include "spi_at_master.h"
 #endif
 
 
@@ -68,37 +72,46 @@ int main(void)
 
     hmi_bt_task_init();
 
-    /* V1.2 protocol stack -- one call spins up:
-     *   - l2_task (msg queue + tick timer)
-     *   - port_ble (binds hmi_ctrl_service RX/TX/CCCD)
-     *   - xfer_session (registers tick sink)
-     *   - all 0x01..0x1A command handlers
-     * See app/protocol/ebadge_task.c for the wiring order. */
-    ebadge_task_init();
-
-#if defined(CONFIG_WIFI_8711)
-    /* SPI slave pads + B2W/W2B handshake toward the 8711FA.  Must come after
-     * app_system_lower_init(): the DMA slot buffers live in SPIC1 PSRAM, which
-     * only exists once that call has brought SPIC1 up.
+#if defined(CONFIG_SPI_AT_MASTER)
+    /* AT-over-SPI toward the 8711 with the roles reversed: we drive SCLK and CS
+     * at 25 MHz on spi1_hs, and the two sync lines swap direction (P4_1 becomes
+     * our input, P2_7 our output).
      *
-     * ADC_2 (VD33_WF_EN) was raised at the top of main(), so the 8711 has been
-     * powered for the whole lower-init sequence by now.  How long its AT
-     * firmware needs before it starts driving W2B is not yet characterised --
-     * `wifi8711 info` reports the edge counters if it turns out to matter.
+     * PLACEMENT, both ends.  It must come after app_system_lower_init(), because
+     * the 16 KiB slot buffers live in SPIC1 PSRAM and that window only exists
+     * once SPIC1 is up.  It must come before ebadge_task_init(), because
+     * port_softap's init reaches down through at_wifi and at_client to this same
+     * transport -- init is idempotent, so calling it there would work either way,
+     * but then a transport failure would be reported from inside the protocol
+     * stack instead of here where the reason is legible.
      *
-     * Failure is deliberately non-fatal: the rest of the product (BLE, GUI)
-     * works without Wi-Fi, and a missing 8711 must not cost us a boot. */
+     * ADC_2 (VD33_WF_EN) went high at the top of main(), so the 8711 has had the
+     * whole lower-init sequence to boot.  If it got there first, S2M is already
+     * high and its rising edge is gone; spi_at_master_init() detects that and
+     * synthesises the go-ahead rather than waiting forever for an edge that has
+     * passed.
+     *
+     * Non-fatal: BLE and the GUI do not need this link.  Every Wi-Fi entry point
+     * above it degrades to a refusal, so the badge answers NOT_READY to a
+     * transfer offer rather than failing to boot. */
     {
-        int wifi_rc = wifi_8711_init();
-        if (wifi_rc != 0)
+        int atm_rc = spi_at_master_init();
+        if (atm_rc != 0)
         {
-            printf("[main] wifi_8711_init failed %d -- continuing without Wi-Fi\n",
-                   wifi_rc);
+            printf("[main] spi_at_master_init failed %d -- link down, "
+                   "`atm info` for why\n", atm_rc);
         }
     }
 #endif
 
-
+    /* V1.2 protocol stack -- one call spins up:
+     *   - l2_task (msg queue + tick timer)
+     *   - port_ble (binds hmi_ctrl_service RX/TX/CCCD)
+     *   - port_softap (at_wifi; puts nothing on the wire until a phone connects)
+     *   - xfer_session (registers tick sink)
+     *   - all 0x01..0x1A command handlers
+     * See app/protocol/ebadge_task.c for the wiring order. */
+    ebadge_task_init();
 
     gui_server_init();
     gui_set_keep_active_time(0xFFFFFFFF);

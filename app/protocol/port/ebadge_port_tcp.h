@@ -99,6 +99,31 @@ typedef struct
 } ebadge_tcp_listen_t;
 
 /**
+ * @brief  Bring the socket layer up.  Call once from ebadge_task_init(), before
+ *         anything can call listen().
+ *
+ * WITHOUT THIS EVERY listen() IS REFUSED -ENODEV AND NO INBOUND BYTE ARRIVES.
+ * at_socket_init() is what registers the [$][SKT][DATA] and [$][SKT][EVENT] sinks
+ * on at_client, so it is not merely a flag: skipping it costs the data callback,
+ * the connect edge that stands in for "a station joined", and the reset hook that
+ * forgets links when the 8711 reboots.  It was missing for exactly one release and
+ * the symptom was a transfer that got as far as
+ *
+ *     port_tcp: SKTSERVER port=9000 could not be queued rc=-19
+ *     xfer: tcp_listen FAIL -> XFER_FAIL AP_START
+ *
+ * i.e. a Wi-Fi fault reported for a radio that was perfectly fine.  Bringing up
+ * the AP is NOT enough on its own: ebadge_port_softap_init() calls at_wifi_init()
+ * and both of those bottom out in the same at_client_init(), so the transport and
+ * the parser are already alive by then -- which is what makes this omission so
+ * quiet.  at_socket keeps its own s_inited, and only this reaches it.
+ *
+ * Puts nothing on the wire.  The listeners are created per session by listen(),
+ * because the port comes from ebadge_port_softap_start().  Idempotent.
+ */
+void ebadge_port_tcp_init(void);
+
+/**
  * @brief  Bind to @p cfg->port, accept ONE inbound connection, feed bytes
  *         via on_data.  Single-session; a second call replaces the first.
  */
@@ -142,6 +167,19 @@ int  ebadge_port_tcp_abort(void);
 
 /** Close the connection and stop listening.  Idempotent. */
 int  ebadge_port_tcp_close(void);
+
+/**
+ * @brief  True when a peer connection exists to ack() or abort().
+ *
+ * NOT for the sessions -- they know whether they have a transfer in flight, and
+ * asking this instead would be asking the transport to confirm what the session
+ * already decided.  It exists because ack() and abort() both return 0 when there
+ * is nothing to act on (deliberately: a missing connection is not a transfer
+ * failure, BLE carries the real verdict), which leaves a caller that wants to
+ * REPORT "there was nothing to do" with no way to tell.  cmd_debug's hand-driven
+ * subcmds are that caller.
+ */
+bool ebadge_port_tcp_connected(void);
 
 #ifdef __cplusplus
 }

@@ -41,6 +41,11 @@ config REALTEK_BUILD_EXAMPLE_EBADGE
 # also carries the devicetree nodes the module binds to.
 rsource "app/wifi_8711/Kconfig"
 
+# The reversed-role replacement for the above: we are the SPI master.  Selected
+# by the spi_at_master snippet.  Depends on !WIFI_8711 -- the two claim the same
+# four pads and cannot coexist, see that Kconfig for the full argument.
+rsource "app/spi_at_master/Kconfig"
+
 endmenu
 
 menu "Zephyr Kernel"

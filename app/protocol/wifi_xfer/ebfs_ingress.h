@@ -1,26 +1,26 @@
 /**
  * @file    ebfs_ingress.h
- * @brief   EBFS file-slot ingress: the inbound half of the port-9000 upload.
+ * @brief   File-upload path from the file TCP port to xfer_session.
  *
- * The sibling of jpgs_ingress.h.  Both take fixed 4096-byte slots off the SPI
- * link and hand payload to a session, and they exist separately because the two
- * slot types answer different questions:
+ * The sibling of jpgs_ingress.h, and the asymmetry between them is now the whole
+ * story.  Both take raw TCP bytes off one port, and:
  *
- *   JPGS (32 B header)  a preview *frame*.  Carries frame geometry only, so the
- *                       file's identity has to come from somewhere else.
- *   EBFS (64 B header)  a file *chunk*.  Restates the whole identity the phone
- *                       put in its EBXF header -- session, name, type, total
- *                       size and the whole-file CRC32 -- in every single slot.
+ *   the PREVIEW port  has to find frame boundaries, because nothing in the stream
+ *                     declares them -- so jpgs_ingress buffers a frame and scans
+ *                     for FF D8 / FF D9.
+ *   the FILE port     needs no framing at all: the phone's 40-byte EBXF header is
+ *                     the first thing on the connection and it declares the size,
+ *                     so xfer_session's own accumulator handles everything.
  *
- * That redundancy is what this module exists to use.  Because the identity is on
- * every chunk, the header cross-check against the BLE offer (spec §5.2 rule 3)
- * can happen on the FIRST slot, before a single byte reaches flash, instead of
- * after a 2 MiB file has been written and its CRC found wanting.  A mismatch is
- * therefore cheap to act on: cut the stream with AT+XFERSTOP and tell the App
- * over BLE.
+ * Which is why this file is thin and its sibling is not.  What remains here is a
+ * state guard, a pass-through to xfer_session_on_tcp_data(), and the counters that
+ * answer "is anything arriving?" independently of whether the session likes it.
  *
- * Registered as the EBFS sink at init, alongside the JPGS one.  Both are
- * dispatched by the magic at offset 0 of the slot, in wifi_8711_at.c.
+ * Both modules used to be slot reassemblers -- 64-byte EBFS headers here, 32-byte
+ * JPGS ones there, dispatched by magic in the custom firmware's SPI layer.  The
+ * standard firmware has no slots.  Read the .c header for what that deleted; the
+ * short version is that every field those headers carried described the framing
+ * layer rather than the file.
  */
 #ifndef _EBADGE_EBFS_INGRESS_H_
 #define _EBADGE_EBFS_INGRESS_H_
@@ -32,19 +32,34 @@
 extern "C" {
 #endif
 
-/** Register the EBFS slot sink with the transport.  Call once at startup. */
+/**
+ * @brief  Zero the counters.  Call once at startup.
+ *
+ * Registers nothing -- xfer_session owns the port_tcp registration and this
+ * module sits behind it.
+ */
 void ebfs_ingress_init(void);
 
 /**
- * @brief  Forget any file in progress.
+ * @brief  Raw bytes from the file TCP port.
  *
- * Called when a session ends for any reason.  Without it, leftover chunk
- * bookkeeping measured against a file this session never started would make the
- * NEXT transfer's first slot look out of order.
+ * Called by xfer_session, which has already marshalled them onto l2_task.  Passed
+ * to xfer_session_on_tcp_data() UNSTRIPPED: the 40-byte EBXF header is still in
+ * front of the file and that function is the one that knows it.
+ */
+void ebfs_ingress_on_tcp_data(const uint8_t *data, uint16_t len);
+
+/**
+ * @brief  Forget any upload in progress.
+ *
+ * Called when a session ends for any reason.  Only the counters care -- there is
+ * no reassembly state left to corrupt -- but a file abandoned without this would
+ * be counted neither ok nor dropped.
  */
 void ebfs_ingress_reset(void);
 
-/** Lifetime counters, for "is the upload path doing anything at all?". */
+/** Bytes seen on the file port since boot.  Named _slots for source
+ *  compatibility with the version this replaced; there are no slots any more. */
 uint32_t ebfs_ingress_slots(void);
 uint32_t ebfs_ingress_files_ok(void);
 uint32_t ebfs_ingress_files_dropped(void);

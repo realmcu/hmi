@@ -45,10 +45,11 @@
  * ---------------------------------------------------------------------------
  * THE MAP
  * ---------------------------------------------------------------------------
- *   0x22000000  +2.5 MB   HoneyGUI lower heap
- *   0x22280000  +1   MB   Wi-Fi receive cache (this change)
+ *   0x22000000  +3   MB   HoneyGUI lower heap
+ *   0x22300000  +512 KB   Wi-Fi receive cache (whole file, before flash)
  *   0x22380000  +128 KB   psram1_nc: SPI slot buffers, GDMA target
- *   0x223A0000  +384 KB   unclaimed
+ *   0x223A0000  +128 KB   preview frame reassembly buffer
+ *   0x223C0000  +256 KB   unclaimed
  *   0x22400000            end of the non-cacheable MPU region
  *
  * The receive cache is placed BELOW psram1_nc rather than above it so that the
@@ -56,6 +57,10 @@
  * one run at the top, where it can be handed to whichever of the three needs it
  * next.  Putting it above would have left 1 MB of GUI heap stranded between two
  * carve-outs.
+ *
+ * The preview buffer went ABOVE psram1_nc for the opposite reason: it was added
+ * later, and moving psram1_nc to keep the ordering pretty would mean changing an
+ * absolute address in a .overlay to gain nothing.
  */
 #ifndef _EBADGE_PSRAM_MAP_H_
 #define _EBADGE_PSRAM_MAP_H_
@@ -113,6 +118,31 @@ extern "C" {
                                       EB_PSRAM_XFER_CACHE_SIZE)
 
 /*----------------------------------------------------------------------------*
+ *  Preview frame reassembly buffer
+ *
+ *  A whole preview JPEG is assembled here before it is handed to the decoder,
+ *  which is new: the frame used to arrive pre-framed in JPGS slots and could be
+ *  passed through chunk by chunk with the geometry taken from the slot header.
+ *  On a raw TCP stream there is no geometry until FF D9 has been seen, so there
+ *  is nothing to pass a decoder until the frame is whole.
+ *
+ *  128 KB against a 480x480-ish preview JPEG (~20..40 KB at any sane quality) is
+ *  headroom for the same reason the receive cache has it, with one extra: a frame
+ *  that overflows is dropped and the stream resynchronises on the next FF D8, so
+ *  the cost of being wrong here is a dropped frame rather than a failed transfer.
+ *
+ *  ABOVE psram1_nc, which breaks the "contiguous from the bottom" arrangement
+ *  described in the header.  Deliberate: psram1_nc's address is fixed in a
+ *  .overlay, and moving it to preserve the ordering would be a DT change for
+ *  cosmetics.
+ *----------------------------------------------------------------------------*/
+#define EB_PSRAM_STREAM_FRAME_BASE   0x223A0000u
+#define EB_PSRAM_STREAM_FRAME_SIZE   0x20000u        /* 128 KB */
+
+#define EB_PSRAM_STREAM_FRAME_END    (EB_PSRAM_STREAM_FRAME_BASE + \
+                                      EB_PSRAM_STREAM_FRAME_SIZE)
+
+/*----------------------------------------------------------------------------*
  *  Consistency checks
  *
  *  These are the whole point of the file: the numbers above are absolute
@@ -124,6 +154,13 @@ BUILD_ASSERT(EB_PSRAM_XFER_CACHE_END <= SPIC1_MEM_BASE + EB_PSRAM1_NC_SPAN,
              "SPIC1 carve-outs overflow the non-cacheable MPU region set up by "
              "app_lower_init.c:app_mpu_config()");
 
+BUILD_ASSERT(EB_PSRAM_STREAM_FRAME_END <= SPIC1_MEM_BASE + EB_PSRAM1_NC_SPAN,
+             "the preview frame buffer overflows the non-cacheable MPU region "
+             "set up by app_lower_init.c:app_mpu_config()");
+
+BUILD_ASSERT(EB_PSRAM_STREAM_FRAME_BASE >= EB_PSRAM_XFER_CACHE_END,
+             "the preview frame buffer overlaps the Wi-Fi receive cache");
+
 #if DT_NODE_EXISTS(DT_NODELABEL(psram1_nc))
 /* The snippet is in the build, so the DT node is the authority on where the SPI
  * slot buffers live and these macros must agree with it.  Without the snippet
@@ -133,6 +170,15 @@ BUILD_ASSERT(EB_PSRAM_XFER_CACHE_END <= DT_REG_ADDR(DT_NODELABEL(psram1_nc)),
              "the Wi-Fi receive cache overlaps psram1_nc -- shrink "
              "EB_PSRAM_GUI_LOWER_SIZE / EB_PSRAM_XFER_CACHE_SIZE, or move the "
              "psram1_nc node in snippets/wifi_8711/wifi_8711.overlay");
+
+/* The preview buffer sits ABOVE psram1_nc, so this is the one assert whose sense
+ * is reversed from the cache's -- it must start after the node ENDS, not before
+ * it begins. */
+BUILD_ASSERT(EB_PSRAM_STREAM_FRAME_BASE >=
+             DT_REG_ADDR(DT_NODELABEL(psram1_nc)) +
+             DT_REG_SIZE(DT_NODELABEL(psram1_nc)),
+             "the preview frame buffer overlaps psram1_nc -- raise "
+             "EB_PSRAM_STREAM_FRAME_BASE past the end of that node");
 
 BUILD_ASSERT(DT_REG_ADDR(DT_NODELABEL(psram1_nc)) +
              DT_REG_SIZE(DT_NODELABEL(psram1_nc)) <=
