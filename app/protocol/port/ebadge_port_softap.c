@@ -167,6 +167,43 @@ static void creds_build(void)
  *  Bring-up
  *----------------------------------------------------------------------------*/
 
+/** AT+WLSTARTAP has answered.  Runs on an at_client callback thread.
+ *
+ *  THE LISTENERS GO UP HERE, and this is the whole point of taking a completion
+ *  callback where we used to pass NULL.  A TCP server is only reachable while the
+ *  interface it is bound to exists, so "the radio is on air" is exactly the moment
+ *  both doors can be opened -- and an OK from this command means precisely that
+ *  (the 8711 polls its own driver for up to 20 s and prints OK only once the running
+ *  SSID matches).
+ *
+ *  They used to be created by the offer handler instead, which put an AT round trip
+ *  between telling the phone ACCEPT and telling it where to connect.  Doing it here
+ *  moves both AT+SKTSERVER commands seconds earlier, off the offer's critical path,
+ *  and onto a link that is idle by construction: nothing else is in flight, because
+ *  the 25 s command that just finished was holding the single-flight layer.
+ *
+ *  CONTEXT: an at_client callback thread, NOT l2_task.  Safe as it stands because
+ *  everything it touches (the per-link server flags in port_tcp) is written only
+ *  from here and from the shutdown path, and it puts nothing into a session's state
+ *  machine -- the joined edge still arrives via sock_conn(), which marshals. */
+static void start_done(bool ok, int error_no, void *user)
+{
+    (void)user;
+
+    if (!ok)
+    {
+        /* at_wifi has logged the shape of it and left the AP marked down, so every
+         * reader here already answers "not up" and offers get NOT_READY.  No
+         * listeners: there is no interface to bind them to. */
+        EBADGE_LOG1("port_softap: the AP did not come up (error_no=%d) -- no "
+                    "listeners", error_no);
+        return;
+    }
+
+    EBADGE_LOG("port_softap: AP is on air -> opening both TCP doors now");
+    ebadge_port_tcp_open_servers();
+}
+
 /** Runs on l2_task, from ebadge_port_softap_arm().
  *
  *  Also reached synchronously from ebadge_port_softap_start() under the
@@ -191,8 +228,14 @@ static void arm_begin(const char *why)
     if (ap.up)
     {
         /* Nothing to ask.  Spending a 25 s WLSTARTAP to be told what we already
-         * recorded would only occupy the single-flight layer. */
+         * recorded would only occupy the single-flight layer.
+         *
+         * The doors are still asked for, because this is the path a re-arm takes and
+         * the radio being up does not prove both servers are: one of them may have
+         * lost its AT+SKTSERVER to a full queue on the previous arm.  Idempotent, so
+         * the common case costs nothing. */
         EBADGE_LOG1("port_softap: %s, AP already up", why);
+        ebadge_port_tcp_open_servers();
         return;
     }
     if (ap.starting)
@@ -201,18 +244,22 @@ static void arm_begin(const char *why)
          * retries about once a second, and a WLSTARTAP holds the single-flight AT
          * layer for up to ~25 s -- so without this a dozen of them would queue
          * behind the one already doing the work, each arriving after the radio was
-         * up and asking for it again. */
+         * up and asking for it again.
+         *
+         * No doors here: the start already on the wire carries a start_done that
+         * opens them when it lands. */
         EBADGE_LOG1("port_softap: %s, AP bring-up already in flight", why);
         return;
     }
 
     creds_build();
 
-    /* No completion callback: there is nothing left for one to do.  at_wifi logs
-     * both outcomes and holds the flag every reader here consults, and a start
-     * that failed is not retried from this side -- see WHY THERE IS NO RETRY
-     * LADDER in the file header. */
-    int rc = at_wifi_ap_start(s_ssid, s_pw, SOFTAP_CHANNEL, NULL, NULL);
+    /* The completion callback exists for ONE job: open the TCP listeners the instant
+     * the radio is on air -- see start_done().  Nothing else is decided on the
+     * answer; at_wifi logs both outcomes and holds the flag every reader here
+     * consults, and a start that failed is not retried from this side (see WHY THERE
+     * IS NO RETRY LADDER in the file header). */
+    int rc = at_wifi_ap_start(s_ssid, s_pw, SOFTAP_CHANNEL, start_done, NULL);
 
     if (rc != 0)
     {
@@ -516,14 +563,19 @@ void ebadge_port_softap_shutdown(void)
         return;
     }
 
-    /* Drop the listener FIRST, and this order is the reason it is done here at all.
+    /* Drop BOTH listeners FIRST, and this order is the reason it is done here at all.
      * Stopping the radio destroys the network interface the AT+SKTSERVER sockets are
      * bound to, and at_socket's link table would go on believing in them -- so the
-     * next session's listen() would be refused -EADDRINUSE for a server the 8711 no
-     * longer has, on a link id it would then never be able to reuse.  Deleting
-     * while the interface still exists is the only ordering where the 8711 and our
-     * table agree afterwards. */
-    (void)ebadge_port_tcp_close();
+     * next AT+SKTSERVER would be refused -EADDRINUSE for a server the 8711 no longer
+     * has, on a link id it would then never be able to reuse.  Deleting while the
+     * interface still exists is the only ordering where the 8711 and our table agree
+     * afterwards.
+     *
+     * close_servers() and not close(): the sockets belong to the radio's lifetime now
+     * rather than a session's, so this -- the one place the radio goes away -- is the
+     * only place they are destroyed.  close() merely disarms a session's sink and
+     * would leave both servers up over a vanished interface. */
+    ebadge_port_tcp_close_servers();
 
     int rc = at_wifi_ap_stop(stop_done, NULL);
 

@@ -319,10 +319,12 @@ void ebadge_port_softap_shutdown_when_idle(void);
  * strand.  In the default arrangement this is the ONLY thing that lowers the AP,
  * paired with the arm on the connect hook.
  *
- * It also drops the TCP listener, because stopping the radio destroys the
- * interface it is bound to: keeping the link id would leave us routing a later
- * phone's bytes through a server the 8711 no longer has.  The next session's
- * ebadge_port_tcp_listen() creates one again.
+ * It also destroys BOTH TCP listeners, because stopping the radio destroys the
+ * interface they are bound to: keeping the link ids would leave us routing a later
+ * phone's bytes through servers the 8711 no longer has.  They are recreated on the
+ * next arm rather than by the next session -- ebadge_port_tcp_open_servers() is
+ * called from the AP-start completion, so the doors and the radio go up and down
+ * as one action.
  *
  * WHY THIS IS WORTH DOING AT ALL: an idle SoftAP is a beacon on air and a radio
  * drawing current, so its lifetime is tied to something -- the BLE connection

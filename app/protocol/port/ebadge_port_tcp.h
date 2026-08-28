@@ -124,8 +124,68 @@ typedef struct
 void ebadge_port_tcp_init(void);
 
 /**
- * @brief  Bind to @p cfg->port, accept ONE inbound connection, feed bytes
- *         via on_data.  Single-session; a second call replaces the first.
+ * @brief  Create BOTH TCP servers (file and preview) on the 8711.
+ *
+ * Call this the moment AT+WLSTARTAP answers OK -- ebadge_port_softap.c does, from
+ * the start completion -- because a listener is only reachable while the interface
+ * it is bound to exists, and that interface is the AP.  The two are one action.
+ *
+ * WHY NOT AT OFFER TIME, WHICH IS WHERE THIS USED TO HAPPEN.  AT+SKTSERVER is a
+ * round trip on a single-flight AT link, and at offer time it lands in the worst
+ * possible place: between the phone being told ACCEPT and being told where to
+ * connect.  It shared that window with the 0x13 AP_INFO, so the phone could be
+ * handed a port whose socket had not been created yet, and any delay -- a queue
+ * four deep, a retry, a 25 s WLSTARTAP still draining -- pushed the socket's
+ * creation past the phone's first connect attempt.  Opening both doors when the
+ * radio comes up removes the race instead of narrowing it: by the time any offer is
+ * answered, both ports have either been listening for seconds or failed loudly.
+ *
+ * Both ports, not the one the imminent session needs, because which session comes
+ * first is not knowable here and an AT round trip per offer is what we are removing.
+ * An unused listener costs one socket and one receive thread on the 8711.
+ *
+ * Idempotent and asynchronous: a link already open, or with an open on the wire, is
+ * skipped, so calling it on every arm is free.  Nothing here reports failure to a
+ * caller -- ebadge_port_tcp_listen() is where a missing server surfaces, and it
+ * surfaces as the AP_START the session already knows how to report.
+ */
+void ebadge_port_tcp_open_servers(void);
+
+/**
+ * @brief  Destroy both servers.  Call BEFORE taking the radio down.
+ *
+ * Ordering matters and is the reason this is separate from close(): stopping the AP
+ * destroys the interface the sockets are bound to, and at_socket's link table would
+ * go on believing in them -- so the next AT+SKTSERVER would be refused
+ * -EADDRINUSE for a server the 8711 no longer has, on a link id it could then
+ * never reuse.
+ *
+ * Also disarms any session sink, because a vanished interface cannot deliver bytes
+ * and a sink left armed would only outlive the session that owns it.
+ *
+ * Idempotent.  Fire and forget.
+ */
+void ebadge_port_tcp_close_servers(void);
+
+/**
+ * @brief  Arm a session's sink on the listener for @p cfg->port.
+ *
+ * Does NOT create the socket any more -- ebadge_port_tcp_open_servers() did that
+ * when the AP came up.  What this does is say which session the bytes arriving on
+ * that port belong to, so it is cheap, synchronous and cannot fail on the wire.
+ *
+ * Single-session: a second call replaces the first, whichever port it names.  Bytes
+ * arriving on the OTHER port are dropped while this one is armed, which is what
+ * keeps a preview frame out of a file session's accumulator.
+ *
+ * @retval 0        armed
+ * @retval -ENETDOWN  no server on that port -- the AP never came up, or its
+ *                    AT+SKTSERVER failed.  Sessions map this to AP_START.
+ *
+ * IF A PHONE IS ALREADY CONNECTED to that port when this is called, the joined edge
+ * is delivered here rather than lost: the doors now open before the offer does, so
+ * "connected already" is reachable in a way it was not when listen() created the
+ * socket itself.
  */
 int  ebadge_port_tcp_listen(const ebadge_tcp_listen_t *cfg);
 
@@ -165,7 +225,12 @@ int  ebadge_port_tcp_ack(bool ok, uint8_t reason,
  */
 int  ebadge_port_tcp_abort(void);
 
-/** Close the connection and stop listening.  Idempotent. */
+/** Close the connection and disarm this session's sink.  Idempotent.
+ *
+ *  Does NOT destroy the listeners -- they belong to the AP's lifetime now, not to a
+ *  session's, and ebadge_port_tcp_close_servers() is what takes them down.  This is
+ *  the difference that lets a second transfer on one BLE connection run without
+ *  another AT+SKTSERVER: the door stays open between sessions. */
 int  ebadge_port_tcp_close(void);
 
 /**
