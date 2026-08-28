@@ -37,13 +37,13 @@ config REALTEK_BUILD_EXAMPLE_EBADGE
     bool "Ebadge Widget Demo"
 	default n
 
-# External 8711 Wi-Fi chip over SPI.  Selected by the wifi_8711 snippet, which
+# External 8711 Wi-Fi chip over SPI: the WIFI_8711 switch app/protocol guards on,
+# plus the AT-over-SPI transport it selects.  Turned on by the wifi snippet, which
 # also carries the devicetree nodes the module binds to.
-rsource "app/wifi_8711/Kconfig"
-
-# The reversed-role replacement for the above: we are the SPI master.  Selected
-# by the spi_at_master snippet.  Depends on !WIFI_8711 -- the two claim the same
-# four pads and cannot coexist, see that Kconfig for the full argument.
+#
+# One rsource where there were two.  The other was app/wifi_8711/Kconfig, the SPI
+# SLAVE stack against custom 8711 firmware; that module is gone and WIFI_8711 moved
+# in beside the transport it now selects.
 rsource "app/spi_at_master/Kconfig"
 
 endmenu

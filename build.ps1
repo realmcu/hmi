@@ -18,8 +18,8 @@
 
   旧的 wifi_8711（本机做从机 + 自研 AT 命令集）与 spi_at_master（主机 bring-up
   harness）已被 wifi 取代：从机角色退役后不再有「两个 snippet 抢同一组 pad、
-  必须二选一」的问题，-Snippet wifi 就等于主机角色。两个旧目录在重构阶段 5 删除，
-  在那之前仍可编译，作为回退参照。
+  必须二选一」的问题，-Snippet wifi 就等于主机角色。两个旧目录已在重构阶段 5
+  删除（连同 app\wifi_8711\），要回退参照去翻 git 历史。
 
   snippet 组合会参与 -d 目录命名（build_wifi / build_bank0_wifi ...），
   这样切换组合不会撞上 Zephyr「snippet 集合变了必须 pristine」的限制。

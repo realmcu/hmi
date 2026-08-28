@@ -533,10 +533,18 @@ void stream_session_on_frame_chunk(const uint8_t *chunk, uint16_t len,
 
     if (is_last)
     {
-        /* No CRC compare here: jpgs_ingress verified a CRC32 per slot, which is
-         * strictly finer-grained than EBXS's per-frame one, so a frame that got
-         * this far is intact.  frames_bad stays at whatever the ingress layer
-         * dropped -- see jpgs_ingress_frames_dropped(). */
+        /* No CRC compare here, and nothing below verified one either -- that used
+         * to be a per-slot CRC32 in jpgs_ingress, which was strictly finer-grained
+         * than EBXS's per-frame one and made this omission safe.  The slots are
+         * gone with the in-house firmware, so a frame that got this far is intact
+         * only as far as SPI and TCP make it so.  Adding EBXS's per-frame CRC back
+         * would not help: nothing on this path parses an EBXS header, because the
+         * phone sends bare JPEG and the ingress layer finds frames by scanning for
+         * FF D8 / FF D9.  A corrupt frame is caught by the decoder rejecting it,
+         * which is the outcome a CRC here would have produced anyway.
+         *
+         * frames_bad stays at whatever the ingress layer dropped -- see
+         * jpgs_ingress_frames_dropped(). */
         s_s.frames_ok++;
         if (s_s.frames_ok == 1 || (s_s.frames_ok % 30u) == 0)
         {

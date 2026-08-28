@@ -99,8 +99,8 @@ void ebadge_log_lines(const char *prefix, const char *body);
 /*----------------------------------------------------------------------------*
  *  Canonical hex + ASCII dump  --  hex on the left, printable chars on the right
  *
- *      [eb] [8711->8773] slot len=4096 (first 128 B)
- *      [eb] [8711->8773] slot  0000  41 54 4d 43 01 00 00 00  10 00 00 00 ... |ATMC............|
+ *      [eb] [8711->8773] at len=48 (first 48 B)
+ *      [eb] [8711->8773] at  0000  5b 24 5d 5b 53 4b 54 5d  5b 44 41 54 41 5d ... |[$][SKT][DATA]..|
  *
  *  16 bytes per row, so a byte's column is its offset modulo 16 and a header
  *  field's position is readable without counting.  One printf per row rather
@@ -112,18 +112,30 @@ void ebadge_log_lines(const char *prefix, const char *body);
  *
  *  @param max  cap on bytes shown.  The header always prints the TRUE length
  *              next to the shown one, so a truncated dump cannot be misread as
- *              a short packet.  Use EBADGE_HEXDUMP_DEFAULT unless you have a
- *              reason: this is called on the SPI transport thread, which holds
- *              B2W low for the whole call and so back-pressures the 8711.
+ *              a short packet.
+ *
+ *  WHERE THIS COSTS SOMETHING.  Both call sites are on the SPI transport thread,
+ *  but only one of them is in anybody's way.  The inbound dump runs from
+ *  consume_rx(), which do_transaction() reaches only after m2s_release() -- the
+ *  transfer is over and no line is held, which is precisely why the release was
+ *  put before the parse.  The OUTBOUND dump sits between the S2M go-ahead and
+ *  spi_transceive_dt(), so it delays clocking a slot the 8711 has already armed
+ *  its DMA for.  That is the one worth keeping short, and why the outbound cap
+ *  (SPI_AT_DUMP_MAX, 256) is so much smaller than the inbound one.
  *----------------------------------------------------------------------------*/
 void ebadge_log_hexdump(const char *prefix, const void *buf, uint32_t len,
                         uint32_t max);
 
-/** Bytes worth seeing from a 4096 B slot: every framing header in this protocol
- *  (ATMC 12 B, JPGS 16 B, EBFS 64 B) fits with room to spare, and 128 also
- *  covers the 40-byte EBXF header that now rides *inside* the first EBFS slot's
- *  payload -- at 64 only the first 24 bytes of it were visible, which cut the
- *  header off mid-field. */
+/** A sane default for callers with no reason to pick a number.
+ *
+ *  128 covers the framing this protocol still has: the SPI slot header is four
+ *  bytes ('A','T' + a little-endian length), and the biggest thing behind it
+ *  that anyone reads field-by-field is the 40-byte EBXF header at the head of a
+ *  file stream on port 9000.  The old per-slot headers this number was sized for
+ *  (ATMC / JPGS / EBFS) went away with the in-house firmware.
+ *
+ *  The SPI layer does NOT use this -- see SPI_AT_DUMP_MAX / SPI_AT_DUMP_RX_MAX,
+ *  which are sized per direction for the reason above. */
 #define EBADGE_HEXDUMP_DEFAULT  128U
 
 /*----------------------------------------------------------------------------*

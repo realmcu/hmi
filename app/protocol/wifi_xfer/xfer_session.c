@@ -496,12 +496,12 @@ static void emit_held_verdict(bool ack_ok)
      * it down.  SCHEDULE, not switch off, and that distinction is the whole reason
      * this is a separate call rather than ebadge_port_softap_shutdown():
      *
-     *   - The verdict is not actually delivered yet.  [+XFERACK]:OK only means the
-     *     8711 accepted the ack command (spec sec.10.3); it then builds the EBXR and
-     *     closes the TCP connection itself, and the 0x15/0x16 above has only just
-     *     been queued on the BLE link.  Cutting the radio here -- which is what an
-     *     earlier version of this code did -- can destroy the data-plane result the
-     *     App may be reading.
+     *   - The verdict is not actually delivered yet.  The EBXR is eight bytes we
+     *     have just handed to AT+SKTSENDRAW on the phone's own TCP connection, and
+     *     the 0x15/0x16 above has only just been queued on the BLE link.  Cutting
+     *     the radio here -- which is what an earlier version of this code did --
+     *     destroys the interface those sockets are bound to, and with it the
+     *     data-plane result the App may be reading.
      *   - A phone sending several images re-claims the AP inside the settling
      *     window, and ebadge_port_softap_start() cancels the schedule, so a burst
      *     pays one teardown at the end instead of one per image.
@@ -515,8 +515,8 @@ static void emit_held_verdict(bool ack_ok)
      * transfers, and it is paid by the transfer that needs it rather than by every
      * BLE connection.
      *
-     * ebadge_port_softap_stop() above has already released our claim, so the join
-     * poll has stopped and this module is not touching the AT link. */
+     * ebadge_port_softap_stop() above has already released our claim, so nothing in
+     * this session is holding the radio when the timer fires. */
     ebadge_port_softap_shutdown_when_idle();
 #endif
 
@@ -597,8 +597,8 @@ static void fail_and_reset(uint8_t reason, const char *detail)
  * are only costing time and flash writes -- chiefly a data-plane header that
  * contradicts the BLE offer, which no later byte can reconcile.  The distinction
  * from fail_and_reset() is deliberate and is the one the transport draws too
- * (AT+XFERSTOP vs AT+XFERACK): "stop sending" is a different request from "here
- * is the result", and a stream is often worth stopping before there is any
+ * (ebadge_port_tcp_abort() vs _ack()): "stop sending" is a different request from
+ * "here is the result", and a stream is often worth stopping before there is any
  * result to report.
  *
  * The App learns the reason from the 0x16 below, which is the plane it is

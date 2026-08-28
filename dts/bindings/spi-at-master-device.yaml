@@ -1,0 +1,25 @@
+#
+# Copyright (c) 2026, Realtek Semiconductor Corporation
+#
+# SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+#
+
+description: |
+    The RTL8711FA as a slave device on our SPI bus.
+
+    This child node exists only in the master configuration.  As slave we had no
+    bus peer to describe, so the wifi_8711 overlay put status="okay" on
+    spi0_slave and stopped there; as master the peer is a real device and its
+    spi-max-frequency is what the controller is programmed to.
+
+    That property is load-bearing rather than documentation: SPI_DT_SPEC_GET
+    copies it into spi_config.frequency, and spi_rtl87x3g_configure() rejects
+    anything above the parent node's max-bus-freq outright (-EINVAL, not a
+    clamp).  25 MHz therefore only works under spi1_hs, which is rated 50 MHz --
+    spi0/spi1/spi2 are all rated 20 MHz and would fail at bring-up.
+
+    Consumed by app/spi_at_master/ via DT_NODELABEL(spi_at_master_device).
+
+compatible: "spi-at-master-device"
+
+include: [spi-device.yaml]

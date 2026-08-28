@@ -1,0 +1,57 @@
+#
+# Copyright (c) 2026, Realtek Semiconductor Corporation
+#
+# SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
+#
+
+description: |
+    The two out-of-band handshake GPIOs of the RTL8773G <-> RTL8711FA SPI link
+    in its MASTER configuration: we drive SCLK and CS, the 8711 is the slave.
+
+    The pads are the same two the slave build used and their DIRECTIONS ARE
+    SWAPPED.  That is the one mistake this binding exists to prevent, because an
+    overlay copied from wifi_8711-irq compiles perfectly and then drives the
+    wrong line the wrong way, with nothing catching it at build time:
+
+                     wifi_8711-irq (slave)      THIS binding (master)
+      P4_1 GPIOB8    b2w, our OUTPUT            s2m, our INPUT
+      P2_7 GPIOA22   w2b, our INPUT             m2s, our OUTPUT
+
+    The names are relative to whoever holds the master role, which is now us --
+    hence m2s/s2m rather than b2w/w2b.  Do not mix the two vocabularies.
+
+    Handshake, per the vendor reference example/atcmd_host/atcmd_host_spi:
+
+      m2s  master -> slave REQUEST, our output.  Asserted (pad LOW) to tell the
+           8711 "prepare to receive"; released (pad HIGH) once the slot has been
+           clocked.  It is only a request -- it never starts a transfer by
+           itself.
+      s2m  slave -> master GO-AHEAD, our interrupt input.  The 8711 raises it
+           when its DMA is armed, whether that is in answer to our m2s or
+           because it has something of its own to send.  The rising edge is the
+           go-ahead for BOTH directions, so it is the only edge we act on and
+           the transport blocks on it before every transfer.
+
+    Idle levels, which the polarity flags below must encode:
+      m2s idles HIGH, asserted LOW   -> declare it GPIO_ACTIVE_LOW, so
+                                        GPIO_OUTPUT_INACTIVE parks the pad high
+      s2m idles LOW,  asserted HIGH  -> declare it GPIO_ACTIVE_HIGH
+
+    Consumed by app/spi_at_master/ via DT_NODELABEL(spi_at_master_resources).
+
+compatible: "spi-at-master-irq"
+
+properties:
+  m2s-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      M2S / REQUEST: 8773 -> 8711, our push-pull output.  Active LOW, idles
+      HIGH -- must carry GPIO_ACTIVE_LOW or the line is inverted in silence.
+  s2m-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      S2M / GO-AHEAD: 8711 -> 8773, our interrupt input.  Active high, idles
+      low; a pull-down keeps a floating line from reading as a permanent
+      go-ahead before the 8711 powers up.

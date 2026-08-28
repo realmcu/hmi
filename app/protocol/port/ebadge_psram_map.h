@@ -9,7 +9,7 @@
  * know about the others:
  *
  *   - port/ui/gui_port_os.c   HoneyGUI's "lower" TLSF heap, by base+size
- *   - snippets/wifi_8711/wifi_8711.overlay   psram1_nc, by absolute DT address
+ *   - snippets/wifi/wifi.overlay   psram1_nc, by absolute DT address
  *   - app/protocol/wifi_xfer  the receive cache added for store-after-verify
  *
  * They had already collided: the GUI heap was declared as SPIC1_MEM_BASE +
@@ -89,7 +89,7 @@ extern "C" {
  *
  *  What this heap actually holds is HoneyGUI's off-screen surfaces and decoded
  *  image buffers, sized by widget usage rather than by anything fixed, so there
- *  is no formula that says 2.5 MB is enough -- only that the app has to fit.  A
+ *  is no formula that says 3 MB is enough -- only that the app has to fit.  A
  *  heap exhaustion here shows up as gui_lower_malloc returning NULL, which the
  *  GUI logs, so it is loud rather than silent.
  *----------------------------------------------------------------------------*/
@@ -103,7 +103,7 @@ extern "C" {
  *  its size is the real cap on what can be received -- see XS_MAX_FILE_SIZE in
  *  xfer_session.c, which is derived from this rather than declared next to it.
  *
- *  1 MB against a ~46 KB wallpaper is deliberate headroom, not sizing to the
+ *  512 KB against a ~46 KB wallpaper is deliberate headroom, not sizing to the
  *  known case: the cap is announced to the App up front (0x16 TOO_LARGE at offer
  *  time), so the only thing a bigger buffer buys is not having to revisit this
  *  when the panel or the image format changes.
@@ -113,7 +113,7 @@ extern "C" {
 #define EB_PSRAM_XFER_CACHE_SIZE     0x80000u        /* .5 MB */
 
 /** First byte after the cache.  psram1_nc is expected to start exactly here --
- *  asserted below when the wifi_8711 snippet is in the build. */
+ *  asserted below when the wifi snippet is in the build. */
 #define EB_PSRAM_XFER_CACHE_END      (EB_PSRAM_XFER_CACHE_BASE + \
                                       EB_PSRAM_XFER_CACHE_SIZE)
 
@@ -169,7 +169,7 @@ BUILD_ASSERT(EB_PSRAM_STREAM_FRAME_BASE >= EB_PSRAM_XFER_CACHE_END,
 BUILD_ASSERT(EB_PSRAM_XFER_CACHE_END <= DT_REG_ADDR(DT_NODELABEL(psram1_nc)),
              "the Wi-Fi receive cache overlaps psram1_nc -- shrink "
              "EB_PSRAM_GUI_LOWER_SIZE / EB_PSRAM_XFER_CACHE_SIZE, or move the "
-             "psram1_nc node in snippets/wifi_8711/wifi_8711.overlay");
+             "psram1_nc node in snippets/wifi/wifi.overlay");
 
 /* The preview buffer sits ABOVE psram1_nc, so this is the one assert whose sense
  * is reversed from the cache's -- it must start after the node ENDS, not before

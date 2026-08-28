@@ -11,28 +11,30 @@
  *   abort()               cut the connection now, with no result
  *   close()               tear down after done / fail
  *
- * @section result  WHY THE RESULT IS TWO BYTES AND NOT A BUFFER
+ * @section result  WHY THE RESULT IS A STATUS AND A REASON, NOT A BUFFER
  *
- * This used to be send(bytes), with the caller packing the 8-byte EBXR frame
- * itself.  Protocol v2.2 (SPI spec sec.6.3) took the framing away from us: the
- * Wi-Fi chip builds the EBXR from a status and a reason we hand it, then closes
- * the connection.  Passing pre-packed bytes through would need a second encoder
- * on this side that no transport actually uses.
- *
- * So the interface now carries the *meaning* -- succeeded or not, and why -- and
- * lets the transport choose the framing.  A transport that really owns a socket
- * can pack EBXR with ebxr_pack() and write it; the 8711 one issues an AT
- * command.  Neither leaks into the sessions.
+ * The interface carries the *meaning* -- succeeded or not, and why -- and lets the
+ * transport choose the framing.  It briefly went the other way: an intermediate
+ * firmware built the EBXR itself from a status and a reason we handed it over
+ * AT+XFERACK, so passing pre-packed bytes through would have needed an encoder no
+ * transport used.  That firmware is gone and the 8711 frames nothing now -- the
+ * implementation packs EBXR with ebxr_pack() and pushes it with AT+SKTSENDRAW --
+ * but the signature is kept, because a transport that owns a real socket would
+ * pack it differently and neither choice should leak into the sessions.
  *
  * @section abort  ACK AND ABORT ARE NOT THE SAME OPERATION
  *
  * ack() delivers a verdict and lets the connection finish.  abort() cuts it
  * without a verdict, and exists for the case where the remaining inbound bytes
  * are only wasting time -- a header that contradicts the BLE offer, a storage
- * failure mid-write.  On the 8711 the two are separate commands (AT+XFERACK vs
- * AT+XFERSTOP) precisely because "reject this file" and "stop sending" are
- * different requests, and a stream can be worth stopping long before there is
- * any result to report.
+ * failure mid-write.  They stay separate because "reject this file" and "stop
+ * sending" are different requests, and a stream can be worth stopping long before
+ * there is any result to report.
+ *
+ * There is also no deadline on the wire any more.  The old firmware gave us a
+ * 120 s window to answer; nothing replaced it, so what bounds the verdict now is
+ * the phone's own patience (XS_ACK_WAIT_MS bounds only our wait for the ack to
+ * settle locally).
  *
  * After abort() the peer gets no coded reason, so the caller must still emit the
  * BLE 0x16 XFER_FAIL -- which is the authoritative plane anyway (eBadge spec

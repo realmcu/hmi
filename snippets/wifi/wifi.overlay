@@ -85,11 +85,11 @@
 	 *
 	 * So this stanza copied from the old snippet compiles perfectly and
 	 * drives the wrong pin in the wrong direction, and nothing catches it
-	 * until a scope goes on the board.  That snippet is deleted in stage 5,
-	 * but it stays in git history and in anyone's older checkout, so the
-	 * warning is worth keeping.  The property names are m2s/s2m -- relative
-	 * to who holds the master role, which is now us -- precisely so the two
-	 * vocabularies cannot be mixed silently.
+	 * until a scope goes on the board.  That snippet has been deleted, but it
+	 * stays in git history and in anyone's older checkout, so the warning is
+	 * worth keeping.  The property names are m2s/s2m -- relative to who holds
+	 * the master role, which is now us -- precisely so the two vocabularies
+	 * cannot be mixed silently.
 	 */
 	spi_at_master_resources: spi_at_master_resources {
 		compatible = "spi-at-master-irq";

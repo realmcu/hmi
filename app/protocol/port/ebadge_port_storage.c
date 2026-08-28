@@ -174,8 +174,10 @@ int ebadge_port_storage_wp_write(int handle, const uint8_t *data, uint16_t len)
     if (data == NULL) { return -1; }
 
     /* The range was erased at create time, so this is a straight page-program
-     * with no erase-before-write cost -- safe to call from the slot sink, which
-     * holds B2W low and thus back-pressures the 8711 while we write. */
+     * with no erase-before-write cost.  That used to be what made this callable
+     * from the receive path at all; it no longer has to be, because the only
+     * caller is commit_from_cache(), which runs after the peer has been told the
+     * result and has nothing left in flight to stall. */
     fdb_err_t rc = fdb_bf_append(s_wp_file, data, len);
     if (rc != FDB_NO_ERR)
     {

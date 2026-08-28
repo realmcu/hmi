@@ -4,7 +4,33 @@
 # SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
 #
 
-menu "SPI AT master (8711 bring-up harness)"
+menu "SPI AT master (external 8711 Wi-Fi)"
+
+config WIFI_8711
+	bool "External 8711 Wi-Fi chip over SPI"
+	select SPI_AT_MASTER
+	default n
+	help
+	  "An external 8711FA Wi-Fi companion exists."  Role-agnostic on
+	  purpose: this is the symbol every Wi-Fi caller in app/protocol
+	  (port_softap, port_tcp, jpgs_ingress, ebfs_ingress, cmd_debug) is
+	  guarded on, so it is what "pause the Wi-Fi features" turns off --
+	  each of those files has a working #else stub.
+
+	  It selects SPI_AT_MASTER, which is the transport: WE drive SCLK and
+	  CS and the 8711 runs Realtek's standard AT command set.  Turned on by
+	  the wifi snippet, which also supplies the devicetree nodes that
+	  transport binds to -- enabling the symbol on its own will not build.
+
+	  DECLARED HERE, ALONGSIDE THE TRANSPORT IT SELECTS, because the module
+	  it used to live in is gone.  It was app/wifi_8711/Kconfig's, back when
+	  this symbol MEANT that module -- the SPI slave stack talking to an
+	  8711 running custom in-house AT firmware.  The slave role was retired
+	  in favour of the master role (10 MHz vs 25, and a vendor-supported
+	  command set instead of one we maintained), the module was deleted, and
+	  the symbol outlived it because "an 8711 exists" is a fact about the
+	  BOARD rather than about which transport implements it.  Keeping the
+	  name is what spares every #if in app/protocol from churning.
 
 config SPI_AT_MASTER
 	bool "AT-over-SPI toward the 8711, WE are the master"
@@ -14,23 +40,24 @@ config SPI_AT_MASTER
 	select GPIO
 	default n
 	help
-	  Bring-up harness for the reversed-role SPI link: we drive SCLK and CS
+	  The transport for the reversed-role SPI link: we drive SCLK and CS
 	  at 25 MHz, the 8711 is the slave, and the two sync lines swap direction
 	  (P4_1 becomes our input, P2_7 our output).  Frames are 16 KiB slots
 	  carrying an 'A','T',len16 header, matching the vendor reference
-	  example/atcmd_host/atcmd_host_spi.
+	  example/atcmd_host/atcmd_host_spi.  Above it sit at_parser, at_client
+	  and then at_wifi / at_socket, which is what app/protocol talks to.
 
 	  Turned on by the wifi snippet, which also supplies the spi1_hs /
 	  spi_at_master_resources / spi_at_master_device / psram1_nc devicetree
 	  nodes this module binds to.  Enabling the symbol alone will not
 	  build -- the DT nodes must come with it.
 
-	  Selected by WIFI_8711, which is the role-agnostic "an external 8711
-	  exists" switch that app/protocol's guards test.  It used to be
+	  Selected by WIFI_8711 above, which is the role-agnostic "an external
+	  8711 exists" switch that app/protocol's guards test.  It used to be
 	  `depends on !WIFI_8711` instead, because that symbol then meant the
-	  SLAVE stack and both claim P4_2..P4_5 -- the slave role is retired and
-	  the two are now one arrangement rather than two.  The mutual exclusion
-	  that remains is inside app/wifi_8711/, gated on WIFI_8711_ROLE_SLAVE.
+	  SLAVE stack and both claim P4_2..P4_5 -- the slave role has since been
+	  retired and deleted, so the two are one arrangement rather than two
+	  and there is no mutual exclusion left to express.
 
 config SPI_AT_MASTER_SHELL
 	bool "atm shell command group"
@@ -39,7 +66,9 @@ config SPI_AT_MASTER_SHELL
 	help
 	  Register the `atm` shell commands: forward a typed AT command line to
 	  the 8711 over SPI, hexdump both directions, and read back the sync
-	  line levels and counters.  This is the whole user interface of the
-	  harness, so it defaults on -- without it the module transmits nothing.
+	  line levels and counters.  Defaults on because it is the only way to
+	  drive the link by hand -- it was the harness's whole user interface
+	  once, and it is still how you separate "the 8711 is not answering"
+	  from "app/protocol never asked it anything".
 
 endmenu

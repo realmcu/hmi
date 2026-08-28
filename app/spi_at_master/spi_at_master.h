@@ -2,11 +2,11 @@
  * @file    spi_at_master.h
  * @brief   AT-over-SPI toward the RTL8711 -- WE ARE THE MASTER.
  *
- * SCOPE: a bring-up harness, not a product path.  It moves one AT command line
- * from the serial shell to the 8711 and hexdumps both directions.  There is no
- * Wi-Fi state machine, no SoftAP, no JPEG/file ingress -- those all belong to
- * the old slave-role stack (app/wifi_8711) and are deliberately not built while
- * this module is in, see "WHY THIS IS A SECOND MODULE" below.
+ * SCOPE: the TRANSPORT only -- slots on the wire, the two sync lines, and the
+ * bytes each way.  It has no idea what an AT command means.  The Wi-Fi state
+ * machine, the SoftAP and the file/JPEG ingress live above it, in at_parser ->
+ * at_client -> at_wifi / at_socket and then app/protocol; this file's callers
+ * are those layers plus the `atm` shell.
  *
  * The protocol and the flow are taken from the vendor reference
  *   rtl8711faf/ameba-rtos/example/atcmd_host/atcmd_host_spi
@@ -39,11 +39,12 @@
  * This is the single easiest thing to get backwards, because the pads kept
  * their numbers and swapped their directions:
  *
- *                  slave build (app/wifi_8711)   THIS module
+ *                  slave build (deleted)         THIS module
  *   P4_1  GPIOB8   B2W, our OUTPUT               S2M, our INPUT
  *   P2_7  GPIOA22  W2B, our INPUT                M2S, our OUTPUT
  *
- * So a DT overlay copied from the old snippet compiles perfectly and drives the
+ * The slave build is gone, but the hazard is not: its overlay is still one `git
+ * show` away and still compiles perfectly against these pads while driving the
  * wrong pin in the wrong direction.  Nothing catches that at build time; the
  * names below are chosen to be relative-to-master (m2s/s2m) precisely so the
  * two cannot be confused in code.
@@ -97,25 +98,27 @@
  * storage, and a downlink-only slot sends a dummy frame instead of a NULL TX.
  *
  * ---------------------------------------------------------------------------
- * WHY THIS IS A SECOND MODULE INSTEAD OF AN EDIT TO app/wifi_8711
+ * THIS WAS A SECOND MODULE ONCE.  NOW IT IS THE ONLY ONE
  * ---------------------------------------------------------------------------
- * The slave stack is working code with a protocol (ATMC/JPGS/EBFS, 4096 B
- * slots, CRC32, sequence de-dup) that this change retires but does not
- * disprove -- the 8711 firmware it talks to still exists.  Converting it in
- * place would leave neither role intact while the new one is unproven.
+ * It started beside app/wifi_8711 rather than inside it: that stack was working
+ * code with its own protocol (ATMC/JPGS/EBFS, 4096 B slots, CRC32, sequence
+ * de-dup), and converting it in place would have left neither role intact while
+ * the new one was unproven.  The two were mutually exclusive by construction --
+ * `depends on !WIFI_8711`, both claiming P4_2..P4_5 against the BUILD_ASSERT at
+ * spi_rtl87x3g.c:961 that spi1 and spi1_hs are not both okay, and one snippet
+ * each so you passed one -S or the other.
  *
- * The two are mutually exclusive by construction, three ways over:
- *   - CONFIG_SPI_AT_MASTER depends on !WIFI_8711 in Kconfig
- *   - both would claim P4_2..P4_5, and spi_rtl87x3g.c:961 BUILD_ASSERTs that
- *     spi1 and spi1_hs are not both okay
- *   - each is delivered by its own snippet, and you pass one -S or the other
+ * The master role is proven now, so the slave stack and both snippets were
+ * deleted and the exclusivity went with them: CONFIG_WIFI_8711 `select`s
+ * SPI_AT_MASTER instead of forbidding it, and there is one snippet.  Read those
+ * three mechanisms as history if a git bisect lands before the deletion.
  *
- * That exclusivity is also how "pause the Wi-Fi features" is implemented: every
- * caller of the AT layer in app/protocol (port_softap, port_tcp, jpgs_ingress,
- * ebfs_ingress, cmd_debug) is already wrapped in #if defined(CONFIG_WIFI_8711)
- * with a working #else stub.  Building without that symbol therefore parks all
- * of them on their stubs with ZERO edits to protocol code -- which is the whole
- * reason this was done by Kconfig rather than by deleting call sites.
+ * What survived is the reason it was done by Kconfig rather than by deleting
+ * call sites: every caller of the AT layer in app/protocol (port_softap,
+ * port_tcp, jpgs_ingress, ebfs_ingress, cmd_debug) is wrapped in
+ * #if defined(CONFIG_WIFI_8711) with a working #else stub, so building without
+ * the wifi snippet still parks all of them on their stubs with ZERO edits to
+ * protocol code.  That is how "pause the Wi-Fi features" is implemented.
  */
 #ifndef _SPI_AT_MASTER_H_
 #define _SPI_AT_MASTER_H_

@@ -11,7 +11,7 @@
 # Emacs
 \#*\#
 
-bin*/
+bin/*
 build*/
 !doc/build/
 !tests/drivers/build_all
@@ -110,3 +110,4 @@ SphinxLint.txt
 TextEncoding.txt
 YAMLLint.txt
 note/
+app/userdata/

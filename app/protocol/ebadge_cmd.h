@@ -272,40 +272,53 @@ extern "C" {
  *  query, which is the check actually being used during bring-up; the plain
  *  liveness ping moved to 0x02.  Nothing had shipped against the old numbering.
  *
- *  The two Wi-Fi subcmds answer RESULT as soon as the AT command is STAGED --
- *  not when the 8711 replies.  The 8711 is the SPI master and polls every ~2 s,
- *  so the reply cannot be waited for inside a BLE handler; it appears in the
- *  device log 2..4 s later.  RESULT here means "queued", not "answered".      */
+ *  The two Wi-Fi subcmds answer RESULT as soon as the AT command is QUEUED --
+ *  not when the 8711 replies.  We drive the SPI link, so the round trip is ours
+ *  to start, but AT+WLSTATE still costs one and AT+WLSTARTAP does not print OK
+ *  until the radio is on the air (its handler polls its own driver at ~1 Hz for
+ *  up to 20 iterations).  Waiting for either inside a BLE handler would stall
+ *  l2_task -- the single serialiser for every BLE command -- for seconds or tens
+ *  of seconds.  So RESULT here means "accepted for submission", not "answered";
+ *  the reply is printed to the device log by at_wifi.c when it lands.          */
 #define EB_DBG_SUB_NONE         0x00    /* invalid -- rejected                 */
 #define EB_DBG_SUB_WIFI_AP_INFO 0x01    /* 8711 AT+WLSTATE, reply -> log       */
 #define EB_DBG_SUB_PING         0x02    /* no-op liveness check, acks SUCCEED  */
 #define EB_DBG_SUB_WIFI_START_AP 0x03   /* 8711 AT+WLSTARTAP, reply -> log     */
 
-/** 0x04 / 0x05 -- the two transfer-control AT commands, on the wire by hand.
+/** 0x04 / 0x05 -- the two transfer-control actions, driven by hand.
  *
- *  These numbers used to be a reserved Wi-Fi data tunnel (AT+WLRECV /
- *  AT+WLSEND), which no 8711 firmware ever implemented.  SPI protocol v2.2
- *  replaced that pair with AT+XFERSTOP / AT+XFERACK -- real commands with real
- *  firmware behind them -- so the subcmd numbers were reused rather than left
- *  pointing at something that always answered "[AT]:ERROR".  Nothing had shipped
- *  against the old meaning, because it never worked.
+ *  These numbers have been re-pointed twice.  They began as a reserved Wi-Fi data
+ *  tunnel (AT+WLRECV / AT+WLSEND) that no 8711 firmware ever implemented, then
+ *  became AT+XFERSTOP / AT+XFERACK -- commands the in-house firmware provided,
+ *  which built the EBXR itself out of a status and a reason we handed it.  The
+ *  standard command set has neither: the 8711 is a network card, and the EBXR is
+ *  eight bytes WE pack and push over the phone's own TCP connection with
+ *  AT+SKTSENDRAW.  Nothing ever shipped against either older meaning.
  *
- *  0x04 STOP takes no argument: it shuts the current file TCP connection down
- *  immediately and no EBXR is generated (v2.2 sec.10.4).
+ *  So both subcmds now act on ebadge_port_tcp, which is the module that owns
+ *  those bytes.  The numbers were kept because the two ACTIONS survived the
+ *  firmware change even though the commands behind them did not.
+ *
+ *  0x04 STOP takes no argument: ebadge_port_tcp_abort() cuts the phone's
+ *  connection with no EBXR -- the same thing xfer_session does when an EBXF
+ *  header contradicts the BLE offer.  On the wire it is AT+SKTDEL.
  *
  *  0x05 ACK is the one subcmd that uses the VALUE TLV: byte 0 is status
- *  (0 = fail, 1 = success) and byte 1, if present, is the eBadge sec.2.6 reason
- *  code.  The 8711 builds the EBXR from those two bytes and closes the
- *  connection (v2.2 sec.10.3).  Success with a non-zero reason is refused here
- *  rather than passed on, because the spec requires reason == 0 on success.
+ *  (0 = fail, 1 = success, the EBXR's own polarity, which is the OPPOSITE of the
+ *  V1.3 sec.2.5 BLE result codes) and byte 1, if present, is the eBadge sec.2.6
+ *  reason code.  An absent or empty VALUE is refused rather than defaulted --
+ *  both 0 and 1 are meaningful, so guessing would send a real phone a verdict
+ *  nobody asked for.  Which is worth knowing before typing one: used mid-upload,
+ *  0x05 ends that upload with the code typed here.
  *
- *  Both answer "[AT]:ERROR" -- surfacing as FAILED in the log a few seconds
- *  later -- when there is no active file connection to act on, which is the
+ *  Both answer NOT_READY -- immediately, not seconds later -- when no phone is
+ *  connected, because then there is no seed link to write to.  NOT_READY rather
+ *  than FAILED: nothing is broken, there is simply no connection, which is the
  *  normal outcome of poking these with no upload in flight.  They exist for a
- *  human verifying the 8711 end of sec.10 without needing a phone; the firmware
- *  itself sends both from xfer_session by way of ebadge_port_tcp.               */
-#define EB_DBG_SUB_XFER_STOP    0x04    /* 8711 AT+XFERSTOP, no argument       */
-#define EB_DBG_SUB_XFER_ACK     0x05    /* 8711 AT+XFERACK=<status>,<reason>   */
+ *  human watching the console during bring-up; the firmware itself reaches
+ *  ebadge_port_tcp directly from xfer_session.                                 */
+#define EB_DBG_SUB_XFER_STOP    0x04    /* port_tcp abort, no argument         */
+#define EB_DBG_SUB_XFER_ACK     0x05    /* port_tcp ack, VALUE=<status>[,<rsn>]*/
 
 /*----------------------------------------------------------------------------*
  *  File type enum  (spec §2.7) -- shared by SEND_FILE, XFER_OFFER,
