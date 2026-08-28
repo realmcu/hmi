@@ -123,8 +123,9 @@ typedef struct { bool    charging; } app_evt_power_charging_t;
  * @brief  New wall clock value published on EVT_TIME_SYNCED.
  *
  * sec is wall clock seconds (1970 epoch): the moment the watch face
- * should display. app_time is the sole subscriber that writes the RTC.
- * Other modules may listen to snap their state to the new wall clock.
+ * should display. The L2 settings handler first calls app_time_set() to
+ * write the RTC, then publishes this event so consumers can snap their
+ * state to the new wall clock.
  */
 typedef struct
 {

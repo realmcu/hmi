@@ -239,28 +239,41 @@
     color: var(--p-muted);
     margin-bottom: 6px;
   }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
   .chip {
     font-size: 12px;
     padding: 3px 8px;
+    min-height: 0;
     border-radius: 5px;
     border: 1px solid var(--p-line);
     background: var(--p-bg);
+    line-height: 1.25;
   }
   .chip.pub { border-color: var(--p-blue); color: var(--p-blue); }
   .chip.sub { border-color: var(--p-green); color: var(--p-green); }
-  .files {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    font-size: 12px;
-    line-height: 1.7;
+  .chip:not(:disabled):hover,
+  .chip:not(:disabled):focus-visible,
+  .chip.active {
+    color: #fff;
   }
-  .files code {
-    background: var(--p-bg);
-    border: 1px solid var(--p-line);
-    border-radius: 4px;
-    padding: 1px 5px;
+  .chip.pub:not(:disabled):hover,
+  .chip.pub:not(:disabled):focus-visible,
+  .chip.pub.active {
+    background: var(--p-blue);
+  }
+  .chip.sub:not(:disabled):hover,
+  .chip.sub:not(:disabled):focus-visible,
+  .chip.sub.active {
+    background: var(--p-green);
+  }
+  .chip:disabled {
+    cursor: default;
+    opacity: .62;
   }
 
   @media (max-width: 920px) {
@@ -299,7 +312,7 @@
 <body>
 <header class="topbar">
   <h1>HMI 应用层（app）架构</h1>
-  <span class="sub">事件总线 + 单任务模型 · applications/app</span>
+  <span class="sub">事件总线 + 单事件分发任务 · applications/app</span>
   <span class="spacer"></span>
   <div class="tb-group" role="group" aria-label="视图控制">
     <button type="button" id="btn-events" aria-pressed="true">
@@ -330,10 +343,10 @@
 </header>
 
 <div class="legend" aria-label="图例">
-  <span class="lg"><span class="sw amber"></span>初始化顺序（注册表 → 模块）</span>
+  <span class="lg"><span class="sw amber"></span>初始化顺序（app_core.c → 模块）</span>
   <span class="lg"><span class="sw blue"></span>发布事件到总线</span>
   <span class="lg"><span class="sw green"></span>订阅 / 串行分发</span>
-  <span class="lg"><span class="sw blue dotted"></span>骨架模块（计划）</span>
+  <span class="lg"><span class="sw blue dotted"></span>仅事件定义 / TODO（计划）</span>
   <span class="lg"><span class="sw red"></span>独立接线（未走总线）</span>
 </div>
 
@@ -344,7 +357,7 @@
         <svg id="diagram" viewBox="0 0 1240 880" width="1240" height="880" role="img"
              aria-labelledby="svg-title svg-desc">
           <title id="svg-title">HMI app 层架构图</title>
-          <desc id="svg-desc">main 启动 app_core，包含事件总线、模块注册表与单任务；八个业务模块按依赖顺序注册，通过事件总线通信；OTA 独立接线。</desc>
+          <desc id="svg-desc">main 调 app_core_init()（app_core.c）；app_event.c 提供事件总线与串行分发循环，app_modules.c 提供模块注册表；八个业务模块按依赖顺序注册。业务状态通过事件总线传递，BLE L2 传输与 OTA 使用直接接线。</desc>
           <style>
             #diagram {
               --bg: #fbfcfe; --band: #eef1f5; --band2: #e7f1f1;
@@ -409,9 +422,10 @@
             .elabel.core-label { stroke: var(--band); }
             .tips { fill: var(--fg); font-size: 11px; }
 
-            #diagram.dim .e { opacity: .09; }
+            #diagram.dim .e { opacity: 0; pointer-events: none; }
             #diagram.dim .e.on { opacity: 1; stroke-width: 3; }
-            #diagram.dim .elabel { opacity: .12; }
+            #diagram.dim .elabel { opacity: 0; }
+            #diagram.dim .elabel.on { opacity: 1; }
             .e.on { stroke-width: 3; }
 
             #diagram.events-off .e-pub,
@@ -454,68 +468,73 @@
 
           <!-- bands -->
           <rect class="band" x="36" y="128" width="1168" height="150"/>
-          <text class="band-title" x="52" y="116">app_core · 应用层运行时</text>
+          <text class="band-title" x="52" y="116">app_core 目录 · 应用层运行时</text>
           <rect class="band band2" x="36" y="300" width="1168" height="548"/>
           <text class="band-title" x="52" y="288">功能模块 · 注册顺序即依赖顺序</text>
-          <text class="band-note" x="432" y="288">init() 在 main 线程按序执行，随后 app_task 接管事件分发</text>
+          <text class="band-note" x="432" y="288">main 按序 init 各模块；app_task 仅负责事件分发，模块可拥有专用任务</text>
           <text class="tips" x="24" y="872">拖拽平移 · 滚轮缩放 · 点击模块查看详情 · 空白处双击复位</text>
 
           <!-- core internals -->
-          <path class="e e-core" data-from="registry" data-to="bus"
-                d="M304 204 H458" marker-end="url(#mk-core)"/>
-          <text class="elabel core-label" x="320" y="196">订阅注册</text>
-          <path class="e e-core" data-from="bus" data-to="task"
-                d="M772 204 H858" marker-end="url(#mk-core)"/>
-          <text class="elabel core-label" x="788" y="196">拉取 → 分发给订阅者</text>
+          <path class="e e-core" data-from="app_core" data-to="app_event"
+                d="M344 200 H472" marker-end="url(#mk-core)"/>
+          <text class="elabel core-label" x="352" y="190">建队列 · 起分发 app_task</text>
+          <text class="elabel core-label" x="352" y="204">跑 run_forever</text>
+          <path class="e e-core" data-from="app_core" data-to="app_modules"
+                d="M204 156 C 204 142, 1016 142, 1016 156" marker-end="url(#mk-core)"/>
+          <text class="elabel core-label" x="600" y="132">读取注册表（顺序即依赖）</text>
 
           <!-- boot arrow -->
-          <path class="e e-core" data-from="main" data-to="registry"
-                d="M148 96 V154" marker-end="url(#mk-core)"/>
-          <text class="elabel core-label" x="160" y="130">boot：app_core_init()</text>
+          <path class="e e-core" data-from="main" data-to="app_core"
+                d="M204 96 V156" marker-end="url(#mk-core)"/>
+          <text class="elabel core-label" x="250" y="130">boot：app_core_init()</text>
 
           <!-- init edges -->
           <g class="group-init" style="display:none">
-            <path class="e e-init" data-from="registry" data-to="time" d="M184 248 V312 H188 V332" marker-end="url(#mk-init)"/>
-            <path class="e e-init" data-from="registry" data-to="power" d="M184 248 V312 H480 V332" marker-end="url(#mk-init)"/>
-            <path class="e e-init" data-from="registry" data-to="setting" d="M184 248 V312 H772 V332" marker-end="url(#mk-init)"/>
-            <path class="e e-init" data-from="registry" data-to="bt" d="M184 248 V312 H1064 V332" marker-end="url(#mk-init)"/>
-            <path class="e e-init" data-from="registry" data-to="proto" d="M184 248 V312 H332 V504 H188 V516" marker-end="url(#mk-init)"/>
-            <path class="e e-init" data-from="registry" data-to="health" d="M184 248 V312 H332 V504 H480 V516" marker-end="url(#mk-init)"/>
-            <path class="e e-init" data-from="registry" data-to="media" d="M184 248 V312 H332 V504 H772 V516" marker-end="url(#mk-init)"/>
-            <path class="e e-init" data-from="registry" data-to="notify" d="M184 248 V312 H332 V504 H1064 V516" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="app_core" data-to="time" d="M204 244 V312 H188 V332" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="app_core" data-to="power" d="M204 244 V312 H480 V332" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="app_core" data-to="setting" d="M204 244 V312 H772 V332" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="app_core" data-to="bt" d="M204 244 V312 H1064 V332" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="app_core" data-to="proto" d="M204 244 V312 H332 V504 H188 V516" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="app_core" data-to="health" d="M204 244 V312 H332 V504 H480 V516" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="app_core" data-to="media" d="M204 244 V312 H332 V504 H772 V516" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="app_core" data-to="notify" d="M204 244 V312 H332 V504 H1064 V516" marker-end="url(#mk-init)"/>
             <text class="elabel" x="92" y="262">init(m) 逐个</text>
           </g>
 
           <!-- publish edges -->
-          <path class="e e-pub" data-from="time" data-to="bus" d="M188 336 C188 292 500 292 500 248" marker-end="url(#mk-pub)"/>
-          <text class="elabel" x="282" y="300">EVT_TIME_*</text>
-          <path class="e e-pub" data-from="power" data-to="bus" d="M480 336 C480 292 540 292 540 248" marker-end="url(#mk-pub)"/>
-          <text class="elabel" x="452" y="300">EVT_POWER_*</text>
-          <path class="e e-pub" data-from="setting" data-to="bus" d="M772 336 C772 292 580 292 580 248" marker-end="url(#mk-pub)"/>
-          <text class="elabel" x="632" y="300">EVT_SETTING</text>
-          <path class="e e-pub" data-from="bt" data-to="bus" d="M1064 336 C1064 292 620 292 620 248" marker-end="url(#mk-pub)"/>
+          <path class="e e-pub" data-from="time" data-to="app_event" d="M188 336 C188 292 500 292 500 248" marker-end="url(#mk-pub)"/>
+          <text class="elabel" x="252" y="300">TICK_15MIN / DAY_CHANGED</text>
+          <path class="e e-plan" data-from="power" data-to="app_event" d="M480 336 C480 292 540 292 540 248" marker-end="url(#mk-pub)"/>
+          <text class="elabel" x="420" y="300">EVT_POWER_*（计划）</text>
+          <path class="e e-plan" data-from="setting" data-to="app_event" d="M772 336 C772 292 580 292 580 248" marker-end="url(#mk-pub)"/>
+          <text class="elabel" x="600" y="300">SETTING_CHANGED（计划）</text>
+          <path class="e e-pub" data-from="bt" data-to="app_event" d="M1064 336 C1064 292 620 292 620 248" marker-end="url(#mk-pub)"/>
           <text class="elabel" x="818" y="300">EVT_BLE_*</text>
 
-          <path class="e e-pub" data-from="proto" data-to="bus" d="M188 520 C188 396 600 320 660 248" marker-end="url(#mk-pub)"/>
+          <path class="e e-pub" data-from="proto" data-to="app_event" d="M188 520 C188 396 600 320 660 248" marker-end="url(#mk-pub)"/>
           <text class="elabel" x="300" y="428">EVT_USER_* / 校时</text>
-          <path class="e e-pub" data-from="health" data-to="bus" d="M480 520 C480 396 640 320 700 248" marker-end="url(#mk-pub)"/>
-          <text class="elabel" x="526" y="448">EVT_HEALTH_*</text>
-          <path class="e e-plan" data-from="media" data-to="bus" d="M772 520 C772 396 690 320 730 248" marker-end="url(#mk-pub)"/>
+          <path class="e e-pub" data-from="health" data-to="app_event" d="M480 520 C480 396 640 320 700 248" marker-end="url(#mk-pub)"/>
+          <text class="elabel" x="526" y="448">STEPS_UPDATED</text>
+          <path class="e e-plan" data-from="media" data-to="app_event" d="M772 520 C772 396 690 320 730 248" marker-end="url(#mk-pub)"/>
           <text class="elabel" x="668" y="470">EVT_MEDIA_*（骨架）</text>
-          <path class="e e-plan" data-from="notify" data-to="bus" d="M1064 520 C1064 396 740 320 760 248" marker-end="url(#mk-pub)"/>
+          <path class="e e-plan" data-from="notify" data-to="app_event" d="M1064 520 C1064 396 740 320 760 248" marker-end="url(#mk-pub)"/>
           <text class="elabel" x="878" y="470">EVT_NOTIFY_*（骨架）</text>
 
           <!-- subscribe / dispatch edges -->
-          <path class="e e-sub" data-from="bus" data-to="time" d="M452 248 V326 H188 V330" marker-end="url(#mk-sub)"/>
-          <text class="elabel" x="246" y="324">订 TIME_SYNCED</text>
-          <path class="e e-sub" data-from="bus" data-to="proto" d="M452 248 V482 H188 V516" marker-end="url(#mk-sub)"/>
-          <text class="elabel" x="226" y="500">订 BLE_*</text>
-          <path class="e e-sub" data-from="bus" data-to="health" d="M452 248 V330 H480 V516" marker-end="url(#mk-sub)"/>
-          <text class="elabel" x="252" y="528">订 TIME / USER / POWER</text>
+          <path class="e e-sub" data-from="app_event" data-to="proto"
+                d="M548 248 C548 342 188 390 188 516" marker-end="url(#mk-sub)"/>
+          <text class="elabel" x="270" y="414">订 BLE_*</text>
+          <path class="e e-sub" data-from="app_event" data-to="health"
+                d="M620 248 C620 344 480 410 480 516" marker-end="url(#mk-sub)"/>
+          <text class="elabel" x="506" y="426">订 TIME / USER / POWER</text>
 
-          <!-- OTA direct wiring -->
-          <path class="e e-ota" data-from="ota" data-to="bt" d="M1188 708 H1206 V382 H1194" marker-end="url(#mk-ota)"/>
-          <text class="elabel" transform="rotate(90 1214 545)" x="1214" y="545">直接接入 BLE profile</text>
+          <!-- direct wiring outside app_event -->
+          <path class="e e-ota" data-from="bt" data-to="proto"
+                d="M1064 428 C1064 486 188 458 188 516" marker-end="url(#mk-ota)"/>
+          <text class="elabel" x="620" y="490">注入 BLE send / receive，启动 proto / l2 tasks</text>
+          <path class="e e-ota" data-from="bt" data-to="ota"
+                d="M1188 400 H1206 V708 H1188" marker-end="url(#mk-ota)"/>
+          <text class="elabel" transform="rotate(90 1214 540)" x="1214" y="540">注册 BLE DFU service · 转发 GAP 状态</text>
 
           <!-- nodes -->
           <g class="node" data-node="main" tabindex="0" role="button" aria-label="main 启动入口">
@@ -524,25 +543,25 @@
             <text class="nrole" x="148" y="84" text-anchor="middle">app_core_init() 启动</text>
           </g>
 
-          <g class="node core-node" data-node="registry" tabindex="0" role="button" aria-label="app_modules 模块注册表">
-            <rect class="nbox" x="64" y="160" width="240" height="88" rx="9"/>
-            <text class="nname" x="184" y="188" text-anchor="middle">app_modules.c</text>
-            <text class="nrole" x="184" y="210" text-anchor="middle">模块注册表 · 依赖顺序</text>
-            <text class="ntag" x="184" y="232" text-anchor="middle">init() 逐个调用</text>
+          <g class="node core-node" data-node="app_core" tabindex="0" role="button" aria-label="app_core.c 启动编排">
+            <rect class="nbox" x="64" y="156" width="280" height="88" rx="9"/>
+            <text class="nname" x="204" y="186" text-anchor="middle">app_core.c</text>
+            <text class="nrole" x="204" y="208" text-anchor="middle">启动编排 · 创建事件分发任务</text>
+            <text class="ntag" x="204" y="230" text-anchor="middle">init 遍历 · bus_init</text>
           </g>
 
-          <g class="node core-node" data-node="bus" tabindex="0" role="button" aria-label="app_event 事件总线">
+          <g class="node core-node" data-node="app_event" tabindex="0" role="button" aria-label="app_event 事件总线">
             <rect class="nbox" x="472" y="148" width="300" height="100" rx="9"/>
-            <text class="nname" x="622" y="182" text-anchor="middle">app_event</text>
-            <text class="nrole" x="622" y="204" text-anchor="middle">发布 / 订阅 · 消息队列</text>
-            <text class="ntag" x="622" y="226" text-anchor="middle">串行分发 · payload ≤ 32B</text>
+            <text class="nname" x="622" y="182" text-anchor="middle">app_event.c</text>
+            <text class="nrole" x="622" y="204" text-anchor="middle">队列 · 订阅表 · 发布</text>
+            <text class="ntag" x="622" y="226" text-anchor="middle">run_forever 串行分发 · ≤32B</text>
           </g>
 
-          <g class="node core-node" data-node="task" tabindex="0" role="button" aria-label="app_task 单线程分发任务">
-            <rect class="nbox" x="876" y="160" width="240" height="88" rx="9"/>
-            <text class="nname" x="996" y="188" text-anchor="middle">app_task</text>
-            <text class="nrole" x="996" y="210" text-anchor="middle">唯一分发线程</text>
-            <text class="ntag" x="996" y="232" text-anchor="middle">回调不可阻塞</text>
+          <g class="node core-node" data-node="app_modules" tabindex="0" role="button" aria-label="app_modules 模块注册表">
+            <rect class="nbox" x="876" y="156" width="280" height="88" rx="9"/>
+            <text class="nname" x="1016" y="186" text-anchor="middle">app_modules.c</text>
+            <text class="nrole" x="1016" y="208" text-anchor="middle">模块注册表 · 依赖顺序</text>
+            <text class="ntag" x="1016" y="230" text-anchor="middle">app_module_t 列表</text>
           </g>
 
           <g class="node" data-node="time" tabindex="0" role="button" aria-label="app_time 时钟模块">
@@ -551,7 +570,7 @@
             <text class="nbadge-text" x="84" y="359">1</text>
             <text class="nname" x="178" y="368" text-anchor="middle">app_time</text>
             <text class="nrole" x="178" y="391" text-anchor="middle">时钟 / RTC / 校时</text>
-            <text class="ntag" x="178" y="413" text-anchor="middle">发布 EVT_TIME_*</text>
+            <text class="ntag" x="178" y="413" text-anchor="middle">发布 TICK / DAY_CHANGED</text>
           </g>
 
           <g class="node" data-node="power" tabindex="0" role="button" aria-label="app_power 电量模块">
@@ -559,8 +578,8 @@
             <circle class="nbadge" cx="376" cy="355" r="11"/>
             <text class="nbadge-text" x="376" y="359">2</text>
             <text class="nname" x="480" y="368" text-anchor="middle">app_power</text>
-            <text class="nrole" x="480" y="391" text-anchor="middle">电量 / 充电监测</text>
-            <text class="ntag" x="480" y="413" text-anchor="middle">发布 EVT_POWER_*</text>
+            <text class="nrole" x="480" y="391" text-anchor="middle">电量 / 充电（骨架）</text>
+            <text class="ntag" x="480" y="413" text-anchor="middle">计划发布 EVT_POWER_*</text>
           </g>
 
           <g class="node" data-node="setting" tabindex="0" role="button" aria-label="app_setting 设置模块">
@@ -568,8 +587,8 @@
             <circle class="nbadge" cx="668" cy="355" r="11"/>
             <text class="nbadge-text" x="668" y="359">3</text>
             <text class="nname" x="772" y="368" text-anchor="middle">app_setting</text>
-            <text class="nrole" x="772" y="391" text-anchor="middle">KV 存储（FlashDB）</text>
-            <text class="ntag" x="772" y="413" text-anchor="middle">发布 EVT_SETTING</text>
+            <text class="nrole" x="772" y="391" text-anchor="middle">KV 存储（骨架）</text>
+            <text class="ntag" x="772" y="413" text-anchor="middle">计划发布 SETTING_CHANGED</text>
           </g>
 
           <g class="node" data-node="bt" tabindex="0" role="button" aria-label="app_bluetooth 蓝牙模块">
@@ -587,7 +606,7 @@
             <text class="nbadge-text" x="84" y="543">5</text>
             <text class="nname" x="178" y="552" text-anchor="middle">app_protocol</text>
             <text class="nrole" x="178" y="575" text-anchor="middle">L2 命令处理（hmi_l2）</text>
-            <text class="ntag" x="178" y="597" text-anchor="middle">发 USER / 订 BLE</text>
+            <text class="ntag" x="178" y="597" text-anchor="middle">发 USER / TIME_SYNCED · 订 BLE</text>
           </g>
 
           <g class="node" data-node="health" tabindex="0" role="button" aria-label="app_health 健康模块">
@@ -595,8 +614,8 @@
             <circle class="nbadge" cx="376" cy="539" r="11"/>
             <text class="nbadge-text" x="376" y="543">6</text>
             <text class="nname" x="480" y="552" text-anchor="middle">app_health</text>
-            <text class="nrole" x="480" y="575" text-anchor="middle">步数 / 心率 / 血氧</text>
-            <text class="ntag" x="480" y="597" text-anchor="middle">独立 worker 任务</text>
+            <text class="nrole" x="480" y="575" text-anchor="middle">计步采集 / 15 分钟落库</text>
+            <text class="ntag" x="480" y="597" text-anchor="middle">发 STEPS_UPDATED · 独立 worker</text>
           </g>
 
           <g class="node" data-node="media" tabindex="0" role="button" aria-label="app_media 媒体骨架">
@@ -605,7 +624,7 @@
             <text class="nbadge-text" x="668" y="543">7</text>
             <text class="nname" x="772" y="552" text-anchor="middle">app_media</text>
             <text class="nrole" x="772" y="575" text-anchor="middle">A2DP / AVRCP（骨架）</text>
-            <text class="ntag" x="772" y="597" text-anchor="middle">发布 EVT_MEDIA_*</text>
+            <text class="ntag" x="772" y="597" text-anchor="middle">计划发布 EVT_MEDIA_*</text>
           </g>
 
           <g class="node" data-node="notify" tabindex="0" role="button" aria-label="app_notify 通知骨架">
@@ -614,13 +633,13 @@
             <text class="nbadge-text" x="960" y="543">8</text>
             <text class="nname" x="1064" y="552" text-anchor="middle">app_notify</text>
             <text class="nrole" x="1064" y="575" text-anchor="middle">通知缓存 / 分发（骨架）</text>
-            <text class="ntag" x="1064" y="597" text-anchor="middle">发布 EVT_NOTIFY_*</text>
+            <text class="ntag" x="1064" y="597" text-anchor="middle">计划发布 EVT_NOTIFY_*</text>
           </g>
 
           <g class="node ota-wrap" data-node="ota" tabindex="0" role="button" aria-label="app_ota OTA 服务">
             <rect class="nbox" x="940" y="664" width="248" height="88" rx="9"/>
             <text class="nname" x="1064" y="694" text-anchor="middle">app_ota / ota_service</text>
-            <text class="nrole" x="1064" y="716" text-anchor="middle">DFU / OTA · 暂未走总线</text>
+            <text class="nrole" x="1064" y="716" text-anchor="middle">BLE DFU / OTA · 未走总线</text>
             <text class="ntag" x="1064" y="738" text-anchor="middle">事件 0x900 已预留</text>
           </g>
         </svg>
@@ -651,83 +670,74 @@ var DATA = {
   main: {
     t: 'main.c', belt: '启动入口',
     d: '上电后调用一次 app_core_init()，完成事件总线、各模块 init 与 app_task 创建后即可返回。',
-    pub: [], sub: [], files: ['main.c']
+    pub: [], sub: []
   },
-  registry: {
+  app_core: {
+    t: 'app_core.c · app_core.h', belt: '启动编排 + 单事件分发线程',
+    d: 'main 调一次 app_core_init()：先 app_event_bus_init() 创建事件总线，再遍历 app_modules.c 注册表逐个 init，最后 os_task_create 拉起 app_task。app_task 是唯一的事件总线分发线程，只执行 app_event_run_forever()；蓝牙、协议和健康模块另有各自的任务。',
+    pub: [], sub: []
+  },
+  app_event: {
+    t: 'app_event.c · app_event.h', belt: '事件总线 + 分发循环',
+    d: '消息队列 + 订阅表全在这里。publish / subscribe / unsubscribe 以及 run_forever 分发循环都由本文件实现：run_forever 阻塞拉取事件并在 app_task 线程上串行调用所有匹配订阅者；payload 按值复制（≤32B），异步投递。',
+    pub: [], sub: []
+  },
+  app_modules: {
     t: 'app_modules.c · app_module.h', belt: '模块注册表',
-    d: '唯一的中央注册文件，按依赖顺序排列全部业务模块。init 失败只记日志，不阻断后续模块启动。',
-    pub: [], sub: [],
-    files: ['app/app_core/app_modules.c', 'app/app_core/app_module.h']
-  },
-  bus: {
-    t: 'app_event', belt: '发布 / 订阅事件总线',
-    d: '消息队列 + 订阅表。payload 按值复制（≤32B），异步投递；所有回调都在 app_task 上串行执行，订阅表由调用方单线程变更，无需加锁。',
-    pub: [], sub: [],
-    files: ['app/app_core/app_event.c', 'app/app_core/app_event.h', 'app/app_core/app_event_defs.h']
-  },
-  task: {
-    t: 'app_task', belt: '单线程应用任务',
-    d: 'app_core_init 创建的唯一应用线程，阻塞拉取事件并逐个调用订阅者回调。任何回调阻塞都会拖垮整个应用层。',
-    pub: [], sub: [], files: ['app/app_core/app_core.c']
+    d: '唯一的中央注册文件，按依赖顺序排列全部业务模块。app_core_init 读取该列表并逐个调用 init；init 失败只记日志，不阻断后续模块启动。',
+    pub: [], sub: []
   },
   time: {
     t: 'app_time', belt: '模块 #1 · 时钟 / RTC',
-    d: '手表唯一写 RTC 的模块，按整点 / 15 分钟 / 跨日发布时间事件，避免各模块各自推算墙钟。',
-    pub: ['EVT_TIME_SYNCED', 'EVT_TIME_TICK_15MIN', 'EVT_TIME_DAY_CHANGED'],
-    sub: ['EVT_TIME_SYNCED'],
-    files: ['app/app_time/app_time.c', 'app/app_time/app_time.h']
+    d: '手表唯一写 RTC 的模块。app_protocol 收到手机校时命令后直接调用 app_time_set() 写入 RTC；随后 app_time 按 15 分钟边界和跨日发布周期事件。',
+    pub: ['EVT_TIME_TICK_15MIN', 'EVT_TIME_DAY_CHANGED'],
+    sub: []
   },
   power: {
-    t: 'app_power', belt: '模块 #2 · 电量 / 充电',
-    d: '电量计与充电状态监测，低电量时通过事件触发其它模块降级（例如停止健康采集）。',
-    pub: ['EVT_POWER_LEVEL', 'EVT_POWER_LOW', 'EVT_POWER_CHARGING'],
-    sub: [],
-    files: ['app/app_power/app_power.c', 'app/app_power/app_power.h']
+    t: 'app_power', belt: '模块 #2 · 电量 / 充电（骨架）',
+    d: '当前 init() 直接返回，尚未读取电量计或充电状态，也没有发布事件。EVT_POWER_LEVEL、EVT_POWER_LOW、EVT_POWER_CHARGING 已定义，等待后续实现；app_health 已提前订阅 EVT_POWER_LOW。',
+    pub: [],
+    sub: []
   },
   setting: {
-    t: 'app_setting', belt: '模块 #3 · KV 设置',
-    d: 'FlashDB KV 存储之上的薄语义层，其它模块在 init 里读取默认值，变更通过事件广播。',
-    pub: ['EVT_SETTING_CHANGED'], sub: [],
-    files: ['app/app_setting/app_setting.c', 'app/app_setting/app_setting.h']
+    t: 'app_setting', belt: '模块 #3 · KV 设置（骨架）',
+    d: '当前 init() 直接返回，FlashDB KV 的 get / set / del 与 EVT_SETTING_CHANGED 广播都还是 TODO；事件 ID 和 payload 类型已预留。',
+    pub: [], sub: []
   },
   bt: {
     t: 'app_bluetooth', belt: '模块 #4 · BLE / BR-EDR',
-    d: '接入 Realtek 协议栈：hmi_ble（GAP / 私有服务）、hmi_br_edr（BR/EDR、SPP）、hmi_app（任务与 A2DP/AVRCP/HFP/PAN）。连接与参数变化经事件总线广播，供上层协议与媒体使用。',
+    d: 'init 创建 bt_task，并把 hmi_ble_ctrl 的 send / receive 注入协议组件，启动 proto_task 与 l2_task。BLE profile 初始化注册私有服务和 OTA/DFU 服务；BR/EDR、SPP、A2DP、AVRCP、HFP、PAN 按编译选项启用。BLE 连接、断开和参数变化会发布到事件总线。',
     pub: ['EVT_BLE_CONNECTED', 'EVT_BLE_DISCONNECTED', 'EVT_BLE_CONN_PARAM'],
-    sub: [],
-    files: ['app/app_bluetooth/hmi_app/hmi_bt_task.c', 'app/app_bluetooth/hmi_ble/hmi_ble_gap_msg.c']
+    sub: []
   },
   proto: {
-    t: 'app_protocol', belt: '模块 #5 · L2 命令处理',
-    d: 'BLE L2 命令分派：绑定 / 解绑、设置、控制、运动、传输、OTA、厂商等指令。绑定握手成功后发布用户事件；订阅连接事件做状态清理。',
+    t: 'app_protocol', belt: '模块 #5 · L2 handlers 注册',
+    d: '此模块的 app_module init 负责注册绑定、设置、运动、传输、OTA 等 L2 handler；proto_task / l2_task 已由 app_bluetooth init 启动。绑定流程发布用户事件；设置校时先直接调用 app_time_set()，成功后发布 EVT_TIME_SYNCED；三个 handler 用 BLE 断开事件清理状态，连接参数 handler 还订阅 EVT_BLE_CONN_PARAM。当前 L2 OTA handler 仅记录收到的键值。',
     pub: ['EVT_USER_BOUND', 'EVT_USER_UNBOUND', 'EVT_TIME_SYNCED'],
-    sub: ['EVT_BLE_DISCONNECTED', 'EVT_BLE_CONN_PARAM'],
-    files: ['app/app_protocol/hmi_l2_handlers.c', 'app/app_protocol/hmi_l2_cmd_bind.c', 'app/app_protocol/hmi_l2_cmd_settings.c']
+    sub: ['EVT_BLE_DISCONNECTED', 'EVT_BLE_CONN_PARAM']
   },
   health: {
-    t: 'app_health', belt: '模块 #6 · 健康采集 / 存储',
-    d: '在 app_task 之外另起专用采集线程做耗时工作；仅在已校时 + 已绑定且电量不低时运行，跨日 / 15 分钟边界触发落库，并发布健康事件。',
-    pub: ['EVT_HEALTH_STEPS_UPDATED', 'EVT_HEALTH_HR_UPDATED', 'EVT_HEALTH_SPO2_UPDATED'],
-    sub: ['EVT_TIME_SYNCED', 'EVT_TIME_TICK_15MIN', 'EVT_TIME_DAY_CHANGED', 'EVT_USER_BOUND', 'EVT_USER_UNBOUND', 'EVT_POWER_LOW'],
-    files: ['app/app_health/app_health.c', 'app/app_health/health_worker.c', 'app/app_health/health_db.c']
+    t: 'app_health', belt: '模块 #6 · 计步采集 / 存储',
+    d: '已校时且已绑定后启动独立 health worker，以 25 Hz 读取 gsensor 并运行计步算法。15 分钟边界写入 pedometer TSDB，跨日清零当日累计，低电量事件会停止 worker。当前只发布 EVT_HEALTH_STEPS_UPDATED；心率和血氧事件仅有定义。',
+    pub: ['EVT_HEALTH_STEPS_UPDATED'],
+    sub: ['EVT_TIME_SYNCED', 'EVT_TIME_TICK_15MIN', 'EVT_TIME_DAY_CHANGED', 'EVT_USER_BOUND', 'EVT_USER_UNBOUND', 'EVT_POWER_LOW']
   },
   media: {
     t: 'app_media', belt: '模块 #7 · 媒体（骨架）',
-    d: 'A2DP sink 状态与 AVRCP 传输 / 元数据控制。当前为骨架，事件定义已就位，待接 Realtek 回调。',
-    pub: ['EVT_MEDIA_STATE_CHANGED', 'EVT_MEDIA_METADATA', 'EVT_MEDIA_VOLUME_CHANGED'],
-    sub: [], files: ['app/app_media/app_media.c']
+    d: '当前 init() 直接返回，尚未把 app_media 接到 Realtek A2DP / AVRCP 回调。EVT_MEDIA_STATE_CHANGED、EVT_MEDIA_METADATA、EVT_MEDIA_VOLUME_CHANGED 仅完成定义。',
+    pub: [],
+    sub: []
   },
   notify: {
     t: 'app_notify', belt: '模块 #8 · 通知（骨架）',
-    d: '手机通知缓存与分发。当前为骨架，计划订阅 ANCS / 伴生应用通知，事件定义已就位。',
-    pub: ['EVT_NOTIFY_NEW', 'EVT_NOTIFY_REMOVED', 'EVT_NOTIFY_CLEARED'],
-    sub: [], files: ['app/app_notify/app_notify.c']
+    d: '当前 init() 直接返回，ANCS / 伴生应用通知接入和通知缓存都还是 TODO。EVT_NOTIFY_NEW、EVT_NOTIFY_REMOVED、EVT_NOTIFY_CLEARED 仅完成定义。',
+    pub: [],
+    sub: []
   },
   ota: {
     t: 'app_ota / ota_service', belt: '独立路径（未走总线）',
-    d: 'DFU / OTA 服务，通过 hmi_ble_profile_init 的 app_ota_service_init() 直接接入 BLE profile，SPP 命令通道另有入口。事件定义中 0x900 已为未来接入业务总线预留。',
-    pub: [], sub: [],
-    files: ['app/app_ota/app_ota.c', 'app/app_ota/app_ota_service.c', 'app/app_ota/ota_service.c']
+    d: 'hmi_ble_profile_init() 调用 app_ota_service_init() 注册 BLE DFU GATT service 并初始化 OTA；BLE GAP 连接 / 断开处理器直接调用 OTA glue 维护链路。该端口明确关闭 SPP OTA（APP_OTA_SPP_SUPPORT=0），也未接入 app_event；0x900 事件范围仍为未来预留。',
+    pub: [], sub: []
   }
 };
 
@@ -736,6 +746,29 @@ var detailEl = document.getElementById('detail');
 var panelEl = document.getElementById('panel');
 var inspectHintEl = document.getElementById('inspect-hint');
 
+function eventTargets(sourceId, eventName, kind) {
+  var opposite = kind === 'pub' ? 'sub' : 'pub';
+  var targets = [];
+  for (var id in DATA) {
+    if (id !== sourceId && DATA[id][opposite].indexOf(eventName) !== -1) {
+      targets.push(id);
+    }
+  }
+  return targets;
+}
+
+function renderEventChip(sourceId, eventName, kind) {
+  var targets = eventTargets(sourceId, eventName, kind);
+  var targetKind = kind === 'pub' ? '订阅' : '发布';
+  var targetNames = targets.map(function (id) { return DATA[id].t; }).join('、');
+  var title = targets.length
+    ? '单击定位到' + targetKind + '模块：' + targetNames
+    : '暂无对应' + targetKind + '模块';
+  return '<button type="button" class="chip ' + kind + '" data-event="' + eventName +
+    '" data-kind="' + kind + '" title="' + title + '"' +
+    (targets.length ? '' : ' disabled') + '>' + eventName + '</button>';
+}
+
 function showDetail(id) {
   var n = DATA[id];
   if (!n) return;
@@ -743,16 +776,23 @@ function showDetail(id) {
   detailEl.hidden = false;
   panelEl.classList.add('open');
   inspectHintEl.hidden = true;
-  var pub = n.pub.map(function (e) { return '<span class="chip pub">' + e + '</span>'; }).join('');
-  var sub = n.sub.map(function (e) { return '<span class="chip sub">' + e + '</span>'; }).join('');
-  var files = n.files.map(function (f) { return '<li><code>' + f + '</code></li>'; }).join('');
+  var pub = n.pub.map(function (e) { return renderEventChip(id, e, 'pub'); }).join('');
+  var sub = n.sub.map(function (e) { return renderEventChip(id, e, 'sub'); }).join('');
   detailEl.innerHTML =
     '<div class="belt">' + n.t + ' · ' + n.belt + '</div>' +
     '<h2>' + n.t.split(' ')[0].split('.')[0] + '</h2>' +
     '<p class="desc">' + n.d + '</p>' +
     (pub ? '<div class="block"><div class="bt">发布</div><div class="chips">' + pub + '</div></div>' : '') +
-    (sub ? '<div class="block"><div class="bt">订阅</div><div class="chips">' + sub + '</div></div>' : '') +
-    '<div class="block"><div class="bt">关键文件</div><ul class="files">' + files + '</ul></div>';
+    (sub ? '<div class="block"><div class="bt">订阅</div><div class="chips">' + sub + '</div></div>' : '');
+}
+
+function setEdgeActive(edge, active) {
+  edge.classList.toggle('on', active);
+  var sibling = edge.nextElementSibling;
+  while (sibling && sibling.classList.contains('elabel')) {
+    sibling.classList.toggle('on', active);
+    sibling = sibling.nextElementSibling;
+  }
 }
 
 function clearDetail() {
@@ -765,7 +805,7 @@ function clearDetail() {
   for (var i = 0; i < nodes.length; i++) {
     nodes[i].classList.remove('sel', 'hl');
   }
-  var edges = SVG.querySelectorAll('.e');
+  var edges = SVG.querySelectorAll('.e, .elabel');
   for (var j = 0; j < edges.length; j++) {
     edges[j].classList.remove('on');
   }
@@ -777,8 +817,8 @@ function neighborsOf(id) {
   for (var i = 0; i < edges.length; i++) {
     var f = edges[i].getAttribute('data-from');
     var t = edges[i].getAttribute('data-to');
-    if (f === id) { set[t] = 1; edges[i].classList.add('on'); }
-    else if (t === id) { set[f] = 1; edges[i].classList.add('on'); }
+    if (f === id) { set[t] = 1; setEdgeActive(edges[i], true); }
+    else if (t === id) { set[f] = 1; setEdgeActive(edges[i], true); }
   }
   var res = [];
   for (var k in set) res.push(k);
@@ -795,10 +835,7 @@ function highlight(id, mode) {
   for (var j = 0; j < edges.length; j++) {
     var f = edges[j].getAttribute('data-from');
     var t = edges[j].getAttribute('data-to');
-    edges[j].classList.remove('on');
-    if (mode && (f === id || t === id)) {
-      edges[j].classList.add('on');
-    }
+    setEdgeActive(edges[j], mode && (f === id || t === id));
   }
 }
 
@@ -814,6 +851,85 @@ function selectNode(id) {
   SVG.classList.add('dim');
   showDetail(id);
 }
+
+function centerNodes(ids) {
+  var boxes = [];
+  for (var i = 0; i < ids.length; i++) {
+    var node = SVG.querySelector('.node[data-node="' + ids[i] + '"]');
+    if (node) boxes.push(node.getBBox());
+  }
+  if (!boxes.length) return;
+
+  var minX = boxes[0].x;
+  var minY = boxes[0].y;
+  var maxX = boxes[0].x + boxes[0].width;
+  var maxY = boxes[0].y + boxes[0].height;
+  for (var j = 1; j < boxes.length; j++) {
+    minX = Math.min(minX, boxes[j].x);
+    minY = Math.min(minY, boxes[j].y);
+    maxX = Math.max(maxX, boxes[j].x + boxes[j].width);
+    maxY = Math.max(maxY, boxes[j].y + boxes[j].height);
+  }
+
+  var panelWidth = panelEl.classList.contains('open') ? panelEl.offsetWidth + 28 : 0;
+  var availableWidth = Math.max(240, stage.clientWidth - panelWidth);
+  var boundsWidth = Math.max(1, maxX - minX);
+  var boundsHeight = Math.max(1, maxY - minY);
+  var fitScale = Math.min(
+    (availableWidth - 80) / boundsWidth,
+    (stage.clientHeight - 80) / boundsHeight
+  );
+  k = Math.max(0.35, Math.min(k, fitScale));
+  tx = (availableWidth - boundsWidth * k) / 2 - minX * k;
+  ty = (stage.clientHeight - boundsHeight * k) / 2 - minY * k;
+  fitted = false;
+  apply();
+}
+
+function focusEvent(sourceId, eventName, kind) {
+  var targets = eventTargets(sourceId, eventName, kind);
+  if (!targets.length) return;
+
+  var nodes = SVG.querySelectorAll('.node');
+  for (var i = 0; i < nodes.length; i++) {
+    var nodeId = nodes[i].getAttribute('data-node');
+    nodes[i].classList.toggle('sel', nodeId === sourceId);
+    nodes[i].classList.toggle('hl', targets.indexOf(nodeId) !== -1);
+  }
+
+  var edges = SVG.querySelectorAll('.e');
+  for (var j = 0; j < edges.length; j++) {
+    var from = edges[j].getAttribute('data-from');
+    var to = edges[j].getAttribute('data-to');
+    var on = kind === 'pub'
+      ? (from === sourceId && to === 'app_event') ||
+        (from === 'app_event' && targets.indexOf(to) !== -1)
+      : (targets.indexOf(from) !== -1 && to === 'app_event') ||
+        (from === 'app_event' && to === sourceId);
+    setEdgeActive(edges[j], on);
+  }
+
+  SVG.classList.add('dim');
+  var chips = detailEl.querySelectorAll('.chip');
+  for (var ci = 0; ci < chips.length; ci++) {
+    chips[ci].classList.toggle(
+      'active',
+      chips[ci].getAttribute('data-event') === eventName &&
+      chips[ci].getAttribute('data-kind') === kind
+    );
+  }
+  centerNodes(targets);
+}
+
+detailEl.addEventListener('click', function (ev) {
+  var chip = ev.target.closest('.chip[data-event]');
+  if (!chip || chip.disabled) return;
+  focusEvent(
+    SVG.querySelector('.node.sel').getAttribute('data-node'),
+    chip.getAttribute('data-event'),
+    chip.getAttribute('data-kind')
+  );
+});
 
 var nodes = SVG.querySelectorAll('.node');
 for (var ni = 0; ni < nodes.length; ni++) {
