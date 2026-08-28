@@ -330,9 +330,7 @@ static void flush_step_bucket(bool partial_bucket, uint32_t boundary_sec)
              (unsigned)(calories_dkcal % 10u),
              (unsigned)today.steps);
 
-    /* Hand up to app_health for KV persistence + event publish. Runs on
-     * the worker task; app_health_on_flush must not block. */
-    app_health_on_flush(&today);
+    app_health_publish_steps_updated(today.steps);
     mutex_give(s_flush_mutex);
 }
 

@@ -27,9 +27,8 @@
  *  3. on_evt_user_bound()  — mark s_user_bound, attempt arm.
  *  4. on_evt_power_low()   — stop the worker; a graceful stop runs a
  *              final flush before yielding the gsa slot.
- *  5. app_health_on_flush() — called from the worker after each
- *              successful TSDB append. Publishes EVT_HEALTH_STEPS_UPDATED.
- *              Runs on the worker task; must not block on the event bus.
+ *  5. app_health_publish_steps_updated() — publishes the latest daily step
+ *              total after each successful TSDB append.
  *
  * Deliberately NOT here: the history read cursor (health_db.c, next to the
  * append path whose timestamp ordering it depends on) and the today rollup
@@ -72,16 +71,12 @@ void app_health_get_today(health_daily_rollup_t *out)
     health_worker_get_today(out);
 }
 
-/* Runs on the WORKER task, not app_task. Keep it short and non-blocking: one
- * event publish. The event bus copy is bounded to APP_EVENT_MAX_PAYLOAD (32B)
- * so the u32 total fits comfortably. */
-void app_health_on_flush(const health_daily_rollup_t *rollup)
+/* Called from either app_task or the worker task. Keep it short: the event bus
+ * copies the u32 payload into its bounded queue. */
+void app_health_publish_steps_updated(uint32_t steps)
 {
-    if (rollup == NULL) { return; }
-
-    uint32_t today_steps = rollup->steps;
     int rc = app_event_publish(EVT_HEALTH_STEPS_UPDATED,
-                               &today_steps, sizeof(today_steps));
+                               &steps, sizeof(steps));
     if (rc != 0)
     {
         APP_LOGW("publish EVT_HEALTH_STEPS_UPDATED rc=%d", rc);

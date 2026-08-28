@@ -155,13 +155,9 @@ void health_worker_on_bucket_boundary(uint32_t boundary_sec);
 /* Local day rolled over: zero today's running totals. */
 void health_worker_on_day_changed(void);
 
-/* Called by health_worker.c immediately after a successful TSDB append —
- * hands the app-layer module the new today-rollup so it can (a) persist
- * to KV and (b) publish EVT_HEALTH_STEPS_UPDATED.
- *
- * Implemented in app_health.c. Runs on the WORKER task, not app_task —
- * the callee must not do anything blocking. */
-void app_health_on_flush(const health_daily_rollup_t *rollup);
+/* Publish the latest daily step total after a successful TSDB append.
+ * Implemented in app_health.c and callable from app_task or the worker task. */
+void app_health_publish_steps_updated(uint32_t steps);
 
 #ifdef __cplusplus
 }

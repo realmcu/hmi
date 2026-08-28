@@ -14,7 +14,6 @@
 #include "posix_port.h"
 #include "ioctls/posix_ioctl_rtc.h"
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
@@ -25,8 +24,6 @@ APP_LOG_MODULE_REGISTER(app_time);
 #define APP_TIME_RTC_PATH       "/dev/rtc0"
 
 static posix_fd_t s_rtc_fd = POSIX_FD_NULL;
-static uint32_t   s_last_day_published;
-static bool       s_day_valid;
 
 int app_time_set(uint32_t sec)
 {
@@ -134,24 +131,7 @@ static void rtc_second_cb(posix_fd_t fd, void *arg)
     uint32_t now = rtc_now_from_isr();
     if (now == 0u) { return; }
 
-    /* The wall-clock day boundary is calendar midnight. */
-    uint32_t day = now / 86400u;
-
-    bool day_rolled = false;
-    if (!s_day_valid)
-    {
-        s_last_day_published = day;
-        s_day_valid = true;
-    }
-    else if (day != s_last_day_published)
-    {
-        s_last_day_published = day;
-        day_rolled = true;
-    }
-
-    if (!day_rolled && (now % APP_TIME_TICK_STEP_SEC) != 0u) { return; }
-
-    if (day_rolled)
+    if ((now % 86400u) == 0u)
     {
         (void)app_event_publish_isr(EVT_TIME_DAY_CHANGED, &now, sizeof now);
     }
@@ -184,21 +164,8 @@ static int tick_start(void)
     return 0;
 }
 
-static void on_evt_time_synced(app_event_id_t id, const void *payload,
-                               size_t len, void *user)
-{
-    (void)id; (void)payload; (void)len; (void)user;
-    s_day_valid = false;
-    APP_LOGI("clock synced; day tracking re-baselined");
-}
-
 static int time_init(void)
 {
-    if (app_event_subscribe(EVT_TIME_SYNCED, on_evt_time_synced, NULL) != 0)
-    {
-        APP_LOGE("subscribe EVT_TIME_SYNCED failed");
-        return -1;
-    }
     if (tick_start() != 0) { return 0; }   /* stay loaded without boundary events */
 
     APP_LOGI("app_time init: wall clock seconds, %u-min boundary ticks off RTC 1Hz",
