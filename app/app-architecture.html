@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HMI app 层架构</title>
+<style>
+  :root {
+    --p-bg: #eef1f4;
+    --p-fg: #18212b;
+    --p-muted: #596574;
+    --p-panel: #ffffff;
+    --p-line: #cbd3dc;
+    --p-accent: #087b87;
+    --p-blue: #2b6fc7;
+    --p-green: #2f7d3f;
+    --p-amber: #9a6400;
+    --p-red: #b03a3a;
+    --p-hover: #e8eef0;
+    --p-toolbar: rgba(255,255,255,.94);
+    --p-shadow: 0 12px 34px rgba(24,33,43,.16);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --p-bg: #14161a;
+      --p-fg: #e8eaef;
+      --p-muted: #9aa2b0;
+      --p-panel: #1b1e24;
+      --p-line: #353c48;
+      --p-accent: #3fc0cf;
+      --p-blue: #7faef0;
+      --p-green: #6fce8a;
+      --p-amber: #e0a24d;
+      --p-red: #ef8f8f;
+      --p-hover: #262c36;
+      --p-toolbar: rgba(27,30,36,.88);
+      --p-shadow: 0 14px 38px rgba(0,0,0,.4);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--p-bg);
+    color: var(--p-fg);
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 18px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--p-line);
+    background: var(--p-toolbar);
+  }
+  .topbar h1 {
+    font-size: 17px;
+    font-weight: 650;
+    margin: 0;
+    letter-spacing: 0;
+  }
+  .topbar .sub { color: var(--p-muted); font-size: 12px; }
+  .spacer { flex: 1; }
+  .tb-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  button {
+    font: inherit;
+    color: var(--p-fg);
+    background: var(--p-panel);
+    border: 1px solid var(--p-line);
+    border-radius: 6px;
+    min-height: 32px;
+    padding: 6px 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1.2;
+  }
+  button:hover { background: var(--p-hover); }
+  button:focus-visible, .node:focus-visible .nbox {
+    outline: 3px solid color-mix(in srgb, var(--p-accent) 30%, transparent);
+    outline-offset: 2px;
+  }
+  button[aria-pressed="true"] {
+    background: var(--p-accent);
+    border-color: transparent;
+    color: #fff;
+  }
+  button svg {
+    width: 15px;
+    height: 15px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .legend {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 7px 18px;
+    border-bottom: 1px solid var(--p-line);
+    background: var(--p-bg);
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--p-muted);
+  }
+  .lg { display: inline-flex; align-items: center; gap: 6px; }
+  .lg .sw { width: 22px; height: 3px; border-radius: 2px; }
+  .lg .sw.amber { background: var(--p-amber); }
+  .lg .sw.blue { background: var(--p-blue); }
+  .lg .sw.green { background: var(--p-green); }
+  .lg .sw.blue.dotted {
+    background: repeating-linear-gradient(90deg, var(--p-blue) 0 4px, transparent 4px 7px);
+  }
+  .lg .sw.red { background: var(--p-red); }
+
+  .layout {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+  }
+  .stage-wrap {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    user-select: none;
+  }
+  .stage {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+    touch-action: none;
+  }
+  .stage.dragging { cursor: grabbing; }
+  .view {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+  }
+  .view svg { display: block; }
+
+  .panel {
+    position: absolute;
+    z-index: 5;
+    top: 14px;
+    right: 14px;
+    width: min(350px, calc(100% - 28px));
+    max-height: calc(100% - 28px);
+    border: 1px solid var(--p-line);
+    border-radius: 8px;
+    background: var(--p-panel);
+    padding: 18px;
+    overflow: auto;
+    box-shadow: var(--p-shadow);
+    transform: translateX(calc(100% + 28px));
+    opacity: 0;
+    pointer-events: none;
+    transition: transform .18s ease, opacity .18s ease;
+  }
+  .panel.open {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    justify-content: center;
+    float: right;
+  }
+  .inspect-hint {
+    position: absolute;
+    z-index: 3;
+    right: 14px;
+    bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 11px;
+    border: 1px solid var(--p-line);
+    border-radius: 6px;
+    color: var(--p-muted);
+    background: var(--p-toolbar);
+    box-shadow: 0 4px 14px rgba(24,33,43,.08);
+    font-size: 12px;
+    pointer-events: none;
+  }
+  .inspect-hint svg {
+    width: 15px;
+    height: 15px;
+    stroke: var(--p-accent);
+    fill: none;
+    stroke-width: 2;
+  }
+  .panel .empty {
+    color: var(--p-muted);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .panel h2 {
+    margin: 0 0 2px;
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: 0;
+  }
+  .panel .belt {
+    color: var(--p-muted);
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+  .panel p.desc {
+    margin: 0 0 14px;
+    line-height: 1.65;
+    font-size: 13px;
+  }
+  .block { margin-bottom: 14px; }
+  .block .bt {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--p-muted);
+    margin-bottom: 6px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--p-line);
+    background: var(--p-bg);
+  }
+  .chip.pub { border-color: var(--p-blue); color: var(--p-blue); }
+  .chip.sub { border-color: var(--p-green); color: var(--p-green); }
+  .files {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .files code {
+    background: var(--p-bg);
+    border: 1px solid var(--p-line);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+
+  @media (max-width: 920px) {
+    .panel {
+      top: auto;
+      bottom: 10px;
+      right: 10px;
+      width: calc(100% - 20px);
+      max-height: 48vh;
+      transform: translateY(calc(100% + 20px));
+    }
+    .panel.open { transform: translateY(0); }
+    .topbar .sub { display: none; }
+    .tb-group {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      width: 100%;
+    }
+    .tb-group button {
+      width: 100%;
+      min-width: 0;
+      padding: 6px;
+      justify-content: center;
+    }
+    .tb-group button span { display: none; }
+    .legend {
+      gap: 10px 14px;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+    }
+    .lg { flex: 0 0 auto; }
+    .inspect-hint { right: 10px; bottom: 10px; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>HMI 应用层（app）架构</h1>
+  <span class="sub">事件总线 + 单任务模型 · applications/app</span>
+  <span class="spacer"></span>
+  <div class="tb-group" role="group" aria-label="视图控制">
+    <button type="button" id="btn-events" aria-pressed="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>
+      <span>事件流</span>
+    </button>
+    <button type="button" id="btn-init" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      <span>初始化顺序</span>
+    </button>
+    <button type="button" id="btn-zoomout">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+      <span>缩小</span>
+    </button>
+    <button type="button" id="btn-zoomin">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      <span>放大</span>
+    </button>
+    <button type="button" id="btn-fit">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 9v6M3 15v6M21 3l-6 6M3 21l6-6"/></svg>
+      <span>铺满</span>
+    </button>
+    <button type="button" id="btn-png">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
+      <span>导出 PNG</span>
+    </button>
+  </div>
+</header>
+
+<div class="legend" aria-label="图例">
+  <span class="lg"><span class="sw amber"></span>初始化顺序（注册表 → 模块）</span>
+  <span class="lg"><span class="sw blue"></span>发布事件到总线</span>
+  <span class="lg"><span class="sw green"></span>订阅 / 串行分发</span>
+  <span class="lg"><span class="sw blue dotted"></span>骨架模块（计划）</span>
+  <span class="lg"><span class="sw red"></span>独立接线（未走总线）</span>
+</div>
+
+<div class="layout">
+  <div class="stage-wrap">
+    <div class="stage" id="stage">
+      <div class="view" id="view">
+        <svg id="diagram" viewBox="0 0 1240 880" width="1240" height="880" role="img"
+             aria-labelledby="svg-title svg-desc">
+          <title id="svg-title">HMI app 层架构图</title>
+          <desc id="svg-desc">main 启动 app_core，包含事件总线、模块注册表与单任务；八个业务模块按依赖顺序注册，通过事件总线通信；OTA 独立接线。</desc>
+          <style>
+            #diagram {
+              --bg: #fbfcfe; --band: #eef1f5; --band2: #e7f1f1;
+              --fg: #232833; --muted: #5f6873; --line: #c9cfd7;
+              --node: #ffffff; --accent: #0b828f; --blue: #2b6fc7;
+              --green: #2f7d3f; --amber: #9a6400; --red: #a33333;
+            }
+            @media (prefers-color-scheme: dark) {
+              #diagram {
+                --bg: #111419; --band: #1a2028; --band2: #16252a;
+                --fg: #e7eaef; --muted: #9aa4b2; --line: #39424f;
+                --node: #1c212a; --accent: #3fc0cf; --blue: #80aef1;
+                --green: #6fce8a; --amber: #e0a24d; --red: #ee8f8f;
+              }
+            }
+            #diagram text {
+              font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+              letter-spacing: 0;
+            }
+            .band { fill: var(--band); stroke: var(--line); stroke-width: 1; }
+            .band2 { fill: var(--band2); }
+            .band-title { fill: var(--fg); font-size: 16px; font-weight: 650; }
+            .band-note { fill: var(--muted); font-size: 11.5px; }
+
+            .node { cursor: pointer; }
+            .nbox { fill: var(--node); stroke: var(--line); stroke-width: 1.3; }
+            .node:hover .nbox,
+            .node.hl .nbox,
+            .node.sel .nbox {
+              stroke: var(--accent);
+              stroke-width: 2.2;
+            }
+            .node.sel .nbox { filter: url(#glow); }
+            .core-node .nbox { stroke: var(--accent); }
+            .ota-wrap .nbox { stroke: var(--red); stroke-dasharray: 7 5; }
+            .nname { fill: var(--fg); font-size: 15px; font-weight: 650; }
+            .nrole { fill: var(--muted); font-size: 12px; }
+            .ntag { fill: var(--muted); font-size: 11px; }
+            .nbadge { fill: var(--accent); stroke: var(--node); stroke-width: 1.5; }
+            .nbadge-text { fill: #fff; font-size: 11px; text-anchor: middle; }
+
+            .dim .node:not(.sel):not(.hl) .nbox { opacity: .32; }
+            .dim .node:not(.sel):not(.hl) text { opacity: .35; }
+            .dim .node:not(.sel):not(.hl) .nbadge { opacity: .4; }
+
+            .e { fill: none; }
+            .e, .elabel { transition: opacity .12s, stroke-width .12s; }
+            .e-core { stroke: var(--line); stroke-width: 1.6; }
+            .e-init { stroke: var(--amber); stroke-width: 1.5; stroke-dasharray: 6 5; }
+            .e-pub { stroke: var(--blue); stroke-width: 2; }
+            .e-sub { stroke: var(--green); stroke-width: 1.8; stroke-dasharray: 7 5; }
+            .e-plan { stroke: var(--blue); stroke-width: 1.8; stroke-dasharray: 2 5; opacity: .75; }
+            .e-ota { stroke: var(--red); stroke-width: 1.8; stroke-dasharray: 8 5; }
+            .elabel {
+              fill: var(--muted);
+              font-size: 10.5px;
+              paint-order: stroke;
+              stroke: var(--bg);
+              stroke-width: 4;
+              stroke-linejoin: round;
+            }
+            .elabel.core-label { stroke: var(--band); }
+            .tips { fill: var(--fg); font-size: 11px; }
+
+            #diagram.dim .e { opacity: .09; }
+            #diagram.dim .e.on { opacity: 1; stroke-width: 3; }
+            #diagram.dim .elabel { opacity: .12; }
+            .e.on { stroke-width: 3; }
+
+            #diagram.events-off .e-pub,
+            #diagram.events-off .e-sub,
+            #diagram.events-off .e-plan { display: none; }
+            #diagram.init-off .e-init { display: none; }
+            .node.hl .nbox, .node.sel .nbox { transition: stroke .12s; }
+
+            @media (prefers-reduced-motion: reduce) {
+              .node.hl .nbox, .node.sel .nbox { transition: none; }
+            }
+          </style>
+
+          <defs>
+            <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="4" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <marker id="mk-core" viewBox="0 0 10 10" refX="8" refY="5"
+                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="var(--line)"/>
+            </marker>
+            <marker id="mk-init" viewBox="0 0 10 10" refX="8" refY="5"
+                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="var(--amber)"/>
+            </marker>
+            <marker id="mk-pub" viewBox="0 0 10 10" refX="8" refY="5"
+                    markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="var(--blue)"/>
+            </marker>
+            <marker id="mk-sub" viewBox="0 0 10 10" refX="8" refY="5"
+                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="var(--green)"/>
+            </marker>
+            <marker id="mk-ota" viewBox="0 0 10 10" refX="8" refY="5"
+                    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="var(--red)"/>
+            </marker>
+          </defs>
+
+          <!-- bands -->
+          <rect class="band" x="36" y="128" width="1168" height="150"/>
+          <text class="band-title" x="52" y="116">app_core · 应用层运行时</text>
+          <rect class="band band2" x="36" y="300" width="1168" height="548"/>
+          <text class="band-title" x="52" y="288">功能模块 · 注册顺序即依赖顺序</text>
+          <text class="band-note" x="432" y="288">init() 在 main 线程按序执行，随后 app_task 接管事件分发</text>
+          <text class="tips" x="24" y="872">拖拽平移 · 滚轮缩放 · 点击模块查看详情 · 空白处双击复位</text>
+
+          <!-- core internals -->
+          <path class="e e-core" data-from="registry" data-to="bus"
+                d="M304 204 H458" marker-end="url(#mk-core)"/>
+          <text class="elabel core-label" x="320" y="196">订阅注册</text>
+          <path class="e e-core" data-from="bus" data-to="task"
+                d="M772 204 H858" marker-end="url(#mk-core)"/>
+          <text class="elabel core-label" x="788" y="196">拉取 → 分发给订阅者</text>
+
+          <!-- boot arrow -->
+          <path class="e e-core" data-from="main" data-to="registry"
+                d="M148 96 V154" marker-end="url(#mk-core)"/>
+          <text class="elabel core-label" x="160" y="130">boot：app_core_init()</text>
+
+          <!-- init edges -->
+          <g class="group-init" style="display:none">
+            <path class="e e-init" data-from="registry" data-to="time" d="M184 248 V312 H188 V332" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="registry" data-to="power" d="M184 248 V312 H480 V332" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="registry" data-to="setting" d="M184 248 V312 H772 V332" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="registry" data-to="bt" d="M184 248 V312 H1064 V332" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="registry" data-to="proto" d="M184 248 V312 H332 V504 H188 V516" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="registry" data-to="health" d="M184 248 V312 H332 V504 H480 V516" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="registry" data-to="media" d="M184 248 V312 H332 V504 H772 V516" marker-end="url(#mk-init)"/>
+            <path class="e e-init" data-from="registry" data-to="notify" d="M184 248 V312 H332 V504 H1064 V516" marker-end="url(#mk-init)"/>
+            <text class="elabel" x="92" y="262">init(m) 逐个</text>
+          </g>
+
+          <!-- publish edges -->
+          <path class="e e-pub" data-from="time" data-to="bus" d="M188 336 C188 292 500 292 500 248" marker-end="url(#mk-pub)"/>
+          <text class="elabel" x="282" y="300">EVT_TIME_*</text>
+          <path class="e e-pub" data-from="power" data-to="bus" d="M480 336 C480 292 540 292 540 248" marker-end="url(#mk-pub)"/>
+          <text class="elabel" x="452" y="300">EVT_POWER_*</text>
+          <path class="e e-pub" data-from="setting" data-to="bus" d="M772 336 C772 292 580 292 580 248" marker-end="url(#mk-pub)"/>
+          <text class="elabel" x="632" y="300">EVT_SETTING</text>
+          <path class="e e-pub" data-from="bt" data-to="bus" d="M1064 336 C1064 292 620 292 620 248" marker-end="url(#mk-pub)"/>
+          <text class="elabel" x="818" y="300">EVT_BLE_*</text>
+
+          <path class="e e-pub" data-from="proto" data-to="bus" d="M188 520 C188 396 600 320 660 248" marker-end="url(#mk-pub)"/>
+          <text class="elabel" x="300" y="428">EVT_USER_* / 校时</text>
+          <path class="e e-pub" data-from="health" data-to="bus" d="M480 520 C480 396 640 320 700 248" marker-end="url(#mk-pub)"/>
+          <text class="elabel" x="526" y="448">EVT_HEALTH_*</text>
+          <path class="e e-plan" data-from="media" data-to="bus" d="M772 520 C772 396 690 320 730 248" marker-end="url(#mk-pub)"/>
+          <text class="elabel" x="668" y="470">EVT_MEDIA_*（骨架）</text>
+          <path class="e e-plan" data-from="notify" data-to="bus" d="M1064 520 C1064 396 740 320 760 248" marker-end="url(#mk-pub)"/>
+          <text class="elabel" x="878" y="470">EVT_NOTIFY_*（骨架）</text>
+
+          <!-- subscribe / dispatch edges -->
+          <path class="e e-sub" data-from="bus" data-to="time" d="M452 248 V326 H188 V330" marker-end="url(#mk-sub)"/>
+          <text class="elabel" x="246" y="324">订 TIME_SYNCED</text>
+          <path class="e e-sub" data-from="bus" data-to="proto" d="M452 248 V482 H188 V516" marker-end="url(#mk-sub)"/>
+          <text class="elabel" x="226" y="500">订 BLE_*</text>
+          <path class="e e-sub" data-from="bus" data-to="health" d="M452 248 V330 H480 V516" marker-end="url(#mk-sub)"/>
+          <text class="elabel" x="252" y="528">订 TIME / USER / POWER</text>
+
+          <!-- OTA direct wiring -->
+          <path class="e e-ota" data-from="ota" data-to="bt" d="M1188 708 H1206 V382 H1194" marker-end="url(#mk-ota)"/>
+          <text class="elabel" transform="rotate(90 1214 545)" x="1214" y="545">直接接入 BLE profile</text>
+
+          <!-- nodes -->
+          <g class="node" data-node="main" tabindex="0" role="button" aria-label="main 启动入口">
+            <rect class="nbox" x="48" y="40" width="200" height="56" rx="9"/>
+            <text class="nname" x="148" y="66" text-anchor="middle">main()</text>
+            <text class="nrole" x="148" y="84" text-anchor="middle">app_core_init() 启动</text>
+          </g>
+
+          <g class="node core-node" data-node="registry" tabindex="0" role="button" aria-label="app_modules 模块注册表">
+            <rect class="nbox" x="64" y="160" width="240" height="88" rx="9"/>
+            <text class="nname" x="184" y="188" text-anchor="middle">app_modules.c</text>
+            <text class="nrole" x="184" y="210" text-anchor="middle">模块注册表 · 依赖顺序</text>
+            <text class="ntag" x="184" y="232" text-anchor="middle">init() 逐个调用</text>
+          </g>
+
+          <g class="node core-node" data-node="bus" tabindex="0" role="button" aria-label="app_event 事件总线">
+            <rect class="nbox" x="472" y="148" width="300" height="100" rx="9"/>
+            <text class="nname" x="622" y="182" text-anchor="middle">app_event</text>
+            <text class="nrole" x="622" y="204" text-anchor="middle">发布 / 订阅 · 消息队列</text>
+            <text class="ntag" x="622" y="226" text-anchor="middle">串行分发 · payload ≤ 32B</text>
+          </g>
+
+          <g class="node core-node" data-node="task" tabindex="0" role="button" aria-label="app_task 单线程分发任务">
+            <rect class="nbox" x="876" y="160" width="240" height="88" rx="9"/>
+            <text class="nname" x="996" y="188" text-anchor="middle">app_task</text>
+            <text class="nrole" x="996" y="210" text-anchor="middle">唯一分发线程</text>
+            <text class="ntag" x="996" y="232" text-anchor="middle">回调不可阻塞</text>
+          </g>
+
+          <g class="node" data-node="time" tabindex="0" role="button" aria-label="app_time 时钟模块">
+            <rect class="nbox" x="64" y="336" width="248" height="92" rx="9"/>
+            <circle class="nbadge" cx="84" cy="355" r="11"/>
+            <text class="nbadge-text" x="84" y="359">1</text>
+            <text class="nname" x="178" y="368" text-anchor="middle">app_time</text>
+            <text class="nrole" x="178" y="391" text-anchor="middle">时钟 / RTC / 校时</text>
+            <text class="ntag" x="178" y="413" text-anchor="middle">发布 EVT_TIME_*</text>
+          </g>
+
+          <g class="node" data-node="power" tabindex="0" role="button" aria-label="app_power 电量模块">
+            <rect class="nbox" x="356" y="336" width="248" height="92" rx="9"/>
+            <circle class="nbadge" cx="376" cy="355" r="11"/>
+            <text class="nbadge-text" x="376" y="359">2</text>
+            <text class="nname" x="480" y="368" text-anchor="middle">app_power</text>
+            <text class="nrole" x="480" y="391" text-anchor="middle">电量 / 充电监测</text>
+            <text class="ntag" x="480" y="413" text-anchor="middle">发布 EVT_POWER_*</text>
+          </g>
+
+          <g class="node" data-node="setting" tabindex="0" role="button" aria-label="app_setting 设置模块">
+            <rect class="nbox" x="648" y="336" width="248" height="92" rx="9"/>
+            <circle class="nbadge" cx="668" cy="355" r="11"/>
+            <text class="nbadge-text" x="668" y="359">3</text>
+            <text class="nname" x="772" y="368" text-anchor="middle">app_setting</text>
+            <text class="nrole" x="772" y="391" text-anchor="middle">KV 存储（FlashDB）</text>
+            <text class="ntag" x="772" y="413" text-anchor="middle">发布 EVT_SETTING</text>
+          </g>
+
+          <g class="node" data-node="bt" tabindex="0" role="button" aria-label="app_bluetooth 蓝牙模块">
+            <rect class="nbox" x="940" y="336" width="248" height="92" rx="9"/>
+            <circle class="nbadge" cx="960" cy="355" r="11"/>
+            <text class="nbadge-text" x="960" y="359">4</text>
+            <text class="nname" x="1064" y="368" text-anchor="middle">app_bluetooth</text>
+            <text class="nrole" x="1064" y="391" text-anchor="middle">BLE / BR-EDR 接入</text>
+            <text class="ntag" x="1064" y="413" text-anchor="middle">发布 EVT_BLE_*</text>
+          </g>
+
+          <g class="node" data-node="proto" tabindex="0" role="button" aria-label="app_protocol L2 协议模块">
+            <rect class="nbox" x="64" y="520" width="248" height="92" rx="9"/>
+            <circle class="nbadge" cx="84" cy="539" r="11"/>
+            <text class="nbadge-text" x="84" y="543">5</text>
+            <text class="nname" x="178" y="552" text-anchor="middle">app_protocol</text>
+            <text class="nrole" x="178" y="575" text-anchor="middle">L2 命令处理（hmi_l2）</text>
+            <text class="ntag" x="178" y="597" text-anchor="middle">发 USER / 订 BLE</text>
+          </g>
+
+          <g class="node" data-node="health" tabindex="0" role="button" aria-label="app_health 健康模块">
+            <rect class="nbox" x="356" y="520" width="248" height="92" rx="9"/>
+            <circle class="nbadge" cx="376" cy="539" r="11"/>
+            <text class="nbadge-text" x="376" y="543">6</text>
+            <text class="nname" x="480" y="552" text-anchor="middle">app_health</text>
+            <text class="nrole" x="480" y="575" text-anchor="middle">步数 / 心率 / 血氧</text>
+            <text class="ntag" x="480" y="597" text-anchor="middle">独立 worker 任务</text>
+          </g>
+
+          <g class="node" data-node="media" tabindex="0" role="button" aria-label="app_media 媒体骨架">
+            <rect class="nbox" x="648" y="520" width="248" height="92" rx="9"/>
+            <circle class="nbadge" cx="668" cy="539" r="11"/>
+            <text class="nbadge-text" x="668" y="543">7</text>
+            <text class="nname" x="772" y="552" text-anchor="middle">app_media</text>
+            <text class="nrole" x="772" y="575" text-anchor="middle">A2DP / AVRCP（骨架）</text>
+            <text class="ntag" x="772" y="597" text-anchor="middle">发布 EVT_MEDIA_*</text>
+          </g>
+
+          <g class="node" data-node="notify" tabindex="0" role="button" aria-label="app_notify 通知骨架">
+            <rect class="nbox" x="940" y="520" width="248" height="92" rx="9"/>
+            <circle class="nbadge" cx="960" cy="539" r="11"/>
+            <text class="nbadge-text" x="960" y="543">8</text>
+            <text class="nname" x="1064" y="552" text-anchor="middle">app_notify</text>
+            <text class="nrole" x="1064" y="575" text-anchor="middle">通知缓存 / 分发（骨架）</text>
+            <text class="ntag" x="1064" y="597" text-anchor="middle">发布 EVT_NOTIFY_*</text>
+          </g>
+
+          <g class="node ota-wrap" data-node="ota" tabindex="0" role="button" aria-label="app_ota OTA 服务">
+            <rect class="nbox" x="940" y="664" width="248" height="88" rx="9"/>
+            <text class="nname" x="1064" y="694" text-anchor="middle">app_ota / ota_service</text>
+            <text class="nrole" x="1064" y="716" text-anchor="middle">DFU / OTA · 暂未走总线</text>
+            <text class="ntag" x="1064" y="738" text-anchor="middle">事件 0x900 已预留</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="inspect-hint" id="inspect-hint" aria-hidden="true">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>
+    选择模块查看职责与事件
+  </div>
+
+  <aside class="panel" id="panel" aria-live="polite">
+    <button class="icon-btn" type="button" id="panel-close" aria-label="关闭详情" title="关闭详情">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <div class="empty" id="empty" hidden></div>
+    <div id="detail" hidden></div>
+  </aside>
+</div>
+
+<script>
+var SVG = document.getElementById('diagram');
+var stage = document.getElementById('stage');
+var view = document.getElementById('view');
+
+var DATA = {
+  main: {
+    t: 'main.c', belt: '启动入口',
+    d: '上电后调用一次 app_core_init()，完成事件总线、各模块 init 与 app_task 创建后即可返回。',
+    pub: [], sub: [], files: ['main.c']
+  },
+  registry: {
+    t: 'app_modules.c · app_module.h', belt: '模块注册表',
+    d: '唯一的中央注册文件，按依赖顺序排列全部业务模块。init 失败只记日志，不阻断后续模块启动。',
+    pub: [], sub: [],
+    files: ['app/app_core/app_modules.c', 'app/app_core/app_module.h']
+  },
+  bus: {
+    t: 'app_event', belt: '发布 / 订阅事件总线',
+    d: '消息队列 + 订阅表。payload 按值复制（≤32B），异步投递；所有回调都在 app_task 上串行执行，订阅表由调用方单线程变更，无需加锁。',
+    pub: [], sub: [],
+    files: ['app/app_core/app_event.c', 'app/app_core/app_event.h', 'app/app_core/app_event_defs.h']
+  },
+  task: {
+    t: 'app_task', belt: '单线程应用任务',
+    d: 'app_core_init 创建的唯一应用线程，阻塞拉取事件并逐个调用订阅者回调。任何回调阻塞都会拖垮整个应用层。',
+    pub: [], sub: [], files: ['app/app_core/app_core.c']
+  },
+  time: {
+    t: 'app_time', belt: '模块 #1 · 时钟 / RTC',
+    d: '手表唯一写 RTC 的模块，按整点 / 15 分钟 / 跨日发布时间事件，避免各模块各自推算墙钟。',
+    pub: ['EVT_TIME_SYNCED', 'EVT_TIME_TICK_15MIN', 'EVT_TIME_DAY_CHANGED'],
+    sub: ['EVT_TIME_SYNCED'],
+    files: ['app/app_time/app_time.c', 'app/app_time/app_time.h']
+  },
+  power: {
+    t: 'app_power', belt: '模块 #2 · 电量 / 充电',
+    d: '电量计与充电状态监测，低电量时通过事件触发其它模块降级（例如停止健康采集）。',
+    pub: ['EVT_POWER_LEVEL', 'EVT_POWER_LOW', 'EVT_POWER_CHARGING'],
+    sub: [],
+    files: ['app/app_power/app_power.c', 'app/app_power/app_power.h']
+  },
+  setting: {
+    t: 'app_setting', belt: '模块 #3 · KV 设置',
+    d: 'FlashDB KV 存储之上的薄语义层，其它模块在 init 里读取默认值，变更通过事件广播。',
+    pub: ['EVT_SETTING_CHANGED'], sub: [],
+    files: ['app/app_setting/app_setting.c', 'app/app_setting/app_setting.h']
+  },
+  bt: {
+    t: 'app_bluetooth', belt: '模块 #4 · BLE / BR-EDR',
+    d: '接入 Realtek 协议栈：hmi_ble（GAP / 私有服务）、hmi_br_edr（BR/EDR、SPP）、hmi_app（任务与 A2DP/AVRCP/HFP/PAN）。连接与参数变化经事件总线广播，供上层协议与媒体使用。',
+    pub: ['EVT_BLE_CONNECTED', 'EVT_BLE_DISCONNECTED', 'EVT_BLE_CONN_PARAM'],
+    sub: [],
+    files: ['app/app_bluetooth/hmi_app/hmi_bt_task.c', 'app/app_bluetooth/hmi_ble/hmi_ble_gap_msg.c']
+  },
+  proto: {
+    t: 'app_protocol', belt: '模块 #5 · L2 命令处理',
+    d: 'BLE L2 命令分派：绑定 / 解绑、设置、控制、运动、传输、OTA、厂商等指令。绑定握手成功后发布用户事件；订阅连接事件做状态清理。',
+    pub: ['EVT_USER_BOUND', 'EVT_USER_UNBOUND', 'EVT_TIME_SYNCED'],
+    sub: ['EVT_BLE_DISCONNECTED', 'EVT_BLE_CONN_PARAM'],
+    files: ['app/app_protocol/hmi_l2_handlers.c', 'app/app_protocol/hmi_l2_cmd_bind.c', 'app/app_protocol/hmi_l2_cmd_settings.c']
+  },
+  health: {
+    t: 'app_health', belt: '模块 #6 · 健康采集 / 存储',
+    d: '在 app_task 之外另起专用采集线程做耗时工作；仅在已校时 + 已绑定且电量不低时运行，跨日 / 15 分钟边界触发落库，并发布健康事件。',
+    pub: ['EVT_HEALTH_STEPS_UPDATED', 'EVT_HEALTH_HR_UPDATED', 'EVT_HEALTH_SPO2_UPDATED'],
+    sub: ['EVT_TIME_SYNCED', 'EVT_TIME_TICK_15MIN', 'EVT_TIME_DAY_CHANGED', 'EVT_USER_BOUND', 'EVT_USER_UNBOUND', 'EVT_POWER_LOW'],
+    files: ['app/app_health/app_health.c', 'app/app_health/health_worker.c', 'app/app_health/health_db.c']
+  },
+  media: {
+    t: 'app_media', belt: '模块 #7 · 媒体（骨架）',
+    d: 'A2DP sink 状态与 AVRCP 传输 / 元数据控制。当前为骨架，事件定义已就位，待接 Realtek 回调。',
+    pub: ['EVT_MEDIA_STATE_CHANGED', 'EVT_MEDIA_METADATA', 'EVT_MEDIA_VOLUME_CHANGED'],
+    sub: [], files: ['app/app_media/app_media.c']
+  },
+  notify: {
+    t: 'app_notify', belt: '模块 #8 · 通知（骨架）',
+    d: '手机通知缓存与分发。当前为骨架，计划订阅 ANCS / 伴生应用通知，事件定义已就位。',
+    pub: ['EVT_NOTIFY_NEW', 'EVT_NOTIFY_REMOVED', 'EVT_NOTIFY_CLEARED'],
+    sub: [], files: ['app/app_notify/app_notify.c']
+  },
+  ota: {
+    t: 'app_ota / ota_service', belt: '独立路径（未走总线）',
+    d: 'DFU / OTA 服务，通过 hmi_ble_profile_init 的 app_ota_service_init() 直接接入 BLE profile，SPP 命令通道另有入口。事件定义中 0x900 已为未来接入业务总线预留。',
+    pub: [], sub: [],
+    files: ['app/app_ota/app_ota.c', 'app/app_ota/app_ota_service.c', 'app/app_ota/ota_service.c']
+  }
+};
+
+var emptyEl = document.getElementById('empty');
+var detailEl = document.getElementById('detail');
+var panelEl = document.getElementById('panel');
+var inspectHintEl = document.getElementById('inspect-hint');
+
+function showDetail(id) {
+  var n = DATA[id];
+  if (!n) return;
+  emptyEl.hidden = true;
+  detailEl.hidden = false;
+  panelEl.classList.add('open');
+  inspectHintEl.hidden = true;
+  var pub = n.pub.map(function (e) { return '<span class="chip pub">' + e + '</span>'; }).join('');
+  var sub = n.sub.map(function (e) { return '<span class="chip sub">' + e + '</span>'; }).join('');
+  var files = n.files.map(function (f) { return '<li><code>' + f + '</code></li>'; }).join('');
+  detailEl.innerHTML =
+    '<div class="belt">' + n.t + ' · ' + n.belt + '</div>' +
+    '<h2>' + n.t.split(' ')[0].split('.')[0] + '</h2>' +
+    '<p class="desc">' + n.d + '</p>' +
+    (pub ? '<div class="block"><div class="bt">发布</div><div class="chips">' + pub + '</div></div>' : '') +
+    (sub ? '<div class="block"><div class="bt">订阅</div><div class="chips">' + sub + '</div></div>' : '') +
+    '<div class="block"><div class="bt">关键文件</div><ul class="files">' + files + '</ul></div>';
+}
+
+function clearDetail() {
+  emptyEl.hidden = true;
+  detailEl.hidden = true;
+  panelEl.classList.remove('open');
+  inspectHintEl.hidden = false;
+  SVG.classList.remove('dim');
+  var nodes = SVG.querySelectorAll('.node');
+  for (var i = 0; i < nodes.length; i++) {
+    nodes[i].classList.remove('sel', 'hl');
+  }
+  var edges = SVG.querySelectorAll('.e');
+  for (var j = 0; j < edges.length; j++) {
+    edges[j].classList.remove('on');
+  }
+}
+
+function neighborsOf(id) {
+  var set = {};
+  var edges = SVG.querySelectorAll('.e');
+  for (var i = 0; i < edges.length; i++) {
+    var f = edges[i].getAttribute('data-from');
+    var t = edges[i].getAttribute('data-to');
+    if (f === id) { set[t] = 1; edges[i].classList.add('on'); }
+    else if (t === id) { set[f] = 1; edges[i].classList.add('on'); }
+  }
+  var res = [];
+  for (var k in set) res.push(k);
+  return res;
+}
+
+function highlight(id, mode) {
+  var nodes = SVG.querySelectorAll('.node');
+  for (var i = 0; i < nodes.length; i++) {
+    var nid = nodes[i].getAttribute('data-node');
+    nodes[i].classList.toggle('hl', mode && nid === id);
+  }
+  var edges = SVG.querySelectorAll('.e');
+  for (var j = 0; j < edges.length; j++) {
+    var f = edges[j].getAttribute('data-from');
+    var t = edges[j].getAttribute('data-to');
+    edges[j].classList.remove('on');
+    if (mode && (f === id || t === id)) {
+      edges[j].classList.add('on');
+    }
+  }
+}
+
+function selectNode(id) {
+  clearDetail();
+  var neigh = neighborsOf(id);
+  var nodes = SVG.querySelectorAll('.node');
+  for (var i = 0; i < nodes.length; i++) {
+    var nid = nodes[i].getAttribute('data-node');
+    if (nid === id) nodes[i].classList.add('sel');
+    else if (neigh.indexOf(nid) !== -1) nodes[i].classList.add('hl');
+  }
+  SVG.classList.add('dim');
+  showDetail(id);
+}
+
+var nodes = SVG.querySelectorAll('.node');
+for (var ni = 0; ni < nodes.length; ni++) {
+  (function (el) {
+    var id = el.getAttribute('data-node');
+    el.addEventListener('mouseenter', function () {
+      if (!SVG.querySelector('.node.sel')) highlight(id, true);
+    });
+    el.addEventListener('mouseleave', function () {
+      if (!SVG.querySelector('.node.sel')) highlight(id, false);
+    });
+    el.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      var wasSel = el.classList.contains('sel');
+      clearDetail();
+      if (!wasSel) selectNode(id);
+    });
+    el.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        var wasSel = el.classList.contains('sel');
+        clearDetail();
+        if (!wasSel) selectNode(id);
+      } else if (ev.key === 'Escape') {
+        clearDetail();
+      }
+    });
+  })(nodes[ni]);
+}
+
+document.getElementById('btn-events').addEventListener('click', function () {
+  var pressed = this.getAttribute('aria-pressed') === 'true';
+  this.setAttribute('aria-pressed', String(!pressed));
+  SVG.classList.toggle('events-off', pressed);
+});
+document.getElementById('btn-init').addEventListener('click', function () {
+  var pressed = this.getAttribute('aria-pressed') === 'true';
+  this.setAttribute('aria-pressed', String(!pressed));
+  SVG.classList.toggle('init-off', pressed);
+  var group = SVG.querySelector('.group-init');
+  if (group) group.style.display = pressed ? 'none' : '';
+});
+document.getElementById('panel-close').addEventListener('click', clearDetail);
+
+/* pan / zoom */
+var k = 1, tx = 0, ty = 0, fitted = true;
+function fit() {
+  var w = stage.clientWidth || 800;
+  var h = stage.clientHeight || 600;
+  var bw = 1240, bh = 880;
+  k = Math.min((w - 8) / bw, (h - 8) / bh);
+  tx = Math.max(4, (w - bw * k) / 2);
+  ty = Math.max(4, Math.min(40, (h - bh * k) / 2));
+  apply();
+}
+function apply() {
+  view.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + k + ')';
+}
+stage.addEventListener('wheel', function (ev) {
+  ev.preventDefault();
+  fitted = false;
+  var rect = stage.getBoundingClientRect();
+  var mx = ev.clientX - rect.left;
+  var my = ev.clientY - rect.top;
+  var px = (mx - tx) / k;
+  var py = (my - ty) / k;
+  var ns = ev.deltaY < 0 ? 1.12 : 0.9;
+  k = Math.min(3.2, Math.max(0.35, k * ns));
+  tx = mx - px * k;
+  ty = my - py * k;
+  apply();
+}, { passive: false });
+
+document.getElementById('btn-zoomin').addEventListener('click', function () {
+  fitted = false;
+  var cx = stage.clientWidth / 2;
+  var cy = stage.clientHeight / 2;
+  var px = (cx - tx) / k;
+  var py = (cy - ty) / k;
+  k = Math.min(3.2, k * 1.15);
+  tx = cx - px * k;
+  ty = cy - py * k;
+  apply();
+});
+document.getElementById('btn-zoomout').addEventListener('click', function () {
+  fitted = false;
+  var cx = stage.clientWidth / 2;
+  var cy = stage.clientHeight / 2;
+  var px = (cx - tx) / k;
+  var py = (cy - ty) / k;
+  k = Math.max(0.35, k / 1.15);
+  tx = cx - px * k;
+  ty = cy - py * k;
+  apply();
+});
+document.getElementById('btn-fit').addEventListener('click', function () {
+  fit();
+  fitted = true;
+});
+
+var dragging = false, sx = 0, sy = 0, stx = 0, sty = 0;
+stage.addEventListener('pointerdown', function (ev) {
+  if (ev.target.closest && ev.target.closest('.node')) return;
+  dragging = true;
+  fitted = false;
+  sx = ev.clientX; sy = ev.clientY;
+  stx = tx; sty = ty;
+  stage.classList.add('dragging');
+  stage.setPointerCapture(ev.pointerId);
+});
+stage.addEventListener('pointermove', function (ev) {
+  if (!dragging) return;
+  tx = stx + (ev.clientX - sx);
+  ty = sty + (ev.clientY - sy);
+  apply();
+});
+function endDrag() {
+  dragging = false;
+  stage.classList.remove('dragging');
+}
+stage.addEventListener('pointerup', endDrag);
+stage.addEventListener('pointercancel', endDrag);
+stage.addEventListener('dblclick', function () {
+  fit();
+  fitted = true;
+});
+
+window.addEventListener('resize', function () {
+  if (fitted) fit();
+});
+
+/* export PNG */
+document.getElementById('btn-png').addEventListener('click', function () {
+  var clone = SVG.cloneNode(true);
+  clone.setAttribute('width', 2480);
+  clone.setAttribute('height', 1760);
+  clone.setAttributeNS('http://www.w3.org/2000/xmlns/', 'xmlns', 'http://www.w3.org/2000/svg');
+  var xml = new XMLSerializer().serializeToString(clone);
+  var svg64 = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+  var img = new Image();
+  img.onload = function () {
+    var c = document.createElement('canvas');
+    c.width = 2480; c.height = 1760;
+    var ctx = c.getContext('2d');
+    ctx.fillStyle = getComputedStyle(SVG).getPropertyValue('--bg').trim() || '#ffffff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, 2480, 1760);
+    c.toBlob(function (blob) {
+      var a = document.createElement('a');
+      a.download = 'app-architecture.png';
+      a.href = URL.createObjectURL(blob);
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+    }, 'image/png');
+  };
+  img.src = svg64;
+});
+
+fit();
+</script>
+</body>
+</html>
