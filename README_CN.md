@@ -136,6 +136,7 @@ west userdata -p COM5       # 指定烧录串口COM5
 |---|---|---|
 | [rtl87x3ep-hmi-sdk](https://gitee.com/realmcu/rtl87x3ep-hmi-sdk) | `sdk/` | 核心 SDK：HAL 驱动、蓝牙协议栈、系统服务、工具链等 |
 | [hmi-dashboard](https://gitee.com/realmcu/hmi/tree/rtl8773e-dashboard/) | `sdk/board/evb/hmi_dashboard/` | HMI 应用层、BSP、GUI 移植、构建配置 |
+| [honeygui-template-dashboard](https://gitee.com/realmcu/honeygui-template-dashboard) | `sdk/board/evb/hmi_dashboard/src/application/designer/` | Dashboard Designer UI 工程、生成代码和 ROMFS 资源 |
 | [HoneyGUI](https://gitee.com/realmcu/HoneyGUI) | `sdk/src/sample/gui/` | GUI 引擎：控件库、字体引擎、动画 |
 | [wearable](https://gitee.com/realmcu/wearable) | `sdk/src/app/Wearable/` | Wearable 应用层代码 |
 | [display](https://gitee.com/realmcu/display) | `sdk/src/mcu/display/` | LCD 显示驱动库 |
@@ -174,6 +175,7 @@ hmi_dashboard/
 │   │   └── realgui_port/    # HoneyGUI 平台适配层
 │   ├── hmi_rtk_bt/          # 蓝牙协议栈集成（开发中）
 │   └── protocol/            # BLE 私有协议实现（开发中）
+├── docs/                    # 显示屏、UI 等专题指南
 ├── gcc/                     # 链接脚本、defconfig、构建输出
 ├── mdk/                     # Keil MDK 工程文件
 ├── cfg/                     # 硬件配置（rtl87x3ep）
@@ -229,6 +231,13 @@ BLE 私有通信协议实现（L0 / L1 / L2 三层架构）。
 | `version.h` | 固件版本号（`VERSION`、`BUILD_NUM`） |
 
 ## 更多文档
+
+### 使用其他显示屏或 UI 工程
+
+- 如需更换 Driver IC、分辨率或显示接口，请参阅
+  [显示屏移植指南](docs/display-porting_CN.md)。
+- 如需修改或替换 Designer 工程，请参阅
+  [UI 工程移植指南](docs/ui-porting_CN.md)。
 
 RTL8773E 系列的数据手册、Quick Start、硬件说明、SDK/GUI 在线文档等官方资料，
 参见 [RTL8773E-Series 文档中心](https://www.realmcu.com/zh/Resources/Documentation/RTL8773E-Series#pagetab)。

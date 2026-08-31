@@ -151,6 +151,7 @@ workflow is:
 | --- | --- | --- |
 | [rtl87x3ep-hmi-sdk](https://gitee.com/realmcu/rtl87x3ep-hmi-sdk) | `sdk/` | Core SDK: HAL drivers, Bluetooth stack, system services, toolchain |
 | [hmi-dashboard](https://gitee.com/realmcu/hmi/tree/rtl8773e-dashboard/) | `sdk/board/evb/hmi_dashboard/` | HMI application layer, BSP, GUI porting, build configuration |
+| [honeygui-template-dashboard](https://gitee.com/realmcu/honeygui-template-dashboard) | `sdk/board/evb/hmi_dashboard/src/application/designer/` | Dashboard Designer UI project, generated code, and ROMFS resources |
 | [HoneyGUI](https://gitee.com/realmcu/HoneyGUI) | `sdk/src/sample/gui/` | GUI engine: widget library, font engine, animations |
 | [wearable](https://gitee.com/realmcu/wearable) | `sdk/src/app/Wearable/` | Wearable application layer code |
 | [display](https://gitee.com/realmcu/display) | `sdk/src/mcu/display/` | LCD display driver library |
@@ -191,6 +192,7 @@ hmi_dashboard/
 │   │   └── realgui_port/    # HoneyGUI platform adaptation layer
 │   ├── hmi_rtk_bt/          # Bluetooth stack integration (in dev)
 │   └── protocol/            # BLE private protocol implementation (in dev)
+├── docs/                    # Display, UI, and other focused guides
 ├── gcc/                     # Linker scripts, defconfigs, build output
 ├── mdk/                     # Keil MDK project files
 ├── cfg/                     # Hardware configuration (rtl87x3ep)
@@ -250,6 +252,13 @@ architecture).
 | `version.h` | Firmware version (`VERSION`, `BUILD_NUM`) |
 
 ## More Documentation
+
+### Using a Different Display or UI Project
+
+- To change the Driver IC, resolution, or display interface, see the
+  [Display Porting Guide](docs/display-porting.md).
+- To modify or replace the Designer project, see the
+  [UI Project Porting Guide](docs/ui-porting.md).
 
 For official RTL8773E series datasheets, quick start guides, hardware notes, and SDK/GUI
 online documentation, see the [RTL8773E-Series documentation center](https://www.realmcu.com/zh/Resources/Documentation/RTL8773E-Series#pagetab).
