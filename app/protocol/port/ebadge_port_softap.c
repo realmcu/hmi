@@ -200,7 +200,7 @@ static void start_done(bool ok, int error_no, void *user)
         return;
     }
 
-    EBADGE_LOG("port_softap: AP is on air -> opening both TCP doors now");
+    EBADGE_LOG("port_softap: AP is on air -> opening the TCP listener now");
     ebadge_port_tcp_open_servers();
 }
 
@@ -396,7 +396,7 @@ void ebadge_port_softap_init(void)
     /* Nothing on the wire from here.  The radio goes up when a phone connects, not
      * when we boot -- an AP nobody is going to join is a beacon and a current
      * draw. */
-    EBADGE_LOG2("port_softap: 8711 backend, we own the AP (ch=%u, file:%u)",
+    EBADGE_LOG2("port_softap: 8711 backend, we own the AP (ch=%u, tcp:%u)",
                 (unsigned)SOFTAP_CHANNEL, (unsigned)EBADGE_AP_FILE_PORT);
 #else
     EBADGE_WARN("port_softap: CONFIG_WIFI_8711=n -- no radio, AP unavailable");
@@ -432,7 +432,6 @@ void ebadge_port_softap_arm_on_l2(const char *why)
 #endif /* EBADGE_SOFTAP_PER_TRANSFER_LIFETIME */
 
 int ebadge_port_softap_start(ebadge_softap_info_t *out_info,
-                             ebadge_ap_port_role_t role,
                              uint16_t *out_port,
                              ebadge_softap_sta_joined_cb_t joined_cb)
 {
@@ -452,7 +451,7 @@ int ebadge_port_softap_start(ebadge_softap_info_t *out_info,
     s_idle_down_pending = false;
 #endif
 
-    if (!ebadge_port_softap_info(out_info, role, out_port))
+    if (!ebadge_port_softap_info(out_info, out_port))
     {
         /* Do NOT pretend success: the session would emit a 0x13 full of zeroes and
          * the phone would try to join a network called "".  -EAGAIN maps to
@@ -600,7 +599,6 @@ bool ebadge_port_softap_running(void)
 }
 
 bool ebadge_port_softap_info(ebadge_softap_info_t *out_info,
-                             ebadge_ap_port_role_t role,
                              uint16_t *out_port)
 {
 #if defined(CONFIG_WIFI_8711)
@@ -650,16 +648,20 @@ bool ebadge_port_softap_info(ebadge_softap_info_t *out_info,
     }
     if (out_port != NULL)
     {
-        /* Constants, not a lookup.  The listener on this port is created by
-         * ebadge_port_tcp.c from the same two symbols, so a phone told 9000 is told
-         * the port a socket is actually bound to -- which is what the old
-         * discovered-port arrangement could not guarantee and warned about. */
-        *out_port = (role == EBADGE_AP_PORT_STREAM) ? EBADGE_AP_STREAM_PORT
-                    : EBADGE_AP_FILE_PORT;
+        /* A constant, not a lookup.  The listener on this port is created by
+         * ebadge_port_tcp.c from the same symbol, so a phone told 9000 is told the
+         * port a socket is actually bound to -- which is what the old
+         * discovered-port arrangement could not guarantee and warned about.
+         *
+         * One port for both sessions, so there is nothing to choose here: file
+         * transfer and preview cannot be in flight together (each offer refuses with
+         * BUSY while the other session is non-IDLE), and what the bytes mean is
+         * decided by the armed session rather than by the door. */
+        *out_port = EBADGE_AP_FILE_PORT;
     }
     return true;
 #else
-    (void)out_info; (void)role; (void)out_port;
+    (void)out_info; (void)out_port;
     return false;
 #endif
 }

@@ -13,6 +13,7 @@
 #include "trace.h"
 #include "hmi_bt_task.h"
 #include "ebadge_task.h"      /* V1.2 protocol stack entry point            */
+#include "port/ebadge_port_antenna.h"  /* the shared antenna -- parked below  */
 #include "gui_server.h"
 #include "gui_port.h"
 #include "rtl876x_pinmux.h"
@@ -29,7 +30,7 @@
 #endif
 
 
-#define APP_EBADGE_VERSION "0.0.3"
+#define APP_EBADGE_VERSION "0.0.4"
 
 int main(void)
 {
@@ -59,8 +60,17 @@ int main(void)
     // WiFi VD33_WF_EN P0_2
     Pad_Config(ADC_2, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_ENABLE, PAD_OUT_HIGH);
 
-    // BT ANT HIGHT
-    Pad_Config(P2_6, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_ENABLE, PAD_OUT_HIGH);
+    /* Antenna to BLE before anything can transmit.  P2_6 is an RF switch, not an
+     * enable: HIGH wires the shared antenna to our BLE radio, LOW to the 8711's
+     * Wi-Fi.  It must be parked here, ahead of hmi_bt_task_init() below, because a
+     * badge that starts advertising with the switch on the 8711 is invisible while
+     * every layer reports healthy.
+     *
+     * Through the module rather than a raw Pad_Config, which is what this was: the
+     * two Wi-Fi sessions borrow the antenna and hand it back, and that bookkeeping
+     * only holds if one place owns the pin.  Idempotent, so the second call from
+     * ebadge_task_init() costs a register write. */
+    ebadge_port_antenna_init();
 
 
     app_system_lower_init();

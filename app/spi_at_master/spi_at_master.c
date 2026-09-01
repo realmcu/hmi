@@ -73,8 +73,10 @@ static struct spi_dt_spec spi_spec = SPI_DT_SPEC_GET(
  *  PSRAM1_NC and not in the ~82 KB of DTCM.  That region is mapped non-cacheable
  *  by app_lower_init.c:app_mpu_config()
  *  (MPU region 2, attr 0x44), so GDMA needs no SCB_CleanDCache_by_Addr here --
- *  the maintenance bug that bit the H264 render buffers once SPIC3 became
- *  cacheable cannot recur on this path.
+ *  the maintenance bug that bit the H264 render buffers on a cacheable PSRAM
+ *  window cannot recur on this path.  (Both PSRAM windows are now non-cacheable
+ *  in this app; SPIC3 got its own region for the same reason.  This path never
+ *  depended on that, and still does not -- it depends on region 2.)
  *
  *  The region is NOLOAD and SPIC1 PSRAM only comes up inside
  *  app_system_lower_init(), so nothing here may carry a static initialiser;
@@ -282,11 +284,13 @@ static void consume_rx(void)
 
     if (s_dump_rx)
     {
-        /* SPI_AT_DUMP_RX_MAX, not SPI_AT_DUMP_MAX: an AT reply up to 1.5 KiB is
-         * dumped whole.  Clipping the inbound half at the TX limit would hide the
-         * tail of exactly the direction we are trying to debug. */
+        /* Threshold, not a cap: an AT reply lands under it and is dumped whole,
+         * while a JPEG frame or a file body from port 9000 lands over
+         * it and prints only its length.  That is the point -- bulk traffic
+         * arrives as back-to-back 16 KiB slots, and dumping a head from each one
+         * scrolls away the AT lines this dump exists to show. */
         ebadge_log_hexdump(EB_DIR_FROM_8711 "at", &slot_rx[SPI_AT_HDR_SIZE],
-                           len, SPI_AT_DUMP_RX_MAX);
+                           len, SPI_AT_DUMP_MAX);
     }
 
     if (s_rx_cb != NULL)
@@ -303,6 +307,9 @@ static void do_transaction(void)
 
     if (tx_len > 0U && s_dump_tx)
     {
+        /* Same threshold as inbound.  Everything we send is an AT command line
+         * of tens of bytes, so this direction always prints whole -- it used to
+         * clip at 256, which was a cost of head-truncation nobody needed. */
         ebadge_log_hexdump(EB_DIR_TO_8711 "at", &slot_tx[SPI_AT_HDR_SIZE],
                            tx_len, SPI_AT_DUMP_MAX);
     }
@@ -546,7 +553,7 @@ int spi_at_master_send_text(const char *text)
      * link rather than as a malformed command -- so append rather than reject. */
     bool has_crlf = (len >= 2U) && (text[len - 2U] == '\r') && (text[len - 1U] == '\n');
 
-    uint8_t buf[SPI_AT_DUMP_MAX + 4U];
+    uint8_t buf[SPI_AT_TEXT_MAX + 4U];
 
     if (len + 2U > sizeof(buf))
     {

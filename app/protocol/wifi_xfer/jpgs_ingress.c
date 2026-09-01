@@ -79,19 +79,21 @@
  * a literal FF in that data as FF 00.  So the scan is safe there by construction.
  *
  * ---------------------------------------------------------------------------
- * ROUTING: STILL BY SESSION, NO LONGER BY PORT ALONE
+ * ROUTING: BY SESSION, NOT BY PORT
  * ---------------------------------------------------------------------------
- * This module is registered as the PREVIEW port's data path only, which the old
+ * This module is reached only through stream_session's own on_data, which the old
  * one was not -- it was the sink for every JPGS slot regardless of which session
- * wanted it, so it had to ask.  The port is now the answer: bytes on the stream
- * port belong to stream_session, and a file uploaded on the file port never
- * reaches this file at all.
+ * wanted it, so it had to ask.  The ARMED SESSION is the answer now, and it has to
+ * be: file transfer and preview share one TCP port (9000), so the port cannot tell
+ * them apart.  What can is that only one of them is ever armed -- each offer refuses
+ * with BUSY while the other is non-IDLE -- so a file upload reaches xfer_session's
+ * accumulator and never this file.
  *
- * The old JPGS-to-file route is therefore gone.  It existed because port 5004
- * could carry a bare-JPEG wallpaper from a phone that had not moved to the file
- * port, and with the standard firmware there is no such thing: the file port
- * exists, the phone is told which port to use in the 0x13 AP_INFO, and a wallpaper
- * arriving on the preview port would be a phone ignoring what it was told.
+ * The old JPGS-to-file route is therefore gone.  It existed because the preview port
+ * could carry a bare-JPEG wallpaper from a phone that had not moved to the file port,
+ * and with one port that distinction no longer exists at all: a wallpaper arrives
+ * during a file session, which is xfer_session's, and a frame arrives during a
+ * preview session, which is ours.
  *
  * ---------------------------------------------------------------------------
  * THREADING

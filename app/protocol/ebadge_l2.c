@@ -90,7 +90,7 @@ int ebadge_l2_handle(uint8_t cmd, const uint8_t *params, uint16_t params_len)
      *
      * Tagged with the endpoints rather than a bare "<--".  Four data paths cross
      * this firmware (phone/8773 over BLE, 8773/8711 over SPI) and all four used
-     * arrows, so a line saying "<-- ... port=5004" did not say whether the phone
+     * arrows, so a line saying "<-- ... port=9000" did not say whether the phone
      * had sent that port or the radio had reported it -- which is the exact
      * question a wrong port makes you ask. */
     EBADGE_LOG(EB_DIR_FROM_PHONE "CMD 0x%02x plen=%d", cmd, (int)params_len);

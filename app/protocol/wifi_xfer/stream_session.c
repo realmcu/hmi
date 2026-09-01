@@ -29,6 +29,7 @@
 #include <stdbool.h>
 
 #include "stream_session.h"
+#include "stream_sink.h"       /* stream_sink_reset() on every teardown path  */
 #include "xfer_session.h"
 #include "xfer_notify.h"
 #include "ebxs_frame.h"
@@ -41,8 +42,13 @@
 #include "../ebadge_task.h"
 #include "../ebadge_log.h"
 
+#include "../port/ebadge_port_antenna.h"
 #include "../port/ebadge_port_softap.h"
 #include "../port/ebadge_port_tcp.h"
+
+#if defined(CONFIG_WIFI_8711)
+#include "spi_at_master.h"     /* set_dump/get_dump -- see dumps_suspend()     */
+#endif
 
 /*----------------------------------------------------------------------------*
  *  Config
@@ -51,8 +57,8 @@
 #define SS_FIRST_DATA_MS      10000u    /* §6.5                              */
 #define SS_FRAME_GAP_MS        3000u    /* §6.4                              */
 
-/* No SS_TCP_PORT: the 8711 runs the TCP server and reports the port itself
- * (5004 in practice).  See ebadge_port_softap.h.                            */
+/* No SS_TCP_PORT: the port comes from ebadge_port_softap_start(), and it is the
+ * same one the file session uses (9000).  See ebadge_port_softap.h.          */
 
 /** Default frame rate offered back when the App asks for something we cannot
  *  serve.  Mid-window rather than the max: the point of negotiating down is
@@ -143,18 +149,131 @@ static void reset_ctx(void)
     s_s.sink_user = user;
 }
 
+/*----------------------------------------------------------------------------*
+ *  SPI hexdump suspension for the duration of a preview
+ *
+ *  A preview is a back-to-back stream of 16 KiB slots at up to 15 fps.  The
+ *  1024 B threshold (SPI_AT_DUMP_MAX) already stops the bodies being printed,
+ *  but every slot still costs one `len=N (not dumped, over 1024 B)` line, and
+ *  those alone scroll the session's own logs away.  The outbound dump is worse
+ *  than noisy: it runs on the transport thread with M2S still asserted, so its
+ *  console time is subtracted from the peer's 1000 ms READY budget.
+ *
+ *  SAVE AND RESTORE, never force-on: `atm dump` is how someone turns these off
+ *  while chasing something else, and a preview must not switch them back on
+ *  behind their back.  The pair is idempotent because all four session-end
+ *  paths funnel through tear_down_data_plane(), which may therefore run without
+ *  a matching suspend.
+ *----------------------------------------------------------------------------*/
+#if defined(CONFIG_WIFI_8711)
+static bool s_dump_saved;          /* a suspend is outstanding                */
+static bool s_dump_tx_was;
+static bool s_dump_rx_was;
+
+static void dumps_suspend(void)
+{
+    if (s_dump_saved)
+    {
+        return;
+    }
+    spi_at_master_get_dump(&s_dump_tx_was, &s_dump_rx_was);
+    s_dump_saved = true;
+    if (s_dump_tx_was || s_dump_rx_was)
+    {
+        EBADGE_LOG("stream: SPI hexdump off for the preview (atm dump restores)");
+        spi_at_master_set_dump(false, false);
+    }
+}
+
+static void dumps_restore(void)
+{
+    if (!s_dump_saved)
+    {
+        return;
+    }
+    s_dump_saved = false;
+    if (s_dump_tx_was || s_dump_rx_was)
+    {
+        spi_at_master_set_dump(s_dump_tx_was, s_dump_rx_was);
+        EBADGE_LOG("stream: SPI hexdump restored");
+    }
+}
+#else
+static void dumps_suspend(void) { }
+static void dumps_restore(void) { }
+#endif /* CONFIG_WIFI_8711 */
+
 static void tear_down_data_plane(void)
 {
+    dumps_restore();
+
     if (ebadge_port_softap_running())
     {
         (void)ebadge_port_softap_stop();
     }
     (void)ebadge_port_tcp_close();
+
+    /* Both stages in front of the sink have per-frame state that must not carry
+     * into the next session: jpgs_ingress may hold a partial frame in its PSRAM
+     * staging buffer, and the sink may hold a transport buffer it acquired for a
+     * frame that will now never complete.  The buffer is the one that matters --
+     * without this the pool loses one buffer per interrupted session until
+     * nothing is left and every later frame is dropped at acquire. */
+    jpgs_ingress_reset();
+    stream_sink_reset();
+
+    /* Give the antenna back, and do it HERE rather than in each caller: this is the
+     * one function all four session-end paths funnel through, and the release has to
+     * happen before any of them emits a BLE notify.  fail_and_reset() is the case
+     * that pins the position -- it stages the TCP cut BEFORE calling us and emits its
+     * 0x16 AFTER, so sitting between the two is exactly right.
+     *
+     * What this does NOT wait for: the AT commands just staged (SKTDEL / the AP
+     * release) drain asynchronously over SPI, so the FIN toward the phone may still
+     * be unsent when the switch moves and would then never reach it.  Harmless here,
+     * because nothing downstream depends on the phone SEEING the cut -- at_socket
+     * clears its link table entry either way (see at_socket.c's del_done) and the
+     * phone's own socket times out.  The alternative, holding the antenna until the
+     * queue drains, would delay the 0x16 by seconds on the exact path where the App
+     * is waiting to be told why the preview stopped. */
+    ebadge_port_antenna_release_wifi("stream teardown");
 }
 
-/** Abnormal end: tell the App over BLE 0x16, then drop everything. */
+/** Abnormal end: CUT the connection, then tell the App over BLE 0x16.
+ *
+ *  THAT ORDER IS LOAD-BEARING, and it is what a frame timeout exposed.  The App
+ *  reacts to the 0x16 by offering again, and at_socket only forgets a seed link on
+ *  a [$][SKT][DISCONNECTED] event -- which a phone that walked out of range never
+ *  produces.  So a 0x16 sent while the old seed is still in the table races the
+ *  next offer against it: ebadge_port_tcp_listen() adopts any seed it finds
+ *  (at_socket_seed_of) and delivers an immediate joined edge, which drops the new
+ *  session straight from the 60 s WAIT_STA into the 10 s FIRST_DATA window before
+ *  the phone has even associated.  The second preview then dies of "no TCP data
+ *  within 10s" on a radio that was never at fault.
+ *
+ *  Cutting first is what makes the re-offer land on a clean table.  This also puts
+ *  the preview path level with xfer_session's abort_and_reset(): "stop sending" is
+ *  a separate request from "here is the result", and a timeout wants both.
+ */
 static void fail_and_reset(uint8_t reason, const char *detail)
 {
+    /* BEFORE tear_down_data_plane(), not after: ebadge_port_tcp_close() clears the
+     * very s_armed/s_seed that abort() needs to know what to delete, so the reverse
+     * order would silently no-op.
+     *
+     * Harmless when there is nothing to cut -- an STA-join timeout has no
+     * connection at all -- because abort() returns 0 early on s_seed < 0.
+     *
+     * Fire and forget, and it does not delay the 0x16: at_socket_del() is staged on
+     * the AT queue and we do not wait for its OK.  What matters is the ORDER OF
+     * STAGING, since the phone cannot re-offer faster than a BLE round trip.  One
+     * known gap: if the AT queue is full the retry re-reads s_seed, finds the -1
+     * that close() left, and abandons the delete with a warning -- the stale-seed
+     * window then reopens.  Not defended against here, because the fix belongs in
+     * listen(): it should verify a seed is still live before adopting it, rather
+     * than trusting that this delete always got through. */
+    (void)ebadge_port_tcp_abort();
+
     tear_down_data_plane();
     eb_emit_fail(reason, detail);
 #if EBADGE_SOFTAP_PER_TRANSFER_LIFETIME
@@ -405,10 +524,14 @@ void stream_session_offer(const char *name, uint8_t file_type, uint8_t fps)
     ebadge_port_softap_arm_on_l2("preview offer accepted");
 #endif
 
-    /* EBADGE_AP_PORT_STREAM, because this session sends bare JPEG frames: the
-     * 8711's PORT= (5004) is the only server that accepts them, and the file
-     * port would expect an EBXF header it will never get. */
-    if (ebadge_port_softap_start(&info, EBADGE_AP_PORT_STREAM, &tcp_port,
+    /* The same port the file session uses (9000).  There is no preview-specific
+     * door any more, and no ambiguity from sharing one: this session and
+     * xfer_session are mutually exclusive -- the check at the top of this function
+     * refuses the offer with BUSY while a transfer runs, and xfer_session's does the
+     * mirror -- so bare JPEG and an EBXF header are never on the wire together.
+     * What tells them apart was never the port: ebadge_port_tcp forwards bytes to
+     * whichever session armed the sink, which is us from the listen() below. */
+    if (ebadge_port_softap_start(&info, &tcp_port,
                                  on_softap_joined_from_driver) != 0)
     {
         EBADGE_ERR("stream: softap_start FAIL -> REJECT AP_START");
@@ -432,6 +555,12 @@ void stream_session_offer(const char *name, uint8_t file_type, uint8_t fps)
         return;
     }
 
+    /* Everything that arrives from here on is preview payload, so silence the
+     * transport dumps -- AFTER the AP/listener commands, whose replies are small,
+     * under the threshold, and the ones worth reading when a preview fails to
+     * start.  tear_down_data_plane() puts them back on every exit path. */
+    dumps_suspend();
+
     /* 0x09 first, then 0x13 -- the App keys off the decision. */
     emit_stream_decision(decision, 0,
                          (decision == EB_STREAM_DEC_NEGOTIATE) ? agreed : 0);
@@ -441,9 +570,45 @@ void stream_session_offer(const char *name, uint8_t file_type, uint8_t fps)
     EBADGE_LOG("stream: emitting AP_INFO (preview -> the stream port)");
     eb_emit_ap_info(&info, tcp_port);
 
+    /* AP_INFO is out, so hand the antenna to Wi-Fi.  AFTER that notify and not one
+     * line earlier: it carries the SSID, password and port the phone needs, and the
+     * antenna moving first would mean the phone is told nothing and then asked to
+     * join a hotspot it has never heard of.
+     *
+     * The claim is not delivery-confirmed, and cannot be: hmi_ctrl_service_notify()
+     * queues into the GATT stack and returns, so the bytes are still in front of the
+     * BLE controller here.  The gap is a couple of milliseconds of a link with no
+     * other traffic on it -- against the tens of seconds the phone then spends
+     * associating and connecting -- so a lost 0x13 shows up as a WAIT_STA timeout
+     * (60 s, recoverable, the App re-offers), and closing the gap properly would mean
+     * threading a tx-complete callback through for a case that ends in a retry
+     * anyway.  ebadge_port_ble__on_send_data_cb() is where that hook would go if the
+     * timeouts ever say it is needed. */
+    ebadge_port_antenna_claim_wifi("preview data plane");
+
     s_s.state          = STREAM_SESSION_WAIT_STA;
     s_s.deadline_stage = ebadge_task_now_ms() + SS_WAIT_STA_MS;
     EBADGE_LOG("stream: WAIT_STA (60s)");
+
+    /* Show the preview screen now, not on the first frame.
+     *
+     * Declared locally, following ebadge_port_storage.c's
+     * notify_ui_new_resource(): this is a protocol-side reference to the designer
+     * UI layer, and routing it through ViewMainFace_user.h would drag guidef.h
+     * into app/protocol/ and invite the rest of the porting layer to reach into
+     * the GUI too.  The function itself only posts a GUI message, so it is safe
+     * to call from l2_task -- that indirection is why it exists.
+     *
+     * HERE rather than on the first committed frame, even though the screen shows
+     * black until then: the App is about to join the SoftAP and start sending,
+     * and everything between now and the first frame (association, TCP connect,
+     * one frame encoded and delivered) is a second or more.  A view that switches
+     * on the first frame would leave the wearer looking at the previous screen
+     * through all of it, and would never switch at all for a preview that fails
+     * to deliver -- which is exactly when someone wants to see that something was
+     * attempted. */
+    extern void ui_jump_streaming(void);
+    ui_jump_streaming();
 }
 
 void stream_session_on_sta_joined(void)
@@ -525,9 +690,10 @@ void stream_session_on_frame_chunk(const uint8_t *chunk, uint16_t len,
     }
     else if (offset == 0)
     {
-        /* No sink installed yet -- same bring-up aid as the EBXS path: log the
-         * head of each frame so a real JPEG can be told from garbage without a
-         * decoder.  TODO(app): stream_session_set_frame_sink().            */
+        /* No sink -- only reachable if something called
+         * stream_session_set_frame_sink(NULL) to go log-only, since
+         * ebadge_task_init() installs stream_sink's.  Log the head of each frame
+         * so a real JPEG can still be told from garbage without a decoder. */
         EBADGE_LOG_HEX("stream frame head", chunk, len);
     }
 
@@ -631,11 +797,10 @@ void stream_session_on_tcp_data(const uint8_t *data, uint16_t len)
         }
         else if (s_s.frame_got == take)
         {
-            /* No sink installed yet: log the JPEG SOI of each frame's head so
-             * bring-up can tell real frames from garbage without a decoder.
-             * TODO(app): install a sink that feeds the JPEG decoder / display
-             * (stream_session_set_frame_sink) -- until then frames are
-             * counted, CRC-checked, and discarded.                        */
+            /* No sink: log the JPEG SOI of each frame's head so bring-up can tell
+             * real frames from garbage without a decoder.  Only reachable via an
+             * explicit set_frame_sink(NULL) -- ebadge_task_init() installs
+             * stream_sink's, which feeds the display. */
             EBADGE_LOG_HEX("stream frame head", data + off, take);
         }
         off = (uint16_t)(off + take);

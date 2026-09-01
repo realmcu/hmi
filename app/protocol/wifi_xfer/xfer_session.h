@@ -135,9 +135,9 @@ bool xfer_session_check_identity(uint32_t size, uint32_t crc32,
 /**
  * @brief  A chunk of pure file bytes -- no framing header of any kind.
  *
- * Live for the JPGS path (jpgs_ingress, port 5004 bare JPEG), where the 8711
- * strips the phone's framing itself.  Also the tail of the EBXF path, called by
- * xfer_session_on_tcp_data() once the header is behind it.
+ * Live for the JPGS path (jpgs_ingress, bare JPEG with no header at all).  Also the
+ * tail of the EBXF path, called by xfer_session_on_tcp_data() once the header is
+ * behind it.
  *
  * Appends to flash, accumulates the CRC32, emits 0x14 PROGRESS, and on the last
  * byte verifies the whole-file CRC against the offer, commits to flash, and

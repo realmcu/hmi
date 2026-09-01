@@ -121,7 +121,10 @@
 	 * already mapped non-cacheable by app_lower_init.c:app_mpu_config()
 	 * (MPU region 2 over SPIC1_MEM_BASE+0x400000, attr 0x44), so the SPI
 	 * path needs no SCB_CleanDCache_by_Addr -- the maintenance bug that bit
-	 * the H264 render buffers once SPIC3 became cacheable cannot recur here.
+	 * the H264 render buffers on a cacheable PSRAM window cannot recur here.
+	 * (SPIC3 is non-cacheable too now, by a region of its own.  Irrelevant
+	 * to this node, which lives in SPIC1 -- noted only so the sentence above
+	 * is not read as still describing the current SPIC3 setting.)
 	 *
 	 * The address is NOT a free choice: app/protocol/port/ebadge_psram_map.h
 	 * BUILD_ASSERTs its own layout against this node's reg, so moving it

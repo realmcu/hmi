@@ -42,16 +42,15 @@
  * ---------------------------------------------------------------------------
  * WHICH PORT THIS REPORTS
  * ---------------------------------------------------------------------------
- * The 8711 runs two servers with incompatible admission rules -- 5004 takes bare
- * JPEG, 9000 takes an EBXF header plus body -- so "the port" is not a thing this
- * handler can report.  It has no role of its own either: 0x12 is recovery for a
- * lost 0x13, and the 0x13 it is replacing belonged to a session.
+ * 9000, always, because that is the only server there is.  This used to have to
+ * guess: two listeners with incompatible admission rules (5004 bare JPEG, 9000
+ * EBXF header plus body) meant "the port" depended on what the phone was about to
+ * send, and 0x12 is recovery for a lost 0x13 -- it has no session of its own to ask.
+ * So it followed the live session and defaulted to the file port when idle.
  *
- * So it follows the live session: a running preview gets 5004, anything else
- * gets 9000.  Defaulting to the file port when idle is not arbitrary -- the App
- * sends 0x12 after a restart to resume a transfer, and a preview is cheap to
- * re-offer whereas a half-done file transfer is not.  Either way the phone is
- * told a port that accepts what it is about to send.
+ * With one port that guess disappears rather than being made safer, which is the
+ * real gain here: an 0x12 arriving between two sessions can no longer answer with
+ * a port the phone's next connection will not want.
  */
 #include <stdint.h>
 #include "../ebadge_cmd.h"
@@ -60,7 +59,6 @@
 #include "../ebadge_log.h"
 #include "../port/ebadge_port_softap.h"
 #include "../wifi_xfer/xfer_notify.h"
-#include "../wifi_xfer/stream_session.h"
 
 void handle_get_ap_info(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
 {
@@ -68,11 +66,8 @@ void handle_get_ap_info(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
 
     ebadge_softap_info_t  info;
     uint16_t              port = 0;
-    ebadge_ap_port_role_t role =
-        (stream_session_state() != STREAM_SESSION_IDLE) ? EBADGE_AP_PORT_STREAM
-        : EBADGE_AP_PORT_FILE;
 
-    if (!ebadge_port_softap_info(&info, role, &port))
+    if (!ebadge_port_softap_info(&info, &port))
     {
         EBADGE_LOG("GET_AP_INFO: AP not up (or state feed stopped)"
                    " -> RESULT NOT_READY");
@@ -88,8 +83,7 @@ void handle_get_ap_info(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
          * value" as a zero value).  Answering 0x13 with port 0 would send the
          * phone to associate and then connect nowhere.  NOT_READY is the same
          * answer as a total miss because the remedy is the same. */
-        EBADGE_LOG1("GET_AP_INFO: %s port not reported yet -> RESULT NOT_READY",
-                    (role == EBADGE_AP_PORT_STREAM) ? "stream" : "file");
+        EBADGE_LOG("GET_AP_INFO: port not reported yet -> RESULT NOT_READY");
         (void)ebadge_l2_result_send(EB_CMD_GET_AP_INFO, EB_RESULT_NOT_READY);
         return;
     }
@@ -100,7 +94,7 @@ void handle_get_ap_info(const ebadge_tlv_t *tlvs, uint8_t n_tlv)
      * connect, stopped on disconnect), not one transfer.  Gating on session state
      * would only mean an App that asked at the wrong moment got NOT_READY for an
      * AP that was in fact ready. */
-    EBADGE_LOG(EB_DIR_FROM_PHONE "0x12 GET_AP_INFO -> answering with the %s port",
-               (role == EBADGE_AP_PORT_STREAM) ? "stream" : "file");
+    EBADGE_LOG1(EB_DIR_FROM_PHONE "0x12 GET_AP_INFO -> answering with port %u",
+                (unsigned)port);
     eb_emit_ap_info(&info, port);
 }

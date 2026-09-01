@@ -22,6 +22,32 @@
 
 extern uint32_t sys_timestamp_get_us(void);
 
+/* Both PSRAM windows are mapped Non-cacheable (attribute 0x44).
+ *
+ * SPIC1 has been that way all along and app/protocol/port/ebadge_psram_map.h
+ * depends on it: the SPI slot buffers (psram1_nc), the Wi-Fi receive cache and
+ * the preview frame buffer are all GDMA or cross-thread targets that carry no
+ * cache maintenance at all, which is only correct because nothing caches them.
+ *
+ * SPIC3 is the one being brought into line here, and the reason it was NOT
+ * already is worth stating because it looks like an omission rather than a
+ * setting: nothing in this app ever enabled a cache on it.  ARMv8-M's default
+ * memory map declares 0x20000000..0x3FFFFFFF as Normal, Write-Back
+ * Write-Allocate, so a window with no MPU region over it is cacheable by
+ * default.  Silence was the "on" position.
+ *
+ * What that costs, said plainly: reads out of SPIC3 get slower by roughly the
+ * factor that made SPIC3 attractive in the first place.  On the sibling apps
+ * (eBadge_8773g, simple-test) the HoneyGUI lower heap lives at SPIC3_MEM_BASE
+ * and their decode throughput is exactly this attribute -- see
+ * gui_port_os.c:142 there.  THIS app does not: its lower heap is
+ * EB_PSRAM_GUI_LOWER_BASE == SPIC1_MEM_BASE, and a grep for SPIC3_MEM_BASE
+ * across the tree finds only spic3_psram_speed_report() below, which nobody
+ * calls.  So the window is initialised and clocked but unallocated, and this
+ * region changes no current access -- it sets the policy that any future
+ * allocation there will inherit, which is the whole point of doing it now
+ * rather than after something has been built on the faster behaviour.
+ */
 static int app_mpu_config(void)
 {
     uint32_t mpu_cfg_rbar = SPIC1_MEM_BASE | (1 << 1); // SH:0, AP:1, XN:0
@@ -32,6 +58,31 @@ static int app_mpu_config(void)
 
     mpu_config_print();
     mpu_set_region(mpu_cfg_rbar, limit_addr, region_num, attribute, true);
+
+    /* Same 4 MB span and same attribute as SPIC1 above.  4 MB rather than the
+     * 256 MB FMC_MAIN3_SIZE claims: that is the controller's addressable range,
+     * not the part that is populated -- the sibling apps treat SPIC3 as 4 MB
+     * (gui_port_os.c:143, 0x400000) and this mirrors them.  A region that
+     * covered unpopulated address space would only make a stray access fault
+     * differently, not sooner.
+     *
+     * Region 4, skipping 3, which is what applications/watch does for its own
+     * SPIC3 region -- the low numbers are configured before this runs (see the
+     * mpu_config_print() above, which is here to show exactly that), so
+     * following a shipping app's choice beats picking the next free-looking
+     * index.
+     *
+     * limit_addr carries the -1 that region 2 above lacks: the hardware forces
+     * RLAR[4:0] to 0x1F, so a bare +0x400000 describes a region ending 32 bytes
+     * PAST the intended top.  Harmless for region 2, whose overshoot lands in
+     * unmapped space between the two windows, but there is no reason to repeat
+     * it. */
+    mpu_cfg_rbar = SPIC3_MEM_BASE | (1 << 1);
+    limit_addr   = SPIC3_MEM_BASE + 0x400000 - 1;
+    region_num   = 4;
+    attribute    = 0x44;
+    mpu_set_region(mpu_cfg_rbar, limit_addr, region_num, attribute, true);
+
     mpu_config_print();
 
     return 0;
@@ -205,7 +256,13 @@ void app_system_lower_init(void)
     }
 
     uint32_t spic3_freq = 0;
-    if (fmc_psram_clock_switch(FMC_SPIC_ID_3, 280, &spic1_freq))
+    /* &spic3_freq, not &spic1_freq -- it was the latter, so the "actual %d" in
+     * both branches below printed the 0 this variable was initialised to and
+     * the SPIC1 figure above got silently overwritten.  Worth being right now
+     * that the MPU region over this window is the thing under test: the clock
+     * is the other half of how fast SPIC3 reads, and a log that always says 0
+     * cannot rule it out. */
+    if (fmc_psram_clock_switch(FMC_SPIC_ID_3, 280, &spic3_freq))
     {
         DBG_DIRECT("APM OPI psram switch to %d MHz success! actual %d", 280, spic3_freq);
     }

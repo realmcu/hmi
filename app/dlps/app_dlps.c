@@ -23,8 +23,8 @@ RAM_TEXT_SECTION void app_dlps_enable(uint32_t bit)
 {
     if (dlps_bitmap & bit)
     {
-        printf("app_dlps_enable: %08x %08x -> %08x", bit, dlps_bitmap,
-                         (dlps_bitmap & ~bit));
+        // printf("app_dlps_enable: %08x %08x -> %08x", bit, dlps_bitmap,
+        //                  (dlps_bitmap & ~bit));
     }
     dlps_bitmap &= ~bit;
 }
@@ -33,8 +33,8 @@ RAM_TEXT_SECTION void app_dlps_disable(uint32_t bit)
 {
     if ((dlps_bitmap & bit) == 0)
     {
-        printf("app_dlps_disable: %08x %08x -> %08x", bit, dlps_bitmap,
-                         (dlps_bitmap | bit));
+        // printf("app_dlps_disable: %08x %08x -> %08x", bit, dlps_bitmap,
+        //                  (dlps_bitmap | bit));
     }
     dlps_bitmap |= bit;
 }
@@ -47,7 +47,7 @@ RAM_TEXT_SECTION bool app_dlps_check_callback(void)
     if ((dlps_bitmap_pre != dlps_bitmap) && !dlps_enter_en)
     {
         printf("app_dlps_check_callback: dlps_bitmap_pre 0x%x dlps_bitmap 0x%x",
-                        dlps_bitmap_pre, dlps_bitmap);
+               dlps_bitmap_pre, dlps_bitmap);
     }
     dlps_bitmap_pre = dlps_bitmap;
     return dlps_enter_en;

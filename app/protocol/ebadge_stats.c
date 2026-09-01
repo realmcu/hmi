@@ -1,7 +1,9 @@
 /*
- * ebadge_stats.c - 1 Hz CPU / RAM usage line.  See ebadge_stats.h for why this
- * is a tick sink rather than a thread, why the CPU figure is a windowed delta,
- * and why the two HoneyGUI heaps are not read from here.
+ * ebadge_stats.c - periodic CPU / RAM usage line (5 s), OFF by default.
+ *
+ * See ebadge_stats.h for the master switch (EBADGE_STATS_ENABLE), why this is a
+ * tick sink rather than a thread, why the CPU figure is a windowed delta, and why
+ * the two HoneyGUI heaps are not read from here.
  */
 
 #include <stdint.h>
@@ -17,16 +19,30 @@
 
 #include <os_mem.h>
 
+#if EBADGE_STATS_ENABLE
+
 /* How often a line is emitted.  The tick arrives every EBADGE_TICK_MS (100 ms),
- * so this is a divide-by-N on that rather than a timer of its own. */
-#define STATS_PERIOD_MS     1000U
+ * so this is a divide-by-N on that rather than a timer of its own.
+ *
+ * 5 s rather than the 1 s this started at.  The console is shared with the shell
+ * and with the protocol stack's own logging, and two lines per second of mostly
+ * unchanging numbers is enough to push a transfer's or a preview's logs out of
+ * view -- which is when someone is usually reading.  The CPU figure is a windowed
+ * delta, so a longer period does not lose anything: it averages over 5 s instead
+ * of 1 s, and a spike shorter than the window was already invisible at 1 s. */
+#define STATS_PERIOD_MS     5000U
 
 /* Per-thread CPU breakdown alongside the summary line.
  *
+ * A sub-switch of EBADGE_STATS_ENABLE: this does nothing unless that one is on
+ * too, since everything here is inside its #if.
+ *
  * OFF by default, and not because it is expensive to compute: the console is
  * shared with the shell (CONFIG_SHELL_BACKEND_SERIAL=y), and this build has
- * enough threads that a full dump at 1 Hz makes the shell unusable to type into.
- * Turn it on for a bring-up session where nobody is typing.
+ * enough threads that a full dump makes the shell hard to type into -- less so now
+ * the period is 5 s rather than 1 s, but a dump is one line PER THREAD, so it is
+ * still the bulk of the console when enabled.  Turn it on for a bring-up session
+ * where nobody is typing.
  *
  * Requires CONFIG_THREAD_MONITOR (already on in this build) for the iteration to
  * see anything, and CONFIG_THREAD_NAME (likewise) for the names to be printable.
@@ -217,3 +233,21 @@ void ebadge_stats_init(void)
 #endif
     ebadge_task_set_tick(stats_tick);
 }
+
+#else  /* !EBADGE_STATS_ENABLE */
+
+/* Compiled out.  A stub rather than an #if around the call in ebadge_task.c: the
+ * wiring order there is a documented sequence, and threading a conditional
+ * through it to save one empty call would make the switch visible in two files
+ * instead of one.
+ *
+ * Deliberately SILENT.  The instrument being off is the default, so saying so
+ * every boot would be a line of console spent announcing the absence of lines --
+ * and the whole point of the switch is a quiet console.  If you are looking for
+ * the usage log and not finding it, EBADGE_STATS_ENABLE in ebadge_stats.h is the
+ * only place it can be off. */
+void ebadge_stats_init(void)
+{
+}
+
+#endif /* EBADGE_STATS_ENABLE */

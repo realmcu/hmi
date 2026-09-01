@@ -35,12 +35,18 @@
  *     place to put a buffer.
  *   - Everything below it is non-cacheable, so it needs no cache maintenance --
  *     which is what makes the region usable for GDMA (psram1_nc) and is why the
- *     receive cache does not need the SCB_CleanDCache_by_Addr dance that the
- *     H264 render buffers needed once SPIC3 became cacheable.
+ *     receive cache does not need the SCB_CleanDCache_by_Addr dance that H264
+ *     render buffers need on a cacheable PSRAM window.
  *
  * The cost is that reads here are the slow SPIC1 path.  For the receive cache
  * that is a fair trade: it is touched twice per file (memcpy in, read back once
  * for the flash append) and never in a display-rate loop.
+ *
+ * Not a reason to look at SPIC3 as the fast alternative any more: that window is
+ * now mapped 0x44 as well (region 4, same function), so the two PSRAMs differ
+ * only in device and clock, not in cache policy.  If a buffer here ever does
+ * need cache-speed reads, it takes a region of its own -- moving it to SPIC3
+ * buys nothing.
  *
  * ---------------------------------------------------------------------------
  * THE MAP

@@ -26,8 +26,10 @@
 #include "handlers/handlers_register.h"
 #include "wifi_xfer/xfer_session.h"
 #include "wifi_xfer/stream_session.h"
+#include "wifi_xfer/stream_sink.h"
 #include "wifi_xfer/jpgs_ingress.h"
 #include "wifi_xfer/ebfs_ingress.h"
+#include "port/ebadge_port_antenna.h"
 #include "port/ebadge_port_ble.h"
 #include "port/ebadge_port_softap.h"
 #include "port/ebadge_port_tcp.h"
@@ -201,6 +203,12 @@ int ebadge_task_init(void)
      * earlier was strictly better.  Now it holds what WE asked the 8711 to be, so
      * there is nothing to prime -- and it puts nothing on the wire here either:
      * the radio goes up when a phone connects, from the BLE connect hook.       */
+    /* Re-park the antenna on BLE.  main() already did this before bt_task started
+     * advertising -- that is the placement that matters, and it cannot be here
+     * because ebadge_task_init() runs after the BLE stack is up.  This call re-asserts
+     * the pad and zeroes the claim count, so the protocol stack starts from a known
+     * position on a warm restart as well as a cold one.  One register write. */
+    ebadge_port_antenna_init();
     ebadge_port_ble_init();
     ebadge_port_softap_init();
     /* The data plane, and it is NOT covered by port_softap_init above even though
@@ -217,15 +225,23 @@ int ebadge_task_init(void)
     ebadge_port_vbat_init();
     xfer_session_init();
     stream_session_init();
+    /* AFTER stream_session_init(), which clears the sink pointer this installs.
+     * Does not touch the GUI transport -- that handle is fetched on the first
+     * frame -- so it is free of GUI init ordering. */
+    stream_sink_init();
     jpgs_ingress_init();
     ebfs_ingress_init();
     ebadge_handlers_register();
-    /* 1 Hz CPU/RAM line.  Last of the tick sinks, and the count is worth knowing
-     * because an overflowing sink is reported only once, here at init, and then
-     * silently does nothing.  Four of EBADGE_TICK_SINKS (6) are taken: vbat, the
-     * two sessions, and this.  port_softap takes a fifth only under
-     * EBADGE_SOFTAP_PER_TRANSFER_LIFETIME -- by default it has no deadline of its
-     * own, so it registers nothing. */
+    /* Periodic CPU/RAM line (5 s), OFF by default -- EBADGE_STATS_ENABLE in
+     * ebadge_stats.h, where the reasoning is.  Compiled out it is an empty call,
+     * which is why it stays unconditional here.
+     *
+     * Last of the tick sinks, and the count is worth knowing because an
+     * overflowing sink is reported only once, here at init, and then silently does
+     * nothing.  Three of EBADGE_TICK_SINKS (6) are taken by default -- vbat and
+     * the two sessions -- and a fourth when the stats switch is on.  port_softap
+     * takes one more only under EBADGE_SOFTAP_PER_TRANSFER_LIFETIME; by default it
+     * has no deadline of its own, so it registers nothing. */
     ebadge_stats_init();
 
     EBADGE_LOG("l2_task up");

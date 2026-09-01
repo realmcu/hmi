@@ -28,6 +28,7 @@
 #include "hmi_ble_gap_msg.h"          /* hmi_le_msg_cback_register */
 
 #include "ebadge_port_ble.h"
+#include "ebadge_port_antenna.h"
 #include "ebadge_port_softap.h"
 #include "../ebadge_task.h"
 #include "../ebadge_log.h"
@@ -170,6 +171,24 @@ static void on_gap_msg(T_IO_MSG *msg)
          * running is answered [+WLSTOPAP]:ERROR and costs nothing.             */
         (void)ebadge_task_post_call((ebadge_post_fn_t)ebadge_port_softap_shutdown,
                                     NULL);
+        /* And the antenna, unconditionally, as the last thing in the queue.
+         *
+         * This is the one place that can state the invariant outright: with no BLE
+         * connection there is nothing for Wi-Fi to serve, so the antenna belongs to
+         * BLE -- which is also the only radio able to accept the NEXT connection.
+         * Getting that wrong is unrecoverable in a way nothing else here is: a badge
+         * left with the switch on the 8711 cannot be reached over BLE at all, so
+         * there is no channel left to tell it to switch back.
+         *
+         * FORCE, not release: the aborts posted above each release their own claim, so
+         * by the time this runs the count is normally zero already and this is a
+         * no-op.  It is here for the case where it is not -- a session that ended
+         * without a matching release, whether from a path added later or one that
+         * failed halfway -- and a counted release cannot fix that by definition.
+         * Force is also why it must be posted LAST: it zeroes the count, so running
+         * it before the aborts would turn their releases into over-releases. */
+        (void)ebadge_task_post_call((ebadge_post_fn_t)ebadge_port_antenna_force_bt,
+                                    (void *)"ble disconnected");
         EBADGE_LOG("disconnected");
         break;
 

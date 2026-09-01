@@ -9,10 +9,12 @@
  *
  * So both directions run through this file, which they did not before:
  *
- *  - INBOUND is a raw TCP byte stream.  at_socket hands us slices of it with the
- *    port they arrived on, and we pass them to whoever called listen().  Nothing
- *    is parsed here -- what the bytes mean differs per port (EBXF header plus body
- *    on 9000, bare JPEG on 5004) and that is the session's business.
+ *  - INBOUND is a raw TCP byte stream.  at_socket hands us slices of it and we pass
+ *    them to whoever called listen().  Nothing is parsed here -- what the bytes mean
+ *    (an EBXF header plus body for a file, bare JPEG frames for a preview) is the
+ *    armed session's business, and the ARMED SESSION is what distinguishes them:
+ *    there is one port for both, and only one of the two sessions can ever be
+ *    running (each offer refuses with BUSY while the other is non-IDLE).
  *
  *  - OUTBOUND is the 8-byte EBXR verdict, packed here and pushed with
  *    AT+SKTSENDRAW.
@@ -83,21 +85,23 @@ static bool                s_armed;
 #if defined(CONFIG_WIFI_8711)
 
 /*----------------------------------------------------------------------------*
- *  Link ids
+ *  Link id
  *
- *  Ours to choose, and chosen per PORT rather than "the next free one" on
- *  purpose.  A successful AT+SKTSERVER answers a bare OK without echoing the id,
- *  so the only record of which link is which is the one we keep -- and if that
- *  record and the 8711's disagree, a preview stream's bytes are handed to a file
- *  session.  Pinning the mapping makes the disagreement impossible to reach:
- *  whatever we believe about link 1, the 8711 also has 5004 there or has nothing
- *  there at all.
+ *  Ours to choose, and pinned rather than "the next free one" on purpose.  A
+ *  successful AT+SKTSERVER answers a bare OK without echoing the id, so the only
+ *  record of which link is which is the one we keep -- and if that record and the
+ *  8711's disagree, bytes are delivered against a link we believe is something
+ *  else.  Pinning makes the disagreement impossible to reach: whatever we believe
+ *  about link 0, the 8711 also has 9000 there or has nothing there at all.
  *
- *  Low ids because the range is [0,20) and nothing else on this chip allocates
+ *  ONE LINK, because there is one port.  There used to be a second (5004, bare
+ *  JPEG preview) alongside this one (9000, EBXF file upload), and the pair brought
+ *  machinery with it that has gone the same way -- see the s_open comment.
+ *
+ *  Low id because the range is [0,20) and nothing else on this chip allocates
  *  from it.
  *----------------------------------------------------------------------------*/
 #define TCP_LINK_FILE     0U
-#define TCP_LINK_STREAM   1U
 
 /** The seed link of the connection we are serving, or -1.
  *
@@ -108,50 +112,31 @@ static bool                s_armed;
 static int  s_seed = -1;
 
 /*----------------------------------------------------------------------------*
- *  Listener state -- PER PORT, AND ITS LIFETIME IS THE AP'S
+ *  Listener state -- ITS LIFETIME IS THE AP'S, NOT A SESSION'S
  *
- *  Both servers are created when the radio comes up and destroyed when it goes
- *  down, so this is no longer one flag about "the" listener: at any moment either,
- *  both, or neither may exist, independently of which session is armed.
+ *  The server is created when the radio comes up and destroyed when it goes down,
+ *  so it exists independently of whether any session is armed.
  *
  *  s_open_inflight is separate from s_open because AT+SKTSERVER is asynchronous and
  *  open_servers() may be called again while one is still on the wire (every arm
- *  calls it).  Without it, a second command would be staged for a link the 8711 is
+ *  calls it).  Without it a second command would be staged for a link the 8711 is
  *  already binding, and the loser is refused -EADDRINUSE -- which is exactly the
- *  stale-server confusion the pinned link ids exist to prevent.
- *----------------------------------------------------------------------------*/
-#define TCP_LINK_COUNT    2U
-
-static bool s_open[TCP_LINK_COUNT];
-static bool s_open_inflight[TCP_LINK_COUNT];
-
-/** Which link the currently-armed session is listening on, or -1 when idle.
+ *  stale-server confusion the pinned link id exists to prevent.
  *
- *  This is what makes a shared pair of listeners safe for two sessions that must
- *  never see each other's bytes: both servers are up, but only the armed link's
- *  data reaches a sink.  Deriving it from s_listener.port at delivery time would
- *  work equally well; keeping it explicit means sock_data() compares two link ids
- *  rather than re-deriving one on every 16 KiB slot. */
-static int  s_armed_link = -1;
+ *  WHAT WENT AWAY WITH THE SECOND PORT, and what to restore with it: there were
+ *  per-link arrays plus an s_open_want queue and an open_pump() that issued one
+ *  AT+SKTSERVER at a time, chaining the next off each completion.  That existed
+ *  because at_socket_server_open() IS SINGLE-FLIGHT ACROSS ALL LINKS, not per link
+ *  -- at_socket.c keeps ONE s_open slot and answers -EADDRINUSE while it is pending
+ *  (at_socket.c:373 tests `s_open.pending ||`, not the link's own role) -- so
+ *  issuing two back-to-back opened only the FIRST, silently.  That constraint is
+ *  still true in at_socket; there is simply no longer a second open to serialize
+ *  against.  Anything that adds one must bring the queue back, not just the call.
+ *----------------------------------------------------------------------------*/
+static bool s_open;
+static bool s_open_inflight;
 
-static uint16_t port_for_link(uint8_t link)
-{
-    return (link == TCP_LINK_STREAM) ? EBADGE_AP_STREAM_PORT
-           : EBADGE_AP_FILE_PORT;
-}
-
-static uint8_t link_for_port(uint16_t port)
-{
-    if (port == EBADGE_AP_STREAM_PORT)
-    {
-        return TCP_LINK_STREAM;
-    }
-    /* Everything else on the file link.  Not a warning: EBADGE_AP_FILE_PORT is
-     * the only other port any caller passes -- both come from
-     * ebadge_port_softap_info() -- so a third value would be a caller bug loud
-     * enough to find without one here. */
-    return TCP_LINK_FILE;
-}
+static void open_one(void);
 
 /*----------------------------------------------------------------------------*
  *  at_socket callbacks -- ON THE SPI TRANSPORT THREAD
@@ -179,26 +164,21 @@ static void sock_data(uint8_t server_link, uint8_t seed_link,
                       const uint8_t *data, uint16_t len,
                       uint32_t offset, uint32_t total, bool is_last, void *user)
 {
-    (void)offset; (void)total; (void)is_last; (void)user;
+    (void)server_link; (void)offset; (void)total; (void)is_last; (void)user;
 
     if (!s_armed || s_listener.on_data == NULL)
     {
         /* A session ended between the 8711 accepting these bytes and us seeing
-         * them.  Dropped deliberately: there is nobody left with state to put them
-         * in, and the alternative is a session resurrected by its own leftovers. */
-        return;
-    }
-
-    /* Both listeners are up for the whole life of the AP now, so bytes can arrive
-     * on a port no session is claiming -- a phone still draining a preview socket
-     * while a file transfer is armed, or one that connected to the wrong door.
-     * Checking the link is what keeps those out of the armed session's
-     * accumulator; before the doors were opened together this could not happen,
-     * because the only socket that existed was the armed one. */
-    if ((int)server_link != s_armed_link)
-    {
-        EBADGE_WARN2("port_tcp: %u bytes on link %u which no session is claiming "
-                     "-- dropped", (unsigned)len, (unsigned)server_link);
+         * them, or a phone is talking to a door no session has claimed -- the
+         * listener outlives every session now, so both are reachable.  Dropped
+         * deliberately: there is nobody left with state to put them in, and the
+         * alternative is a session resurrected by its own leftovers.
+         *
+         * This is the WHOLE filter now.  With two ports there was a second one
+         * comparing server_link against the armed session's, to keep a preview
+         * frame out of a file session's accumulator; one port makes that comparison
+         * vacuous, and the two sessions cannot be armed at once anyway (each offer
+         * refuses with BUSY while the other runs). */
         return;
     }
 
@@ -240,25 +220,22 @@ static void joined_on_l2(void *arg)
 static void sock_conn(uint8_t server_link, uint8_t seed_link, bool connected,
                       void *user)
 {
-    (void)user;
+    (void)server_link; (void)user;
 
     if (connected)
     {
-        /* A connection on a port nobody is claiming.  Now reachable in a way it was
-         * not before: the doors open when the radio does, so a phone can knock
-         * before any offer has been answered -- and the preview door stands open
-         * during a file transfer.  Recorded, not acted on: turning it into a joined
-         * edge would fire the wrong session's state machine, and taking its seed
-         * would point the EBXR verdict at the wrong connection.
+        /* A connection with no session armed.  Reachable because the door opens when
+         * the radio does, so a phone can knock before any offer has been answered.
+         * Recorded, not acted on: there is no state machine to fire yet, and taking
+         * its seed would point a later EBXR verdict at a connection that may be gone
+         * by then.
          *
          * ebadge_port_tcp_listen() re-checks for an existing connection when a
          * session finally arms, so an early knock is not lost either. */
-        if ((int)server_link != s_armed_link)
+        if (!s_armed)
         {
-            EBADGE_LOG2("port_tcp: a phone connected on link %u (port %u) with no "
-                        "session armed -- noted",
-                        (unsigned)server_link,
-                        (unsigned)port_for_link(server_link));
+            EBADGE_LOG1("port_tcp: a phone connected on port %u with no session "
+                        "armed -- noted", (unsigned)EBADGE_AP_FILE_PORT);
             return;
         }
 
@@ -291,55 +268,44 @@ static void sock_conn(uint8_t server_link, uint8_t seed_link, bool connected,
 }
 
 /**
- * One AT+SKTSERVER has answered.  @p user carries the link id as an integer rather
- * than a pointer: it is a value, and the alternative would be a static per link
- * whose only purpose is to have an address.
+ * The AT+SKTSERVER has answered.
  */
 static void server_open_done(bool ok, int error_no, void *user)
 {
-    uint8_t link = (uint8_t)(uintptr_t)user;
+    (void)user;
 
-    if (link >= TCP_LINK_COUNT)
-    {
-        return;
-    }
-    s_open_inflight[link] = false;
+    s_open_inflight = false;
 
     if (ok)
     {
-        s_open[link] = true;
+        s_open = true;
         EBADGE_LOG2("port_tcp: listening on port=%u (link %u)",
-                    (unsigned)port_for_link(link), (unsigned)link);
+                    (unsigned)EBADGE_AP_FILE_PORT, (unsigned)TCP_LINK_FILE);
         return;
     }
 
-    /* Nothing to tell the phone, and now nothing is waiting on it either -- which is
-     * the improvement over doing this at offer time.  The failure lands while the
-     * radio is coming up, seconds before any offer, so a session that needs this
-     * port is refused synchronously by listen() with -ENETDOWN and reports AP_START
-     * up front, instead of the phone being handed a port whose socket silently does
-     * not exist.
+    /* Nothing to tell the phone, and nothing is waiting on it either -- which is the
+     * improvement over doing this at offer time.  The failure lands while the radio
+     * is coming up, seconds before any offer, so a session that needs the port is
+     * refused synchronously by listen() with -ENETDOWN and reports AP_START up front,
+     * instead of the phone being handed a port whose socket silently does not exist.
      *
-     * Left un-retried: a second AT+SKTSERVER on a link the first half-bound is
-     * answered -EADDRINUSE, which is strictly worse than a clean absence.  The next
-     * arm calls open_servers() again, and a BLE reconnect is the recovery. */
-    EBADGE_WARN2("port_tcp: SKTSERVER on port=%u failed (error_no=%d) -- that door "
-                 "stays shut", (unsigned)port_for_link(link), error_no);
-    s_open[link] = false;
+     * Left un-retried from here: a second AT+SKTSERVER on a link the first half-bound
+     * is answered -EADDRINUSE, which is strictly worse than a clean absence.  The
+     * next arm calls open_servers() again, and a BLE reconnect is the recovery. */
+    EBADGE_WARN2("port_tcp: SKTSERVER on port=%u failed (error_no=%d) -- the door "
+                 "stays shut", (unsigned)EBADGE_AP_FILE_PORT, error_no);
+    s_open = false;
 }
 
-/** Create one server, unless it exists or is being created. */
-static void open_one(uint8_t link)
+/** Create the server, unless it exists or is being created. */
+static void open_one(void)
 {
-    if (s_open[link] || s_open_inflight[link])
+    if (s_open || s_open_inflight)
     {
         return;
     }
 
-    /* Static: at_socket copies the struct, but it is handed the pointer, and one
-     * shared const for both links is correct because the callbacks route by the
-     * server_link they are given rather than by which registration they came
-     * through. */
     static const at_socket_cbs_t cbs =
     {
         .on_data = sock_data,
@@ -347,22 +313,22 @@ static void open_one(uint8_t link)
         .user    = NULL,
     };
 
-    int rc = at_socket_server_open(link, port_for_link(link), &cbs,
-                                   server_open_done, (void *)(uintptr_t)link);
+    int rc = at_socket_server_open(TCP_LINK_FILE, EBADGE_AP_FILE_PORT, &cbs,
+                                   server_open_done, NULL);
 
     if (rc != 0)
     {
         /* -ENOSPC is the four-deep queue, which drains; the next arm tries again.
          * Not retried from here on a timer: unlike the EBXR verdict nothing is
          * sequencing behind this, and an offer that needs the port fails loudly at
-         * listen() rather than silently. */
+         * listen() rather than silently.  listen() also retries on the way past. */
         EBADGE_WARN2("port_tcp: SKTSERVER port=%u could not be queued rc=%d",
-                     (unsigned)port_for_link(link), rc);
+                     (unsigned)EBADGE_AP_FILE_PORT, rc);
         return;
     }
-    s_open_inflight[link] = true;
+    s_open_inflight = true;
     EBADGE_LOG2("port_tcp: opening the listener on port=%u (link %u)",
-                (unsigned)port_for_link(link), (unsigned)link);
+                (unsigned)EBADGE_AP_FILE_PORT, (unsigned)TCP_LINK_FILE);
 }
 
 #endif /* CONFIG_WIFI_8711 */
@@ -389,7 +355,7 @@ void ebadge_port_tcp_init(void)
         EBADGE_WARN1("port_tcp: at_socket_init failed rc=%d -- no data plane", rc);
         return;
     }
-    EBADGE_LOG2("port_tcp: 8711 backend up (file:%u on link %u)",
+    EBADGE_LOG2("port_tcp: 8711 backend up (tcp:%u on link %u)",
                 (unsigned)EBADGE_AP_FILE_PORT, (unsigned)TCP_LINK_FILE);
 #else
     EBADGE_WARN("port_tcp: CONFIG_WIFI_8711=n -- no radio, no data plane");
@@ -399,34 +365,27 @@ void ebadge_port_tcp_init(void)
 void ebadge_port_tcp_open_servers(void)
 {
 #if defined(CONFIG_WIFI_8711)
-    /* Both doors, every time, because which session arrives first is not knowable
-     * here -- and an idempotent call means the arm path can do this unconditionally
-     * without knowing what happened on the previous connection. */
-    open_one(TCP_LINK_FILE);
-    open_one(TCP_LINK_STREAM);
+    /* Idempotent, so the arm path can call it unconditionally without knowing what
+     * happened on the previous connection. */
+    open_one();
 #endif
 }
 
 void ebadge_port_tcp_close_servers(void)
 {
 #if defined(CONFIG_WIFI_8711)
-    for (uint8_t link = 0; link < TCP_LINK_COUNT; link++)
+    if (s_open)
     {
-        if (!s_open[link])
-        {
-            continue;
-        }
         /* Fire and forget: what matters is that the 8711 stops having the server
          * while the interface it is bound to still exists, not when we hear so.
          * Deleting a server also destroys every connection hanging off it, so the
          * seed goes with it. */
         EBADGE_LOG2("port_tcp: closing the listener on port=%u (link %u)",
-                    (unsigned)port_for_link(link), (unsigned)link);
-        (void)at_socket_del(link, NULL, NULL);
-        s_open[link] = false;
+                    (unsigned)EBADGE_AP_FILE_PORT, (unsigned)TCP_LINK_FILE);
+        (void)at_socket_del(TCP_LINK_FILE, NULL, NULL);
+        s_open = false;
     }
-    s_seed       = -1;
-    s_armed_link = -1;
+    s_seed = -1;
 #endif
     /* A session sink that outlived its interface would only collect bytes that can
      * no longer arrive, and ack() would stage an EBXR against a dead seed. */
@@ -441,16 +400,14 @@ int ebadge_port_tcp_listen(const ebadge_tcp_listen_t *cfg)
     }
 
 #if defined(CONFIG_WIFI_8711)
-    uint8_t link = link_for_port(cfg->port);
-
-    if (!s_open[link])
+    if (!s_open)
     {
-        /* No socket on that port.  Either the AP never came up, or this port's
-         * AT+SKTSERVER failed while it did -- and both mean the phone has nowhere to
-         * connect, which is AP_START to a session.
+        /* No socket.  Either the AP never came up, or the AT+SKTSERVER failed while
+         * it did -- and both mean the phone has nowhere to connect, which is
+         * AP_START to a session.
          *
          * Reported synchronously, which is the whole point of having created the
-         * sockets earlier: the answer is known BEFORE the offer is accepted and the
+         * socket earlier: the answer is known BEFORE the offer is accepted and the
          * 0x13 goes out, rather than arriving as a refused connection afterwards.
          *
          * One more try on the way past, for the case where the open was merely
@@ -458,27 +415,26 @@ int ebadge_port_tcp_listen(const ebadge_tcp_listen_t *cfg)
          * round trip -- but it makes the App's retry answerable. */
         EBADGE_WARN1("port_tcp: nothing is listening on port=%u -- no door for this "
                      "session", (unsigned)cfg->port);
-        open_one(link);
+        open_one();
         return -ENETDOWN;
     }
 
-    s_listener   = *cfg;
-    s_armed      = true;
-    s_armed_link = (int)link;
-    s_seed       = -1;
+    s_listener = *cfg;
+    s_armed    = true;
+    s_seed     = -1;
 
-    EBADGE_LOG2("port_tcp: session armed on port=%u (link %u, already listening)",
-                (unsigned)cfg->port, (unsigned)link);
+    EBADGE_LOG1("port_tcp: session armed on port=%u (already listening)",
+                (unsigned)cfg->port);
 
-    /* A phone may ALREADY be connected: the doors now open when the radio does, so
-     * a station can knock during the seconds between the AP coming up and an offer
+    /* A phone may ALREADY be connected: the door now opens when the radio does, so a
+     * station can knock during the seconds between the AP coming up and an offer
      * being answered -- and its connect event arrived while no session was armed,
      * which sock_conn() deliberately only noted.  Adopt it here, or the session
      * would sit in WAIT_STA for 60 s waiting for an edge that has already passed.
      *
      * Only for a connection that is still live: at_socket_seed_of() answers -1 once
      * the 8711 has forgotten it. */
-    int seed = at_socket_seed_of(link);
+    int seed = at_socket_seed_of(TCP_LINK_FILE);
 
     if (seed >= 0)
     {
@@ -783,8 +739,7 @@ int ebadge_port_tcp_close(void)
      * to abort(), which the sessions call when they mean it; doing it from every
      * cleanup path would destroy the connection an EBXR was just staged against.
      * ebadge_port_softap_shutdown() calls close_servers() when the radio goes. */
-    s_seed       = -1;
-    s_armed_link = -1;
+    s_seed = -1;
 #else
     if (s_armed)
     {

@@ -126,7 +126,7 @@ typedef struct
 void ebadge_port_tcp_init(void);
 
 /**
- * @brief  Create BOTH TCP servers (file and preview) on the 8711.
+ * @brief  Create the TCP server on the 8711.
  *
  * Call this the moment AT+WLSTARTAP answers OK -- ebadge_port_softap.c does, from
  * the start completion -- because a listener is only reachable while the interface
@@ -138,27 +138,34 @@ void ebadge_port_tcp_init(void);
  * connect.  It shared that window with the 0x13 AP_INFO, so the phone could be
  * handed a port whose socket had not been created yet, and any delay -- a queue
  * four deep, a retry, a 25 s WLSTARTAP still draining -- pushed the socket's
- * creation past the phone's first connect attempt.  Opening both doors when the
- * radio comes up removes the race instead of narrowing it: by the time any offer is
- * answered, both ports have either been listening for seconds or failed loudly.
+ * creation past the phone's first connect attempt.  Opening the door when the radio
+ * comes up removes the race instead of narrowing it: by the time any offer is
+ * answered, the port has either been listening for seconds or failed loudly.
  *
- * Both ports, not the one the imminent session needs, because which session comes
- * first is not knowable here and an AT round trip per offer is what we are removing.
- * An unused listener costs one socket and one receive thread on the 8711.
+ * ONE SERVER, on EBADGE_AP_FILE_PORT, shared by the file and preview sessions.
+ * There were two (9000 and 5004) and the plural is worth knowing about because it
+ * cost a bug: at_socket_server_open() is single-flight ACROSS ALL LINKS, not per
+ * link -- it keeps one pending-open slot and answers -EADDRINUSE while it is
+ * occupied, whichever link the second call names -- so issuing both back-to-back
+ * opened only the FIRST.  9000 went on the wire and 5004 was refused microseconds
+ * later, leaving a preview that negotiated fine, advertised 5004 in its 0x13, and
+ * had nothing behind it.  That was fixed by serializing the two opens; the two ports
+ * were then collapsed into one, so the serialization is gone as well.  Adding a
+ * second port back means bringing it back -- the at_socket constraint has not moved.
  *
- * Idempotent and asynchronous: a link already open, or with an open on the wire, is
- * skipped, so calling it on every arm is free.  Nothing here reports failure to a
+ * Idempotent and asynchronous: a server already open, or with an open on the wire,
+ * is skipped, so calling it on every arm is free.  Nothing here reports failure to a
  * caller -- ebadge_port_tcp_listen() is where a missing server surfaces, and it
  * surfaces as the AP_START the session already knows how to report.
  */
 void ebadge_port_tcp_open_servers(void);
 
 /**
- * @brief  Destroy both servers.  Call BEFORE taking the radio down.
+ * @brief  Destroy the server.  Call BEFORE taking the radio down.
  *
  * Ordering matters and is the reason this is separate from close(): stopping the AP
- * destroys the interface the sockets are bound to, and at_socket's link table would
- * go on believing in them -- so the next AT+SKTSERVER would be refused
+ * destroys the interface the socket is bound to, and at_socket's link table would
+ * go on believing in it -- so the next AT+SKTSERVER would be refused
  * -EADDRINUSE for a server the 8711 no longer has, on a link id it could then
  * never reuse.
  *
@@ -170,24 +177,24 @@ void ebadge_port_tcp_open_servers(void);
 void ebadge_port_tcp_close_servers(void);
 
 /**
- * @brief  Arm a session's sink on the listener for @p cfg->port.
+ * @brief  Arm a session's sink on the listener.
  *
  * Does NOT create the socket any more -- ebadge_port_tcp_open_servers() did that
- * when the AP came up.  What this does is say which session the bytes arriving on
- * that port belong to, so it is cheap, synchronous and cannot fail on the wire.
+ * when the AP came up.  What this does is say which session the arriving bytes
+ * belong to, so it is cheap, synchronous and cannot fail on the wire.
  *
- * Single-session: a second call replaces the first, whichever port it names.  Bytes
- * arriving on the OTHER port are dropped while this one is armed, which is what
- * keeps a preview frame out of a file session's accumulator.
+ * @p cfg->port is checked against the one listener rather than selecting between
+ * several: both sessions use EBADGE_AP_FILE_PORT now, and they are mutually
+ * exclusive, so the port is a consistency assertion and the ARMED SESSION is what
+ * decides how the bytes are read.  A second call replaces the first.
  *
  * @retval 0        armed
- * @retval -ENETDOWN  no server on that port -- the AP never came up, or its
+ * @retval -ENETDOWN  nothing is listening -- the AP never came up, or its
  *                    AT+SKTSERVER failed.  Sessions map this to AP_START.
  *
- * IF A PHONE IS ALREADY CONNECTED to that port when this is called, the joined edge
- * is delivered here rather than lost: the doors now open before the offer does, so
- * "connected already" is reachable in a way it was not when listen() created the
- * socket itself.
+ * IF A PHONE IS ALREADY CONNECTED when this is called, the joined edge is delivered
+ * here rather than lost: the door now opens before the offer does, so "connected
+ * already" is reachable in a way it was not when listen() created the socket itself.
  */
 int  ebadge_port_tcp_listen(const ebadge_tcp_listen_t *cfg);
 

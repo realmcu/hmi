@@ -27,10 +27,11 @@
  *
  * A seed link is allocated by the 8711 when a phone connects, and it is announced
  * only in the connect event.  Every [$][SKT][DATA] names the SEED, never the
- * server, so without that event's server/seed pairing there is no way to tell
- * a file upload on 9000 from a preview frame on 5004.  Learning the pairing is
- * therefore not bookkeeping -- it is the routing table, and a missed connect event
- * means the following data is unroutable rather than merely unattributed.
+ * server, so without that event's server/seed pairing there is no way to tell which
+ * listener a byte belongs to -- this module supports several even though the eBadge
+ * protocol now opens exactly one.  Learning the pairing is therefore not bookkeeping
+ * -- it is the routing table, and a missed connect event means the following data is
+ * unroutable rather than merely unattributed.
  *
  * ---------------------------------------------------------------------------
  * THE CONNECT EVENT IS ALSO THE JOIN EDGE

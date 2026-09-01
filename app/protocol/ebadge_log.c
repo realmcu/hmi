@@ -111,25 +111,36 @@ void ebadge_log_hexdump(const char *prefix, const void *buf, uint32_t len,
         return;
     }
 
-    uint32_t shown = (len > max) ? max : len;
-
-    /* Header carries the true length next to the shown length, so a truncated
-     * dump can never be mistaken for a short packet. */
-    if (shown < len)
+    /* All or nothing, deliberately.  `max` is a threshold, not a truncation
+     * point: a payload at or below it is dumped WHOLE, and one above it produces
+     * this single line and no rows at all.
+     *
+     * The alternative -- head-truncating every payload -- is what this used to
+     * do, and it behaves worst exactly where the traffic is heaviest.  A JPEG
+     * frame or a file body arriving on port 9000 is tens of KB spread
+     * over back-to-back 16 KiB slots; a 256-byte head from each of those is
+     * hundreds of rows of console per frame, all of it the middle of an image,
+     * and it scrolls away the AT lines that are the reason anyone is watching.
+     * So the bulk directions go quiet on their own, without a caller having to
+     * remember to turn dumping off first.
+     *
+     * The length still prints, always.  A packet that got skipped must not look
+     * like a packet that never arrived -- during bring-up that difference is the
+     * whole diagnosis. */
+    if (len > max)
     {
-        (void)printf("[eb] %s len=%u (first %u B)\n", prefix, (unsigned)len,
-                     (unsigned)shown);
-    }
-    else
-    {
-        (void)printf("[eb] %s len=%u\n", prefix, (unsigned)len);
+        (void)printf("[eb] %s len=%u (not dumped, over %u B)\n", prefix,
+                     (unsigned)len, (unsigned)max);
+        return;
     }
 
-    for (uint32_t off = 0U; off < shown; off += HEXD_COLS)
+    (void)printf("[eb] %s len=%u\n", prefix, (unsigned)len);
+
+    for (uint32_t off = 0U; off < len; off += HEXD_COLS)
     {
         char     row[HEXD_ROW_MAX];
         uint32_t n   = 0U;                 /* write cursor into row            */
-        uint32_t cnt = shown - off;
+        uint32_t cnt = len - off;
 
         if (cnt > HEXD_COLS)
         {

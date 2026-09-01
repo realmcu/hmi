@@ -37,12 +37,12 @@ void eb_emit_ap_info(const ebadge_softap_info_t *info, uint16_t tcp_port)
         (uint8_t)((info->ip) & 0xFFu),
     };
     ebadge_tlv_put(params, sizeof(params), &off, EB_TLV_AP_IPV4, ipb, 4);
-    /* The port is the CALLER's to choose and this function must not second-guess
-     * it: the file session wants FILE_PORT= (9000) and the preview session wants
-     * PORT= (5004), and only they know which.  There was a `tcp_port = 9000;`
-     * here during bring-up which overrode both, so every 0x13 -- preview
-     * included -- advertised the upload port and the preview stream had nowhere
-     * to land. */
+    /* The port stays the CALLER's to pass rather than becoming a constant here, even
+     * now that both sessions get the same 9000 from ebadge_port_softap_start(): what
+     * goes in the 0x13 must be the port the caller was actually given, or the phone
+     * is told about a door nobody opened.  A `tcp_port = 9000;` here during bring-up
+     * overrode both callers, and back when the preview had a port of its own that
+     * made every 0x13 advertise the upload one, leaving the stream nowhere to land. */
     ebadge_tlv_put_u16(params, sizeof(params), &off, EB_TLV_AP_PORT, tcp_port);
     ebadge_tlv_put_u8(params, sizeof(params), &off, EB_TLV_AP_PROTO,
                       EB_AP_PROTO_RAW_TCP);

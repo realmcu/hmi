@@ -202,11 +202,12 @@ static int cmd_info(const struct shell *sh, size_t argc, char **argv)
                 spi_at_master_get_m2s());
     shell_print(sh, "s2m (in)  : %d  (1 = asserted = pad HIGH = 8711 ready)",
                 spi_at_master_get_s2m());
-    /* Two limits, printed separately because they differ on purpose: the inbound
-     * half is the one being debugged, so it is dumped up to 1.5 KiB whole. */
-    shell_print(sh, "dump      : tx=%s (max %u B)  rx=%s (max %u B)",
-                tx_dump ? "on" : "off", (unsigned)SPI_AT_DUMP_MAX,
-                rx_dump ? "on" : "off", (unsigned)SPI_AT_DUMP_RX_MAX);
+    /* One threshold, both directions, and it is a threshold not a cap: a payload
+     * at or under it prints whole, one over it prints its length only.  Spelled
+     * out here because "max" on its own reads like truncation. */
+    shell_print(sh, "dump      : tx=%s  rx=%s  (whole if <=%u B, length only if over)",
+                tx_dump ? "on" : "off", rx_dump ? "on" : "off",
+                (unsigned)SPI_AT_DUMP_MAX);
     return 0;
 }
 

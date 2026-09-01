@@ -64,6 +64,7 @@
 #include "../ebadge_task.h"
 #include "../ebadge_log.h"
 
+#include "../port/ebadge_port_antenna.h"
 #include "../port/ebadge_port_softap.h"
 #include "../port/ebadge_port_tcp.h"
 #include "../port/ebadge_port_storage.h"
@@ -174,11 +175,11 @@ BUILD_ASSERT(sizeof(gui_rgb_data_head_t) == 8U,
  * report a timeout for a transfer that actually succeeded. */
 #define XS_ACK_WAIT_MS       30000u
 
-/* The two TCP ports ARE ours to choose now -- ebadge_port_tcp.c creates both
- * listeners with AT+SKTSERVER from the constants in ebadge_port_softap.h, and
- * 0x13 AP_INFO reports whichever one the session asked for.  They used to be
- * discovered from the 8711's WLSTATE reply, which is why nothing in this file
- * names a number: the port a session uses arrives from
+/* The TCP port IS ours to choose now -- ebadge_port_tcp.c creates the listener
+ * with AT+SKTSERVER from the constant in ebadge_port_softap.h, and 0x13 AP_INFO
+ * reports it.  There is exactly one, shared with the preview session, because the
+ * two cannot run at once.  The port used to be DISCOVERED from the 8711's WLSTATE
+ * reply, which is why nothing in this file names a number: it arrives from
  * ebadge_port_softap_start()'s out_port, and keeping it that way is what stops a
  * hardcoded one drifting from the listener that actually exists. */
 #define XS_PROGRESS_MS         200
@@ -400,6 +401,17 @@ static void tear_down_data_plane(void)
         (void)ebadge_port_storage_wp_abort(s_x.wp_handle);
         s_x.wp_handle = 0;
     }
+
+    /* Antenna back to BLE.  This function covers the exits that do NOT go through
+     * emit_held_verdict() -- abort_and_reset(), which emits its 0x16 straight after
+     * us, and xfer_session_abort() from the GAP disconnect hook.  Both need the
+     * switch back before anything else happens, the first to get its notify out and
+     * the second because the next BLE connection has to find a reachable radio.
+     *
+     * The count makes the overlap harmless: fail_and_reset() does NOT call us -- it
+     * keeps the connection armed for the ack -- so no path releases twice, and if one
+     * ever does the second call is a no-op rather than an underflow. */
+    ebadge_port_antenna_release_wifi("xfer teardown");
 }
 
 /**
@@ -448,6 +460,25 @@ static void emit_held_verdict(bool ack_ok)
      * still push a stray slot -- same reason as tear_down_data_plane(). */
     jpgs_ingress_reset();
     ebfs_ingress_reset();
+
+    /* Antenna back to BLE.  The position is bounded on both sides and neither bound
+     * is arbitrary:
+     *
+     *   not EARLIER -- the EBXR ack rides the phone's own TCP connection, so moving
+     *   the switch before it settled would strand the very transaction this function
+     *   is the completion of.  That is also why the wait is safe to hold the antenna
+     *   through: the tick's XS_ACK_WAIT_MS backstops it, so a peer that never answers
+     *   costs a bounded delay rather than the control plane.
+     *
+     *   not LATER -- the 0x15/0x16 below is a BLE notify, and a notify emitted with
+     *   the antenna pointed at the 8711 is simply lost.  This is the authoritative
+     *   verdict (spec sec.5.3), so losing it is the one outcome worth designing
+     *   against.
+     *
+     * Before the flash commit too, which is deliberate: storing is the slowest thing
+     * in the session (an erase per 4 KB plus the page programs) and there is no
+     * reason to spend any of it with BLE off air. */
+    ebadge_port_antenna_release_wifi("file verdict");
 
     /* Store the file, now that the phone has its answer and the data plane is
      * quiet.  This is the multi-sector erase plus the page programs, and this is
@@ -948,11 +979,13 @@ void xfer_session_user_decision(bool accept)
     ebadge_port_softap_arm_on_l2("file offer accepted");
 #endif
 
-    /* EBADGE_AP_PORT_FILE, because this session sends an EBXF header + body: the
-     * 8711 only accepts that shape on FILE_PORT= (9000).  Naming the role rather
-     * than taking "the port" is what stops this from being handed 5004, which
-     * accepts bare JPEG and silently discards everything else. */
-    int rc = ebadge_port_softap_start(&info, EBADGE_AP_PORT_FILE, &tcp_port,
+    /* The one port there is (9000), now shared with the preview session.  Sharing is
+     * safe because the two are mutually exclusive -- the offer check above refuses
+     * with BUSY while a preview runs, and stream_session's does the mirror -- and
+     * because the port never chose the parser: ebadge_port_tcp hands the bytes to
+     * whichever session armed the sink, so the EBXF header below is parsed by us
+     * because we armed, not because of the number. */
+    int rc = ebadge_port_softap_start(&info, &tcp_port,
                                       on_softap_joined_from_driver);
     if (rc != 0)
     {
@@ -990,6 +1023,14 @@ void xfer_session_user_decision(bool accept)
      * two logs of the same fields is how a reader ends up trusting the stale one. */
     EBADGE_LOG("xfer: emitting AP_INFO (file transfer -> the file port)");
     emit_ap_info(&info);
+
+    /* Hand the antenna to Wi-Fi now that AP_INFO is out.  Same rule as the preview
+     * session's, and the same reason: this notify carries the credentials, so moving
+     * the switch before it would ask the phone to join a hotspot it was never told
+     * about.  Released in emit_held_verdict() / abort_and_reset() -- see the note at
+     * the release in emit_held_verdict(), which is later than this session's
+     * data-plane teardown on purpose. */
+    ebadge_port_antenna_claim_wifi("file data plane");
 
     s_x.state         = XFER_SESSION_WAIT_STA;
     s_x.deadline_stage = ebadge_task_now_ms() + XS_WAIT_STA_MS;

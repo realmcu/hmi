@@ -62,38 +62,40 @@ typedef struct
 } ebadge_softap_info_t;
 
 /*----------------------------------------------------------------------------*
- *  WHICH PORT A CALLER WANTS IS A SEMANTIC CHOICE, NOT A DETAIL
+ *  ONE PORT, AND WHY THE ROLE PARAMETER IS GONE WITH THE SECOND ONE
  *
- *  There are two TCP listeners and the sessions above them speak different
- *  things: the preview session sends bare JPEG frames, the file session sends an
- *  EBXF header plus body.  Nothing below notices the difference any more -- with
- *  the standard AT command set both listeners are plain byte streams, so the
- *  8711 no longer rejects what it cannot parse -- and a file sent to the preview
- *  port is scanned for JPEG markers, handed to stream_session, and dies on a
- *  timeout with nothing pointing at the cause.  Making the caller name the role
- *  is what keeps that from happening; it did happen, which is why the API is this
- *  shape.
+ *  There used to be two listeners -- 9000 for an EBXF file upload, 5004 for bare
+ *  JPEG preview frames -- and callers named which they wanted, because handing a
+ *  file to the preview door got it scanned for JPEG markers and timed out with
+ *  nothing pointing at the cause.
+ *
+ *  Both sessions now use 9000, and what makes that safe is that they are MUTUALLY
+ *  EXCLUSIVE: each *_offer() rejects with BUSY while the other is non-IDLE
+ *  (stream_session.c and xfer_session.c both check, in both directions), because
+ *  both want this one radio.  So the two byte formats can never be in flight at
+ *  the same time, and the port was never what chose the parser anyway -- the ARMED
+ *  SESSION is.  ebadge_port_tcp.c forwards bytes verbatim to whichever session
+ *  called listen(), so a 40-byte EBXF header and a bare JPEG are told apart by who
+ *  is listening, not by which door they came through.
+ *
+ *  A role enum with one member would suggest a choice that no longer exists, so
+ *  the parameter is removed rather than defaulted.  Restoring the second door
+ *  means restoring both -- the constant and the caller's say in it -- together.
  *----------------------------------------------------------------------------*/
-typedef enum
-{
-    EBADGE_AP_PORT_FILE = 0,   /**< EBXF file upload      (9000) */
-    EBADGE_AP_PORT_STREAM,     /**< raw-JPEG preview      (5004) */
-} ebadge_ap_port_role_t;
 
 /*----------------------------------------------------------------------------*
- *  THE PORTS ARE OURS TO PICK NOW, SO THEY ARE NAMED HERE
+ *  THE PORT IS OURS TO PICK NOW, SO IT IS NAMED HERE
  *
- *  They used to be discovered: the in-house firmware ran the servers itself and
- *  reported FILE_PORT= / PORT= in its state block.  With AT+SKTSERVER the
- *  listeners are created by ebadge_port_tcp.c from these two constants, so the
- *  numbers have to live somewhere -- and one place that declares both together is
- *  what stops the file door and the preview door drifting apart.
+ *  It used to be discovered: the in-house firmware ran the servers itself and
+ *  reported FILE_PORT= / PORT= in its state block.  With AT+SKTSERVER the listener
+ *  is created by ebadge_port_tcp.c from this constant, so the number has to live
+ *  somewhere, and one declaration is what stops the door we open and the port we
+ *  advertise in 0x13 drifting apart.
  *
- *  The values are unchanged from the old firmware on purpose: the phone App has
- *  them compiled in.
+ *  The value is unchanged from the old firmware on purpose: the phone App has it
+ *  compiled in.
  *----------------------------------------------------------------------------*/
 #define EBADGE_AP_FILE_PORT      9000U
-#define EBADGE_AP_STREAM_PORT    5004U
 
 /** The 8711's own SoftAP address, and thus ours: atcmd_wifi.c documents
  *  192.168.43.1 as the default for AT+WLSTARTAP's `ip`/`gw` keys, and we do not
@@ -225,8 +227,7 @@ void ebadge_port_softap_arm_on_l2(const char *why);
  * because there "down" is a routine mid-connection state.
  *
  * @param  out_info   filled with the SSID / password / channel / IP in use
- * @param  role       which of the two listeners this session will use
- * @param  out_port   filled with the port for @p role
+ * @param  out_port   filled with the single TCP port both sessions use (9000)
  * @param  joined_cb  invoked on l2_task when a STA associates; may be NULL
  *
  * @retval 0        AP up and usable; @p out_info and @p out_port are valid
@@ -234,7 +235,6 @@ void ebadge_port_softap_arm_on_l2(const char *why);
  *                  the App retry.
  */
 int  ebadge_port_softap_start(ebadge_softap_info_t *out_info,
-                              ebadge_ap_port_role_t role,
                               uint16_t *out_port,
                               ebadge_softap_sta_joined_cb_t joined_cb);
 
@@ -362,14 +362,12 @@ bool ebadge_port_softap_running(void);
  * an AT+WLSTARTAP of ours answered OK and no stop has completed since -- i.e. the
  * phone can act on this now.
  *
- * @param  role      which port to report -- see ebadge_ap_port_role_t
- * @param  out_port  the port for @p role
+ * @param  out_port  the TCP port to advertise -- always EBADGE_AP_FILE_PORT
  *
  * @return true if the AP is up and describable; false leaves the outputs
  *         untouched and means down, or still coming up
  */
 bool ebadge_port_softap_info(ebadge_softap_info_t *out_info,
-                             ebadge_ap_port_role_t role,
                              uint16_t *out_port);
 
 #ifdef __cplusplus

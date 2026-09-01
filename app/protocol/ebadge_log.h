@@ -63,7 +63,7 @@ extern "C" {
  *  Direction tags
  *
  *  Four data paths cross this firmware and their log lines used to be
- *  indistinguishable -- "port=5004" told you nothing about whether that was a
+ *  indistinguishable -- "port=9000" told you nothing about whether that was a
  *  value the phone sent us, one the 8711 reported, or one we invented.  Tagging
  *  by source and destination is what makes a wrong value traceable to the hop
  *  that produced it.  Use these as the first thing in the format string:
@@ -110,9 +110,17 @@ void ebadge_log_lines(const char *prefix, const char *body);
  *  A function, not a macro -- it needs a row buffer and two loops, and the
  *  transport thread runs on 2 KiB of stack.
  *
- *  @param max  cap on bytes shown.  The header always prints the TRUE length
- *              next to the shown one, so a truncated dump cannot be misread as
- *              a short packet.
+ *  @param max  size THRESHOLD, not a truncation point.  len <= max dumps the
+ *              whole payload; len > max prints one
+ *              "len=N (not dumped, over M B)" line and no rows.  The length
+ *              always prints either way, so a skipped packet can never look like
+ *              a packet that never arrived.
+ *
+ *              All-or-nothing because head-truncation misbehaves exactly where
+ *              the traffic is heaviest: a JPEG preview frame or a file body on
+ *              port 9000 crosses back-to-back 16 KiB slots, and a fixed head from
+ *              each one buries the AT lines someone is actually reading.  Bulk
+ *              transfers therefore go quiet on their own.
  *
  *  WHERE THIS COSTS SOMETHING.  Both call sites are on the SPI transport thread,
  *  but only one of them is in anybody's way.  The inbound dump runs from
@@ -120,8 +128,8 @@ void ebadge_log_lines(const char *prefix, const char *body);
  *  transfer is over and no line is held, which is precisely why the release was
  *  put before the parse.  The OUTBOUND dump sits between the S2M go-ahead and
  *  spi_transceive_dt(), so it delays clocking a slot the 8711 has already armed
- *  its DMA for.  That is the one worth keeping short, and why the outbound cap
- *  (SPI_AT_DUMP_MAX, 256) is so much smaller than the inbound one.
+ *  its DMA for.  Under the threshold rule that gap is bounded by the threshold
+ *  itself rather than by a truncation cap -- see SPI_AT_DUMP_MAX.
  *----------------------------------------------------------------------------*/
 void ebadge_log_hexdump(const char *prefix, const void *buf, uint32_t len,
                         uint32_t max);
@@ -134,8 +142,10 @@ void ebadge_log_hexdump(const char *prefix, const void *buf, uint32_t len,
  *  file stream on port 9000.  The old per-slot headers this number was sized for
  *  (ATMC / JPGS / EBFS) went away with the in-house firmware.
  *
- *  The SPI layer does NOT use this -- see SPI_AT_DUMP_MAX / SPI_AT_DUMP_RX_MAX,
- *  which are sized per direction for the reason above. */
+ *  The SPI layer does NOT use this -- it has SPI_AT_DUMP_MAX, one threshold for
+ *  both directions, sized to keep an AT reply while excluding a bulk slot.  It
+ *  used to be a pair (SPI_AT_DUMP_RX_MAX alongside it) back when dumps were
+ *  head-truncated and the outbound head had to stay short. */
 #define EBADGE_HEXDUMP_DEFAULT  128U
 
 /*----------------------------------------------------------------------------*

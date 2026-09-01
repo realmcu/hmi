@@ -289,31 +289,47 @@ int spi_at_master_wait_rx(uint32_t timeout_ms);
 void spi_at_master_set_dump(bool tx_on, bool rx_on);
 void spi_at_master_get_dump(bool *tx_on, bool *rx_on);
 
-/** How many bytes an OUTGOING dump shows, and the largest command line the text
- *  helpers accept.  This one doubles as a stack-buffer size in two places
- *  (spi_at_master_send_text() and the shell's `atm send`), so it cannot grow
- *  freely -- see SPI_AT_DUMP_RX_MAX for the receive side, which has no such tie.
- *  Uplink is AT command lines of tens of bytes, so 256 is already generous. */
-#define SPI_AT_DUMP_MAX         256U
+/** Dump size threshold, both directions.  At or below it a payload is dumped
+ *  WHOLE; above it nothing is dumped but the length (see ebadge_log_hexdump --
+ *  `max` is a threshold there, not a truncation point).
+ *
+ *  One number for both directions now, where there used to be two.  The old pair
+ *  existed because dumps were head-truncated, so the outbound side wanted a
+ *  smaller head to keep the pre-transceive delay short.  Under an all-or-nothing
+ *  rule that reason is gone: the only payloads we ever send are AT command lines
+ *  of tens of bytes, which land far under this and so now print whole instead of
+ *  clipped at 256 -- strictly more of the direction than before.
+ *
+ *  1024 is chosen for what it EXCLUDES.  It keeps an AT reply intact while
+ *  silencing bulk traffic: a JPEG frame or a file body from port 9000
+ *  crosses back-to-back 16 KiB slots, and dumping those is both useless (image
+ *  middles) and destructive (it scrolls the AT lines away).  A 1024 B dump is 64
+ *  rows, ~5 KB of console, about 27 ms at the board's 2 Mbaud console (uart2).
+ *  The dump runs on the transport thread with M2S still asserted (see
+ *  spi_at_master_set_dump), so that delay throttles the peer -- 27 ms is well
+ *  inside the 1000 ms READY budget, whereas a whole 16 KiB slot would be ~430 ms
+ *  and start eating into it.  That is the ceiling this number stays under.
+ *
+ *  It was 1536.  Lowered because nothing we actually read is anywhere near either
+ *  figure -- the longest AT reply is a WLSTATE block of a few hundred bytes -- so
+ *  the headroom was buying console time rather than visibility.
+ *
+ *  NOT a buffer size anywhere: ebadge_log_hexdump() formats one 16-byte row at a
+ *  time into an 80-byte stack buffer, so this costs console time only. */
+#define SPI_AT_DUMP_MAX         1024U
 
-/** How many bytes an INCOMING dump shows.
+/** Longest command line the text helpers accept.
  *
- * Deliberately larger than the TX limit, and deliberately a separate macro: what
- * the 8711 sends back is the half we are debugging, and a reply clipped at 256 B
- * hides exactly the tail that says whether the frame ended properly.
+ *  A stack-buffer size in spi_at_master_send_text(), which runs on the CALLER's
+ *  thread -- usually the shell.  Sizing it for a 16 KiB payload would push that
+ *  limit onto whoever calls in, so the cap lives here.  Uplink is AT command
+ *  lines of tens of bytes, so 256 is already generous.
  *
- * 1536 covers a full-MTU-ish reply intact while still bounding the one time a
- * peer sends a whole 16 KiB slot -- at 16 B/row that is 96 rows, roughly 8 KB of
- * console text, which at the board's 2 Mbaud console (uart2) is about 40 ms.
- * The dump runs on the transport thread with M2S still asserted (see
- * spi_at_master_set_dump), so that delay throttles the peer -- 40 ms is well
- * inside the 1000 ms READY budget, whereas dumping an entire 16 KiB slot would
- * be ~430 ms and start eating into it.  That margin is the reason for the cap.
- *
- * This value is NOT a buffer size anywhere: ebadge_log_hexdump() formats one
- * 16-byte row at a time into an 80-byte stack buffer, so raising it costs
- * console time and nothing else.  That is what makes it safe to set here. */
-#define SPI_AT_DUMP_RX_MAX      1536U
+ *  This used to be SPI_AT_DUMP_MAX doing double duty as both a dump cap and this
+ *  buffer size.  Two unrelated constraints on one number: separated when the
+ *  dump rule changed, because otherwise raising the dump threshold silently
+ *  grows a stack frame on somebody else's thread. */
+#define SPI_AT_TEXT_MAX         256U
 
 void spi_at_master_get_stats(spi_at_master_stats_t *out);
 void spi_at_master_reset_stats(void);
