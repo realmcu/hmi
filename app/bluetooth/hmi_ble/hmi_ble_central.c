@@ -1,15 +1,16 @@
 /**
  * @file    hmi_ble_central.c
- * @brief   BLE central (GATT client) role -- milestone A: scan / filter / connect / discover.
+ * @brief   BLE observer + central role.  Scanner half live, sender half gated.
  *
- * See hmi_ble_central.h for the overall design.  Flow:
- *   start_scan -> le_adv_stop + le_scan_start
- *     GAP_MSG_LE_SCAN_INFO -> filter name contains "eBadge" -> cache + print MAC
- *   connect(idx) -> le_scan_stop + le_connect(candidate)
+ * See hmi_ble_central.h for the overall design and the HMI_CENTRAL_ENABLE_SENDER /
+ * HMI_CENTRAL_NAME_FILTER switches.  Flow:
+ *   start_scan -> le_scan_start (advertising deliberately left running)
+ *     GAP_MSG_LE_SCAN_INFO -> name filter -> cache MAC + RSSI + name
+ *   connect(idx) -> le_connect(candidate)
  *     CONNECTED(master) -> client_by_uuid128_srv_discovery(HMI 128-bit service)
  *       SRV_DONE  -> client_all_char_discovery
  *       CHAR_DONE -> client_all_char_descriptor_discovery (find EVENT CCCD)
- *       DESC_DONE -> write CCCD=notify -> state READY (ready for xfer, milestone B)
+ *       DESC_DONE -> write CCCD=notify -> state READY (sender half only)
  *   disconnect -> le_disconnect ; on DISCONNECTED the GAP layer restarts advertising.
  */
 #include "hmi_ble_central.h"
@@ -27,7 +28,9 @@
 
 #include "hmi_ctrl_service.h"   /* GATT_UUID128_HMI_SERVICE / _CMD / _EVENT */
 #include "hmi_ble_gap_msg.h"    /* hmi_ble_gap_start_adv() -- deferral-safe adv restart */
+#if HMI_CENTRAL_ENABLE_SENDER
 #include "hmi_l2_xfer_client.h" /* sender-side xfer state machine */
+#endif
 
 /*============================================================================*
  *                              Types & State
@@ -63,6 +66,8 @@ static bool        s_scan_started = false;
 
 static T_CEN_DEV   s_devs[HMI_CENTRAL_MAX_DEVS];
 static uint8_t     s_dev_cnt = 0;
+/* "table full" has already been reported for this scan.  Cleared by start_scan. */
+static bool        s_dev_full_warned = false;
 
 static T_CLIENT_ID s_hmi_client = CLIENT_PROFILE_GENERAL_ID;
 
@@ -271,8 +276,12 @@ static void cen_write_result_cb(uint8_t conn_id, T_GATT_WRITE_TYPE type, uint16_
 {
     (void)conn_id; (void)credits;
     APP_PRINT_INFO2("[central] write result handle 0x%x cause 0x%x", handle, cause);
+#if HMI_CENTRAL_ENABLE_SENDER
     /* Pace the xfer DATA pump on the CMD-char write-response. */
     hmi_l2_xfer_client_on_write_done((uint8_t)type, handle, cause);
+#else
+    (void)type;
+#endif
 }
 
 static T_APP_RESULT cen_notif_ind_result_cb(uint8_t conn_id, bool notify, uint16_t handle,
@@ -280,11 +289,15 @@ static T_APP_RESULT cen_notif_ind_result_cb(uint8_t conn_id, bool notify, uint16
 {
     (void)conn_id; (void)notify;
     APP_PRINT_INFO2("[central] notif handle 0x%x len %d", handle, value_size);
+#if HMI_CENTRAL_ENABLE_SENDER
     /* EVENT (f48affc2-...) carries the peer's proto frames (xfer responses + ACKs). */
     if (handle == s_event_handle)
     {
         hmi_l2_xfer_client_on_notify(p_value, value_size);
     }
+#else
+    (void)p_value;
+#endif
     return APP_RESULT_SUCCESS;
 }
 
@@ -418,6 +431,7 @@ bool hmi_ble_central_start_scan(void)
 
     s_dev_cnt = 0;
     memset(s_devs, 0, sizeof(s_devs));
+    s_dev_full_warned = false;
 
     if (s_scan_started)
     {
@@ -452,9 +466,19 @@ bool hmi_ble_central_stop_scan(void)
     {
         return false;
     }
-    le_scan_stop();
+    /* A SOFTWARE gate, not a radio stop.  le_scan_stop() is still issued because
+     * on a stack where the scan is genuinely stoppable it should be, and
+     * handle_scan_state() clears s_scan_started if IDLE ever actually arrives.
+     * But on this single-link stack the scan is wedged at GAP_SCAN_STATE_START and
+     * the call returns "invalid state 1" -- so what actually stops the device list
+     * from growing is s_state leaving CEN_SCANNING, which handle_scan_info() tests
+     * on entry.  Do not "fix" this by trusting the return value.
+     *
+     * No hmi_ble_gap_start_adv() here: advertising was never stopped to begin with
+     * (see start_scan), so there is nothing to restart -- and calling it while
+     * already ADVERTISING is a no-op that only muddies the log. */
+    (void)le_scan_stop();
     s_state = CEN_IDLE;
-    hmi_ble_gap_start_adv();     /* back to receiver(advertising) */
     return true;
 }
 
@@ -506,7 +530,10 @@ bool hmi_ble_central_connect(uint8_t idx)
 
     if (s_state == CEN_SCANNING)
     {
-        le_scan_stop();
+        /* Best-effort; the scan cannot actually be stopped on this stack (see
+         * stop_scan).  Leaving s_state below is what makes handle_scan_info()
+         * ignore the reports that keep arriving during the connect. */
+        (void)le_scan_stop();
     }
 
     T_CEN_DEV *d = &s_devs[idx];
@@ -535,6 +562,7 @@ bool hmi_ble_central_disconnect(void)
     return (le_disconnect(s_conn_id) == GAP_CAUSE_SUCCESS);
 }
 
+#if HMI_CENTRAL_ENABLE_SENDER
 bool hmi_ble_central_send_file(uint8_t type, const uint8_t *src, uint32_t total,
                                const char *fname, xfer_client_done_cb_t done_cb)
 {
@@ -552,6 +580,7 @@ bool hmi_ble_central_get_send_progress(uint32_t *bytes_sent, uint32_t *total,
 {
     return hmi_l2_xfer_client_get_progress(bytes_sent, total, phase);
 }
+#endif /* HMI_CENTRAL_ENABLE_SENDER */
 
 bool hmi_ble_central_is_active(void)
 {
@@ -602,27 +631,56 @@ void hmi_ble_central_handle_scan_info(T_LE_SCAN_INFO *p_info)
     }
 
     char name[HMI_CENTRAL_NAME_LEN] = {0};
-    if (cen_parse_name(p_info->data, p_info->data_len, name, sizeof(name)) == false)
-    {
-        return;
-    }
-    /* Software filter: keep only devices whose name contains "eBadge". */
-    if (strstr(name, "eBadge") == NULL)
+    /* No Local Name in this report is NORMAL, not a reject: many devices put the
+     * name only in the scan response, and some never advertise one.  Leave the
+     * cached name an empty string and carry on -- dropping the report here would
+     * make an unfiltered scan miss a large share of what is actually in range.
+     * (Harmless when the filter is non-empty: an empty name matches nothing.) */
+    (void)cen_parse_name(p_info->data, p_info->data_len, name, sizeof(name));
+
+    /* Software filter on the advertised name.  Empty HMI_CENTRAL_NAME_FILTER means
+     * "cache everything" -- strstr(x, "") is x, so the test degenerates to true
+     * rather than needing its own branch.  A hardware filter is not an option here:
+     * le_scan_info_filter() is not exported by the ROM stack. */
+    if (HMI_CENTRAL_NAME_FILTER[0] != '\0' &&
+        strstr(name, HMI_CENTRAL_NAME_FILTER) == NULL)
     {
         return;
     }
 
-    /* De-duplicate by address; refresh RSSI if already seen. */
+    /* De-duplicate by address; refresh RSSI (and a name that arrived later, e.g.
+     * in the scan response) if already seen.  Dup-filtering is disabled at the
+     * controller (see init), so an in-range device re-reports every advertising
+     * interval and this path is the common one -- which is what keeps the cached
+     * RSSI current instead of frozen at first sight. */
     for (uint8_t i = 0; i < s_dev_cnt; i++)
     {
         if (memcmp(s_devs[i].bd_addr, p_info->bd_addr, 6) == 0)
         {
             s_devs[i].rssi = p_info->rssi;
+            if (s_devs[i].name[0] == '\0' && name[0] != '\0')
+            {
+                strncpy(s_devs[i].name, name, HMI_CENTRAL_NAME_LEN - 1);
+                s_devs[i].name[HMI_CENTRAL_NAME_LEN - 1] = '\0';
+            }
             return;
         }
     }
     if (s_dev_cnt >= HMI_CENTRAL_MAX_DEVS)
     {
+        /* Table full: keeps the first N distinct addresses, does not evict a weak
+         * device for a stronger one.  Said once per scan rather than per report --
+         * with dup-filtering disabled this path is hit every advertising interval
+         * of every device in range, which would flood the console.  A separate
+         * flag, NOT a count sentinel: s_dev_cnt is the bound of both the dedup
+         * loop above and get_dev(), so pushing it past MAX would read off the end
+         * of s_devs[]. */
+        if (!s_dev_full_warned)
+        {
+            s_dev_full_warned = true;
+            APP_PRINT_WARN1("[central] candidate table full (%d), further devices ignored",
+                            (int)HMI_CENTRAL_MAX_DEVS);
+        }
         return;
     }
 
@@ -636,9 +694,10 @@ void hmi_ble_central_handle_scan_info(T_LE_SCAN_INFO *p_info)
 
     /* Two %s in one Realtek trace line garbles the args -- print MAC and name
      * separately (MAC via TRACE_BDADDR, name via TRACE_STRING). */
-    APP_PRINT_INFO3("[central] found eBadge #%d mac %s rssi %d",
+    APP_PRINT_INFO3("[central] found #%d mac %s rssi %d",
                     s_dev_cnt - 1, TRACE_BDADDR(d->bd_addr), d->rssi);
-    APP_PRINT_INFO1("[central]   name %s", TRACE_STRING(d->name));
+    APP_PRINT_INFO1("[central]   name %s",
+                    TRACE_STRING((d->name[0] != '\0') ? d->name : "(none)"));
 }
 
 void hmi_ble_central_handle_connected(uint8_t conn_id)
@@ -665,7 +724,9 @@ void hmi_ble_central_handle_connected(uint8_t conn_id)
 void hmi_ble_central_handle_disconnected(uint8_t conn_id, uint16_t disc_cause)
 {
     APP_PRINT_INFO2("[central] disconnected conn_id %d cause 0x%x", conn_id, disc_cause);
+#if HMI_CENTRAL_ENABLE_SENDER
     hmi_l2_xfer_client_on_disconnect();   /* fail any in-progress transfer */
+#endif
     s_conn_id = 0xFF;
     s_state   = CEN_IDLE;
     cen_reset_handles();

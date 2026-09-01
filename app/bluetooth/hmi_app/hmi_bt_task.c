@@ -27,9 +27,7 @@
 #include "hmi_ble_gap_init.h"
 #include "hmi_ble_gap_msg.h"
 #include "hmi_ble_profile_init.h"
-#if 0 /* V1.2 migration: P2P sender (hmi_ble_central) parked -- see hmi_ble/CMakeLists.txt */
 #include "hmi_ble_central.h"
-#endif
 
 
 #ifdef CONFIG_RTK_BT_BREDR
@@ -162,9 +160,12 @@ void bt_task_entry(void *p_param)
 #endif
     hmi_ble_gap_init();
     hmi_ble_profile_init();
-#if 0 /* V1.2 migration: P2P sender (hmi_ble_central) parked -- see hmi_ble/CMakeLists.txt */
-    hmi_ble_central_init();   /* GATT client for device-to-device file send */
-#endif
+    /* Observer/central role: registers the GATT client and sets the scan and
+     * initiator parameters.  Does NOT start a scan -- see the note on
+     * hmi_ble_central_start_scan(); scanning begins when something asks for a
+     * device list.  Must be before gap_start_bt_stack(), like the rest of this
+     * sequence, because client_init() has to happen before the stack runs. */
+    hmi_ble_central_init();
 
 #ifdef CONFIG_RTK_BT_BREDR
     framework_init();

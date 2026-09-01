@@ -15,9 +15,7 @@
 #include "hmi_ble_gap_msg.h"
 #include "hmi_ble_conn.h"
 #include "app_ota_service.h"
-#if 0 /* V1.2 migration: P2P sender parked */
 #include "hmi_ble_central.h"
-#endif
 
 static T_GAP_DEV_STATE gap_dev_state = {0, 0, 0, 0};                 /**< GAP device state */
 static T_GAP_CONN_STATE gap_conn_state = GAP_CONN_STATE_DISCONNECTED; /**< GAP connection state */
@@ -26,6 +24,20 @@ static hmi_ble_conn_info_t hmi_conn_info = {0, 0, 0, 0};             /**< Cached
 static T_LE_MSG_CBACK_ITEM gap_msg_list = {NULL, NULL};
 
 static void update_conn_info(uint8_t conn_id);
+
+/* Who owns the current link: true if WE initiated it (central/master, file-send
+ * mode), false if the peer connected to us (peripheral/slave, the phone).
+ *
+ * This is NOT hmi_ble_central_is_active(), and the difference bites: is_active()
+ * is true for the whole of CEN_SCANNING, so with a device list open on screen a
+ * phone's link would be misrouted into the central handler and
+ * app_ota_glue_link_disconnected() would never run.  The link role from
+ * le_get_conn_info() is the authoritative discriminator.
+ *
+ * Latched at CONNECTED rather than queried at DISCONNECTED, because by the time
+ * the disconnect arrives the link is gone and le_get_conn_info() has nothing
+ * left to report. */
+static bool s_link_is_master = false;
 
 /* le_adv_start() may be rejected (cause 0x2 GAP_CAUSE_INVALID_STATE) while a
  * link is still tearing down: right after a central/master disconnect the
@@ -176,19 +188,17 @@ static void app_handle_dev_state_evt(T_GAP_DEV_STATE new_state, uint16_t cause)
         {
             APP_PRINT_INFO0("GAP scan stop");
         }
-        /* Second half of a re-scan: le_scan_start() the fresh session only once
-         * the old one has fully stopped (IDLE).  Issuing it back-to-back with
-         * le_scan_stop() drops the start -> the second scan finds 0 devices. */
-#if 0 /* V1.2 migration: P2P sender parked */
+        /* Let the central module notice a scan that genuinely reached IDLE, so the
+         * next start_scan re-issues le_scan_start() instead of reusing a scan that
+         * is no longer running.  On this stack that effectively never happens (the
+         * scan wedges at START); it is a self-heal, not the normal path. */
         hmi_ble_central_handle_scan_state(new_state.gap_scan_state);
-#endif
     }
 
-    /* Let the central module sequence its adv-stop -> scan-start transition
-     * (starting a scan concurrently with an adv stop wedges adv in STOP). */
-#if 0 /* V1.2 migration: P2P sender parked */
+    /* Second half of the serialized adv-stop -> scan-start, for the code path that
+     * stops advertising first.  start_scan() deliberately does NOT stop adv, so
+     * this too is currently a no-op kept for the state machine's completeness. */
     hmi_ble_central_handle_adv_state(new_state.gap_adv_state);
-#endif
 
     gap_dev_state = new_state;
 }
@@ -216,17 +226,20 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
             {
                 APP_PRINT_ERROR1("app_handle_conn_state_evt: connection lost cause 0x%x", disc_cause);
             }
-#if 0 /* V1.2 migration: P2P sender parked -- always take the receiver branch */
-            if (hmi_ble_central_is_active())
+            /* Route by who owned the link, using the role latched at CONNECTED --
+             * not hmi_ble_central_is_active(), which is also true for a mere open
+             * scan and would send a phone's disconnect down the central path (see
+             * s_link_is_master). */
+            if (s_link_is_master)
             {
                 /* We owned this link as GATT client (file-send mode). */
                 hmi_ble_central_handle_disconnected(conn_id, disc_cause);
             }
             else
-#endif
             {
                 app_ota_glue_link_disconnected(conn_id, disc_cause);
             }
+            s_link_is_master = false;
             memset(&hmi_conn_info, 0, sizeof(hmi_conn_info));
             hmi_ble_gap_start_adv();    /* return to receiver(advertising) state */
         }
@@ -248,14 +261,33 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
                             TRACE_BDADDR(remote_bd), remote_bd_type,
                             conn_interval, conn_latency, conn_supervision_timeout);
 
-#if 0 /* V1.2 migration: P2P sender parked -- always take the receiver branch */
-            if (hmi_ble_central_is_active())
+            /* Latch who owns this link while it still exists (see s_link_is_master).
+             * Fall back to "peer connected to us" if the query fails: the phone is
+             * the overwhelmingly common case, and taking the receiver branch on a
+             * central link merely skips discovery, whereas taking the central
+             * branch on a phone link breaks the whole receive path. */
+            T_GAP_CONN_INFO conn_info;
+            if (le_get_conn_info(conn_id, &conn_info))
             {
-                /* We initiated this link as GATT client -> start discovery. */
+                s_link_is_master = (conn_info.role == GAP_LINK_ROLE_MASTER);
+            }
+            else
+            {
+                s_link_is_master = false;
+                APP_PRINT_WARN1("le_get_conn_info failed for conn_id %d, assuming slave", conn_id);
+            }
+            APP_PRINT_INFO1("GAP_CONN_STATE_CONNECTED: link role %s",
+                            TRACE_STRING(s_link_is_master ? "master(central)" : "slave(peripheral)"));
+
+            if (s_link_is_master)
+            {
+                /* We initiated this link as GATT client -> start discovery.
+                 * Reachable with the sender parked: handle_connected() only uses the
+                 * ROM client API, so discovery runs and CEN_READY is reached; just
+                 * hmi_ble_central_send_file() is absent. */
                 hmi_ble_central_handle_connected(conn_id);
             }
             else
-#endif
             {
                 update_conn_info(conn_id);
                 app_ota_glue_link_connected(conn_id, 0, remote_bd);

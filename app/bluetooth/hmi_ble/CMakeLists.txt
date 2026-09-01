@@ -10,12 +10,14 @@ if(1) #set to 1 to enable or variable to for depnedency
     file(GLOB SOURCES "*.c" "*.cpp")
     file(GLOB HEADERS "*.h" "*.hpp")
 
-    # V1.2 migration: hmi_ble_central.c drives the P2P sender role and is
-    # still bound to the OLD protocol (hmi_proto / hmi_l2 / hmi_l2_xfer_client).
-    # The receiver has migrated to app/protocol/; two eBadges no longer
-    # interop.  Rebuild the sender later, then re-add these files.  See
-    # decision P3 in the V1.2 migration discussion.
-    list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/hmi_ble_central.c")
+    # hmi_ble_central.c is compiled again (BLE scanning).  It used to be removed
+    # here wholesale because its SENDER half is bound to the pre-V1.2 protocol in
+    # app/l2_handlers/, which is not built and not on the include path.  That half
+    # is now behind HMI_CENTRAL_ENABLE_SENDER (default 0, see hmi_ble_central.h);
+    # the SCANNER half has no such dependency -- it uses only the ROM-resident
+    # observer API -- so excluding the whole file to park the sender also threw away
+    # scanning, which is a separate feature.  Re-enabling the sender means building
+    # app/l2_handlers/ first, NOT touching this file.
 
     # Determine if we should create a library
     if((NOT HEADERS) AND (NOT SOURCES))
