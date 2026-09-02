@@ -37,6 +37,7 @@ int main(void)
     /* DLPS must be initialized and locked before any other initialization. */
     app_dlps_init();
     app_dlps_disable(APP_DLPS_ENTER_CHECK_INIT);
+    app_system_lower_init();
 
     /* A PAD exits power-down by rebooting the SoC. Before powering any
      * application-controlled rail, require the wake key to remain pressed for
@@ -73,8 +74,6 @@ int main(void)
      * ebadge_task_init() costs a register write. */
     ebadge_port_antenna_init();
 
-
-    app_system_lower_init();
     printf("\nHello World! Version: %s, %s\n", APP_EBADGE_VERSION, CONFIG_BOARD_TARGET);
     printf("[main] thread id: %p, name: %s, priority: %d\n",
            k_current_get(),

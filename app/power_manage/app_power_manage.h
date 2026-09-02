@@ -12,7 +12,7 @@
 extern "C" {
 #endif
 
-#define APP_POWER_LONG_PRESS_MS 1000U
+#define APP_POWER_LONG_PRESS_MS 3000U
 
 bool app_power_manage_is_power_off_requested(void);
 void app_power_manage_handle_long_press(void);

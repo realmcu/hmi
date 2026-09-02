@@ -54,7 +54,7 @@ static const struct gpio_dt_spec touch_pwr = GPIO_DT_SPEC_GET(TOUCH_DEV_NODE, pw
 static const struct gpio_dt_spec touch_irq = GPIO_DT_SPEC_GET(TOUCH_DEV_NODE, irq_gpios);
 static const struct gpio_dt_spec touch_rst = GPIO_DT_SPEC_GET(TOUCH_DEV_NODE, rst_gpios);
 
-static bool power_off_requested;
+static bool power_off_requested = false;
 
 static RAM_TEXT_SECTION void pad_all_power_off(void)
 {
