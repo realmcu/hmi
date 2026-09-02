@@ -229,6 +229,23 @@ int spi_at_master_init(void);
 bool spi_at_master_ready(void);
 
 /**
+ * @brief  Take the 8711 link down so it cannot wake the SoC.  One-way.
+ *
+ * For the power-off path.  Two distinct wake sources live here and both must go:
+ * the S2M GPIO interrupt, which is how the 8711 asks for a slot and would pull us
+ * out of power-down at any moment; and the ready_to_work delayable, a live kernel
+ * timeout that fires regardless of which threads are suspended.
+ *
+ * Also force-releases APP_DLPS_ENTER_CHECK_WIFI_8711.  The bit is normally
+ * bracketed per transaction, but a transport thread suspended mid-bracket would
+ * leave it set, and app_dlps_check_callback() then refuses low-power mode forever.
+ *
+ * Cascades into at_client_quiesce().  Call before suspending any thread: the work
+ * cancel is synchronous and would deadlock against a suspended system workqueue.
+ */
+void spi_at_master_quiesce(void);
+
+/**
  * @brief  Send one AT payload: stage it, then assert M2S to request the slot.
  *
  * Returns as soon as the frame is staged -- it goes out when the 8711 answers

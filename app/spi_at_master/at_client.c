@@ -664,6 +664,27 @@ bool at_client_busy(void)
     return s_step != ST_IDLE;
 }
 
+void at_client_quiesce(void)
+{
+    static struct k_work_sync sync;
+
+    /* Sync form: the async cancel returns while a handler may still be running,
+     * and both handlers reschedule themselves -- timeout_handler() to drive the
+     * next queued command, stage_work_handler() to re-stage a refused line -- so
+     * an async cancel can lose the race and leave a fresh timeout armed. */
+    (void)k_work_cancel_delayable_sync(&s_timeout_work, &sync);
+    (void)k_work_cancel_delayable_sync(&s_stage_work, &sync);
+
+    /* Empty the queue and park the state machine so nothing re-arms the timers
+     * if a late rx_slot()/on_line() still lands before the pads go down. */
+    k_mutex_lock(&s_lock, K_FOREVER);
+    s_q_head     = 0;
+    s_q_count    = 0;
+    s_step       = ST_IDLE;
+    s_link_ready = false;
+    k_mutex_unlock(&s_lock);
+}
+
 int at_client_submit(const char *cmd, at_line_cb_t on_line_cb,
                      at_done_cb_t done, void *user, uint32_t timeout_ms)
 {

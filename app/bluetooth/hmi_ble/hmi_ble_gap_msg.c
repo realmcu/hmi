@@ -15,11 +15,17 @@
 #include "hmi_ble_gap_msg.h"
 #include "hmi_ble_conn.h"
 #include "app_ota_service.h"
+#include "hmi_br_edr_gap_init.h" /* hmi_br_edr_set_radio_enabled() */
+#if 0 /* V1.2 migration: P2P sender parked */
 #include "hmi_ble_central.h"
+#endif
+
+#define HMI_BLE_INVALID_CONN_ID     0xFFu
 
 static T_GAP_DEV_STATE gap_dev_state = {0, 0, 0, 0};                 /**< GAP device state */
 static T_GAP_CONN_STATE gap_conn_state = GAP_CONN_STATE_DISCONNECTED; /**< GAP connection state */
 static hmi_ble_conn_info_t hmi_conn_info = {0, 0, 0, 0};             /**< Cached BLE connection info */
+static uint8_t s_conn_id = HMI_BLE_INVALID_CONN_ID;                  /**< Active link, for le_disconnect() */
 
 static T_LE_MSG_CBACK_ITEM gap_msg_list = {NULL, NULL};
 
@@ -48,9 +54,24 @@ static bool s_link_is_master = false;
 static void    *s_adv_retry_timer     = NULL;
 static uint8_t  s_adv_retry_cnt       = 0;
 
+/* Advertising gate.  Closed by hmi_ble_gap_set_adv_enabled(false) -- e.g. the UI
+ * power-off path -- so that the three implicit "back to advertising" transitions
+ * (GAP_INIT_STATE_STACK_READY, GAP_CONN_STATE_DISCONNECTED, and the retry timer
+ * below) cannot bring the radio back up behind the user's back. */
+static bool     s_adv_gate_closed     = false;
+
 #define ADV_RETRY_TIMER_ID   1u
 #define ADV_RETRY_MS         200u
 #define ADV_RETRY_MAX        10u    /* ~2s worst case */
+
+static void adv_retry_cancel(void)
+{
+    s_adv_retry_cnt = 0;
+    if (s_adv_retry_timer != NULL)
+    {
+        os_timer_stop(&s_adv_retry_timer);
+    }
+}
 
 static void adv_retry_timer_cb(void *p_handle)
 {
@@ -61,27 +82,27 @@ static void adv_retry_timer_cb(void *p_handle)
 
 void hmi_ble_gap_start_adv(void)
 {
+    if (s_adv_gate_closed)
+    {
+        /* Advertising was deliberately switched off; swallow the restart. */
+        adv_retry_cancel();
+        APP_PRINT_INFO0("hmi_ble_gap_start_adv: suppressed, adv gate closed");
+        return;
+    }
+
     uint8_t adv_st = gap_dev_state.gap_adv_state;
     if (adv_st == GAP_ADV_STATE_ADVERTISING || adv_st == GAP_ADV_STATE_START)
     {
         /* Already advertising / starting (e.g. a master connection did not stop
          * our advertising) -- nothing to do. */
-        s_adv_retry_cnt = 0;
-        if (s_adv_retry_timer != NULL)
-        {
-            os_timer_stop(&s_adv_retry_timer);
-        }
+        adv_retry_cancel();
         return;
     }
 
     T_GAP_CAUSE cause = le_adv_start();
     if (cause == GAP_CAUSE_SUCCESS)
     {
-        s_adv_retry_cnt = 0;
-        if (s_adv_retry_timer != NULL)
-        {
-            os_timer_stop(&s_adv_retry_timer);
-        }
+        adv_retry_cancel();
         return;
     }
 
@@ -108,9 +129,67 @@ void hmi_ble_gap_start_adv(void)
     }
 }
 
+void hmi_ble_gap_set_adv_enabled(bool enable)
+{
+    if (enable)
+    {
+        s_adv_gate_closed = false;
+        APP_PRINT_INFO0("hmi_ble_gap_set_adv_enabled: gate open, restarting adv");
+        hmi_ble_gap_start_adv();
+        return;
+    }
+
+    s_adv_gate_closed = true;
+
+    /* Order matters: kill the retry timer first.  Its callback calls
+     * hmi_ble_gap_start_adv(), and although the gate now swallows that, cancelling
+     * here also releases the timer for the next open/close cycle. */
+    adv_retry_cancel();
+
+    /* Drop an active link as well.  A connection wakes the radio every connection
+     * interval (30ms after the update in app_handle_conn_state_evt), which costs
+     * considerably more than the 200ms advertising we are about to stop.  The
+     * DISCONNECTED handler calls hmi_ble_gap_start_adv(), which the closed gate
+     * now suppresses. */
+    if (gap_conn_state == GAP_CONN_STATE_CONNECTED && s_conn_id != HMI_BLE_INVALID_CONN_ID)
+    {
+        APP_PRINT_INFO1("hmi_ble_gap_set_adv_enabled: disconnecting conn_id %d", s_conn_id);
+        le_disconnect(s_conn_id);
+    }
+
+    uint8_t adv_st = gap_dev_state.gap_adv_state;
+    if (adv_st == GAP_ADV_STATE_ADVERTISING || adv_st == GAP_ADV_STATE_START)
+    {
+        T_GAP_CAUSE cause = le_adv_stop();
+        APP_PRINT_INFO2("hmi_ble_gap_set_adv_enabled: le_adv_stop adv_state %d, cause 0x%x",
+                        adv_st, cause);
+    }
+    else
+    {
+        APP_PRINT_INFO1("hmi_ble_gap_set_adv_enabled: gate closed, adv already off (state %d)",
+                        adv_st);
+    }
+}
+
+bool hmi_ble_request_adv_enable(bool enable)
+{
+    T_IO_MSG msg;
+
+    msg.type    = IO_MSG_TYPE_WRISTBNAD; // can't find more suitable type
+    msg.subtype = enable ? IO_MSG_START_BLE_ADV : IO_MSG_STOP_BLE_ADV;
+    msg.u.param = 0;
+
+    return hmi_send_msg_to_bt_task(&msg);
+}
+
 uint8_t hmi_ble_gap_get_adv_state(void)
 {
     return gap_dev_state.gap_adv_state;
+}
+
+bool hmi_ble_adv_is_idle(void)
+{
+    return gap_dev_state.gap_adv_state == GAP_ADV_STATE_IDLE;
 }
 
 
@@ -241,6 +320,8 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
             }
             s_link_is_master = false;
             memset(&hmi_conn_info, 0, sizeof(hmi_conn_info));
+            s_conn_id = HMI_BLE_INVALID_CONN_ID;
+            /* Suppressed while the adv gate is closed (UI power-off). */
             hmi_ble_gap_start_adv();    /* return to receiver(advertising) state */
         }
         break;
@@ -289,6 +370,7 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
             }
             else
             {
+                s_conn_id = conn_id;
                 update_conn_info(conn_id);
                 app_ota_glue_link_connected(conn_id, 0, remote_bd);
 
@@ -523,6 +605,35 @@ void hmi_handle_bt_io_msg(T_IO_MSG io_msg)
             }
         }
         break;
+
+    /* App-side commands.  These arrive from other tasks (GUI, protocol) which
+     * must not touch GAP directly -- le_adv_start()/le_adv_stop() only post to
+     * the stack and expect to be driven from the BT task. */
+    case IO_MSG_TYPE_WRISTBNAD:
+        {
+            switch (io_msg.subtype)
+            {
+            case IO_MSG_START_BLE_ADV:
+                hmi_ble_gap_set_adv_enabled(true);
+                break;
+
+            case IO_MSG_STOP_BLE_ADV:
+                hmi_ble_gap_set_adv_enabled(false);
+                break;
+
+#ifdef CONFIG_RTK_BT_BREDR
+            case IO_MSG_BREDR_RADIO_OFF:
+                hmi_br_edr_set_radio_enabled(false);
+                break;
+#endif
+
+            default:
+                APP_PRINT_WARN1("hmi_handle_bt_io_msg: unhandled app subtype %d", io_msg.subtype);
+                break;
+            }
+        }
+        break;
+
     default:
         break;
     }

@@ -85,6 +85,15 @@ static int app_mpu_config(void)
 
     mpu_config_print();
 
+    {
+        // uint32_t mpu_cfg_rbar = SPIC3_MEM_BASE | (1 << 1); // SH:0, AP:1, XN:0
+        // uint32_t limit_addr = SPIC3_MEM_BASE + 0x400000; // PXN:0, EN:1
+        // uint8_t region_num = 4;
+        // uint8_t attribute = 0xAA;
+        // mpu_set_region(mpu_cfg_rbar, limit_addr, region_num, attribute, true);
+        // mpu_config_print();
+    }
+
     return 0;
 }
 

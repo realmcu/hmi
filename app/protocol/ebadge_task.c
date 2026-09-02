@@ -330,6 +330,37 @@ void ebadge_task_set_tick(ebadge_tick_fn_t fn)
     s_tick_fn[s_tick_n++] = fn;
 }
 
+void ebadge_task_quiesce(void)
+{
+    if (!s_inited)
+    {
+        return;
+    }
+
+    /* Clear this first.  It is what post_call()/on_rx()/expect_raw() check, so
+     * from here on nothing new lands in the queue -- including from the tick
+     * callback, should it already be mid-flight on the timer task. */
+    s_inited = false;
+
+    if (s_tick_timer != NULL)
+    {
+        os_timer_stop(&s_tick_timer);
+    }
+
+    /* Before the task is parked, while the system workqueue is still running:
+     * these cancel synchronously. */
+    ebadge_port_tcp_quiesce();
+
+    if (s_task_handle != NULL)
+    {
+        /* Suspend rather than delete.  Deleting frees the stack the task may be
+         * standing on, and nothing here outlives the power-down anyway. */
+        os_task_suspend(s_task_handle);
+    }
+
+    EBADGE_LOG("ebadge_task: quiesced (tick stopped, l2_task suspended)");
+}
+
 uint32_t ebadge_task_now_ms(void)
 {
     /* os_sys_time_get() returns a 64-bit Zephyr k_uptime_get()-derived ms tick;

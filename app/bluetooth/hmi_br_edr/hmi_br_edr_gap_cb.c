@@ -9,6 +9,7 @@
 #include "btm.h"
 #include "bt_bond.h"
 #include "hmi_br_edr_gap_cb.h"
+#include "hmi_br_edr_gap_init.h"
 #include "hmi_br_edr_link.h"
 
 void hmi_br_edr_gap_common_cb(uint8_t cb_type, void *p_cb_data)
@@ -119,7 +120,13 @@ void hmi_br_edr_gap_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t bu
                 hmi_br_edr_free_link(p_link);
             }
 
-            bt_device_mode_set(BT_DEVICE_MODE_DISCOVERABLE_CONNECTABLE);
+            /* Not while the radio has been switched off on purpose -- on the
+             * power-off path this handler runs *after* hmi_br_edr_set_radio_enabled
+             * (false) and would put page and inquiry scan straight back on. */
+            if (!hmi_br_edr_radio_gate_is_closed())
+            {
+                bt_device_mode_set(BT_DEVICE_MODE_DISCOVERABLE_CONNECTABLE);
+            }
         }
         break;
 
@@ -144,6 +151,8 @@ void hmi_br_edr_gap_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t bu
         break;
 
     case BT_EVENT_DEVICE_MODE_RSP:
+        hmi_br_edr_radio_mode_rsp(param->device_mode_rsp.dev_mode,
+                                  param->device_mode_rsp.cause);
         break;
 
     default:

@@ -284,6 +284,24 @@ void at_client_reset_stats(void);
 /** Parser counters, for the same shell command that shows the above. */
 void at_client_get_parser_stats(at_parser_stats_t *out);
 
+/*----------------------------------------------------------------------------*
+ *  Power-off
+ *----------------------------------------------------------------------------*/
+/**
+ * @brief  Cancel the timeout and staging timers and abandon the queue.
+ *
+ * One-way, for the power-off path.  Both of this module's k_work_delayable are
+ * live kernel timeouts that would pull the SoC back out of power-down at their
+ * deadline no matter which threads are suspended -- the retry/timeout pair is
+ * armed for seconds at a time, so the wake is close to guaranteed.
+ *
+ * In-flight commands are dropped without firing their done callbacks: those run
+ * on the transport thread, which is about to be suspended, and the 8711 is being
+ * powered off regardless.  Call before suspending any thread -- the cancels are
+ * synchronous and would deadlock against a suspended system workqueue.
+ */
+void at_client_quiesce(void);
+
 #ifdef __cplusplus
 }
 #endif

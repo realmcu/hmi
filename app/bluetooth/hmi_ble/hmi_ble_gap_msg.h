@@ -91,11 +91,39 @@ void hmi_le_msg_cback_unregister(P_LE_MSG_HANDLER_CBACK cback);
 
 /* Start (or restart) legacy advertising, tolerant of a still-tearing-down link:
  * retries automatically when the GAP device state settles.  Use this instead of
- * le_adv_start() for any "return to receiver/advertising" transition. */
+ * le_adv_start() for any "return to receiver/advertising" transition.
+ *
+ * No-op while the adv gate is closed -- see hmi_ble_gap_set_adv_enabled(). */
 void hmi_ble_gap_start_adv(void);
+
+/* Open/close the advertising gate.  Closing it stops advertising, drops any
+ * active link, and latches the gate so the implicit restarts (stack ready,
+ * link disconnected, adv retry timer) cannot bring the radio back up.  Opening
+ * it clears the latch and starts advertising again.
+ *
+ * BT-task context only -- from any other task use hmi_ble_request_adv_enable().
+ */
+void hmi_ble_gap_set_adv_enabled(bool enable);
+
+/* Async form of hmi_ble_gap_set_adv_enabled(), callable from any task (GUI,
+ * protocol, ...): posts IO_MSG_START_BLE_ADV / IO_MSG_STOP_BLE_ADV to the BT
+ * task.  Returns false if the BT task queues rejected the request. */
+bool hmi_ble_request_adv_enable(bool enable);
 
 /* Current GAP advertising state (@ref GAP_ADV_STATE_* in gap_msg.h). */
 uint8_t hmi_ble_gap_get_adv_state(void);
+
+/* True when advertising has actually reached GAP_ADV_STATE_IDLE.
+ *
+ * Exists because hmi_ble_request_adv_enable(false) only posts a message: the stop
+ * is carried out later, on the BT task, and confirmed later still by the
+ * controller.  A caller that powers the radio down immediately afterwards sees no
+ * stop at all.  This is the predicate to poll in between -- BT deep sleep is
+ * refused outright while adv is up (BTMAC_POWERMODE_ERROR_ADV_STATE_NOT_IDLE).
+ *
+ * Wraps hmi_ble_gap_get_adv_state() so callers outside app/bluetooth/ need not
+ * pull in gap_msg.h for the enum. */
+bool hmi_ble_adv_is_idle(void);
 
 
 #ifdef __cplusplus

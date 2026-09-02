@@ -15,7 +15,7 @@
 #include "ebadge_task.h"      /* V1.2 protocol stack entry point            */
 #include "port/ebadge_port_antenna.h"  /* the shared antenna -- parked below  */
 #include "gui_server.h"
-#include "gui_port.h"
+#include "app_power_manage.h"
 #include "rtl876x_pinmux.h"
 #include "app_lower_init.h"
 #include "app_dlps.h"
@@ -37,14 +37,15 @@ int main(void)
     /* DLPS must be initialized and locked before any other initialization. */
     app_dlps_init();
     app_dlps_disable(APP_DLPS_ENTER_CHECK_INIT);
-    (void)power_mode_pause();
-    extern bool gui_port_power_on_gate(void);
+
+    /* A PAD exits power-down by rebooting the SoC. Before powering any
+     * application-controlled rail, require the wake key to remain pressed for
+     * three seconds. A short press releases the init lock and returns to
+     * power-down without starting the application. */
     if (!gui_port_power_on_gate())
     {
-        printk("[power-key] short wake, returning to power-down\n");
         app_dlps_enable(APP_DLPS_ENTER_CHECK_INIT);
-        (void)power_mode_set(POWER_POWERDOWN_MODE);
-        (void)power_mode_resume();
+        gui_port_power_down_enter();
         return 0;
     }
 

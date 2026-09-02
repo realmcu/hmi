@@ -761,3 +761,20 @@ bool ebadge_port_tcp_connected(void)
     return false;
 #endif
 }
+
+void ebadge_port_tcp_quiesce(void)
+{
+#if defined(CONFIG_WIFI_8711)
+    /* Sync cancel, not k_work_cancel_delayable(): the async form returns while the
+     * handler may still be running on the system workqueue, and a handler that
+     * reschedules itself would re-arm the timeout we just cleared. */
+    static struct k_work_sync sync;
+
+    (void)k_work_cancel_delayable_sync(&s_ctrl_work, &sync);
+    (void)k_work_cancel_delayable_sync(&s_fail_work, &sync);
+#endif
+
+    /* Drops the pending ack/abort with it.  Deliberate: the completion callback
+     * would notify the phone over BLE, and the radio is going down anyway. */
+    s_armed = false;
+}

@@ -1,6 +1,7 @@
 
 #include "guidef.h"
 #include "gui_port.h"
+#include "app_power_manage.h"
 #include "gui_api.h"
 #include "trace.h"
 #include "string.h"
@@ -58,6 +59,8 @@
 #include <rtl876x_rcc.h>
 #include <rtl876x_gdma.h>
 #include <dma_channel.h>
+
+bool is_screenon = false;
 
 #if 0
 
@@ -149,6 +152,7 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
 }
 
 #else
+
 void port_gui_lcd_update(struct gui_dispdev *dc)
 {
     if (!app_dlps_check_enter_bits(APP_DLPS_ENTER_CHECK_DISPLAY))
@@ -184,7 +188,6 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
 
 }
 #endif
-
 static void gui_dc_lcd_power_on(void)
 {
     gui_log("port_gui_lcd_power_on\n");
@@ -192,11 +195,15 @@ static void gui_dc_lcd_power_on(void)
     {
         return;
     }
+    /* Claim the DLPS gate *before* touching LCDC, not after. */
     app_dlps_disable(APP_DLPS_ENTER_CHECK_DISPLAY);
+    screen_on_off_power_set(true);
     rtk_lcd_hal_init();
+    is_screenon = true;
     sys_hall_auto_sleep_in_idle(false);
 }
 
+extern void rtk_lcd_hal_set_display(bool on);
 static void gui_dc_lcd_power_off(void)
 {
     gui_log("port_gui_lcd_power_off\n");
@@ -204,10 +211,12 @@ static void gui_dc_lcd_power_off(void)
     {
         return;
     }
+    platform_delay_ms(20);
     rtk_lcd_hal_set_display(false);
-    // rtk_lcd_hal_lcd_enter_dlps();
-    sys_hall_auto_sleep_in_idle(true);
+    is_screenon = false;
     app_dlps_enable(APP_DLPS_ENTER_CHECK_DISPLAY);
+    screen_on_off_power_set(false);
+    sys_hall_auto_sleep_in_idle(true);
 }
 static struct gui_dispdev dc =
 {
@@ -254,6 +263,8 @@ void gui_port_dc_init(void)
 
     dc.screen_width =  rtk_lcd_hal_get_width();
     dc.screen_height = rtk_lcd_hal_get_height();
+
+    is_screenon = true;
 
     gui_dc_info_register(&dc);
     gui_log("gui_port_dc_init ");

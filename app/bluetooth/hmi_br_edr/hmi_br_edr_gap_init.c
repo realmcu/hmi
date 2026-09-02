@@ -7,6 +7,9 @@
 #include "gap.h"
 #include "gap_br.h"
 #include "hmi_br_edr_gap_cb.h"
+#include "hmi_br_edr_gap_init.h"
+#include "hmi_bt_task.h"
+#include "app_msg.h"
 #include "remote.h"
 #include "btm.h"
 
@@ -79,5 +82,91 @@ void hmi_br_edr_gap_init(void)
     gap_register_app_cb(hmi_br_edr_gap_common_cb);
 
     bt_mgr_cback_register(hmi_br_edr_gap_bt_cback);
+}
+
+/*----------------------------------------------------------------------------*
+ *  Radio on/off
+ *
+ *  The badge comes up GAP_RADIO_MODE_VISIBLE_CONNECTABLE, so the controller runs
+ *  page scan *and* inquiry scan for as long as it is powered -- both on a 0x800
+ *  slot interval, i.e. one scan window every 1.28 s.  Each window is a BT MAC
+ *  wakeup, and each one hands its slot timer callback to a task to run.  A
+ *  power-off that leaves BR/EDR in this state therefore cannot be quiet, no
+ *  matter what else it stops.
+ *
+ *  GAP_RADIO_MODE_NONE_DISCOVERABLE turns both scans off.  It is confirmed
+ *  asynchronously by BT_EVENT_DEVICE_MODE_RSP, hence the latch below and
+ *  hmi_br_edr_radio_is_idle() for callers that have to wait for it.
+ *----------------------------------------------------------------------------*/
+static bool s_radio_gate_closed;
+static bool s_radio_idle;
+
+bool hmi_br_edr_radio_gate_is_closed(void)
+{
+    return s_radio_gate_closed;
+}
+
+bool hmi_br_edr_radio_is_idle(void)
+{
+    return s_radio_idle;
+}
+
+void hmi_br_edr_radio_mode_rsp(uint8_t dev_mode, uint16_t cause)
+{
+    APP_PRINT_INFO2("hmi_br_edr_radio_mode_rsp: dev_mode %d cause 0x%04x", dev_mode, cause);
+
+    if (cause == 0)
+    {
+        s_radio_idle = (dev_mode == BT_DEVICE_MODE_IDLE);
+    }
+}
+
+void hmi_br_edr_set_radio_enabled(bool enable)
+{
+    T_BT_DEVICE_MODE mode = enable ? BT_DEVICE_MODE_DISCOVERABLE_CONNECTABLE
+                                   : BT_DEVICE_MODE_IDLE;
+    uint8_t radio_mode = enable ? GAP_RADIO_MODE_VISIBLE_CONNECTABLE
+                                : GAP_RADIO_MODE_NONE_DISCOVERABLE;
+
+    s_radio_gate_closed = !enable;
+    s_radio_idle        = false;
+
+    /* Two layers, deliberately, and no shortcut on the mode BTM reports.
+     *
+     * BTM keeps its own idea of the device mode and ours is stale: the scan that is
+     * actually running was switched on by gap_br_set_param(GAP_BR_PARAM_RADIO_MODE)
+     * in hmi_br_edr_gap_init() *before the stack started*, which never went through
+     * BTM.  So bt_device_mode_get() answers BT_DEVICE_MODE_IDLE while the controller
+     * keeps logging "Scan Info: ... enable 3" every 1.28 s, and an earlier version
+     * of this function trusted it, logged "already in mode 0" and stopped nothing.
+     *
+     * bt_device_mode_set() keeps BTM's bookkeeping in step -- the ACL handlers in
+     * hmi_br_edr_gap_cb.c drive the mode through it.  gap_br_set_radio_mode() is the
+     * call that actually reaches the controller, being the same layer that turned
+     * scan on in the first place. */
+    bool ok = bt_device_mode_set(mode);
+    T_GAP_CAUSE cause = gap_br_set_radio_mode(radio_mode, false, 0);
+
+    APP_PRINT_INFO4("hmi_br_edr_set_radio_enabled: enable %d, dev_mode %d ret %d, radio_mode %d",
+                    enable, mode, ok, radio_mode);
+    APP_PRINT_INFO1("hmi_br_edr_set_radio_enabled: gap_br_set_radio_mode cause 0x%02x", cause);
+
+    if (!enable && cause != GAP_CAUSE_SUCCESS)
+    {
+        /* Nothing more we can do from here; let the caller's wait time out and say
+         * so, rather than claim a radio-off that never happened. */
+        APP_PRINT_ERROR0("hmi_br_edr_set_radio_enabled: radio stays up");
+    }
+}
+
+bool hmi_br_edr_request_radio_off(void)
+{
+    T_IO_MSG msg;
+
+    msg.type    = IO_MSG_TYPE_WRISTBNAD;
+    msg.subtype = IO_MSG_BREDR_RADIO_OFF;
+    msg.u.param = 0;
+
+    return hmi_send_msg_to_bt_task(&msg);
 }
 

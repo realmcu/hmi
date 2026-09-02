@@ -116,8 +116,8 @@
 	i2c2_sleep: i2c2_sleep {
 		group1 {
 			psels =
-				<RTL87X3G_PSEL(SW_MODE, P2_3, DIR_IN, DRV_LOW, PULL_UP)>,
-				<RTL87X3G_PSEL(SW_MODE, P2_4, DIR_IN, DRV_LOW, PULL_UP)>;
+				<RTL87X3G_PSEL(SW_MODE, P2_3, DIR_IN, DRV_LOW, PULL_DOWN)>,
+				<RTL87X3G_PSEL(SW_MODE, P2_4, DIR_IN, DRV_LOW, PULL_DOWN)>;
 		};
 	};
 
@@ -132,8 +132,8 @@
 	i2c0_sleep: i2c0_sleep {
 		group1 {
 			psels =
-				<RTL87X3G_PSEL(SW_MODE, P5_0, DIR_IN, DRV_LOW, PULL_UP)>,
-				<RTL87X3G_PSEL(SW_MODE, P5_1, DIR_IN, DRV_LOW, PULL_UP)>;
+				<RTL87X3G_PSEL(SW_MODE, P5_0, DIR_IN, DRV_LOW, PULL_DOWN)>,
+				<RTL87X3G_PSEL(SW_MODE, P5_1, DIR_IN, DRV_LOW, PULL_DOWN)>;
 		};
 	};
 };

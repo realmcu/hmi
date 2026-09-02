@@ -93,9 +93,9 @@ static void port_log(const char *format, ...)
     char buf[256];
     vsnprintf(buf, sizeof(buf), format, args);
 
-    APP_PRINT_INFO1("[GUI MODULE]%s", TRACE_STRING(buf));
+    // APP_PRINT_INFO1("[GUI MODULE]%s", TRACE_STRING(buf));
     // printf("%s", buf);
-
+    DBG_DIRECT("[GUI MODULE]%s", buf);
     va_end(args);
 }
 
@@ -154,8 +154,8 @@ static struct gui_os_api os_api =
     .mem_threshold_size = 10 * 1024,
 
     /*enable this if use printf*/
-    .log = (log_func_t)printf,
-    // .log = port_log,
+    // .log = (log_func_t)printf,
+    .log = port_log,
 };
 
 void gui_port_os_add_exe_to_gui_task()

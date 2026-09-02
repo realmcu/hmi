@@ -97,6 +97,13 @@ int flashdb_prepare(void)
     mainface_list_init(&file_array[1], file_num);
 
     free(file_array);
+
+    /* Restore the persisted UI state (brightness, view toggles, screen-off
+     * time, current mainface index...).  Runs after the list is built so the
+     * loader can clamp mainface_idx against mainface_num. */
+    // extern void mainface_user_settings_load(void);
+    // mainface_user_settings_load();
+
     return 0;
 }
 

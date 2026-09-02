@@ -255,6 +255,19 @@ int  ebadge_port_tcp_close(void);
  */
 bool ebadge_port_tcp_connected(void);
 
+/**
+ * @brief  Cancel this module's pending delayable work so it cannot wake the CPU.
+ *
+ * For the power-off path only.  A scheduled k_work_delayable is a live kernel
+ * timeout: it pulls the system out of power-down at its deadline regardless of
+ * whether the thread that would service it is suspended.  This is one-way --
+ * there is no un-quiesce, because the only caller powers the chip down.
+ *
+ * Must run before any thread is suspended: it cancels synchronously and would
+ * otherwise block forever waiting on a suspended system workqueue.
+ */
+void ebadge_port_tcp_quiesce(void);
+
 #ifdef __cplusplus
 }
 #endif

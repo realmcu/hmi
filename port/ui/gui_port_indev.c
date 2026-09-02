@@ -1,5 +1,6 @@
 #include "guidef.h"
 #include "gui_port.h"
+#include "app_power_manage.h"
 #include "os_sched.h"
 #include "os_sync.h"
 #include "wdg.h"
@@ -16,23 +17,14 @@
 #include "key_button_8773g_zephyr.h"
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
-#include <zephyr/sys/reboot.h>
-#include <pm.h>
-#include <indirect_access.h>
-#include "rtl876x_pinmux.h"
-#include <power_manager_unit_platform.h>
 
 #define TOUCH_DEV_NODE          DT_NODELABEL(touch_device)
 #define POWER_KEY_NODE          DT_NODELABEL(key1)
-#define POWER_LONG_PRESS_MS     3000U
-#define POWER_OFF_AON_REG       0x6U
-#define POWER_OFF_AON_MAGIC     0xEB3AU
 
 static const struct device *touch_dev = DEVICE_DT_GET(TOUCH_DEV_NODE);
 static const struct device *gpio_dev = DEVICE_DT_GET(DT_NODELABEL(gpio_keys));
 static const struct gpio_dt_spec power_key = GPIO_DT_SPEC_GET(POWER_KEY_NODE, gpios);
 static uint16_t key1 = DT_PROP(POWER_KEY_NODE, key_id);
-
 
 static gui_touch_port_data_t raw_data = {0};
 
@@ -42,58 +34,9 @@ static gui_wheel_port_data_t wheel_port_data = {0};
 static bool home_state = false;
 static uint32_t home_timestamp_ms_press = 0;
 static uint32_t home_timestamp_ms_release = 0;
-static bool power_off_requested = false;
 static bool power_key_press_accepted = false;
 static bool suppress_power_key_until_release = false;
 static struct k_work_delayable power_key_long_work;
-
-static void wireless_power_set(bool on)
-{
-    bt_power_mode_set(on ? BTPOWER_ACTIVE : BTPOWER_DEEP_SLEEP);
-    Pad_Config(ADC_2, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE,
-               PAD_OUT_ENABLE, on ? PAD_OUT_HIGH : PAD_OUT_LOW);
-    Pad_Config(P2_6, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE,
-               PAD_OUT_ENABLE, on ? PAD_OUT_HIGH : PAD_OUT_LOW);
-}
-
-static void exit_power_off(void)
-{
-    btaon_fast_write_safe(POWER_OFF_AON_REG, 0);
-    printk("[power-key] power on accepted, rebooting app\n");
-    sys_reboot(SYS_REBOOT_COLD);
-}
-
-void gui_port_power_off(void)
-{
-    if (power_off_requested)
-    {
-        return;
-    }
-    power_off_requested = true;
-
-    printk("[power-key] power off requested\n");
-
-    gui_dispdev_t *dc = gui_get_dc();
-    dc->lcd_power_off();
-
-    wireless_power_set(false);
-    btaon_fast_write_safe(POWER_OFF_AON_REG, POWER_OFF_AON_MAGIC);
-    extern void gui_set_keep_active_time(uint32_t active_time);
-    gui_set_keep_active_time(1000);
-
-    int32_t set_ret = power_mode_set(POWER_POWERDOWN_MODE);
-    int32_t resume_ret = power_mode_resume();
-    printk("[power-key] pm set=%d resume=%d\n", set_ret, resume_ret);
-
-    if (set_ret != 0 || resume_ret != 0)
-    {
-        printk("[power-key] power-down request failed\n");
-        power_off_requested = false;
-        wireless_power_set(true);
-        dc->lcd_power_on();
-        gui_set_keep_active_time(0xFFFFFFFF);
-    }
-}
 
 static void power_key_long_work_handler(struct k_work *work)
 {
@@ -107,62 +50,15 @@ static void power_key_long_work_handler(struct k_work *work)
     home_state = false;
     home_timestamp_ms_release = home_timestamp_ms_press;
     power_key_press_accepted = false;
-    if (power_off_requested)
-    {
-        printk("[power-key] wake long press reached %u ms\n", POWER_LONG_PRESS_MS);
-        exit_power_off();
-    }
-    else
-    {
-        printk("[power-key] power-off long press reached %u ms\n", POWER_LONG_PRESS_MS);
-        extern void ui_confirm_switchoff(uint32_t payload);
-        ui_confirm_switchoff(0);
-    }
+    app_power_manage_handle_long_press();
 }
 
-bool gui_port_power_on_gate(void)
+void gui_port_indev_quiesce(void)
 {
-    uint16_t marker = btaon_fast_read_safe(POWER_OFF_AON_REG);
-    PlatformWakeupReason reason = platform_pm_get_wakeup_reason();
+    static struct k_work_sync sync;
 
-    printk("[power-key] boot marker=0x%04x reason=0x%08x key=%d\n", marker,
-           (uint32_t)reason,
-           gpio_is_ready_dt(&power_key) ? gpio_pin_get_dt(&power_key) : -1);
-    if (marker != POWER_OFF_AON_MAGIC)
-    {
-        return true;
-    }
-
-    if (reason != PLATFORM_PM_WAKEUP_GPIO)
-    {
-        printk("[power-key] cold boot: clearing stale marker\n");
-        btaon_fast_write_safe(POWER_OFF_AON_REG, 0);
-        return true;
-    }
-
-    if (!gpio_is_ready_dt(&power_key) || gpio_pin_get_dt(&power_key) <= 0)
-    {
-        printk("[power-key] wake press released before gate\n");
-        return false;
-    }
-
-    uint32_t start_ms = k_uptime_get_32();
-    while (gpio_pin_get_dt(&power_key) > 0)
-    {
-        uint32_t elapsed = k_uptime_get_32() - start_ms;
-        if (elapsed >= POWER_LONG_PRESS_MS)
-        {
-            btaon_fast_write_safe(POWER_OFF_AON_REG, 0);
-            printk("[power-key] power on accepted after %u ms, rebooting app\n", elapsed);
-            sys_reboot(SYS_REBOOT_COLD);
-        }
-        k_sleep(K_MSEC(10));
-    }
-
-    printk("[power-key] power on rejected: short press\n");
-    return false;
+    (void)k_work_cancel_delayable_sync(&power_key_long_work, &sync);
 }
-
 
 /***touch device***/
 gui_touch_port_data_t *port_touchpad_get_data()
@@ -233,17 +129,17 @@ void kb_get_data(void)
         {
             home_state = false;
             power_key_press_accepted = false;
-            printk("[power-key] startup press suppressed\n");
+            // DBG_DIRECT("[power-key] startup press suppressed\n");
             return;
         }
 
         home_timestamp_ms_press = key.press_timestamp;
         home_timestamp_ms_release = key.press_timestamp;
-        home_state = !power_off_requested;
+        home_state = !app_power_manage_is_power_off_requested();
         power_key_press_accepted = true;
-        (void)k_work_reschedule(&power_key_long_work, K_MSEC(POWER_LONG_PRESS_MS));
-        printk("[power-key] %s press, long action armed\n",
-               power_off_requested ? "wake" : "power-off");
+        (void)k_work_reschedule(&power_key_long_work, K_MSEC(APP_POWER_LONG_PRESS_MS));
+        // DBG_DIRECT("[power-key] %s press, long action armed\n",
+        //        app_power_manage_is_power_off_requested() ? "wake" : "power-off");
     }
     else if (GPIO_KEY_RELEASED == key.current_state)
     {
@@ -257,7 +153,7 @@ void kb_get_data(void)
             power_key_press_accepted = false;
             home_timestamp_ms_press = key.release_timestamp;
             home_timestamp_ms_release = key.release_timestamp;
-            printk("[power-key] startup release suppressed\n");
+            // DBG_DIRECT("[power-key] startup release suppressed\n");
             return;
         }
 
@@ -265,21 +161,21 @@ void kb_get_data(void)
         {
             home_timestamp_ms_press = key.release_timestamp;
             home_timestamp_ms_release = key.release_timestamp;
-            printk("[power-key] unpaired release ignored\n");
+            // DBG_DIRECT("[power-key] unpaired release ignored\n");
             return;
         }
         power_key_press_accepted = false;
 
         home_timestamp_ms_press = key.press_timestamp;
-        if (power_off_requested || duration >= POWER_LONG_PRESS_MS)
+        if (app_power_manage_is_power_off_requested() || duration >= APP_POWER_LONG_PRESS_MS)
         {
             home_timestamp_ms_release = key.press_timestamp;
-            printk("[power-key] release %u ms, no action\n", duration);
+            // DBG_DIRECT("[power-key] release %u ms, no action\n", duration);
             return;
         }
 
         home_timestamp_ms_release = key.release_timestamp;
-        printk("[power-key] short release %u ms\n", duration);
+        DBG_DIRECT("[power-key] short release %u ms\n", duration);
     }
 }
 
@@ -307,20 +203,20 @@ static struct gui_indev indev =
 
 static void gpio_button_callback(void *key)
 {
-    // gui_log("gpio_button_callback");
-
+    // gui_log("gpio_button_callback\n");
     kb_get_data();
 
     T_GPIO_KEY *key_btn = (T_GPIO_KEY *)key;
     if (key_btn->current_state == GPIO_KEY_RELEASED)
     {
-        gui_msg_t msg = {.event = GUI_EVENT_RESET_ACTIVE_TIME};
-        gui_send_msg_to_server(&msg);
+        DBG_DIRECT("gpio_button_callback release\n");
+
         extern bool is_screenon;
-        if (!is_screenon && home_timestamp_ms_release - home_timestamp_ms_press < POWER_LONG_PRESS_MS)
+        if (!is_screenon &&
+            home_timestamp_ms_release - home_timestamp_ms_press < APP_POWER_LONG_PRESS_MS)
         {
-            extern void key_2_on_screen(void *obj, gui_event_t *e);
-            key_2_on_screen(NULL, NULL);
+            gui_msg_t msg = {.event = GUI_EVENT_RESET_ACTIVE_TIME};
+            gui_send_msg_to_server(&msg);
         }
     }
 }
@@ -335,7 +231,7 @@ void gui_port_indev_init(void)
                                        gpio_pin_get_dt(&power_key) > 0;
     if (suppress_power_key_until_release)
     {
-        printk("[power-key] startup key held, suppressing until release\n");
+        DBG_DIRECT("[power-key] startup key held, suppressing until release\n");
     }
 
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(key1), okay)
@@ -348,6 +244,7 @@ void gui_port_indev_init(void)
 #endif
 
     gui_indev_info_register(&indev);
+
     // Create keyboard input devices using the new API
     gui_kb_create("Home", &home_state,
                   &home_timestamp_ms_press,

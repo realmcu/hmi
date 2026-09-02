@@ -13,6 +13,7 @@ extern "C" {
 
 void gui_port_dc_init(void);
 void gui_port_indev_init(void);
+void gui_port_indev_quiesce(void);
 void gui_port_os_init(void);
 #ifdef __cplusplus
 }

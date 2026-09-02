@@ -106,6 +106,24 @@ void ebadge_task_rx_reset(void);
  *----------------------------------------------------------------------------*/
 uint32_t ebadge_task_now_ms(void);
 
+/*----------------------------------------------------------------------------*
+ *  Power-off
+ *----------------------------------------------------------------------------*/
+/**
+ * @brief  Stop the tick timer and park l2_task so neither can wake the SoC.
+ *         One-way: there is no resume, because the only caller powers the chip off.
+ *
+ * This one matters more than the rest of the quiesce hooks put together.  The tick
+ * is an auto-reload os_timer at EBADGE_TICK_MS, so left running it drags the SoC
+ * out of power-down ten times a second, forever -- and suspending l2_task does not
+ * help, because the kernel timeout fires whether or not anything services it.
+ *
+ * Cascades into ebadge_port_tcp_quiesce().  Call from another task (the UI's
+ * power-off path), before any thread is suspended: the work cancels underneath are
+ * synchronous and would deadlock against a suspended system workqueue.
+ */
+void ebadge_task_quiesce(void);
+
 #ifdef __cplusplus
 }
 #endif

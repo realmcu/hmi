@@ -12,6 +12,7 @@
 \#*\#
 
 bin/*
+bin*/
 build*/
 !doc/build/
 !tests/drivers/build_all
@@ -111,3 +112,4 @@ TextEncoding.txt
 YAMLLint.txt
 note/
 app/userdata/
+scripts/

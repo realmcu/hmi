@@ -22,6 +22,7 @@
 #include <string.h>
 
 #include "spi_at_master.h"
+#include "at_client.h"          /* at_client_quiesce() -- cascaded from quiesce() */
 #include "../protocol/ebadge_log.h"
 #include "app_dlps.h"
 
@@ -494,6 +495,41 @@ int spi_at_master_init(void)
 bool spi_at_master_ready(void)
 {
     return s_inited;
+}
+
+void spi_at_master_quiesce(void)
+{
+    static struct k_work_sync sync;
+
+    if (!s_inited)
+    {
+        return;
+    }
+
+    /* First, because it is the one wake source that is not on our clock: the 8711
+     * raises S2M whenever it likes.  Removing the callback too, so a level that is
+     * already high cannot latch a pending interrupt behind the disable. */
+    (void)gpio_pin_interrupt_configure_dt(&s2m_gpio, GPIO_INT_DISABLE);
+    (void)gpio_remove_callback(s2m_gpio.port, &s2m_cb_data);
+
+    (void)k_work_cancel_delayable_sync(&ready_to_work, &sync);
+
+    at_client_quiesce();
+
+    /* Marks the link dead so send()/wait_rx() refuse rather than re-assert M2S and
+     * re-take the DLPS bit from whatever thread is still runnable -- the GUI thread
+     * itself reaches here, through the power-off path. */
+    s_inited = false;
+
+    /* Unconditional release, not paired with a disable(): the point is to clear a
+     * bit that a thread frozen mid-transaction would otherwise hold forever, and
+     * app_dlps_check_callback() refuses low-power mode while any bit is set. */
+    app_dlps_enable(APP_DLPS_ENTER_CHECK_WIFI_8711);
+
+    /* at_thread is left blocked in k_sem_take(&s2m_sem, K_FOREVER) rather than
+     * suspended here: with the interrupt gone nothing ever posts that semaphore, so
+     * it is already parked, and this avoids freezing it midway through an SPI DMA.
+     * The sweep in gui_port_power_off() suspends it regardless, by then harmlessly. */
 }
 
 int spi_at_master_send(const uint8_t *payload, uint16_t len)
