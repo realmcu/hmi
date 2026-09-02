@@ -622,7 +622,7 @@ void hmi_handle_bt_io_msg(T_IO_MSG io_msg)
                 break;
 
 #ifdef CONFIG_RTK_BT_BREDR
-            case IO_MSG_BREDR_RADIO_OFF:
+            case IO_MSG_TYPE_EVENT_BUS:
                 hmi_br_edr_set_radio_enabled(false);
                 break;
 #endif

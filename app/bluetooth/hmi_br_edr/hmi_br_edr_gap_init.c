@@ -164,7 +164,7 @@ bool hmi_br_edr_request_radio_off(void)
     T_IO_MSG msg;
 
     msg.type    = IO_MSG_TYPE_WRISTBNAD;
-    msg.subtype = IO_MSG_BREDR_RADIO_OFF;
+    msg.subtype = IO_MSG_TYPE_EVENT_BUS;
     msg.u.param = 0;
 
     return hmi_send_msg_to_bt_task(&msg);
