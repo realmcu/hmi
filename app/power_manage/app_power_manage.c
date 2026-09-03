@@ -34,6 +34,21 @@
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>
 
+/**
+ * @file app_power_manage.c
+ * @brief eBadge power management implementation.
+ *
+ * Implements the full power-off path (power_off_quiesce_system() +
+ * app_power_down_enter()), the boot-time power-on gate
+ * (app_power_on_gate()) and the display-rail control
+ * (app_screen_on_off_power_set()).  See app_power_manage.h for the public API.
+ *
+ * The power-off sequence is deliberately ordered: timers and delayable work
+ * first (a single armed timeout keeps the CPU awake and empty), then the
+ * radio, then threads, then wakelocks -- see the quiesce banner below for the
+ * reasoning and the thread-suspend caveats.
+ */
+
 #define TOUCH_DEV_NODE          DT_NODELABEL(touch_device)
 #define POWER_KEY_NODE          DT_NODELABEL(key1)
 #define POWER_OFF_AON_REG       0x6U
@@ -48,13 +63,19 @@
 static const struct gpio_dt_spec power_key = GPIO_DT_SPEC_GET(POWER_KEY_NODE, gpios);
 
 /* P0_3/ADC_3 (GPIOA3) and P1_0 (GPIOA7) are the touch node's pwr-en/pwr pins,
- * so the Zephyr GPIO driver owns them -- see screen_on_off_power_set(). */
+ * so the Zephyr GPIO driver owns them -- see app_screen_on_off_power_set(). */
 static const struct gpio_dt_spec touch_pwr_en = GPIO_DT_SPEC_GET(TOUCH_DEV_NODE, pwr_en_gpios);
 static const struct gpio_dt_spec touch_pwr = GPIO_DT_SPEC_GET(TOUCH_DEV_NODE, pwr_gpios);
 static const struct gpio_dt_spec touch_irq = GPIO_DT_SPEC_GET(TOUCH_DEV_NODE, irq_gpios);
 static const struct gpio_dt_spec touch_rst = GPIO_DT_SPEC_GET(TOUCH_DEV_NODE, rst_gpios);
 
+/* Set by the power-off flow, cleared by a short power-on.  Also set during
+ * boot if the power-on gate is rejected. */
 static bool power_off_requested = false;
+
+/*----------------------------------------------------------------------------*
+ *  Deep power-down -- pads, wake source and PM mode
+ *----------------------------------------------------------------------------*/
 
 static RAM_TEXT_SECTION void pad_all_power_off(void)
 {
@@ -69,7 +90,7 @@ static RAM_TEXT_SECTION void pad_all_power_off(void)
     Pad_Config(P2_6, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_DOWN,
                PAD_OUT_ENABLE, PAD_OUT_LOW);  /* external BT/RF path */
 
-    // valid 15 -> 2 mA
+    /* WiFi QSPI pads: driving them LOW cuts the WiFi/VDD33 rail. */
     Pad_Config(P4_2, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_DOWN,
                PAD_OUT_ENABLE, PAD_OUT_LOW); /* WIFI QSPI */
     Pad_Config(P4_3, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_DOWN,
@@ -90,50 +111,8 @@ static RAM_TEXT_SECTION void pad_all_power_off(void)
     fmc_psram_enter_lpm(FMC_SPIC_ID_3, FMC_PSRAM_LPM_DEEP_POWER_DOWN_MODE);
 }
 
-void screen_on_off_power_set(bool on)
-{
-    /* These three pins are rail controls and must remain driven, not left
-     * floating, while the controlled devices are off. */
-    Pad_Config(ADC_2, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE,
-               PAD_OUT_ENABLE, on ? PAD_OUT_HIGH : PAD_OUT_LOW);
-
-    /* Fixed pins used by the selected ST7801N panel. The overlay only exposes
-     * the display node, while the driver keeps these pin assignments locally. */
-    if (!on)
-    {
-        Pad_Config(P2_2, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
-                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD TE */
-        Pad_Config(P4_0, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
-                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD reset */
-        Pad_Config(P9_0, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
-                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD QSPI D2 */
-        Pad_Config(P9_1, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
-                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD QSPI D1 */
-        Pad_Config(P9_2, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
-                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD QSPI CS */
-        Pad_Config(P9_3, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
-                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD QSPI D0 */
-        Pad_Config(P9_4, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
-                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD QSPI CLK */
-        Pad_Config(P9_5, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
-                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD QSPI D3 */
-        Pad_Config(P2_5, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_DOWN,
-                   PAD_OUT_ENABLE, PAD_OUT_LOW);  /* LCD backlight */
-        Pad_Config(MICBIAS1, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_DOWN,
-                   PAD_OUT_ENABLE, PAD_OUT_LOW);  /* motor rail */
-    }
-}
-
-bool app_power_manage_is_power_off_requested(void)
-{
-    return power_off_requested;
-}
-
-void gui_port_reset_power_off_request(void)
-{
-    power_off_requested = false;
-}
-
+/* Program the power-key pad to wake the SoC from deep power-down.  Runs both
+ * at entry and at every POWER_STAGE_STORE (via power_key_wakeup_init()). */
 static RAM_TEXT_SECTION void power_key_wakeup_configure(void)
 {
     /* MIC1_P is a codec hybrid pad. It must be switched to digital mode before
@@ -152,6 +131,8 @@ static RAM_TEXT_SECTION void power_key_wakeup_configure(void)
     System_WakeUpInterruptEnable(POWER_KEY_PAD);
 }
 
+/* Configure the key wake path once, then re-apply it at every POWER_STAGE_STORE
+ * so it survives pm_suspend_devices_rtk() state replay. */
 static void power_key_wakeup_init(void)
 {
     static bool store_cb_registered;
@@ -370,21 +351,12 @@ static void power_off_quiesce_system(void)
     DBG_DIRECT("[power-key] quiesced: %u threads swept, timers stopped\n", quiesce_n);
 }
 
-void gui_port_power_down_enter(void)
-{
-    power_off_requested = true;
-    screen_on_off_power_set(false);
-    pad_all_power_off();
-    power_key_wakeup_init();
-    bt_power_mode_set(BTPOWER_DEEP_SLEEP);
+/*----------------------------------------------------------------------------*
+ *  Power-off entry
+ *----------------------------------------------------------------------------*/
 
-    int32_t ret = power_mode_set(POWER_POWERDOWN_MODE);
-    if (ret != 0)
-    {
-        DBG_DIRECT("[power-key] set power-down failed: %d\n", ret);
-    }
-}
-
+/* Idempotent core of gui_port_power_off(): runs the full quiesce, stamps the
+ * AON marker, then enters deep power-down.  Executes on the GUI thread. */
 static void power_off(void)
 {
     if (power_off_requested)
@@ -407,12 +379,7 @@ static void power_off(void)
     /* The marker survives power-down and distinguishes a product power-off from
      * a normal cold boot. The PM store callback puts PSRAM into deep power-down. */
     btaon_fast_write_safe(POWER_OFF_AON_REG, POWER_OFF_AON_MAGIC);
-    gui_port_power_down_enter();
-}
-
-void gui_port_power_off(void)
-{
-    power_off();
+    app_power_down_enter();
 }
 
 #if defined(CONFIG_SHELL)
@@ -436,11 +403,86 @@ static int cmd_power_off(const struct shell *shell, size_t argc, char **argv)
 SHELL_CMD_REGISTER(power_off, NULL, "Power off the device", cmd_power_off);
 #endif /* CONFIG_SHELL */
 
+/* Enter deep power-down: cut the pad/rail power, arm the key wake source and
+ * request POWER_POWERDOWN_MODE.  See header for the full contract. */
+void app_power_down_enter(void)
+{
+    power_off_requested = true;
+    app_screen_on_off_power_set(false);
+    pad_all_power_off();
+    power_key_wakeup_init();
+    bt_power_mode_set(BTPOWER_DEEP_SLEEP);
+
+    int32_t ret = power_mode_set(POWER_POWERDOWN_MODE);
+    if (ret != 0)
+    {
+        DBG_DIRECT("[power-key] set power-down failed: %d\n", ret);
+    }
+}
+
+/* Power the display rail on/off.  See header for the full contract. */
+void app_screen_on_off_power_set(bool on)
+{
+    /* These pins are rail controls and must remain driven, not left floating,
+     * while the controlled devices are off. */
+    Pad_Config(ADC_2, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE,
+               PAD_OUT_ENABLE, on ? PAD_OUT_HIGH : PAD_OUT_LOW);
+
+    /* Fixed pins used by the selected ST7801N panel. The overlay only exposes
+     * the display node, while the driver keeps these pin assignments locally. */
+    if (!on)
+    {
+        Pad_Config(P2_2, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
+                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD TE */
+        Pad_Config(P4_0, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
+                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD reset */
+        Pad_Config(P9_0, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
+                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD QSPI D2 */
+        Pad_Config(P9_1, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
+                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD QSPI D1 */
+        Pad_Config(P9_2, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
+                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD QSPI CS */
+        Pad_Config(P9_3, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
+                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD QSPI D0 */
+        Pad_Config(P9_4, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
+                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD QSPI CLK */
+        Pad_Config(P9_5, PAD_SW_MODE, PAD_SHUTDOWN, PAD_PULL_DOWN,
+                   PAD_OUT_DISABLE, PAD_OUT_LOW); /* LCD QSPI D3 */
+        Pad_Config(P2_5, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_DOWN,
+                   PAD_OUT_ENABLE, PAD_OUT_LOW);  /* LCD backlight */
+        Pad_Config(MICBIAS1, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_DOWN,
+                   PAD_OUT_ENABLE, PAD_OUT_LOW);  /* motor rail */
+    }
+}
+
+/*----------------------------------------------------------------------------*
+ *  Public state and wake-gate API
+ *
+ *  App-facing simple accessors plus the two functions that arbitrate between
+ *  "screen off" and "powered down" via the AON power-off marker.  Full
+ *  contracts live in app_power_manage.h.
+ *----------------------------------------------------------------------------*/
+
+bool app_power_power_off_requested(void)
+{
+    return power_off_requested;
+}
+
+void gui_port_reset_power_off_request(void)
+{
+    power_off_requested = false;
+}
+
+void gui_port_power_off(void)
+{
+    power_off();
+}
+
 void app_power_manage_handle_long_press(void)
 {
     if (power_off_requested)
     {
-        /* Power-down wake is handled by gui_port_power_on_gate() during boot.
+        /* Power-down wake is handled by app_power_on_gate() during boot.
          * This branch only applies to a screen-off state that did not power down. */
         DBG_DIRECT("[power-key] wake long press reached %u ms\n", APP_POWER_LONG_PRESS_MS);
         btaon_fast_write_safe(POWER_OFF_AON_REG, 0);
@@ -454,7 +496,7 @@ void app_power_manage_handle_long_press(void)
     }
 }
 
-bool gui_port_power_on_gate(void)
+bool app_power_on_gate(void)
 {
     uint16_t marker = btaon_fast_read_safe(POWER_OFF_AON_REG);
 

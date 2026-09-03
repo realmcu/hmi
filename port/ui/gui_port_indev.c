@@ -135,11 +135,11 @@ void kb_get_data(void)
 
         home_timestamp_ms_press = key.press_timestamp;
         home_timestamp_ms_release = key.press_timestamp;
-        home_state = !app_power_manage_is_power_off_requested();
+        home_state = !app_power_power_off_requested();
         power_key_press_accepted = true;
         (void)k_work_reschedule(&power_key_long_work, K_MSEC(APP_POWER_LONG_PRESS_MS));
         // DBG_DIRECT("[power-key] %s press, long action armed\n",
-        //        app_power_manage_is_power_off_requested() ? "wake" : "power-off");
+        //        app_power_power_off_requested() ? "wake" : "power-off");
     }
     else if (GPIO_KEY_RELEASED == key.current_state)
     {
@@ -167,7 +167,7 @@ void kb_get_data(void)
         power_key_press_accepted = false;
 
         home_timestamp_ms_press = key.press_timestamp;
-        if (app_power_manage_is_power_off_requested() || duration >= APP_POWER_LONG_PRESS_MS)
+        if (app_power_power_off_requested() || duration >= APP_POWER_LONG_PRESS_MS)
         {
             home_timestamp_ms_release = key.press_timestamp;
             // DBG_DIRECT("[power-key] release %u ms, no action\n", duration);

@@ -197,7 +197,7 @@ static void gui_dc_lcd_power_on(void)
     }
     /* Claim the DLPS gate *before* touching LCDC, not after. */
     app_dlps_disable(APP_DLPS_ENTER_CHECK_DISPLAY);
-    screen_on_off_power_set(true);
+    app_screen_on_off_power_set(true);
     rtk_lcd_hal_init();
     is_screenon = true;
     sys_hall_auto_sleep_in_idle(false);
@@ -215,7 +215,7 @@ static void gui_dc_lcd_power_off(void)
     rtk_lcd_hal_set_display(false);
     is_screenon = false;
     app_dlps_enable(APP_DLPS_ENTER_CHECK_DISPLAY);
-    screen_on_off_power_set(false);
+    app_screen_on_off_power_set(false);
     sys_hall_auto_sleep_in_idle(true);
 }
 static struct gui_dispdev dc =

@@ -43,10 +43,10 @@ int main(void)
      * application-controlled rail, require the wake key to remain pressed for
      * three seconds. A short press releases the init lock and returns to
      * power-down without starting the application. */
-    if (!gui_port_power_on_gate())
+    if (!app_power_on_gate())
     {
         app_dlps_enable(APP_DLPS_ENTER_CHECK_INIT);
-        gui_port_power_down_enter();
+        app_power_down_enter();
         return 0;
     }
 
