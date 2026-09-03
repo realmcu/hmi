@@ -26,14 +26,21 @@
  * inside its own command.  Always use the prefixed macro that matches the
  * command you are encoding/decoding -- the prefix IS the namespace:
  *
- *   EB_TLV_DTIME_*  0x01 SET_TIME          EB_TLV_AP_*    0x13 AP_INFO
- *   EB_TLV_SFILE_*  0x02 SEND_FILE         EB_TLV_PROG_*  0x14 PROGRESS
- *   EB_TLV_MSG_*    0x03 SEND_MSG          EB_TLV_DONE_*  0x15 XFER_DONE
- *   EB_TLV_RESULT_* 0x04 RESULT            EB_TLV_FAIL_*  0x16 XFER_FAIL
- *   EB_TLV_SOFR_*   0x08 STREAM_OFFER      EB_TLV_BAT_*   0x18 BATTERY
- *   EB_TLV_SDEC_*   0x09 STREAM_DECISION   EB_TLV_STOR_*  0x1A STORAGE_INFO
- *   EB_TLV_XFER_*   0x10 XFER_OFFER        EB_TLV_OTA_*   0xE0 OTA_OFFER
- *   EB_TLV_DEC_*    0x11 XFER_DECISION     EB_TLV_DBG_*   0xFF DEBUG
+ *   EB_TLV_DTIME_*  0x01 SET_TIME          EB_TLV_AP_*     0x13 AP_INFO
+ *   EB_TLV_SFILE_*  0x02 SEND_FILE         EB_TLV_PROG_*   0x14 PROGRESS
+ *   EB_TLV_MSG_*    0x03 SEND_MSG          EB_TLV_DONE_*   0x15 XFER_DONE
+ *   EB_TLV_RESULT_* 0x04 RESULT            EB_TLV_FAIL_*   0x16 XFER_FAIL
+ *   EB_TLV_SOFR_*   0x08 STREAM_OFFER      EB_TLV_BAT_*    0x18 BATTERY
+ *   EB_TLV_SDEC_*   0x09 STREAM_DECISION   EB_TLV_STOR_*   0x1A STORAGE_INFO
+ *   EB_TLV_XFER_*   0x10 XFER_OFFER        EB_TLV_OTA_*    0xE0 OTA_OFFER
+ *   EB_TLV_DEC_*    0x11 XFER_DECISION     EB_TLV_ODEC_*   0xE1 OTA_DECISION
+ *   EB_TLV_DBG_*    0xFF DEBUG             EB_TLV_OPROG_*  0xE4 OTA_PROGRESS
+ *                                          EB_TLV_ODONE_*  0xE5 OTA_DONE
+ *                                          EB_TLV_OFAIL_*  0xE6 OTA_FAIL
+ *
+ * The five 0xEn commands are the 8711 firmware update, and their TLV numbers are
+ * deliberately IDENTICAL to those of the 0x1n command each one mirrors -- see the
+ * 0xE0 block for the offset rule that makes that readable rather than accidental.
  */
 #ifndef _EBADGE_CMD_H_
 #define _EBADGE_CMD_H_
@@ -85,16 +92,35 @@ extern "C" {
 /* Wi-Fi module firmware update ---------------------------------------- */
 /** Push new firmware to the 8711 over Wi-Fi, then over the SPI AT link.
  *
- *  NOT in PROT-001.  0xE0 was chosen for the same reason as 0xFF DEBUG: it sits
- *  outside every range the spec has allocated OR reserved (which stop at 0x2F),
- *  so a future revision of the document cannot collide with it.
+ *  NOT in PROT-001.  The 0xEn range was chosen for the same reason as 0xFF DEBUG:
+ *  it sits outside every range the spec has allocated OR reserved (which stop at
+ *  0x2F), so a future revision of the document cannot collide with it.
  *
- *  There is no matching D->H command.  Everything the device says back reuses an
- *  existing one -- 0x04 RESULT to refuse or to report the final verdict, 0x13
- *  AP_INFO as the acceptance, 0x14 XFER_PROGRESS during the receive, 0x16
- *  XFER_FAIL on a failure after acceptance.  See ota_session.h for the table and
- *  for why 0x15 XFER_DONE is deliberately not used.                          */
+ *  THE NUMBERS ARE THE FILE-TRANSFER NUMBERS PLUS 0xD0.  0xE0+n is the twin of
+ *  0x10+n, and each twin carries the same TLVs with the same numbers:
+ *
+ *      0xE0 OTA_OFFER     <-> 0x10 XFER_OFFER
+ *      0xE1 OTA_DECISION  <-> 0x11 XFER_DECISION
+ *      (0xE2 / 0xE3)      <-> 0x12 GET_AP_INFO / 0x13 AP_INFO  -- NOT allocated
+ *      0xE4 OTA_PROGRESS  <-> 0x14 XFER_PROGRESS
+ *      0xE5 OTA_DONE      <-> 0x15 XFER_DONE
+ *      0xE6 OTA_FAIL      <-> 0x16 XFER_FAIL
+ *
+ *  0xE2/0xE3 are left unallocated on purpose rather than by omission: the SoftAP
+ *  credentials are a property of the radio, not of what is being sent over it, and
+ *  all three sessions raise the same AP on the same port.  An update therefore
+ *  answers with the SAME 0x13 AP_INFO a file transfer does -- one builder, one
+ *  format, and an App needs no second parser for it.  Everything downstream of the
+ *  credentials is per-session, and that is what gets its own number.
+ *
+ *  0x04 RESULT is NOT part of this flow.  It was, while 0xE0 was the only number
+ *  available; now that the update has its own reject/verdict commands, using RESULT
+ *  as well would give the same session two ways to end.                        */
 #define EB_CMD_OTA_OFFER        0xE0    /* H->D  "I want to update the 8711"  */
+#define EB_CMD_OTA_DECISION     0xE1    /* D->H  accept / reject the offer    */
+#define EB_CMD_OTA_PROGRESS     0xE4    /* D->H  recv/total over the Wi-Fi leg*/
+#define EB_CMD_OTA_DONE         0xE5    /* D->H  module took the image        */
+#define EB_CMD_OTA_FAIL         0xE6    /* D->H  update failed w/ reason      */
 
 /* Debug / bring-up ---------------------------------------------------- */
 /** Vendor debug hook.  NOT in PROT-001 -- 0xFF is deliberately outside the
@@ -254,42 +280,82 @@ extern "C" {
 /*----------------------------------------------------------------------------*
  *  0xE0 OTA_OFFER  (not in PROT-001 -- 8711 firmware update)
  *
- *  DELIBERATELY MINIMAL, AND THE GAPS ARE THE POINT.  One TLV is defined: the
- *  image length, which is the only field the device can act on.  It is load
- *  bearing twice over -- AT+OTAUSER must declare the length to the module before
- *  the first byte is pushed, and a raw image has no end marker, so the length is
- *  also how the receive phase knows it is finished.
+ *  §4.7's TLVs, same numbers, same widths.  An App builds this with its 0x10
+ *  builder and changes the command byte:
  *
- *  Everything an update protocol would normally carry -- a version, a CRC32 or
- *  signature, a target chip / bank, a compatibility range -- is NOT defined here
- *  yet, and the device therefore treats the payload as an unverified raw image.
- *  What that does and does not cost is spelled out in ota_session.h; the short
- *  version is that the 8711's own OTA layer still validates the image header, so
- *  a corrupt image is refused rather than installed, but nothing distinguishes a
- *  wrong-but-valid image from the right one.
+ *    NAME   a label for the image; echoed back in 0xE5 and required to match the
+ *           EBXF header, exactly as a file name is.  Not a path and not stored --
+ *           nothing on this device keeps the image after the module has taken it.
+ *    TYPE   must be EB_FILE_TYPE_BIN.  The one field whose accepted VALUE differs
+ *           from a file offer, and the check is worth having: an image offered as
+ *           JPEG is a mis-built request, and refusing it costs nothing where
+ *           accepting it means pushing a wallpaper at the radio's flash.
+ *    SIZE   load bearing three times over -- AT+OTAUSER must declare the length to
+ *           the module before the first byte is pushed, a raw image has no end
+ *           marker so it is how the receive phase knows it is finished, and it is
+ *           cross-checked against the EBXF header.
+ *    CRC32  over the whole image, verified on the last received byte and BEFORE
+ *           anything is pushed.  See ota_session.h for what this does and does not
+ *           protect: it catches a corrupt or truncated image, and it cannot tell a
+ *           wrong-but-valid image from the right one.
  *
- *  THE NUMBERING IS BORROWED FROM 0x10 XFER_OFFER ON PURPOSE.  Type numbers are
- *  per-command here (see the namespace table at the top), so 0xE0 was free to use
- *  0x01 for its one field -- and deliberately does not, because the App fills this
- *  offer in the same shape as a file offer.  Length therefore sits at 0x03, where
- *  §4.7 puts it, and 0x01/0x02/0x04/0x05 are held at their XFER meanings instead
- *  of being reused for something else.  Two things follow:
- *
- *    - an App can reuse its 0x10 offer builder and simply send fewer TLVs; the
- *      ones it does send land on the fields with the same meanings
- *    - if it sends the full set anyway, the extras are ignored, not misread --
- *      which would NOT be true if length were at 0x01, because a 4-character
- *      TLV_XFER_NAME would then parse as a perfectly plausible image size
- *
- *  The reserved numbers below are consequently already spoken for by §4.7 rather
- *  than free.  A check added later takes 0x06 upward, and the receiver must keep
- *  IGNORING unknown types (which ebadge_tlv_get_* already does) so an App that
- *  sends a newer offer to an older device still gets a working update rather than
- *  a parse failure.
+ *  0x05 REPLACE_ID is not used: there is no file id to replace, the module has its
+ *  own bank switching, and nothing here chooses a bank.  Held at its §4.7 meaning
+ *  rather than reused, so an App that sends the full 0x10 TLV set has its extra
+ *  field ignored instead of misread.  Unknown types must keep being IGNORED (which
+ *  ebadge_tlv_get_* already does) so a newer App still gets a working update out of
+ *  an older device rather than a parse failure.
  *----------------------------------------------------------------------------*/
-#define EB_TLV_OTA_SIZE         0x03    /* 4B LE, image length -- as §4.7     */
-/* 0x01/0x02/0x04/0x05 are the XFER_OFFER fields, unused here but not free.   */
-/* 0x06.. reserved for version / integrity fields -- see above.               */
+#define EB_TLV_OTA_NAME         0x01    /* required, utf-8 <=23B -- as §4.7   */
+#define EB_TLV_OTA_TYPE         0x02    /* required, must be EB_FILE_TYPE_BIN */
+#define EB_TLV_OTA_SIZE         0x03    /* required, 4B LE image length       */
+#define EB_TLV_OTA_CRC32        0x04    /* required, 4B LE over whole image   */
+/* 0x05 is XFER_OFFER's REPLACE_ID: unused here, not free -- see above.       */
+
+/*----------------------------------------------------------------------------*
+ *  0xE1 OTA_DECISION  (the 0x11 twin)
+ *
+ *  Carries the ACCEPT that opens the Wi-Fi leg.  Reject and timeout are defined
+ *  for symmetry with §4.8 and are reachable only if a confirmation prompt is ever
+ *  reinstated -- as with 0x10, every reason to say no is known before the offer is
+ *  accepted and goes out as 0xE6 with a §2.6 reason instead.
+ *----------------------------------------------------------------------------*/
+#define EB_TLV_ODEC_DECISION    0x01    /* required, EB_DECISION_*            */
+#define EB_TLV_ODEC_REASON      0x02    /* optional, EB_XFER_ERR_* on reject  */
+
+/*----------------------------------------------------------------------------*
+ *  0xE4 OTA_PROGRESS  (the 0x14 twin)
+ *
+ *  Absolute byte counters over the WI-FI RECEIVE ONLY, throttled the same way
+ *  §4.10 asks (200 ms or a 5% boundary).  The SPI push that follows reports no
+ *  progress -- see the note in ota_session.h about the silence at 100%.
+ *----------------------------------------------------------------------------*/
+#define EB_TLV_OPROG_RECV       0x01    /* required, 4B LE bytes received     */
+#define EB_TLV_OPROG_TOTAL      0x02    /* required, 4B LE == offer size      */
+
+/*----------------------------------------------------------------------------*
+ *  0xE5 OTA_DONE  (the 0x15 twin)
+ *
+ *  The module accepted the image and has been told to restart.  0x15's three TLVs
+ *  are a file id, a size and a name; the id has no counterpart here, so 0x01 is
+ *  LEFT OUT rather than given a new meaning -- SIZE and NAME keep the numbers they
+ *  have in §4.11 so an App's 0x15 parser reads them correctly.
+ *----------------------------------------------------------------------------*/
+/* 0x01 is XFER_DONE's FILE_ID: no counterpart for an update, deliberately absent.*/
+#define EB_TLV_ODONE_SIZE       0x02    /* required, 4B LE image bytes pushed */
+#define EB_TLV_ODONE_NAME       0x03    /* required, utf-8, echoes the offer  */
+
+/*----------------------------------------------------------------------------*
+ *  0xE6 OTA_FAIL  (the 0x16 twin) -- byte-identical to §4.12
+ *
+ *  Every failure, before or after acceptance: a refused offer, a Wi-Fi leg that
+ *  broke, a CRC mismatch, or a module that would not take the image.  The §2.6
+ *  reason table was written for file transfer and has no OTA-specific codes, so the
+ *  reason byte is chosen for what the App should DO and the exact cause travels in
+ *  DETAIL -- which is where a reader should look.
+ *----------------------------------------------------------------------------*/
+#define EB_TLV_OFAIL_REASON     0x01    /* required, EB_XFER_ERR_*            */
+#define EB_TLV_OFAIL_DETAIL     0x02    /* optional, utf-8 <=23B debug text   */
 
 /*----------------------------------------------------------------------------*
  *  0xFF DEBUG  (not in PROT-001 -- vendor bring-up hook)

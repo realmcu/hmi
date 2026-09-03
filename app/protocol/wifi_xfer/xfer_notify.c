@@ -74,16 +74,27 @@ void eb_emit_ap_info(const ebadge_softap_info_t *info, uint16_t tcp_port)
     (void)ebadge_l2_notify_send(EB_CMD_AP_INFO, params, off);
 }
 
-void eb_emit_progress(uint32_t recv, uint32_t total)
+/* The three builders below take the command byte because the file transfer and the
+ * 8711 update send the SAME TLVs under DIFFERENT command numbers (0x14/0xE4,
+ * 0x16/0xE6, 0x11/0xE1 -- see the offset rule in the 0xE0 block of ebadge_cmd.h).
+ * Passing the number in is what keeps that from becoming two copies of each
+ * builder that have to be kept in step by hand. */
+
+void eb_emit_progress_on(uint8_t cmd, uint32_t recv, uint32_t total)
 {
     uint8_t  params[16];
     uint16_t off = 0;
     ebadge_tlv_put_u32(params, sizeof(params), &off, EB_TLV_PROG_RECV,  recv);
     ebadge_tlv_put_u32(params, sizeof(params), &off, EB_TLV_PROG_TOTAL, total);
-    (void)ebadge_l2_notify_send(EB_CMD_XFER_PROGRESS, params, off);
+    (void)ebadge_l2_notify_send(cmd, params, off);
 }
 
-void eb_emit_fail(uint8_t reason, const char *detail)
+void eb_emit_progress(uint32_t recv, uint32_t total)
+{
+    eb_emit_progress_on(EB_CMD_XFER_PROGRESS, recv, total);
+}
+
+void eb_emit_fail_on(uint8_t cmd, uint8_t reason, const char *detail)
 {
     uint8_t  params[32];
     uint16_t off = 0;
@@ -97,5 +108,24 @@ void eb_emit_fail(uint8_t reason, const char *detail)
                        EB_TLV_FAIL_DETAIL, (const uint8_t *)detail,
                        (uint16_t)n);
     }
-    (void)ebadge_l2_notify_send(EB_CMD_XFER_FAIL, params, off);
+    (void)ebadge_l2_notify_send(cmd, params, off);
+}
+
+void eb_emit_fail(uint8_t reason, const char *detail)
+{
+    eb_emit_fail_on(EB_CMD_XFER_FAIL, reason, detail);
+}
+
+void eb_emit_decision_on(uint8_t cmd, uint8_t decision, uint8_t reason)
+{
+    uint8_t  params[16];
+    uint16_t off = 0;
+    ebadge_tlv_put_u8(params, sizeof(params), &off,
+                      EB_TLV_DEC_DECISION, decision);
+    if (reason != 0U)
+    {
+        ebadge_tlv_put_u8(params, sizeof(params), &off,
+                          EB_TLV_DEC_REASON, reason);
+    }
+    (void)ebadge_l2_notify_send(cmd, params, off);
 }

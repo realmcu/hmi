@@ -44,8 +44,9 @@ void ebadge_handlers_register(void)
 
     /* Off-spec, and both outside every range PROT-001 allocates or reserves:
      * 0xE0 opens an 8711 firmware update, 0xFF is the bring-up debug hook.  See
-     * their blocks in ebadge_cmd.h.  0xE0's answers are all existing notifies
-     * (0x04 / 0x13 / 0x14 / 0x16), so it adds no outbound command. */
+     * their blocks in ebadge_cmd.h.  0xE0 is the only INBOUND command of the update
+     * flow -- its answers are 0xE1/0xE4/0xE5/0xE6 plus the shared 0x13 AP_INFO, all
+     * outbound notifies, so none of them appear in this table. */
     (void)ebadge_l2_register(EB_CMD_OTA_OFFER,    handle_ota_offer);
     (void)ebadge_l2_register(EB_CMD_DEBUG,        handle_debug);
 
