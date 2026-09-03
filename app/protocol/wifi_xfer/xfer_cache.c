@@ -41,7 +41,8 @@ int xfer_cache_append(const uint8_t *data, uint16_t len)
     /* Checked before the copy, not after: an overrun here is a sender that has
      * exceeded its own declared size, and the interesting thing is to refuse it
      * with the buffer still intact rather than to detect it having already
-     * scribbled past the end of the window and into psram1_nc. */
+     * scribbled past the end of the window and into the OTA staging buffer that
+     * sits immediately above it. */
     if (s_len + len > EB_PSRAM_XFER_CACHE_SIZE)
     {
         EBADGE_ERR2("xfer_cache: overflow, have=%u add=%d",

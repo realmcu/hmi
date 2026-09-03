@@ -53,6 +53,7 @@
 #include "xfer_session.h"
 #include "stream_session.h"
 #include "xfer_notify.h"
+#include "../wifi_ota/ota_session.h"
 #include "ebxf_frame.h"
 #include "jpgs_ingress.h"
 #include "ebfs_ingress.h"
@@ -343,14 +344,12 @@ static void emit_fail(uint8_t reason, const char *detail)
     eb_emit_fail(reason, detail);
 }
 
-/** 0x14 XFER_PROGRESS (spec §4.10) -- absolute byte counters, not a percent. */
+/** 0x14 XFER_PROGRESS (spec §4.10) -- absolute byte counters, not a percent.
+ *  Moved to xfer_notify.c when the OTA session became a second sender; the
+ *  throttle below stays here because the trigger is ours, not the builder's.  */
 static void emit_progress(uint32_t recv, uint32_t total)
 {
-    uint8_t  params[16];
-    uint16_t off = 0;
-    ebadge_tlv_put_u32(params, sizeof(params), &off, EB_TLV_PROG_RECV,  recv);
-    ebadge_tlv_put_u32(params, sizeof(params), &off, EB_TLV_PROG_TOTAL, total);
-    (void)ebadge_l2_notify_send(EB_CMD_XFER_PROGRESS, params, off);
+    eb_emit_progress(recv, total);
 }
 
 /** 0x15 XFER_DONE (spec §4.11) -- all three TLVs required. */
@@ -830,6 +829,17 @@ void xfer_session_offer(const char *name, uint8_t file_type,
         emit_fail(EB_XFER_ERR_BUSY, "preview stream busy");
         return;
     }
+    /* And the third claimant on the same radio: an 8711 firmware update.  Worth
+     * refusing rather than queueing even in its push phase, when Wi-Fi is already
+     * down -- the module is being rewritten, so a transfer that raised the AP again
+     * would be talking to a radio that is about to restart. */
+    if (ota_session_state() != OTA_SESSION_IDLE)
+    {
+        EBADGE_WARN1("offer while an 8711 update is running (state=%d) -> XFER_FAIL BUSY",
+                     (int)ota_session_state());
+        emit_fail(EB_XFER_ERR_BUSY, "ota in progress");
+        return;
+    }
 
     /* Type check (spec §2.7): 0x00 UNKNOWN is illegal in an offer, and
      * anything above the enum's last member is a newer App than us.       */
@@ -850,18 +860,18 @@ void xfer_session_offer(const char *name, uint8_t file_type,
         return;
     }
 
-    /* Single-file cap imposed by the transport, not by our storage.
+    /* Single-file cap imposed by our staging buffer, not by the transport -- see
+     * XS_MAX_FILE_SIZE above for why the transport stopped having a say.
      *
-     * The 8711's port-9000 entry accepts at most 2 MiB per file (SPI spec §6).
      * Answering immediately is better than accepting: an oversized offer would
-     * otherwise bring the AP up, have the phone refused or truncated at the
-     * upload port, and then fail on the idle deadline with IO_TIMEOUT -- a
-     * misleading answer to a limit we can state up front. */
+     * otherwise bring the AP up, run until xfer_cache_append() refused a chunk
+     * with -ENOSPC part-way through, and fail there -- a misleading answer to a
+     * limit we can state up front. */
     if (size > XS_MAX_FILE_SIZE)
     {
         EBADGE_WARN2("offer: size=%u > %u -> XFER_FAIL TOO_LARGE",
                      (unsigned)size, (unsigned)XS_MAX_FILE_SIZE);
-        emit_fail(EB_XFER_ERR_TOO_LARGE, "over 2MiB file cap");
+        emit_fail(EB_XFER_ERR_TOO_LARGE, "over receive cache size");
         return;
     }
 

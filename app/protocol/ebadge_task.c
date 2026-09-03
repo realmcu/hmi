@@ -29,11 +29,13 @@
 #include "wifi_xfer/stream_sink.h"
 #include "wifi_xfer/jpgs_ingress.h"
 #include "wifi_xfer/ebfs_ingress.h"
+#include "wifi_ota/ota_session.h"
 #include "port/ebadge_port_antenna.h"
 #include "port/ebadge_port_ble.h"
 #include "port/ebadge_port_softap.h"
 #include "port/ebadge_port_tcp.h"
 #include "port/ebadge_port_vbat.h"
+#include "port/ebadge_port_ota.h"
 
 /*----------------------------------------------------------------------------*
  *  Configuration
@@ -193,7 +195,7 @@ int ebadge_task_init(void)
     s_inited = true;
 
     /* Once the task is up, wire the pieces around it: BLE port, the SoftAP port,
-     * both Wi-Fi state machines (each registers a tick sink), then command
+     * all three Wi-Fi state machines (each registers a tick sink), then command
      * handlers (registers the L2 dispatch table).  Order matters only in that
      * handlers can call into either session, so sessions go first.
      *
@@ -223,8 +225,16 @@ int ebadge_task_init(void)
      * placeholder.  Independent of everything else here -- a failure only means
      * the battery reads as unknown. */
     ebadge_port_vbat_init();
+    /* The 8711 update path.  Puts nothing on the wire -- at_ota only opens the AT
+     * link on the first push -- so it is free of Wi-Fi bring-up ordering, same as
+     * the sessions below. */
+    ebadge_port_ota_init();
     xfer_session_init();
     stream_session_init();
+    /* Third session on the same radio, and it registers the fourth unconditional
+     * tick sink; see EBADGE_TICK_SINKS.  Order among the three does not matter --
+     * each one's offer path tests the other two by state, not by init order. */
+    ota_session_init();
     /* AFTER stream_session_init(), which clears the sink pointer this installs.
      * Does not touch the GUI transport -- that handle is fetched on the first
      * frame -- so it is free of GUI init ordering. */
@@ -238,10 +248,10 @@ int ebadge_task_init(void)
      *
      * Last of the tick sinks, and the count is worth knowing because an
      * overflowing sink is reported only once, here at init, and then silently does
-     * nothing.  Three of EBADGE_TICK_SINKS (6) are taken by default -- vbat and
-     * the two sessions -- and a fourth when the stats switch is on.  port_softap
-     * takes one more only under EBADGE_SOFTAP_PER_TRANSFER_LIFETIME; by default it
-     * has no deadline of its own, so it registers nothing. */
+     * nothing.  Four of EBADGE_TICK_SINKS (8) are taken by default -- vbat and the
+     * three sessions -- and a fifth when the stats switch is on.  port_softap takes
+     * one more only under EBADGE_SOFTAP_PER_TRANSFER_LIFETIME; by default it has no
+     * deadline of its own, so it registers nothing. */
     ebadge_stats_init();
 
     EBADGE_LOG("l2_task up");

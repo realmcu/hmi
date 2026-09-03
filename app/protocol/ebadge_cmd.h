@@ -32,7 +32,7 @@
  *   EB_TLV_RESULT_* 0x04 RESULT            EB_TLV_FAIL_*  0x16 XFER_FAIL
  *   EB_TLV_SOFR_*   0x08 STREAM_OFFER      EB_TLV_BAT_*   0x18 BATTERY
  *   EB_TLV_SDEC_*   0x09 STREAM_DECISION   EB_TLV_STOR_*  0x1A STORAGE_INFO
- *   EB_TLV_XFER_*   0x10 XFER_OFFER
+ *   EB_TLV_XFER_*   0x10 XFER_OFFER        EB_TLV_OTA_*   0xE0 OTA_OFFER
  *   EB_TLV_DEC_*    0x11 XFER_DECISION     EB_TLV_DBG_*   0xFF DEBUG
  */
 #ifndef _EBADGE_CMD_H_
@@ -81,6 +81,20 @@ extern "C" {
 /* 0x05..0x07, 0x0A..0x0F and 0x1B..0x2F are RESERVED -- must not be used.
  * (V1.2 also reserved 0x08/0x09; V1.3 §3 allocates them to the stream pair
  * above, so the reserved ranges are now split around them.)              */
+
+/* Wi-Fi module firmware update ---------------------------------------- */
+/** Push new firmware to the 8711 over Wi-Fi, then over the SPI AT link.
+ *
+ *  NOT in PROT-001.  0xE0 was chosen for the same reason as 0xFF DEBUG: it sits
+ *  outside every range the spec has allocated OR reserved (which stop at 0x2F),
+ *  so a future revision of the document cannot collide with it.
+ *
+ *  There is no matching D->H command.  Everything the device says back reuses an
+ *  existing one -- 0x04 RESULT to refuse or to report the final verdict, 0x13
+ *  AP_INFO as the acceptance, 0x14 XFER_PROGRESS during the receive, 0x16
+ *  XFER_FAIL on a failure after acceptance.  See ota_session.h for the table and
+ *  for why 0x15 XFER_DONE is deliberately not used.                          */
+#define EB_CMD_OTA_OFFER        0xE0    /* H->D  "I want to update the 8711"  */
 
 /* Debug / bring-up ---------------------------------------------------- */
 /** Vendor debug hook.  NOT in PROT-001 -- 0xFF is deliberately outside the
@@ -236,6 +250,46 @@ extern "C" {
 
 /** Filesystem metadata margin, spec §2.9 -- fixed at 4096 bytes. */
 #define EB_FS_MARGIN            4096u
+
+/*----------------------------------------------------------------------------*
+ *  0xE0 OTA_OFFER  (not in PROT-001 -- 8711 firmware update)
+ *
+ *  DELIBERATELY MINIMAL, AND THE GAPS ARE THE POINT.  One TLV is defined: the
+ *  image length, which is the only field the device can act on.  It is load
+ *  bearing twice over -- AT+OTAUSER must declare the length to the module before
+ *  the first byte is pushed, and a raw image has no end marker, so the length is
+ *  also how the receive phase knows it is finished.
+ *
+ *  Everything an update protocol would normally carry -- a version, a CRC32 or
+ *  signature, a target chip / bank, a compatibility range -- is NOT defined here
+ *  yet, and the device therefore treats the payload as an unverified raw image.
+ *  What that does and does not cost is spelled out in ota_session.h; the short
+ *  version is that the 8711's own OTA layer still validates the image header, so
+ *  a corrupt image is refused rather than installed, but nothing distinguishes a
+ *  wrong-but-valid image from the right one.
+ *
+ *  THE NUMBERING IS BORROWED FROM 0x10 XFER_OFFER ON PURPOSE.  Type numbers are
+ *  per-command here (see the namespace table at the top), so 0xE0 was free to use
+ *  0x01 for its one field -- and deliberately does not, because the App fills this
+ *  offer in the same shape as a file offer.  Length therefore sits at 0x03, where
+ *  §4.7 puts it, and 0x01/0x02/0x04/0x05 are held at their XFER meanings instead
+ *  of being reused for something else.  Two things follow:
+ *
+ *    - an App can reuse its 0x10 offer builder and simply send fewer TLVs; the
+ *      ones it does send land on the fields with the same meanings
+ *    - if it sends the full set anyway, the extras are ignored, not misread --
+ *      which would NOT be true if length were at 0x01, because a 4-character
+ *      TLV_XFER_NAME would then parse as a perfectly plausible image size
+ *
+ *  The reserved numbers below are consequently already spoken for by §4.7 rather
+ *  than free.  A check added later takes 0x06 upward, and the receiver must keep
+ *  IGNORING unknown types (which ebadge_tlv_get_* already does) so an App that
+ *  sends a newer offer to an older device still gets a working update rather than
+ *  a parse failure.
+ *----------------------------------------------------------------------------*/
+#define EB_TLV_OTA_SIZE         0x03    /* 4B LE, image length -- as §4.7     */
+/* 0x01/0x02/0x04/0x05 are the XFER_OFFER fields, unused here but not free.   */
+/* 0x06.. reserved for version / integrity fields -- see above.               */
 
 /*----------------------------------------------------------------------------*
  *  0xFF DEBUG  (not in PROT-001 -- vendor bring-up hook)

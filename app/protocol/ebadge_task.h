@@ -71,11 +71,19 @@ int ebadge_task_post_call(ebadge_post_fn_t fn, void *arg);
 typedef void (*ebadge_tick_fn_t)(uint32_t now_ms);
 void ebadge_task_set_tick(ebadge_tick_fn_t fn);
 
-/** Number of tick sinks the fanout can hold.  Currently four are registered
- *  (port_softap, xfer_session, stream_session, port_vbat), so this leaves
- *  headroom -- a sink that does not fit is dropped with an error and whatever
- *  it was driving silently stops, which is a bad way to find out. */
-#define EBADGE_TICK_SINKS   6
+/** Number of tick sinks the fanout can hold.
+ *
+ *  Up to six are registered today: port_vbat, xfer_session, stream_session and
+ *  ota_session always, ebadge_stats under its own switch, and port_softap only
+ *  under EBADGE_SOFTAP_PER_TRANSFER_LIFETIME.  Six was the cap until the OTA
+ *  session took the fourth unconditional slot, which made both switches together
+ *  land exactly on it.
+ *
+ *  Kept ahead of the count on purpose: a sink that does not fit is dropped with
+ *  one error line at init and whatever it was driving then silently stops
+ *  ticking -- so the failure shows up as a session that never times out, which is
+ *  a bad way to find out about an off-by-one in a header. */
+#define EBADGE_TICK_SINKS   8
 
 /** Nominal tick period.  See xfer_session timeout constants. */
 #define EBADGE_TICK_MS   100

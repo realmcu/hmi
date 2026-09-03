@@ -10,6 +10,7 @@
 #     ebadge_*                -- framing / L2 / task / task-tick timer
 #     handlers/               -- one .c per V1.2 command
 #     wifi_xfer/              -- xfer_session + EBXF/EBXR + tcp_server
+#     wifi_ota/               -- ota_session + PSRAM staging for the 8711 image
 #     port/                   -- transport-agnostic porting stubs
 
 cmake_minimum_required(VERSION 3.10)
@@ -27,6 +28,11 @@ if(1)
     file(GLOB EB_XFER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/wifi_xfer/*.c")
     target_sources(${APP_TARGET_NAME} PRIVATE ${EB_XFER_SRC})
 
+    # Wi-Fi module OTA plane -- shares the xfer plane's SoftAP/TCP, differs in
+    # where the bytes end up (the 8711's flash, over the SPI AT link).
+    file(GLOB EB_OTA_SRC "${CMAKE_CURRENT_SOURCE_DIR}/wifi_ota/*.c")
+    target_sources(${APP_TARGET_NAME} PRIVATE ${EB_OTA_SRC})
+
     # Port abstraction
     file(GLOB EB_PORT_SRC "${CMAKE_CURRENT_SOURCE_DIR}/port/*.c")
     target_sources(${APP_TARGET_NAME} PRIVATE ${EB_PORT_SRC})
@@ -37,6 +43,7 @@ if(1)
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/handlers
         ${CMAKE_CURRENT_SOURCE_DIR}/wifi_xfer
+        ${CMAKE_CURRENT_SOURCE_DIR}/wifi_ota
         ${CMAKE_CURRENT_SOURCE_DIR}/port
     )
 endif()

@@ -74,6 +74,15 @@ void eb_emit_ap_info(const ebadge_softap_info_t *info, uint16_t tcp_port)
     (void)ebadge_l2_notify_send(EB_CMD_AP_INFO, params, off);
 }
 
+void eb_emit_progress(uint32_t recv, uint32_t total)
+{
+    uint8_t  params[16];
+    uint16_t off = 0;
+    ebadge_tlv_put_u32(params, sizeof(params), &off, EB_TLV_PROG_RECV,  recv);
+    ebadge_tlv_put_u32(params, sizeof(params), &off, EB_TLV_PROG_TOTAL, total);
+    (void)ebadge_l2_notify_send(EB_CMD_XFER_PROGRESS, params, off);
+}
+
 void eb_emit_fail(uint8_t reason, const char *detail)
 {
     uint8_t  params[32];

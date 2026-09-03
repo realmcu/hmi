@@ -1,8 +1,35 @@
 # 外挂 8711 Wi-Fi（AT-over-SPI）挂载骨架
 
+> ## ⚠️ 历史文档 —— 三条更新层层叠加，且最后一条已经反了
+>
+> 读之前先知道现在的事实：**8711 跑 Realtek 标准 AT 固件，本机是 SPI 主机**，
+> 节点 `&spi1_hs` + DMA 6/7 + mode 0 + 25 MHz，握手线 **m2s（P2_7 输出）/ s2m
+> （P4_1 输入）**，槽是 16384 B 定长 + 4 字节槽头 + **无 CRC**。
+>
+> 所以本文的三层结论要这样读：
+>
+> - **正文（2026-08-14，主机骨架）**：主从关系又回到主机，方向上**对了**；但文件路径
+>   全错——`app/wifi_8711/`、`snippets/wifi_8711/`、`dts/bindings/spi_m2s2m-gpio.yaml`
+>   都已删除，现役是 `app/spi_at_master/` + `snippets/wifi/`。
+>   「待办」第 3 条描述的 `[AT(2)][len(2)][data(N)]` + `SPI_XMIT_SIZE 16 KiB`
+>   反而**接近**现在真正的槽格式（只是没有尾部 CRC32）。
+> - **2026-08-18 更新块（ATMC / 我们做从机）**：**整块作废**，ATMC 协议已不存在。
+> - **2026-08-19 更新块（🚫 那条）**：**现在是反的**。它说「已换成 `&spi0_slave` +
+>   普通组 psel + DMA 55/56 + `b2w`/`w2b`」——这些**才是死的**；`&spi1_hs` + HS 组
+>   psel + DMA 6/7 + `m2s`/`s2m` 是活的。唯一仍然有效的是最后一句：
+>   **P4_3/P4_4 撞触摸的硬件冲突已由硬件把 I2C2 挪到 P2_3/P2_4 解决**。
+>
+> 「三个非显然的坑」（必须动 DT、`psram1_nc` 节点不存在会静默失效、DMA 通道 0/1 空着）
+> **全部依然有效**，这也是本文留下来的主要价值。现役形态见
+> [protocol-reference.md](protocol-reference.md) §3、§5。
+
 2026-08-14。**只搭挂载骨架**：devicetree + Kconfig + CMake 打通，能在 build 期抓住 overlay 写错、在 boot 期抓住总线没起来。**不含任何跟芯片通信的代码**，AT 引擎 / SPI DMA 传输 / socket 流程全部待移植（见文末待办）。
 
 两条编译都过（`EXITCODE=0`，2026-08-14）：baseline 不带 snippet、以及 `-S wifi_8711` pristine 445/445。
+
+> ⚠️ **2026-08-18 更新**：厂商随后给出的 8711FA 固件用的是 **ATMC 协议，主从关系与本骨架相反**（8711 是 SPI 主机，8773G 做从机）。**本文档「引脚分配」表、`&spi1_hs` 主机化的 overlay，以及「待办」里第 1/3/5/6 条移植计划全部不适用于那份固件**——详见 `note/spi-at-atmc-protocol.md`。本骨架仍可作为 snippet / DT / CMake 挂载方式的参考，「三个非显然的坑」也全部依然有效。
+
+> 🚫 **2026-08-19：本文档描述的代码状态已不存在。** 骨架已按 v2.0 协议整体从机化并编译通过（449/449）：overlay 换成 `&spi0_slave` + 四条普通组 `SPI_*_SLAVE` psel（P4_2..P4_5）+ DMA 55/56，握手线从 `m2s`/`s2m` 改名 **`b2w`/`w2b`**（旧名相对「谁是 master」，角色一换就静默反相），binding `dts/bindings/spi_m2s2m-gpio.yaml` 与 `wifi_8711-device.yaml` **已删除**（从机没有总线 peer），新增 `dts/bindings/wifi_8711-irq.yaml`，Kconfig 的 `WIFI_8711_ROLE_MASTER` 换成 `_ROLE_SLAVE`，shell 的 `m2s` 命令改成 `b2w`。**下面提到这些文件名/符号的地方全部只有历史价值。** 当前实现见 `app/wifi_8711/` 与 `snippets/wifi_8711/`，协议见 `note/refer/spi-at-command-protocol 1.md`。另：文末「P4_3/P4_4 撞触摸」的硬件冲突**已由硬件把 I2C2 挪到 P2_3/P2_4 解决**。
 
 ## 为什么必须动设备树
 
@@ -109,6 +136,8 @@ app/designer/src/user/ViewMainFace_user.c:218
 按既有 `#if 0 /* V1.2 migration: ... parked */` 模式封了 4 处（**不删旧代码**）：include 块 + `done_cb`、`prog_arc_timer` 的进度读取、`on_remote_state_changed` 的 getter、`app_remote_ctrl_init` 的三处注册。进度环退化成固定最小角度；三个 remote 回调函数体保留，用 `(void)` 引用压掉 unused warning。note 的停摆表格第 204 行原先声称这处已经封过，实际没有，已改正。
 
 ## 待办（全部空着）
+
+> ⚠️ **下面这份「从 watch 移植 3700 行」的计划已被 `note/spi-at-atmc-protocol.md` 推翻**（厂商实际固件是 ATMC 协议、8773G 做从机）。保留原文是为了记录当时的判断依据；真正要做的第一件事见那篇的 §9.1「最小从机点亮实验」。第 6 条的疑问已有答案：AP 模式命令确实存在（`AT+WLSTARTAP`，开机自启），但在另一套固件、另一套协议里。
 
 ### 移植（按此顺序，源在 `applications/watch/src/module/wifi_8711/`，约 3700 行）
 

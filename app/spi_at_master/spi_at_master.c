@@ -141,6 +141,32 @@ static bool                   s_dump_rx = true;
 static uint16_t s_stage_len;        /* payload length; 0 = nothing staged      */
 static bool     s_stage_valid;
 
+/* A slot is being clocked right now, and M2S will be released when it ends.
+ *
+ * THIS IS WHAT KEEPS M2S FROM BECOMING A LOST SIGNAL.  stage_into_tx() frees the
+ * staging slot at the START of a transfer -- the payload is already in slot_tx by
+ * then -- so without this flag the next spi_at_master_send() succeeds mid-slot
+ * and calls m2s_assert() on a pad that is ALREADY low.  That produces no edge and
+ * changes no level, and then do_transaction() releases the pad on its way out,
+ * taking the new request's only signal with it.  The peer sees no request, never
+ * raises S2M, and every later send() returns -EBUSY until the caller's staging
+ * budget expires.
+ *
+ * A 16 KiB slot at 25 MHz takes 5.2 ms and at_client retries every 5 ms, so on a
+ * back-to-back path a retry lands inside that window essentially every time --
+ * which is why an OTA push (the only path that stages chunks back to back) died
+ * within its first few chunks while single commands looked fine.
+ *
+ * Gating send() rather than re-asserting after the release is deliberate: a
+ * release/assert pulse would have to be wide enough for the peer's input to
+ * catch, and that width is not something this side can verify.  Serialising
+ * costs at most one retry period per chunk and assumes nothing about the peer. */
+static bool     s_xfer_busy;
+
+/* Current S2M patience.  A variable rather than the constant it starts at, for
+ * the reason spelled out at SPI_AT_READY_TIMEOUT_MS. */
+static uint32_t s_ready_to_ms = SPI_AT_READY_TIMEOUT_MS;
+
 /*----------------------------------------------------------------------------*
  *  Sync lines
  *----------------------------------------------------------------------------*/
@@ -191,7 +217,7 @@ static void ready_timeout_handler(struct k_work *work)
         s_stats.ready_timeout++;
         EBADGE_WARN1("atm: no s2m within %u ms -- request abandoned "
                      "(8711 powered? AT firmware running?)",
-                     (unsigned)SPI_AT_READY_TIMEOUT_MS);
+                     (unsigned)s_ready_to_ms);
     }
 }
 
@@ -222,6 +248,10 @@ static uint16_t stage_into_tx(void)
     uint16_t len = 0;
 
     k_mutex_lock(&stage_lock, K_FOREVER);
+    /* From here until do_transaction() releases M2S, no new request may be staged
+     * -- the reason is spelled out at s_xfer_busy.  Set for a dummy slot too: the
+     * release at the end of one is just as capable of erasing a request. */
+    s_xfer_busy = true;
     if (s_stage_valid)
     {
         len = s_stage_len;
@@ -339,8 +369,16 @@ static void do_transaction(void)
 
     /* Release M2S before parsing, not after: the transfer is over, and the
      * reference releases at the same point (its NEXT: label).  Parsing first
-     * would extend the request window across the hexdump for no reason. */
+     * would extend the request window across the hexdump for no reason.
+     *
+     * The pad and s_xfer_busy are one signal, so they move together under the lock
+     * and in THIS order.  Clearing the flag first would reopen the very window the
+     * flag exists to close: a send() slipping in between would stage and assert on
+     * a pad still held low -- no edge -- only for the release below to erase it. */
+    k_mutex_lock(&stage_lock, K_FOREVER);
     m2s_release();
+    s_xfer_busy = false;
+    k_mutex_unlock(&stage_lock);
     app_dlps_enable(APP_DLPS_ENTER_CHECK_WIFI_8711);
 
     if (rc != 0)
@@ -407,6 +445,7 @@ int spi_at_master_init(void)
     memset(slot_rx, 0, sizeof(slot_rx));
     s_stage_valid = false;
     s_stage_len   = 0;
+    s_xfer_busy   = false;
     memset(&s_stats, 0, sizeof(s_stats));
 
     k_sem_init(&s2m_sem, 0, K_SEM_MAX_LIMIT);
@@ -548,7 +587,9 @@ int spi_at_master_send(const uint8_t *payload, uint16_t len)
     }
 
     k_mutex_lock(&stage_lock, K_FOREVER);
-    if (s_stage_valid)
+    /* s_xfer_busy as well as s_stage_valid: a slot being clocked ends with M2S
+     * released, so a frame staged now would be a request with no line behind it. */
+    if (s_stage_valid || s_xfer_busy)
     {
         k_mutex_unlock(&stage_lock);
         return -EBUSY;
@@ -562,8 +603,48 @@ int spi_at_master_send(const uint8_t *payload, uint16_t len)
      * S2M; this call does not block on that.  The timer is what bounds the wait:
      * a request nobody answers is abandoned rather than left latched forever. */
     m2s_assert();
-    (void)k_work_reschedule(&ready_to_work, K_MSEC(SPI_AT_READY_TIMEOUT_MS));
+    (void)k_work_reschedule(&ready_to_work, K_MSEC(s_ready_to_ms));
     return 0;
+}
+
+uint32_t spi_at_master_set_ready_timeout(uint32_t ms)
+{
+    uint32_t was = s_ready_to_ms;
+
+    /* Read/modified only from callers on the AT work queue plus the shell, and a
+     * torn read of a 32-bit budget is not a thing on this core, so no lock: the
+     * worst a race could do is arm one frame with the neighbouring value. */
+    s_ready_to_ms = (ms != 0U) ? ms : SPI_AT_READY_TIMEOUT_MS;
+    return was;
+}
+
+bool spi_at_master_cancel_staged(void)
+{
+    bool dropped = false;
+
+    if (!s_inited)
+    {
+        return false;
+    }
+
+    /* Same discipline as ready_timeout_handler(), and for the same reason: the
+     * flag is what tells us whether the frame is still ours to drop, and if it
+     * is already clear then do_transaction() owns M2S and we must keep off it. */
+    k_mutex_lock(&stage_lock, K_FOREVER);
+    if (s_stage_valid)
+    {
+        s_stage_valid = false;
+        s_stage_len   = 0;
+        dropped       = true;
+    }
+    k_mutex_unlock(&stage_lock);
+
+    if (dropped)
+    {
+        (void)k_work_cancel_delayable(&ready_to_work);
+        m2s_release();
+    }
+    return dropped;
 }
 
 int spi_at_master_send_text(const char *text)

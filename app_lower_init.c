@@ -25,9 +25,9 @@ extern uint32_t sys_timestamp_get_us(void);
 /* Both PSRAM windows are mapped Non-cacheable (attribute 0x44).
  *
  * SPIC1 has been that way all along and app/protocol/port/ebadge_psram_map.h
- * depends on it: the SPI slot buffers (psram1_nc), the Wi-Fi receive cache and
- * the preview frame buffer are all GDMA or cross-thread targets that carry no
- * cache maintenance at all, which is only correct because nothing caches them.
+ * depends on it: the SPI slot buffers (psram1_nc) and the preview frame buffer
+ * are GDMA or cross-thread targets that carry no cache maintenance at all, which
+ * is only correct because nothing caches them.
  *
  * SPIC3 is the one being brought into line here, and the reason it was NOT
  * already is worth stating because it looks like an omission rather than a
@@ -41,12 +41,18 @@ extern uint32_t sys_timestamp_get_us(void);
  * (eBadge_8773g, simple-test) the HoneyGUI lower heap lives at SPIC3_MEM_BASE
  * and their decode throughput is exactly this attribute -- see
  * gui_port_os.c:142 there.  THIS app does not: its lower heap is
- * EB_PSRAM_GUI_LOWER_BASE == SPIC1_MEM_BASE, and a grep for SPIC3_MEM_BASE
- * across the tree finds only spic3_psram_speed_report() below, which nobody
- * calls.  So the window is initialised and clocked but unallocated, and this
- * region changes no current access -- it sets the policy that any future
- * allocation there will inherit, which is the whole point of doing it now
- * rather than after something has been built on the faster behaviour.
+ * EB_PSRAM_GUI_LOWER_BASE == SPIC1_MEM_BASE, so SPIC3 was initialised and
+ * clocked but unallocated when this region was added, and it changed no current
+ * access -- it set the policy that any future allocation there would inherit,
+ * which was the whole point of doing it before something got built on the faster
+ * behaviour.
+ *
+ * That future arrived: the Wi-Fi receive cache (1 MB) and the 8711 OTA staging
+ * buffer (2 MB) now live at SPIC3_MEM_BASE, carved out in ebadge_psram_map.h,
+ * and they inherit this attribute.  Both are memcpy-in / read-back-once staging
+ * with no cache maintenance anywhere, so this region is now load-bearing for
+ * them exactly as region 2 is for psram1_nc.  Note the ordering that makes it
+ * safe: this runs from app_mpu_config(), well before the protocol task exists.
  */
 static int app_mpu_config(void)
 {

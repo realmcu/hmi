@@ -35,6 +35,7 @@
 #include "ebxs_frame.h"
 #include "ebxf_frame.h"        /* EBXR ack + eb_crc32_update                 */
 #include "jpgs_ingress.h"      /* the JPEG boundary scanner in front of us   */
+#include "../wifi_ota/ota_session.h"  /* third claimant on the same radio    */
 
 #include "../ebadge_cmd.h"
 #include "../ebadge_l2.h"
@@ -448,6 +449,17 @@ void stream_session_offer(const char *name, uint8_t file_type, uint8_t fps)
     {
         EBADGE_WARN1("stream: offer while file xfer busy (state=%d) -> REJECT BUSY",
                      (int)xfer_session_state());
+        emit_stream_decision(EB_DECISION_REJECT, EB_XFER_ERR_BUSY, 0);
+        return;
+    }
+    /* The third claimant on the same radio: an 8711 firmware update.  Refuse
+     * even in its push phase, when Wi-Fi is already down -- the module is being
+     * rewritten, so a preview that raised the AP again would be talking to a
+     * radio that is about to restart.                                       */
+    if (ota_session_state() != OTA_SESSION_IDLE)
+    {
+        EBADGE_WARN1("stream: offer while an 8711 update is running (state=%d)"
+                     " -> REJECT BUSY", (int)ota_session_state());
         emit_stream_decision(EB_DECISION_REJECT, EB_XFER_ERR_BUSY, 0);
         return;
     }

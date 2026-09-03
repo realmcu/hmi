@@ -34,6 +34,7 @@
 #include "../ebadge_log.h"
 #include "../wifi_xfer/xfer_session.h"
 #include "../wifi_xfer/stream_session.h"
+#include "../wifi_ota/ota_session.h"
 
 #define HMI_CONN_HANDLE_INVALID     0xFFFF
 
@@ -139,6 +140,13 @@ static void on_gap_msg(T_IO_MSG *msg)
          * listener, and its 3s frame gap would otherwise keep them up for
          * seconds after the phone is already gone.                         */
         (void)ebadge_task_post_call((ebadge_post_fn_t)stream_session_abort, NULL);
+        /* And an 8711 update, which holds the same AP and listener while it is
+         * still receiving.  Note what this does NOT do: once the image is being
+         * pushed over SPI, the abort gives up only the *reporting* -- see
+         * ota_session_abort().  So this post can leave ebadge_port_ota_busy()
+         * true after the session is idle again, which is exactly why the next
+         * offer checks the port and not just the session state.              */
+        (void)ebadge_task_post_call((ebadge_post_fn_t)ota_session_abort, NULL);
         /* Same reason for the reassembler: a 0x02 SEND_FILE that announced a
          * body and then dropped would otherwise leave the RX stream in raw
          * mode, swallowing the next connection's frames as file bytes.     */

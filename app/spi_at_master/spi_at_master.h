@@ -177,7 +177,15 @@ extern "C" {
 
 /** How long we wait for the 8711 to answer an M2S assert with an S2M rise.
  *  1000 ms matches the peer's own READY budget, so a timeout here means the
- *  8711 really is not participating rather than merely being slow. */
+ *  8711 really is not participating rather than merely being slow.
+ *
+ *  That reading holds for every command EXCEPT an OTA push, where the module
+ *  stops servicing slots while it erases and programs its own flash and does
+ *  come back -- measured on the bench at more than 1000 ms after the first
+ *  16 KiB chunk, which is exactly long enough to punch a hole in the image.
+ *  Hence spi_at_master_set_ready_timeout(): the default stays short so a dead
+ *  module is still diagnosed in a second, and the one caller that knows the
+ *  peer is legitimately busy raises it for the duration. */
 #define SPI_AT_READY_TIMEOUT_MS 1000U
 
 /*----------------------------------------------------------------------------*
@@ -259,6 +267,13 @@ void spi_at_master_quiesce(void);
  * Only one frame may be in flight; this is a bring-up harness and a queue would
  * hide ordering bugs rather than fix them.
  *
+ * -EBUSY ALSO COVERS "A SLOT IS BEING CLOCKED", not just "a frame is staged", and
+ * a caller pushing frames back to back will see it on that account most of the
+ * time -- one slot is 5.2 ms of wire.  It is the price of M2S staying meaningful;
+ * s_xfer_busy in the .c says why the alternative was worse.  Callers must retry,
+ * which is what makes it worth stating: treating -EBUSY as a failure turns a
+ * 5 ms wait into a dropped chunk.
+ *
  * @param  payload  bytes to place after the header (CRLF included if the peer
  *                  wants it -- this layer appends nothing)
  * @param  len      1..SPI_AT_PAYLOAD_MAX
@@ -266,9 +281,37 @@ void spi_at_master_quiesce(void);
  * @retval -ENODEV    not initialised
  * @retval -EINVAL    NULL payload or len 0
  * @retval -EMSGSIZE  len > SPI_AT_PAYLOAD_MAX
- * @retval -EBUSY     a frame is already staged and not yet sent
+ * @retval -EBUSY     a frame is staged, or a slot is on the wire -- retry
  */
 int spi_at_master_send(const uint8_t *payload, uint16_t len);
+
+/**
+ * @brief  Change how long the next requests wait for S2M.
+ *
+ * Applies from the next spi_at_master_send(); a frame already waiting keeps the
+ * budget it was armed with.  Pass 0 to go back to SPI_AT_READY_TIMEOUT_MS.
+ *
+ * @return the budget that was in force, so the caller can put it back.
+ */
+uint32_t spi_at_master_set_ready_timeout(uint32_t ms);
+
+/**
+ * @brief  Drop the staged frame, if one is still waiting for S2M.
+ *
+ * For the caller that has given up on a frame and wants to send something else
+ * INSTEAD of it -- the '<' frames that dig the 8711 out of transparent mode are
+ * the only such caller.  Without this the abandoned chunk stays armed and goes
+ * out later, whenever the peer gets round to raising S2M, landing 16 KiB of a
+ * dead transfer in front of the recovery bytes.
+ *
+ * Does nothing if the frame already went out (or if none was staged), and in
+ * particular never touches M2S in that case: a transfer in progress owns the
+ * line until it releases it itself.
+ *
+ * @retval true   a staged frame was dropped
+ * @retval false  nothing to drop
+ */
+bool spi_at_master_cancel_staged(void);
 
 /**
  * @brief  spi_at_master_send() for a text command, appending CRLF if absent.

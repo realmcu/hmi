@@ -32,7 +32,7 @@
  * ---------------------------------------------------------------------------
  * WHERE IT LIVES, AND WHY THAT IS NOT A STATIC ARRAY
  * ---------------------------------------------------------------------------
- * A fixed window of SPIC1 PSRAM, carved out in ebadge_psram_map.h.  Not a static
+ * A fixed window of SPIC3 PSRAM, carved out in ebadge_psram_map.h.  Not a static
  * array, for two reasons:
  *
  *   - 1 MB does not fit anywhere the linker would put it.  DTCM is ~82 KB total.
@@ -41,7 +41,14 @@
  *     there would be exactly the kind of silent drift the map header exists to
  *     stop.
  *
- * Consequence worth knowing: SPIC1 PSRAM only comes up inside
+ * SPIC3 rather than SPIC1, which is where this used to sit: at 1 MB the cache no
+ * longer fits under psram1_nc alongside a 3 MB GUI heap, and SPIC3's first 4 MB
+ * was entirely unallocated in this app.  It is the same cache policy either way
+ * -- MPU region 4 maps SPIC3 non-cacheable exactly as region 2 does SPIC1 -- so
+ * the move changes the address and nothing else.  Neither device is the "fast"
+ * one any more; see the map header.
+ *
+ * Consequence worth knowing: SPIC3 PSRAM only comes up inside
  * app_system_lower_init(), so nothing here may be touched before that.  Every
  * entry point below is reached from the protocol task, which starts long after.
  *
