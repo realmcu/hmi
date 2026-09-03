@@ -53,6 +53,11 @@
  * 64 KB -- but every slice carries the final frame_size, which is the property the
  * old chunk-by-chunk delivery could not offer.
  *
+ * The other consequence is that an oversized frame is not detectable up front, only
+ * while it grows.  So the size limit is enforced during assembly and against the
+ * SMALLER of two ceilings -- this buffer, and what the display transport can
+ * actually take -- see frame_limit() below.
+ *
  * ---------------------------------------------------------------------------
  * THE SCANNER, AND THE ONE WAY IT IS KNOWN TO BE FOOLABLE
  * ---------------------------------------------------------------------------
@@ -112,6 +117,11 @@
 
 #include "jpgs_ingress.h"
 #include "stream_session.h"
+/* For the transport's frame ceiling only -- a query, not a data path.  The bytes
+ * still travel ingress -> session -> sink; this asks the far end of that chain how
+ * big a frame it can take, because the answer decides whether assembling one is
+ * worth doing at all.  See frame_limit(). */
+#include "stream_sink.h"
 #include "../ebadge_task.h"
 #include "../ebadge_log.h"
 
@@ -142,7 +152,8 @@ typedef struct
     bool     in_frame;      /* an SOI was seen and no EOI yet                 */
     uint32_t got;           /* bytes buffered, including the SOI              */
     bool     pending_ff;    /* the previous byte was FF; it may open a marker */
-    bool     overflow;      /* the frame outgrew the buffer -- resync on SOI  */
+    bool     overflow;      /* the frame outgrew the limit -- resync on SOI   */
+    uint32_t limit;         /* cap in force for THIS frame -- see frame_limit */
 } jpgs_scan_t;
 
 static jpgs_scan_t s_scan;
@@ -156,6 +167,42 @@ static uint32_t s_frames_dropped;
 /*----------------------------------------------------------------------------*
  *  Helpers
  *----------------------------------------------------------------------------*/
+
+/**
+ * How large this frame is allowed to get, evaluated once per frame at its SOI.
+ *
+ * TWO CEILINGS, AND THE LOWER ONE WINS.
+ *
+ *   the staging buffer   JPGS_FRAME_MAX -- physical, this is the memory that
+ *                        exists.  Exceeding it would be an overrun.
+ *   the transport        stream_sink_max_frame_size() -- the biggest size class the
+ *                        GUI configured.  stp_acquire_free() refuses anything above
+ *                        it whatever the occupancy, so a frame past this ceiling is
+ *                        already decided against; every further byte buffered for
+ *                        it, and the whole slice-and-copy pass that follows, is work
+ *                        done for something that cannot be displayed.
+ *
+ * The two used to be equal by design (128 KB both), which is why only the first was
+ * checked.  They are not equal any more -- the transport now configures one 50 KB
+ * class -- so the second is the one that actually bites, and it has to be read from
+ * the transport rather than hardcoded here: the classes live in the GUI's config and
+ * this file must not know them.
+ *
+ * A 0 from the sink means the GUI has not created the transport yet.  That is "no
+ * limit known", not "nothing fits", so it falls back to the physical ceiling and
+ * behaves exactly as this file did before -- the frame will be dropped at the sink
+ * instead, which is where a transport-less preview is already reported.
+ */
+static uint32_t frame_limit(void)
+{
+    uint32_t tp_max = stream_sink_max_frame_size();
+
+    if (tp_max == 0U || tp_max > JPGS_FRAME_MAX)
+    {
+        return JPGS_FRAME_MAX;
+    }
+    return tp_max;
+}
 
 /** Abandon the frame in progress and wait for the next SOI. */
 static void frame_discard(const char *why)
@@ -171,6 +218,13 @@ static void frame_discard(const char *why)
 
 /** One byte into the frame buffer, or note the overflow.
  *
+ *  ONCE THE LIMIT IS CROSSED NOTHING MORE IS COPIED.  The bytes already in the
+ *  buffer stay there -- they cannot be un-copied, and a JPEG does not declare its
+ *  length, so crossing the limit is the earliest moment this frame is knowably too
+ *  big.  What the check buys is everything downstream of it: the rest of the frame
+ *  is not copied, no transport buffer is acquired, and the slice-and-deliver pass in
+ *  frame_complete() never runs.
+ *
  *  Overflow is sticky rather than an immediate discard, because the frame is not
  *  resynchronisable until the next SOI: dropping the state now would let the very
  *  next FF D8 inside this oversized frame's entropy data -- if any survived the
@@ -178,7 +232,7 @@ static void frame_discard(const char *why)
  *  same policy the rest of the scanner follows. */
 static void frame_put(uint8_t b)
 {
-    if (s_scan.got < JPGS_FRAME_MAX)
+    if (s_scan.got < s_scan.limit)
     {
         s_frame[s_scan.got++] = b;
         return;
@@ -186,8 +240,9 @@ static void frame_put(uint8_t b)
     if (!s_scan.overflow)
     {
         s_scan.overflow = true;
-        EBADGE_WARN1("jpgs: frame exceeds %u bytes -- dropping to the next SOI",
-                     (unsigned)JPGS_FRAME_MAX);
+        EBADGE_WARN2("jpgs: frame exceeds the %u-byte limit (buffer %u) -- "
+                     "discarding it, resync on the next SOI",
+                     (unsigned)s_scan.limit, (unsigned)JPGS_FRAME_MAX);
     }
 }
 
@@ -276,6 +331,11 @@ void jpgs_ingress_on_tcp_data(const uint8_t *data, uint16_t len)
                 s_scan.in_frame = true;
                 s_scan.got      = 0U;
                 s_scan.overflow = false;
+                /* Sampled per frame, not per byte, and not once at init: the
+                 * transport appears at some point during GUI bring-up, so a frame
+                 * starting after that gets the real ceiling while one starting
+                 * before it falls back -- see frame_limit(). */
+                s_scan.limit    = frame_limit();
                 frame_put(JPEG_MARK_FF);
                 frame_put(b);
                 continue;

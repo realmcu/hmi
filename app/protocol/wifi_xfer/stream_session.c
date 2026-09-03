@@ -87,6 +87,15 @@ typedef struct
     uint32_t crc32_expected;
     uint32_t crc32_running;
 
+    /* This frame is being thrown away, but its bytes are still being counted.
+     *
+     * Set by either size check (see frame_too_big()).  Counting has to continue
+     * because `frame_size` is what tells us where the NEXT header starts -- a
+     * declared-length protocol has no resync marker, so abandoning the count would
+     * make the following header land mid-payload and fail on its magic.  So the
+     * frame is skipped, not the session: no CRC, no sink, framing intact. */
+    bool     frame_skip;
+
     /* stats ----------------------------------------------------------- */
     uint32_t frames_ok;
     uint32_t frames_bad;
@@ -329,14 +338,24 @@ static void ss_data_trampoline(void *arg)
 {
     struct ss_chunk *c = arg;
     if (!c) { return; }
-    /* Through jpgs_ingress, NOT stream_session_on_tcp_data().  The preview port
-     * carries bare JPEG frames with no header of any kind, so what is needed here
-     * is boundary detection (FF D8 .. FF D9) -- and that is jpgs_ingress's whole
-     * job.  It calls stream_session_on_frame_chunk() once a frame is whole.
+    /* Through stream_session_on_tcp_data(), i.e. the §6.2 EBXS parser: the phone
+     * puts a 14-byte header in front of every JPEG frame on this connection, so the
+     * frame length arrives DECLARED rather than having to be discovered.
      *
-     * on_tcp_data() parses EBXS headers instead, and is still without a caller for
-     * the same reason it always was: nothing puts an EBXS header on this port. */
-    jpgs_ingress_on_tcp_data(c->p, c->n);
+     * That is what the size checks want -- an oversized frame is refused from its
+     * header, before a payload byte is taken -- and it also brings back the
+     * per-frame CRC32, which the scanner had no way to verify.
+     *
+     * jpgs_ingress (FF D8 .. FF D9 boundary detection, feeding
+     * stream_session_on_frame_chunk()) is what used to be here, on the reading that
+     * this port carried BARE JPEG.  It is kept, not deleted: it is the only thing
+     * that can receive a stream with no framing at all, and its own size limit is
+     * still in place.  Swapping this one call back is all it takes to return to it.
+     *
+     * If the two ever disagree on the wire the symptom is loud rather than subtle:
+     * a bare-JPEG stream fails this parser's magic check on FF D8 and reports it
+     * with the offending bytes -- see the log at the parse failure. */
+    stream_session_on_tcp_data(c->p, c->n);
     free(c->p);
     free(c);
 }
@@ -640,10 +659,78 @@ void stream_session_on_sta_joined(void)
 }
 
 /*----------------------------------------------------------------------------*
+ *  Frame size limit -- two checks against one ceiling
+ *
+ *  THE CEILING.  stream_sink_max_frame_size() is the biggest size class the GUI
+ *  configured in the display transport.  stp_acquire_free() refuses anything above
+ *  it whatever the occupancy (allow_oversize_fit only escalates UPWARD through the
+ *  classes), so a frame past it cannot be displayed -- not "might be dropped", but
+ *  cannot, by construction.  It is therefore worth refusing early rather than
+ *  carrying the bytes to the sink to be refused there.
+ *
+ *  WHY TWO CHECKS AND NOT ONE.  They catch different things and neither subsumes
+ *  the other:
+ *
+ *    1. THE HEADER.  §6.2 declares the payload length up front, so an oversized
+ *       frame is knowable before a single payload byte is taken.  This is the
+ *       cheap one and the one that normally fires.
+ *
+ *    2. WHAT ACTUALLY ARRIVES.  The header is the sender's claim about itself, and
+ *       the ceiling is not a constant: it reads 0 until the GUI has created the
+ *       transport, and check 1 cannot refuse against an unknown limit.  A frame
+ *       whose header passed while the answer was still 0 therefore has to be
+ *       re-tested as it accumulates -- which is also the check that would survive
+ *       a bug in the clamp arithmetic below.
+ *
+ *  A 0 ceiling means "not known yet", never "nothing fits": refusing every frame
+ *  because the GUI has not finished booting would turn a transient into a dead
+ *  preview.  Both checks skip themselves in that case and the sink reports the
+ *  drop, exactly as it did before either check existed.
+ *----------------------------------------------------------------------------*/
+
+/**
+ * @param  n     bytes to judge -- the header's declared size, or the running count.
+ * @param  what  "header"/"payload", for the log; the two are worth telling apart.
+ * @return true if the frame must be thrown away.  Sets frame_skip and counts it,
+ *         once per frame -- a payload spanning many deliveries must not log twice.
+ */
+static bool frame_too_big(uint32_t n, const char *what)
+{
+    uint32_t max = stream_sink_max_frame_size();
+
+    if (max == 0U || n <= max)
+    {
+        return s_s.frame_skip;
+    }
+    if (!s_s.frame_skip)
+    {
+        s_s.frame_skip = true;
+        s_s.frames_bad++;
+        EBADGE_WARN("stream: %s says %u bytes > %u max -- frame discarded, "
+                    "nothing buffered", what, (unsigned)n, (unsigned)max);
+    }
+    return true;
+}
+
+/*----------------------------------------------------------------------------*
  *  One completed frame: verify CRC, count it, tell the sink nothing more.
  *----------------------------------------------------------------------------*/
 static void frame_complete(void)
 {
+    if (s_s.frame_skip)
+    {
+        /* Already counted in frames_bad by frame_too_big(), and never CRC'd -- the
+         * running value is 0 against a real expected one, so falling through would
+         * report a CRC mismatch for a frame that was refused on its size. */
+        s_s.hdr_got       = 0;
+        s_s.in_payload    = false;
+        s_s.frame_size    = 0;
+        s_s.frame_got     = 0;
+        s_s.crc32_running = 0;
+        s_s.frame_skip    = false;
+        return;
+    }
+
     if (s_s.crc32_running == s_s.crc32_expected)
     {
         s_s.frames_ok++;
@@ -771,9 +858,18 @@ void stream_session_on_tcp_data(const uint8_t *data, uint16_t len)
             int rc = ebxs_hdr_parse(s_s.hdr, &h);
             if (rc != 0)
             {
-                /* Cannot resync a raw byte stream once the framing is lost --
-                 * the next bytes are payload, not a header.  Bail out.     */
-                EBADGE_ERR1("stream: bad EBXS header (rc=%d), abort", rc);
+                /* Cannot resync a raw byte stream once the framing is lost -- the
+                 * next bytes are payload, not a header.  Bail out.
+                 *
+                 * The first four bytes go in the log because they answer the one
+                 * question this failure raises: FF D8 .. means the sender is putting
+                 * BARE JPEG on the wire and this parser is the wrong one for it (see
+                 * ss_data_trampoline), while anything else means a genuinely
+                 * corrupt or desynchronised header.  rc alone cannot tell them
+                 * apart -- both arrive as -2. */
+                EBADGE_ERR("stream: bad EBXS header (rc=%d) hdr=%02x %02x %02x %02x"
+                           ", abort", rc,
+                           s_s.hdr[0], s_s.hdr[1], s_s.hdr[2], s_s.hdr[3]);
                 fail_and_reset(EB_XFER_ERR_VERIFY, "ebxs header");
                 return;
             }
@@ -789,6 +885,15 @@ void stream_session_on_tcp_data(const uint8_t *data, uint16_t len)
             s_s.frame_got      = 0;
             s_s.crc32_running  = 0;
             s_s.in_payload     = true;
+            s_s.frame_skip     = false;
+
+            /* CHECK 1 -- the declared size, before a single payload byte is taken.
+             * Not fail_and_reset(): the header states exactly how many bytes to
+             * throw away, so one oversized frame costs one frame.  ebxs_hdr_parse()
+             * has its own EBXS_MAX_FRAME_BYTES cap above, but that is a sanity
+             * bound on a corrupt length field (512 KB) and is not the display
+             * ceiling -- a 200 KB frame passes it and still cannot be shown. */
+            (void)frame_too_big(h.frame_size, "header");
             continue;                       /* payload may be in this buffer */
         }
 
@@ -797,10 +902,36 @@ void stream_session_on_tcp_data(const uint8_t *data, uint16_t len)
         uint16_t take   = (uint16_t)(len - off);
         if ((uint32_t)take > want32) { take = (uint16_t)want32; }
 
-        s_s.crc32_running = eb_crc32_update(s_s.crc32_running, data + off, take);
-        s_s.frame_got    += take;
+        s_s.frame_got += take;
+
+        /* CHECK 2 -- what has actually arrived.  Re-read every delivery, not once:
+         * the ceiling is 0 until the GUI creates the transport, so a frame whose
+         * header was judged against "unknown" gets caught here instead.  Skipping
+         * mid-frame is safe because the count above already advanced -- framing
+         * stays in sync whatever this decides. */
+        bool skip = frame_too_big(s_s.frame_got, "payload");
+
+        if (!skip)
+        {
+            s_s.crc32_running = eb_crc32_update(s_s.crc32_running,
+                                                data + off, take);
+        }
 
         bool is_last = (s_s.frame_got >= s_s.frame_size);
+        if (skip)
+        {
+            /* Nothing to the sink -- not even the slice that crossed the limit, and
+             * not the ones before it either.  The sink is stateless between frames
+             * (it acquires on offset 0), so a frame whose head it never saw simply
+             * never existed as far as the display is concerned. */
+            off = (uint16_t)(off + take);
+            if (is_last)
+            {
+                frame_complete();
+            }
+            continue;
+        }
+
         if (s_s.sink)
         {
             s_s.sink(data + off, take,

@@ -108,6 +108,14 @@ static stp_transport_t *sink_transport(void)
     return s_tp;
 }
 
+uint32_t stream_sink_max_frame_size(void)
+{
+    /* Not cached.  It cannot be resolved at init -- the transport may not exist
+     * yet, which is the whole reason sink_transport() is lazy -- and a zero cached
+     * before that would be permanent.  Callers ask once per frame at most. */
+    return stp_max_frame_size(sink_transport());
+}
+
 /** Give back a buffer we hold but have not published.  Producer-local. */
 static void release_held(void)
 {

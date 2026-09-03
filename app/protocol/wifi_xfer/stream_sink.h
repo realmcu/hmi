@@ -55,13 +55,33 @@ void stream_sink_init(void);
  */
 void stream_sink_reset(void);
 
+/**
+ * @brief  Largest frame the transport can accept, in bytes; 0 before it exists.
+ *
+ * The biggest size class configured in the transport (stp_max_frame_size()), which
+ * is a HARD ceiling: stp_acquire_free() refuses anything above it whatever the
+ * occupancy, because allow_oversize_fit only escalates upward through the classes.
+ *
+ * Published for the frame assembler upstream (jpgs_ingress), which cannot know a
+ * JPEG's length until FF D9 and would otherwise spend a whole staging buffer on a
+ * frame that is going to be refused here.  It is a QUERY only -- the data path
+ * stays one-way, ingress -> session -> sink.
+ *
+ * Returns 0 while the GUI has not created the transport yet, which callers must
+ * read as "no limit known" rather than "nothing fits".
+ */
+uint32_t stream_sink_max_frame_size(void);
+
 /** Frames committed to the transport since boot. */
 uint32_t stream_sink_frames_shown(void);
 
-/** Frames dropped because no transport buffer was free, or the frame did not
- *  fit the largest size class.  A steady count here against a healthy
- *  jpgs_ingress_frames_ok() means the consumer is not keeping up, or the
- *  phone's frames are larger than APP_STREAM_MAX_FRAME. */
+/** Frames dropped because no transport buffer was free.
+ *
+ *  "Too large" no longer lands here: jpgs_ingress applies
+ *  stream_sink_max_frame_size() while assembling, so an oversized frame is
+ *  abandoned there and counted by jpgs_ingress_frames_dropped() instead.  A steady
+ *  count HERE against a healthy jpgs_ingress_frames_ok() therefore means one thing
+ *  only -- the consumer is not keeping up. */
 uint32_t stream_sink_frames_dropped(void);
 
 #ifdef __cplusplus
