@@ -3,57 +3,70 @@
   "tasks": [
     {
       "label": "West Build",
-      "type": "shell",
-      "command": "west build -b rtl87x3g_evb",
+      "type": "process",
+      "command": "west",
+      "args": ["build", "-b", "rtl87x3g_evb"],
       "options": {
         "cwd": "${workspaceFolder}"
       },
-      "problemMatcher": [
-        "$gcc"
-      ],
+      "problemMatcher": ["$gcc"],
       "group": {
         "kind": "build",
         "isDefault": true
       }
     },
     {
-      "label": "West Flash",
+      "label": "West Rebuild",
       "type": "process",
-      "command": "/mnt/d/mpcli_meta_tool_v4.0.0.6_win/mpcli.exe",
-      "args": [
-        "-c",
-        "com7",
-        "-p",
-        "-A",
-        "0x7009E000",
-        "-F",
-        "Z:\\home\\howie_wang\\hmi\\rtl8773g-simple-test\\zephyrproject\\realtek-app\\applications\\eBadge\\bin\\app.bin",
-        "-b",
-        "3000000",
-        "-M",
-        "5",
-        "-r",
-        "-u",
-        "-d",
-        "-T",
-        "RTL87X3G"
-      ],
+      "command": "west",
+      "args": ["build", "-b", "rtl87x3g_evb", "-p"],
       "options": {
-        "cwd": "/mnt/d/mpcli_meta_tool_v4.0.0.6_win"
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": ["$gcc"],
+      "group": "build"
+    },
+    {
+      "label": "West Flash (WSL)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/flash-wsl-app.sh",
+      "args": ["COM13"],
+      "options": {
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": []
     },
     {
-      "label": "West Rebuild",
+      "label": "West Flash (Native Linux)",
       "type": "shell",
-      "command": "west build -b rtl87x3g_evb -p",
+      "command": "${workspaceFolder}/scripts/flash-linux-app.sh",
+      "args": ["/dev/ttyUSB0"],
       "options": {
         "cwd": "${workspaceFolder}"
       },
-      "problemMatcher": [
-        "$gcc"
-      ],
-      "group": "build"
+      "problemMatcher": []
+    },
+    {
+      "label": "West Flash (Remote)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/flash-remote-app.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "West Flash (Windows)",
+      "type": "shell",
+      "command": "${workspaceFolder}\\scripts\\flash-win32-app.bat",
+      "args": ["COM4"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "NOPAUSE": "1"
+        }
+      },
+      "problemMatcher": []
     }
   ]
 }
