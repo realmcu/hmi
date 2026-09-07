@@ -34,3 +34,5 @@ gcc/bin/
 
 # Auto-generated at build time by version_gen_config.sh
 /version.h
+
+/src/application/designer
