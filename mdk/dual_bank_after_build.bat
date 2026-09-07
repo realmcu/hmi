@@ -20,7 +20,7 @@ set ECDSA_KEY=..\..\..\..\tool\Gadgets\ecdsa_key.pem
 
 set PREPEND_HEADER=..\..\..\..\tool\Gadgets\prepend_header.exe
 set BUILD_DEBUG_TABLE=..\..\..\..\tool\Gadgets\build_debug_table_tool\build_debug_table.exe
-set MD5=..\..\..\..\tool\Gadgets\md5_generate.sh
+set MD5=..\..\..\..\tool\Gadgets\gcc_tool\md5_generate.sh
 REM set MD5=..\..\..\..\tool\Gadgets\md5.exe
 set BIN2HEX=..\..\..\..\tool\Gadgets\bin2hex.bat
 set SREC_CAT=..\..\..\..\tool\Gadgets\srec_cat.exe
@@ -49,7 +49,7 @@ if %SIGN_TYPE%==ECDSA (
 )
 
 "%PREPEND_HEADER%" /mp_ini %MP_INI% /app_code "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%.bin"
-bash %MD5% "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%_MP.bin"
+bash %MD5% "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%_MP.bin" "../version.h"
 if exist "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%_MP.bin" del "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%_MP.bin"
 
 copy "%TARGET_OBJ_PATH%\%TARGET_NAME%.htm" "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%.htm"
