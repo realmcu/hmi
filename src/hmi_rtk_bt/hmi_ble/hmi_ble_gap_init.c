@@ -13,6 +13,7 @@
 #include <gap_adv.h>
 #include <app_msg.h>
 #include "hmi_ble_gap_cb.h"
+#include "navi_projection_service.h"
 #include "trace.h"
 #include "gatt.h"
 
@@ -61,11 +62,18 @@ uint8_t adv_data[] =
     GAP_ADTYPE_LOCAL_NAME_COMPLETE, /* type="Complete local name" */
     'R', 'T', 'K', 'H', 'M', 'I', /* RTKHMI */
 
-    /* Service */
-    0x03,           /* length     */
-    GAP_ADTYPE_16BIT_COMPLETE, /* type="More 16-bit UUIDs available, service uuid 0xFEE7 0xA00A" */
-    0xE7,
-    0xFE,
+#ifdef CONFIG_REALTEK_APP_NAVI_PROJECTION
+    /* Services: legacy FEE7 plus Navigation FFD0 (fits in the 31-byte payload). */
+    0x05,
+    GAP_ADTYPE_16BIT_COMPLETE,
+    0xE7, 0xFE,
+    0xD0, 0xFF,
+#else
+    /* Service: legacy FEE7. */
+    0x03,
+    GAP_ADTYPE_16BIT_COMPLETE,
+    0xE7, 0xFE,
+#endif
     /* Manufacture specified data*/
     0x09,           /* length     */
     0xFF,           /* type: manufacture specific data*/
@@ -135,16 +143,17 @@ void hmi_ble_gap_init(void)
     le_adv_set_param(GAP_PARAM_ADV_FILTER_POLICY, sizeof(adv_filter_policy), &adv_filter_policy);
     le_adv_set_param(GAP_PARAM_ADV_INTERVAL_MIN, sizeof(adv_int_min), &adv_int_min);
     le_adv_set_param(GAP_PARAM_ADV_INTERVAL_MAX, sizeof(adv_int_max), &adv_int_max);
-    /* fill MAC address into manufacturer specific data at runtime */
+
     uint8_t bt_bd_addr[6];
     gap_get_param(GAP_PARAM_BD_ADDR, bt_bd_addr);
-    adv_data[19] = bt_bd_addr[5];
-    adv_data[20] = bt_bd_addr[4];
-    adv_data[21] = bt_bd_addr[3];
-    adv_data[22] = bt_bd_addr[2];
-    adv_data[23] = bt_bd_addr[1];
-    adv_data[24] = bt_bd_addr[0];
-
+    DBG_DIRECT("addr 1 %x %x %x %x %x %x", bt_bd_addr[5], bt_bd_addr[4], bt_bd_addr[3], bt_bd_addr[2], bt_bd_addr[1], bt_bd_addr[0]);
+    for (uint8_t i = 0; i < GAP_BD_ADDR_LEN; i++)
+    {
+        adv_data[sizeof(adv_data) - GAP_BD_ADDR_LEN + i] = bt_bd_addr[GAP_BD_ADDR_LEN - 1U - i];
+    }
+#ifdef CONFIG_REALTEK_APP_NAVI_PROJECTION
+    navi_projection_on_address_ready(bt_bd_addr);
+#endif
     le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(adv_data), adv_data);
     le_adv_set_param(GAP_PARAM_SCAN_RSP_DATA, sizeof(scan_rsp_data), (void *)scan_rsp_data);
 

@@ -35,6 +35,14 @@ config REALTEK_BUILD_DASHBOARD_DESIGNER
       Use the designer-generated dashboard UI (src/application/designer/src).
       Mutually exclusive with the HoneyGUI example demos in source-build mode.
 
+config REALTEK_APP_NAVI_PROJECTION
+    bool
+    default y if REALTEK_BUILD_DASHBOARD_DESIGNER
+    select REALTEK_GUI_WIDGET_STREAM
+    select REALTEK_GUI_WIDGET_QBCODE
+    help
+      Build the BLE navigation projection used by the Dashboard Designer UI.
+
 menu "HoneyGUI Configuration"
 rsource "../../../src/Kconfig"
 endmenu

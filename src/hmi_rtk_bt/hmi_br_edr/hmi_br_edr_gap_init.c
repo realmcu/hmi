@@ -46,14 +46,6 @@ void hmi_br_edr_gap_init(void)
     uint8_t oob_enable = false;
     uint8_t bt_mode = GAP_BT_MODE_21ENABLED;
 
-    gap_lib_init();
-
-    {
-        uint8_t bd_addr[6] = {0x66, 0x55, 0x44, 0x33, 0x22, 0x11};
-        gap_set_bd_addr(bd_addr);
-    }
-
-    gap_br_set_param(GAP_BR_PARAM_NAME, GAP_DEVICE_NAME_LEN, "RTKHMI");
     //1: to be slave when accept the acl connect request by default.
     gap_br_cfg_accept_role(0);
 

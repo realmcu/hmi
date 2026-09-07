@@ -18,6 +18,7 @@
 #include "trace.h"
 #include "wdg.h"
 #include "gui_server.h"
+#include "app_flags.h"
 
 extern bool gui_port_dc_lcd_is_work(void);
 
@@ -219,14 +220,9 @@ static struct gui_os_api os_api =
     .mem_addr = (void *)port_mem_heap,
     .mem_size = GUI_HEAP_SIZE,
 
-    .lower_mem_addr = (void *)(0x4000000 + 800 * 480 * 2 * 2),
-    .lower_mem_size = 0x200000,
-    .mem_threshold_size = 10 * 1024,
-
-#if (F_APP_GUI_USE_PSRAM == 1)
     .lower_mem_addr = (void *)PSRAM_GUI_HEAP_ADDR,
     .lower_mem_size = PSRAM_GUI_HEAP_SIZE,
-#endif
+    .mem_threshold_size = 10 * 1024,
 
     .log = port_log,
 };

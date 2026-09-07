@@ -75,6 +75,9 @@
 //  When defined, the app SConscript loads src/application/designer/src and
 //  skips the HoneyGUI example tree, so the demo selection below is ignored.
 
+// Dashboard Designer on this platform always uses BLE navigation projection.
+#define CONFIG_REALTEK_APP_NAVI_PROJECTION
+
 // <o> HoneyGUI Demo Select (Src mode & Designer off only)
 // <i> Effective only in Src mode with the Designer option above off.
 // <i> Ignored in Lib mode, or whenever the Designer option is enabled.

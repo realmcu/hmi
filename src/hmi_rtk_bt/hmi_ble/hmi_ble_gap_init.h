@@ -13,6 +13,11 @@ extern "C" {
 
 void hmi_ble_gap_init(void);
 
+#ifdef CONFIG_REALTEK_APP_NAVI_PROJECTION
+/** Refresh manufacturer/address fields after the public address is finalized. */
+void hmi_ble_gap_refresh_advertising_data(void);
+#endif
+
 /** End of PERIPH_APP
 * @}
 */

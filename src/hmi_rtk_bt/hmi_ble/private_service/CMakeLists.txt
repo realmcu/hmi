@@ -10,6 +10,10 @@ if(1) #set to 1 to enable or variable to for depnedency
     file(GLOB SOURCES "*.c" "*.cpp")
     file(GLOB HEADERS "*.h" "*.hpp")
 
+    if(NOT CONFIG_REALTEK_APP_NAVI_PROJECTION)
+        list(FILTER SOURCES EXCLUDE REGEX "navi_projection_service\\.c$")
+    endif()
+
 
     # Determine if we should create a library
     if((NOT HEADERS) AND (NOT SOURCES))

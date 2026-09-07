@@ -494,10 +494,6 @@
 #if F_APP_GUI_USE_PSRAM
 #define PSRAM_FRAME_BUF1_ADDR               0x4000000
 #define PSRAM_FRAME_BUF2_ADDR               (0x4000000 + 800 * 480 * 2)
-#ifndef PSRAM_GUI_HEAP_ADDR
-#define PSRAM_GUI_HEAP_ADDR                 (0x4000000 + 800 * 480 * 2 * 2)
-#endif
-#define PSRAM_GUI_HEAP_SIZE                 0x200000
 #else
 #define ENABLE_RTK_GUI_OS_HEAP
 #endif
@@ -505,6 +501,9 @@
 #endif
 
 #endif /* end of CONFIG_REALTEK_APP_DASHBOARD_DEMO_SUPPORT */
+
+#define PSRAM_GUI_HEAP_ADDR                 (0x4000000 + 800 * 480 * 2 * 2)
+#define PSRAM_GUI_HEAP_SIZE                 0x200000
 
 #if F_APP_FINDMY_FEATURE_SUPPORT
 #define APP_FINDMY_MAX_LINKS                            2 /** APP LE link number */

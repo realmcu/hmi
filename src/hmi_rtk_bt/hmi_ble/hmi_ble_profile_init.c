@@ -14,6 +14,9 @@
 #include "hmi_ble_nus.h"
 #include "ota_service.h"
 #include "gap_conn_le.h"
+#ifdef CONFIG_REALTEK_APP_NAVI_PROJECTION
+#include "navi_projection_service.h"
+#endif
 
 static T_APP_RESULT ota_srv_cb(T_SERVER_ID service_id, void *p_data)
 {
@@ -47,9 +50,17 @@ static void app_gatt_svc_general_cb(uint8_t type, void *p_data)
 
 void hmi_ble_profile_init(void)
 {
+#ifdef CONFIG_REALTEK_APP_NAVI_PROJECTION
+    gatt_svc_init(GATT_SVC_USE_EXT_SERVER, 4);
+#else
     gatt_svc_init(GATT_SVC_USE_EXT_SERVER, 3);
+#endif
     gatt_svc_register_general_cb(app_gatt_svc_general_cb);
     hmi_ble_ctrl_init();
     hmi_ble_nus_init();
     ota_add_service(ota_srv_cb);
+#ifdef CONFIG_REALTEK_APP_NAVI_PROJECTION
+    /* Keep Navigation last: current HoneyBox discovery chooses the last FFD1-FFD4 set. */
+    navi_projection_add_service();
+#endif
 }

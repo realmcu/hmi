@@ -8,6 +8,8 @@ from building import *
 
 cwd = GetCurrentDir()
 src = Glob('*.c')
+if not GetDepend(['CONFIG_REALTEK_APP_NAVI_PROJECTION']):
+    src = [item for item in src if not str(item).endswith('navi_projection_service.c')]
 CPPPATH = [cwd]
 
 group = DefineGroup('hmi_ble_private_service', src, depend=[''], CPPPATH=CPPPATH)
