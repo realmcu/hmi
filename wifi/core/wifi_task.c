@@ -309,10 +309,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(wifi_cmds,
                               );
 SHELL_CMD_REGISTER(wifi, &wifi_cmds, "WiFi commands", NULL);
 
-static int wifi_module_init(void)
-{
-    os_msg_queue_create(&wifi_msg_queue_handle, "wifi msg queue", 0x10, sizeof(T_WIFI_MSG));
-    os_task_create(&wifi_task_handle, "wifi task", wifi_task_loop, NULL, 384 * 8, 2);
-    return 0;
-}
-SYS_INIT(wifi_module_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
+// static int wifi_module_init(void)
+// {
+//     os_msg_queue_create(&wifi_msg_queue_handle, "wifi msg queue", 0x10, sizeof(T_WIFI_MSG));
+//     os_task_create(&wifi_task_handle, "wifi task", wifi_task_loop, NULL, 384 * 8, 2);
+//     return 0;
+// }
+// SYS_INIT(wifi_module_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
