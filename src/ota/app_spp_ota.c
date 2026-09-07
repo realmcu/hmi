@@ -21,6 +21,7 @@
 #include "app_main.h"
 #include "app_link_util.h"
 #include "app_cmd.h"
+#include "app_report.h"
 #include "app_ota.h"
 #include "app_spp_ota.h"
 #include "hmi_bt_spp.h"
@@ -59,7 +60,8 @@ static void spp_ota_disconnect(uint8_t *bd_addr)
  * Reassembly logic mirrors watch_efl/bredr/app_spp.c:
  *   - Walk raw bytes looking for 0xAA sync.
  *   - cmd_len = payload_len_field + 4 header bytes.
- *   - If a complete frame is available, dispatch to app_ota_cmd_handle.
+ *   - If a complete frame is available, dispatch OTA requests to
+ *     app_ota_cmd_handle and acknowledgements to app_ota_cmd_ack_handle.
  *   - If only a partial frame remains, save it in p_embedded_cmd for the
  *     next DATA_IND event.
  * ---------------------------------------------------------------------- */
@@ -88,8 +90,43 @@ static void dispatch_frames(uint8_t *p_data, uint16_t data_len, uint8_t app_idx)
             break; /* incomplete frame -- caller will buffer the remainder */
         }
 
+        if (payload_len < sizeof(uint16_t))
+        {
+            APP_PRINT_WARN1("spp_ota_rx: invalid payload_len %u", payload_len);
+            p_data += cmd_len;
+            data_len -= cmd_len;
+            continue;
+        }
+
         /* payload starts at p_data[4], length = payload_len (includes cmd_id) */
-        app_ota_cmd_handle(CMD_PATH_SPP, payload_len, &p_data[4], app_idx);
+        uint8_t *payload = &p_data[4];
+        uint16_t cmd_id = (uint16_t)(payload[0] | (payload[1] << 8));
+
+        if (cmd_id == CMD_ACK)
+        {
+            /* CMD_ACK payload: cmd_id (2) + event_id (2) + status (1).
+             * The original SDK app_cmd dispatcher handles this before passing
+             * OTA requests to app_ota_cmd_handle. This lightweight SPP bridge
+             * must preserve the same dispatch contract. */
+            if (payload_len >= 5)
+            {
+                uint16_t event_id = (uint16_t)(payload[2] | (payload[3] << 8));
+                uint8_t status = payload[4];
+
+                if (event_id == EVENT_OTA_ACTIVE_ACK || event_id == EVENT_OTA_ROLESWAP)
+                {
+                    app_ota_cmd_ack_handle(event_id, status);
+                }
+            }
+            else
+            {
+                APP_PRINT_WARN1("spp_ota_rx: invalid CMD_ACK payload_len %u", payload_len);
+            }
+        }
+        else
+        {
+            app_ota_cmd_handle(CMD_PATH_SPP, payload_len, payload, app_idx);
+        }
 
         p_data   += cmd_len;
         data_len -= cmd_len;
