@@ -11,8 +11,6 @@
 #include <zephyr/drivers/uart.h>
 #include <zephyr/devicetree.h>
 #include "trace.h"
-#include "hmi_bt_task.h"
-#include "hmi_protocal_task.h"
 #include "gui_server.h"
 #include "rtl876x_pinmux.h"
 #include "app_lower_init.h"
@@ -34,11 +32,6 @@ int main(void)
            k_current_get(),
            k_thread_name_get(k_current_get()),
            k_thread_priority_get(k_current_get()));
-
-    // hmi_bt_task_init();
-    // hmi_proto_task_init();
-    // extern void hmi_l2_handlers_register(void);
-    // hmi_l2_handlers_register();
 
     gui_server_init();
 
