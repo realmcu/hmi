@@ -33,6 +33,23 @@ config RTK_BR_PROFILE_PAN
 	depends on RTK_BT_BREDR
 	default n
 
+config WATCH_UI
+	bool "Build the watch_ui product UI (HoneyGUI Designer project)"
+	depends on REALTEK_HONEYGUI
+	default n
+	help
+	  Compile the smartwatch_ui_360360 product UI, i.e. the west project
+	  "watch_ui" checked out at <west topdir>/ui, into the app image.
+
+	  The UI supplies its own GUI_INIT_APP_EXPORT(app_init) entry, so it is
+	  mutually exclusive with the HoneyGUI demo apps that export the same
+	  symbol (REALTEK_BUILD_REAL_CANVAS and friends) -- enabling two of them
+	  makes the link fail on a duplicate __honeygui_init_app_init.
+
+	  Note: the UI reads its images and fonts from a romfs image that must be
+	  flashed to USER_DATA1 (0x704D1000) separately; this option only covers
+	  the C sources.
+
 endmenu
 
 menu "Zephyr Kernel"
