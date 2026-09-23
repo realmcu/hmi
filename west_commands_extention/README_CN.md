@@ -113,8 +113,9 @@ west flash -m lib_bank1 -p COM5
 ### `west userdata`
 
 给一份 userdata（user_data1）bin 加上真实的 RTL8773E MP header 并通过 `mpcli` 独立烧录——
-**完全不碰 app**，也不需要先 `west build`。默认目标是 designer UI 的
-`src/application/designer/build/app_romfs.bin`（源文件本身不会被修改）。
+**完全不碰 app**，也不需要先 `west build`。默认目标是 designer UI 的资源 bin
+（`src/application/designer/build/` 下的 `app_romfs[_<addr>].bin`，文件名后缀来自
+`project.json` 的 `romfsBaseAddr`；源文件本身不会被修改）。
 
 ```bash
 # 打包并烧录 designer UI 的 ROMFS 资源（默认串口 COM3，地址取 flash_map.h 的 USER_DATA1_ADDR）

@@ -68,15 +68,10 @@
 #if (CONFIG_REALTEK_BUILD_HONEYGUI_SRC == 1)
 
 // <c> Use Dashboard Designer UI as the app (Lib/Src default UI)
-<i> Only effective in Src mode. In Lib mode the designer is always
-<i> used(no example tree to replace it), so this checkbox is ignored there.
 #define CONFIG_REALTEK_BUILD_DASHBOARD_DESIGNER
 // </c>
 //  When defined, the app SConscript loads src/application/designer/src and
 //  skips the HoneyGUI example tree, so the demo selection below is ignored.
-
-// Dashboard Designer on this platform always uses BLE navigation projection.
-#define CONFIG_REALTEK_APP_NAVI_PROJECTION
 
 // <o> HoneyGUI Demo Select (Src mode & Designer off only)
 // <i> Effective only in Src mode with the Designer option above off.
@@ -227,8 +222,19 @@
 // <h> Other Configuration (independent of GUI build mode)
 
 // <c> Enable RTK GUI ROMFS
-// <i> GUI resource filesystem. Effective in both Lib and Src modes.
 #define CONFIG_REALTEK_ROMFS
+// </c>
+
+// <c> BLE navigation projection (designer)
+#define CONFIG_REALTEK_APP_NAVI_PROJECTION
+// </c>
+
+// <c> GATT server support
+#define CONFIG_REALTEK_BT_GATT_SVC_SUPPORT 1
+// </c>
+
+// <c> GATT client support
+#define CONFIG_REALTEK_BT_GATT_CLIENT_SUPPORT 1
 // </c>
 
 // </h>

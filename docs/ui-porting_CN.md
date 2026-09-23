@@ -64,7 +64,7 @@ sdk/board/evb/hmi_dashboard/src/application/designer/
   path: sdk/board/evb/hmi_dashboard/src/application/designer
 ```
 
-这种方式不需要在 hmi-dashboard 中新增占位目录，也不会把生成代码与板级移植混入同一仓库。执行 `west update` 后，现有 GCC 和 Keil 构建仍从 `src/application/designer/src/` 读取 UI 代码，`west userdata` 仍从 `src/application/designer/build/app_romfs.bin` 读取资源。
+这种方式不需要在 hmi-dashboard 中新增占位目录，也不会把生成代码与板级移植混入同一仓库。执行 `west update` 后，现有 GCC 和 Keil 构建仍从 `src/application/designer/src/` 读取 UI 代码，`west userdata` 仍从 `src/application/designer/build/` 下的 ROMFS bin（`app_romfs[_<addr>].bin`）读取资源。
 
 如果暂时不能维护独立远端，也可以在本地替换该 West project 的内容进行验证。但正式交付前应固定到可追溯的仓库 commit 或 tag，避免后续 `west update` 将本地内容切回 manifest 指定版本。
 

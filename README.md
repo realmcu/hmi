@@ -88,7 +88,8 @@ west userdata -p COM5       # specify flashing port COM5
 > images/fonts live in a separate ROMFS partition. Run `west userdata` once (and again
 > whenever the UI resources change) to flash it. This command is standalone — it does
 > **not** flash the app — and automatically prepends the RTL8773E MP header required by
-> `src/application/designer/build/app_romfs.bin`, flashing it to the correct address
+> the designer ROMFS bin (`src/application/designer/build/app_romfs[_<addr>].bin`,
+> suffix from `project.json`'s `romfsBaseAddr`), flashing it to the correct address
 > without modifying the source file. A different bin can be packaged and flashed instead:
 > `west userdata <path> [--addr <addr>]`. When overriding `--addr`, first consult
 > `flash_map.h` to confirm the target partition's start address and ensure the bin fits

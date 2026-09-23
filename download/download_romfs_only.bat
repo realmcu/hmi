@@ -44,8 +44,14 @@ set SCRIPT_DIR=%~dp0
 set MPCLI_DIR=%SCRIPT_DIR%mpcli
 
 set ROMFS_BIN=%2
-if "%ROMFS_BIN%"=="" set ROMFS_BIN=%SCRIPT_DIR%..\src\application\designer\build\app_romfs.bin
-if not exist "%ROMFS_BIN%" ( echo [ERROR] Romfs bin not found: %ROMFS_BIN% & set EXITCODE=1 & goto :end )
+if "!ROMFS_BIN!"=="" (
+    rem Prefer the addr-suffixed name (app_romfs_<addr>.bin); fall back to legacy
+    for %%F in ("%SCRIPT_DIR%..\src\application\designer\build\app_romfs*.bin") do (
+        if exist "%%~fF" set ROMFS_BIN=%%~fF
+    )
+)
+if "!ROMFS_BIN!"=="" set ROMFS_BIN=%SCRIPT_DIR%..\src\application\designer\build\app_romfs.bin
+if not exist "!ROMFS_BIN!" ( echo [ERROR] Romfs bin not found: %ROMFS_BIN% & set EXITCODE=1 & goto :end )
 
 set ROMFS_ADDR=%3
 if "%ROMFS_ADDR%"=="" set ROMFS_ADDR=%DEFAULT_ROMFS_ADDR%

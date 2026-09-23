@@ -46,49 +46,58 @@ typedef struct draw_img
     float raster_prog;
 } draw_img_t;
 
-typedef struct draw_circle
+
+typedef struct gui_blit_ops
 {
-    int16_t x;
-    int16_t y;
-    int16_t Radius;
-    int16_t lineWidth;
-    gui_color_t color;
-} draw_circle_t;
+    void (*init)(void);
+    void (*process)(draw_img_t *image, gui_dispdev_t *dc, gui_rect_t *rect);
+    void (*deinit)(void);
+} gui_blit_ops_t;
+
+typedef struct gui_blur_ops
+{
+    void (*init)(void);
+    void (*prepare)(void **cache_mem);
+    void (*process)(uint8_t *buffer, uint16_t buffer_stride, uint16_t bit_depth,
+                    const gui_rect_t *buffer_rect, const gui_rect_t *valid_rect,
+                    const gui_rect_t *target_rect, uint8_t blur_degree, void *cache_mem);
+    void (*release)(void **cache_mem);
+    bool (*scale)(uint8_t *target_buffer, const uint8_t *source_buffer,
+                  uint16_t source_width, uint16_t source_height,
+                  uint16_t source_stride, uint16_t target_stride,
+                  uint8_t factor, uint16_t target_width, uint16_t target_height,
+                  uint8_t bytes_per_pixel, bool scale_up);
+    void (*deinit)(void);
+} gui_blur_ops_t;
+
+typedef struct gui_jpeg_ops
+{
+    void (*init)(void);
+    void *(*load)(void *input, int len, int *w, int *h, int *channel);
+    void (*release)(void *data);
+    void (*deinit)(void);
+} gui_jpeg_ops_t;
+
+typedef struct gui_idu_ops
+{
+    void (*init)(void);
+    void *(*load)(void *input);
+    void (*release)(void *data);
+    void (*deinit)(void);
+} gui_idu_ops_t;
 
 
 /* acc_engine_t struct define start */
 typedef struct acc_engine
 {
-    void (*blit)(draw_img_t *image, gui_dispdev_t *dc, gui_rect_t *rect);
+    const gui_blit_ops_t *blit;
     void (*fb_clear)(uint8_t *addr, gui_color_t color, uint32_t len);
-    //todo
-    void (*draw_circle)(draw_circle_t *circle, gui_dispdev_t *dc, gui_rect_t *rect);
-    void (*blur)(gui_dispdev_t *dc, gui_rect_t *rect, uint8_t blur_degree, void *cache_mem);
-
-    void *(* jpeg_load)(void *input, int len, int *w, int *h, int *channel);
-    void (* jpeg_free)(void *);
-    void *(* idu_load)(void *input);
-    void (* idu_free)(void *);
-    bool enable_async;
+    gui_blur_ops_t *blur;
+    const gui_jpeg_ops_t *jpeg;
+    const gui_idu_ops_t *idu;
     bool enable_thread_sync;
-    void *hw_acc_cache_mem; //for hardware acceleration cache memory
-    uint32_t hw_acc_cache_size; //for hardware acceleration cache memory size
-
-    // void (*draw_rectangle)(canvas_rectangle_t *r, struct gui_dispdev *dc);
-    // void (*draw_arc)(canvas_arc_t *a, struct gui_dispdev *dc);
-    // void (*draw_line)(canvas_line_t *l, struct gui_dispdev *dc);
-    // void (*draw_polyline)(canvas_polyline_t *p, struct gui_dispdev *dc);
-    // void (*draw_path)(draw_path_t *path, struct gui_dispdev *dc);
-    // void (*draw_wave)(canvas_wave_t *w, struct gui_dispdev *dc);
-    // void (*draw_palette_wheel)(canvas_palette_wheel_t *pw, struct gui_dispdev *dc);
-
-    // void (*draw_svg)(void *svg, uint32_t data_length, struct gui_dispdev *dc, int x, int y,
-    //                  float scale, float rotate_degree, float rotate_center_x, float rotate_center_y);
-    // void (*begin_path)(canvas_path_t *data);
-    // void (*move_to)(canvas_path_t *data, float x, float y);
-    // void (*bezier_to)(canvas_path_t *data, float c1x, float c1y, float c2x, float c2y, float x,
-    //                   float y);
-    // void (*LineTo)(canvas_path_t *data, float x, float y);
+    void *cache_mem;
+    uint32_t cache_size;
 
 } acc_engine_t;
 /* acc_engine_t struct define end */

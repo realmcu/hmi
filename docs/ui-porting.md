@@ -64,7 +64,8 @@ Do not overwrite and commit the official Dashboard UI as the normal integration 
   path: sdk/board/evb/hmi_dashboard/src/application/designer
 ```
 
-This approach requires no placeholder directory in hmi-dashboard and keeps generated UI code separate from board-level porting. After `west update`, the existing GCC and Keil builds still consume UI code from `src/application/designer/src/`, and `west userdata` still consumes `src/application/designer/build/app_romfs.bin`.
+This approach requires no placeholder directory in hmi-dashboard and keeps generated UI code separate from board-level porting. After `west update`, the existing GCC and Keil builds still consume UI code from `src/application/designer/src/`, and `west userdata` still consumes the `src/application/designer/build/` ROMFS bin
+(`app_romfs[_<addr>].bin`).
 
 A local replacement of this West project is acceptable for initial validation, but a formal delivery should pin a traceable repository commit or tag. Otherwise a later `west update` can restore the manifest-selected revision.
 

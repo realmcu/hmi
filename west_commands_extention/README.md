@@ -121,8 +121,9 @@ west flash -m lib_bank1 -p COM5
 
 Prepends a real RTL8773E MP header to a userdata (user_data1) bin and flashes it
 standalone via `mpcli` — **the app is never touched**, and no `west build` is required.
-Defaults to the designer UI's `src/application/designer/build/app_romfs.bin` (source
-file is never modified).
+Defaults to the designer UI's ROMFS bin under
+`src/application/designer/build/` — `app_romfs_<addr>.bin` where `<addr>` is the
+`romfsBaseAddr` from `project.json` (source file is never modified).
 
 ```bash
 # Package and flash the designer UI's ROMFS resources (default port COM3,

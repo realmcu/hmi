@@ -81,7 +81,7 @@ west userdata -p COM5       # 指定烧录串口COM5
 >
 > **看不到 UI 效果？** app 固件只包含程序逻辑，designer UI 的图片/字体等资源是单独的 ROMFS 分区，
 > 首次烧录（或资源更新后）需要额外执行一次 `west userdata`。该命令是独立的命令，**不会**触发 app 烧录，
-> 会自动给 `src/application/designer/build/app_romfs.bin` 加上 RTL8773E 要求的 MP header 并烧录到正确地址，
+> 会自动给 `src/application/designer/build/` 下的 ROMFS bin（`app_romfs[_<addr>].bin`，后缀来自 `project.json` 的 `romfsBaseAddr`）加上 RTL8773E 要求的 MP header 并烧录到正确地址，
 > 源文件本身不会被修改。也可指定其他 bin：`west userdata <path> [--addr <addr>]`。自定义 `--addr` 时，
 > 请先查阅 `flash_map.h` 确认目标分区的起始地址，并确保 bin 文件大小不超过该分区容量。只加 MP header
 > 不接串口时加 `--package-only`。

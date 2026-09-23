@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """RTL8773E Dashboard West extension commands."""
 
+import json
 import os
 import re
 import shutil
@@ -77,9 +78,40 @@ def _resolve_mode(mode: str) -> str:
 IC_TYPE = '8773E'
 
 
+_DESIGNER_DIR = os.path.join('board', 'evb', 'hmi_dashboard', 'src',
+                             'application', 'designer')
+
+
 def _designer_romfs_bin(cmake_src: str) -> str:
-    return os.path.join(cmake_src, 'board', 'evb', 'hmi_dashboard', 'src',
-                         'application', 'designer', 'build', 'app_romfs.bin')
+    """Resolve the designer UI's ROMFS bin in its build/ output dir.
+
+    The upstream generator embeds the project.json romfsBaseAddr into the
+    filename (app_romfs_<addr>.bin), so we read that addr from project.json
+    and fall back to any app_romfs_*.bin or the legacy addr-less name.
+    """
+    build_dir = os.path.join(cmake_src, *_DESIGNER_DIR.split(os.sep), 'build')
+    if not os.path.isdir(build_dir):
+        return os.path.join(build_dir, 'app_romfs.bin')
+
+    addr = None
+    project_json = os.path.join(cmake_src, *_DESIGNER_DIR.split(os.sep), 'project.json')
+    if os.path.isfile(project_json):
+        try:
+            with open(project_json, 'r') as f:
+                addr = json.load(f).get('romfsBaseAddr')
+        except (OSError, ValueError):
+            addr = None
+
+    if addr:
+        candidate = os.path.join(build_dir, f'app_romfs_{addr}.bin')
+        if os.path.isfile(candidate):
+            return candidate
+
+    names = sorted(os.listdir(build_dir))
+    for name in names:
+        if name.startswith('app_romfs_') and name.endswith('.bin'):
+            return os.path.join(build_dir, name)
+    return os.path.join(build_dir, 'app_romfs.bin')
 
 
 def _flash_map_h(cmake_src: str) -> str:
@@ -143,8 +175,8 @@ def _package_userdata(cmake_src: str, bin_path: str):
     - workdir: scratch temp dir backing flash_ready_bin; caller must
       shutil.rmtree() it once done flashing.
 
-    bin_path itself is never modified — designer/'s committed
-    app_romfs.bin must stay header-free.
+    bin_path itself is never modified — the designer's committed
+    ROMFS bin must stay header-free.
     """
     gadgets = _gadgets_dir(cmake_src)
     prepend_header = os.path.join(gadgets, 'prepend_header.exe')
@@ -571,7 +603,8 @@ class UserdataCommand(WestCommand):
             'Prepend a real RTL8773E MP header to a userdata binary and '
             'flash it standalone via mpcli — the app image is never '
             'touched (use `west flash` for that). Defaults to the '
-            'designer UI\'s src/application/designer/build/app_romfs.bin.'
+            'designer UI\'s src/application/designer/build/ ROMFS bin '
+            '(app_romfs[_<addr>].bin).'
         )
 
     def do_add_parser(self, parser_adder, **kwargs):
@@ -580,7 +613,7 @@ class UserdataCommand(WestCommand):
         parser.add_argument(
             'file', metavar='FILE', nargs='?', default=None,
             help=('userdata binary to package/flash (default: the '
-                  'designer UI\'s src/application/designer/build/app_romfs.bin). '
+                  'designer UI\'s src/application/designer/build/ ROMFS bin). '
                   'Source file is never modified.')
         )
         parser.add_argument(
