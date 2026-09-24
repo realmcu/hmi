@@ -50,6 +50,9 @@
 
 APP_LOG_MODULE_REGISTER(app_health);
 
+/* Enable accelerometer acquisition after time sync and user binding. */
+#define HEALTH_ACQUISITION_ENABLED 1
+
 /* The record's bucket_min field and the tick that closes the bucket have to
  * describe the same interval, or every stored record would misreport its own
  * width. app_time owns the tick; this asserts the two definitions agree. */
@@ -85,6 +88,9 @@ void app_health_publish_steps_updated(uint32_t steps)
 
 static void try_start_worker(void)
 {
+#if !HEALTH_ACQUISITION_ENABLED
+    return;
+#else
     if (health_worker_is_running() || !s_time_synced || !s_user_bound)
     {
         return;
@@ -98,6 +104,7 @@ static void try_start_worker(void)
     }
 
     APP_LOGI("worker armed: time_synced && user_bound");
+#endif
 }
 
 static void on_evt_time_synced(app_event_id_t id, const void *payload,
@@ -220,7 +227,7 @@ static int health_init(void)
         /* Not fatal — recording still works, just no low-battery guard. */
     }
 
-    APP_LOGI("app_health init: awaiting EVT_TIME_SYNCED && EVT_USER_BOUND");
+    APP_LOGI("accelerometer acquisition disabled for touch diagnostics");
     return 0;
 }
 

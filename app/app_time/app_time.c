@@ -10,6 +10,7 @@
 #include "app_event.h"
 #include "app_event_defs.h"
 #include "app_log.h"
+#include "app_model.h"
 #include "posix.h"
 #include "posix_port.h"
 #include "ioctls/posix_ioctl_rtc.h"
@@ -69,6 +70,7 @@ int app_time_set(uint32_t sec)
              (unsigned)rtc_time.mday, (unsigned)rtc_time.hour,
              (unsigned)rtc_time.minute, (unsigned)rtc_time.second,
              (unsigned)sec);
+    app_model_update_time(sec);
     return 0;
 }
 
@@ -167,6 +169,12 @@ static int tick_start(void)
 static int time_init(void)
 {
     if (tick_start() != 0) { return 0; }   /* stay loaded without boundary events */
+
+    uint32_t now = app_time_now();
+    if (now != 0u)
+    {
+        app_model_update_time(now);
+    }
 
     APP_LOGI("app_time init: wall clock seconds, %u-min boundary ticks off RTC 1Hz",
              (unsigned)APP_TIME_TICK_MIN_STEP);

@@ -265,6 +265,28 @@ static size_t health_db_iter(uint32_t from, uint32_t to,
     return ctx.visited;
 }
 
+static bool today_rollup_cb(const health_pedo_record_t *rec, void *user)
+{
+    health_daily_rollup_t *total = (health_daily_rollup_t *)user;
+    total->steps += rec->steps;
+    total->distance_m += rec->distance_m;
+    total->calories_dkcal += rec->calories_dkcal;
+    return false;
+}
+
+int health_db_load_today(uint32_t now, health_daily_rollup_t *out)
+{
+    if (out == NULL || now == 0u)
+    {
+        return -EINVAL;
+    }
+
+    memset(out, 0, sizeof(*out));
+    uint32_t day_start = now - (now % 86400u);
+    (void)health_db_iter(day_start, now, today_rollup_cb, out);
+    return 0;
+}
+
 /* --------------------------------------------------------------
  * Sequential history reads.
  *
