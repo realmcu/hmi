@@ -32,6 +32,7 @@ typedef struct
     bool accel_valid;
     bool battery_valid;
     bool charging;
+    bool ble_connected;
 } app_model_snapshot_t;
 
 void app_model_get_snapshot(app_model_snapshot_t *out);
@@ -42,6 +43,7 @@ void app_model_accumulate_activity_raw(uint32_t steps, uint32_t distance_cm,
                                        uint32_t calories_x100);
 void app_model_update_accelerometer(int32_t x_mg, int32_t y_mg, int32_t z_mg);
 void app_model_update_power(uint8_t battery_percent, bool charging);
+void app_model_update_ble_connected(bool connected);
 void app_model_reset_activity(void);
 void app_model_set_accelerometer_offline(void);
 

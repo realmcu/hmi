@@ -112,7 +112,7 @@ int  health_db_init(void);
 int  health_db_append_pedo(health_pedo_record_t *rec);
 
 /* Restore the completed buckets belonging to the current wall-clock day.
- * This is boot-time backup recovery only; runtime consumers read app_model. */
+ * This is boot-time backup recovery only; runtime consumers read the health worker. */
 int  health_db_load_today(uint32_t now, health_daily_rollup_t *out);
 
 /* The sequential read cursor is NOT declared here: health_db.c defines
@@ -127,7 +127,7 @@ int  health_db_load_today(uint32_t now, health_daily_rollup_t *out);
  * -------------------------------------------------------------- */
 
 /* Start the acquisition task. Today's totals are restored from completed
- * FlashDB buckets, then app_model becomes the runtime source of truth. */
+ * FlashDB buckets, then the health worker becomes the runtime source of truth. */
 int  health_worker_start(void);
 
 /* Create worker synchronization objects. Called once during module init. */

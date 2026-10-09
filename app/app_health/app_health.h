@@ -22,9 +22,9 @@ extern "C" {
  *
  * Persistence
  * -----------
- * Runtime samples update app_model immediately. They are also aggregated in
+ * Runtime samples update health worker RAM immediately. They are also aggregated in
  * a 15-minute bucket and appended to the "pedo" FlashDB TSDB as a power-loss
- * backup. On startup, completed buckets for today restore the model before
+ * backup. On startup, completed buckets for today restore today's totals before
  * acquisition resumes.
  *
  * Consumer API

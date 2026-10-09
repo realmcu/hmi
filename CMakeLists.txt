@@ -60,11 +60,8 @@ zephyr_compile_options(
 
 set(APP_TARGET_NAME app)
 
-target_sources(${APP_TARGET_NAME} PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/app/app_model/app_model.c"
-)
 target_include_directories(${APP_TARGET_NAME} PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/app/app_model"
+    "${CMAKE_CURRENT_SOURCE_DIR}/port/ui"
 )
 
 # HoneyGUI Designer exported product UI.  Keep the project as the source of

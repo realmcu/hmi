@@ -12,7 +12,7 @@
  *     -> scale mg -> Q9 counts (1g ~ 512 in the 2g range)
  *     -> rtk_gsa_fsm(accs)
  *        -> pedometer_update_cb accumulates the backup bucket and immediately
- *           updates app_model, the sole runtime source read by UI and phone.
+ *           updates the health worker live totals read by sysval and phone.
  *
  * Persisting is driven from outside this task: EVT_TIME_TICK_15MIN arrives on
  * app_task, and health_worker_on_bucket_boundary() drains s_bucket_acc, builds
@@ -34,7 +34,6 @@
 #include "app_health_internal.h"
 #include "app_time.h"
 #include "app_log.h"
-#include "app_model.h"
 
 #include <errno.h>
 #include <string.h>
@@ -63,7 +62,7 @@ APP_LOG_MODULE_REGISTER(health_worker);
  * today total is kept here in raw form rather than as a health_daily_rollup_t.
  *
  *  - s_bucket_acc is drained by the flush routine every HEALTH_BUCKET_MIN.
- *  - app_model owns today's live totals; FlashDB is only a power-loss backup.
+ *  - s_today owns today's live totals; FlashDB is only a power-loss backup.
  *
  * Both are updated in the same critical section as the sample that produced
  * them, so no reader can observe a step counted in neither.
@@ -76,6 +75,7 @@ typedef struct
 } health_acc_t;
 
 static health_acc_t s_bucket_acc;
+static health_acc_t s_today;
 static uint8_t      s_bucket_last_mode;
 static uint32_t     s_bucket_samples;
 
@@ -118,7 +118,9 @@ static bool discard_is_requested(void)
 /* Runs on app_task. A couple of stores under the state lock. */
 void health_worker_on_day_changed(void)
 {
-    app_model_reset_activity();
+    mutex_take(s_state_mutex);
+    memset(&s_today, 0, sizeof(s_today));
+    mutex_give(s_state_mutex);
     APP_LOGI("wall-clock day changed: today totals reset");
 }
 
@@ -129,8 +131,7 @@ static void pedometer_update_cb(gsa_pedo_info_t *info)
 
     mutex_take(s_state_mutex);
 
-    /* The bucket is backup state. Live totals go directly to app_model and
-     * therefore never wait for the next FlashDB flush. */
+    /* The bucket is backup state; live totals never wait for FlashDB. */
     s_bucket_acc.steps         += info->steps;
     s_bucket_acc.distance_cm   += dist_cm;
     s_bucket_acc.calories_x100 += cal_x100;
@@ -138,16 +139,16 @@ static void pedometer_update_cb(gsa_pedo_info_t *info)
     s_bucket_samples++;
 
     uint32_t bucket_steps = s_bucket_acc.steps;
+    s_today.steps += info->steps;
+    s_today.distance_cm += dist_cm;
+    s_today.calories_x100 += cal_x100;
+
+    uint32_t today_steps = s_today.steps;
     mutex_give(s_state_mutex);
-
-    app_model_accumulate_activity_raw(info->steps, dist_cm, cal_x100);
-
-    app_model_snapshot_t model;
-    app_model_get_snapshot(&model);
 
     APP_LOGI("pedo update: +%u steps mode=%u dist=%ucm bucket=%u today=%u",
              (unsigned)info->steps, (unsigned)info->mode,
-             (unsigned)dist_cm, (unsigned)bucket_steps, (unsigned)model.steps);
+             (unsigned)dist_cm, (unsigned)bucket_steps, (unsigned)today_steps);
 }
 
 static bool gsa_algorithm_init(uint32_t odr_hz)
@@ -298,16 +299,16 @@ static void flush_step_bucket(bool partial_bucket, uint32_t boundary_sec)
 
     /* The today total already includes this bucket — it was accumulated as the
      * samples arrived — so just snapshot it for the event. */
-    app_model_snapshot_t model;
-    app_model_get_snapshot(&model);
+    health_daily_rollup_t today;
+    health_worker_get_today(&today);
 
     APP_LOGI("flushed: steps=%u dist=%um cal=%u.%u kcal (today: %u steps)",
              (unsigned)steps_clip, (unsigned)dist_m,
              (unsigned)(calories_dkcal / 10u),
              (unsigned)(calories_dkcal % 10u),
-             (unsigned)model.steps);
+             (unsigned)today.steps);
 
-    app_health_publish_steps_updated(model.steps);
+    app_health_publish_steps_updated(today.steps);
     mutex_give(s_flush_mutex);
 }
 
@@ -344,9 +345,9 @@ static void discard_today(void)
     memset(&s_bucket_acc, 0, sizeof(s_bucket_acc));
     s_bucket_last_mode = 0u;
     s_bucket_samples   = 0u;
+    memset(&s_today, 0, sizeof(s_today));
     mutex_give(s_state_mutex);
     mutex_give(s_flush_mutex);
-    app_model_reset_activity();
 }
 
 /* --------------------------------------------------------------
@@ -424,7 +425,7 @@ static void worker_fn(void *context)
         posix_gsensor_axis_t axis = {0};
         if (posix_read(gs, &axis, sizeof(axis)) == (posix_ssize_t)sizeof(axis))
         {
-            app_model_update_accelerometer(axis.x, axis.y, axis.z);
+
             sample_count++;
             if ((sample_count % HEALTH_ODR_HZ) == 0u)
             {
@@ -480,7 +481,7 @@ static void worker_fn(void *context)
     APP_LOGI("worker stopped");
 
 done:
-    app_model_set_accelerometer_offline();
+
     void *task_handle = s_worker_task_handle;
     s_worker_task_handle = NULL;
     uint32_t key = os_lock();
@@ -510,6 +511,7 @@ int health_worker_init(void)
 
 int health_worker_start(void)
 {
+    if (s_state_mutex == NULL || s_flush_mutex == NULL) { return -ENOMEM; }
     uint32_t key = os_lock();
     if (s_worker_running)
     {
@@ -521,7 +523,7 @@ int health_worker_start(void)
     os_unlock(key);
 
     /* FlashDB is only the power-loss backup. Restore completed buckets once,
-     * then keep app_model as the sole runtime source exposed to consumers. */
+     * then keep s_today as the runtime source exposed to consumers. */
     health_daily_rollup_t restored = {0};
     uint32_t now = app_time_now();
     if (now != 0u && health_db_load_today(now, &restored) != 0)
@@ -530,9 +532,10 @@ int health_worker_start(void)
         memset(&restored, 0, sizeof(restored));
     }
     mutex_take(s_state_mutex);
+    s_today.steps = restored.steps;
+    s_today.distance_cm = restored.distance_m * 100u;
+    s_today.calories_x100 = restored.calories_dkcal * 10000u;
     mutex_give(s_state_mutex);
-    app_model_update_activity(restored.steps, restored.distance_m,
-                              restored.calories_dkcal);
 
     key = os_lock();
     s_stop_requested = false;
@@ -586,9 +589,14 @@ bool health_worker_is_running(void)
 void health_worker_get_today(health_daily_rollup_t *out)
 {
     if (out == NULL) { return; }
-    app_model_snapshot_t model;
-    app_model_get_snapshot(&model);
-    out->steps = model.steps;
-    out->distance_m = model.distance_m;
-    out->calories_dkcal = model.calories_dkcal;
+    if (s_state_mutex == NULL)
+    {
+        memset(out, 0, sizeof(*out));
+        return;
+    }
+    mutex_take(s_state_mutex);
+    out->steps = s_today.steps;
+    out->distance_m = s_today.distance_cm / 100u;
+    out->calories_dkcal = s_today.calories_x100 / 10000u;
+    mutex_give(s_state_mutex);
 }

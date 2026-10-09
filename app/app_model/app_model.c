@@ -96,6 +96,14 @@ void app_model_update_power(uint8_t battery_percent, bool charging)
     k_mutex_unlock(&s_model_mutex);
 }
 
+void app_model_update_ble_connected(bool connected)
+{
+    k_mutex_lock(&s_model_mutex, K_FOREVER);
+    s_model.ble_connected = connected;
+    model_changed();
+    k_mutex_unlock(&s_model_mutex);
+}
+
 void app_model_reset_activity(void)
 {
     k_mutex_lock(&s_model_mutex, K_FOREVER);
