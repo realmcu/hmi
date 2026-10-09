@@ -17,7 +17,6 @@
 
 #include "app_core.h"
 #include "app_module.h"
-#include "gui_port_sysval.h"
 #include "app_event.h"
 #include "app_log.h"
 
@@ -60,7 +59,6 @@ int app_core_init(void)
         APP_LOGE("event bus init failed");
         return -1;
     }
-    gui_port_sysval_time_subscribe();
 
     for (size_t i = 0; i < app_module_count; ++i)
     {

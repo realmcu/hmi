@@ -22,10 +22,10 @@ extern "C" {
  *
  * Persistence
  * -----------
- * Runtime samples update health worker RAM immediately. They are also aggregated in
- * a 15-minute bucket and appended to the "pedo" FlashDB TSDB as a power-loss
- * backup. On startup, completed buckets for today restore today's totals before
- * acquisition resumes.
+ * Runtime samples are aggregated in a 15-minute bucket (fixed by product
+ * spec) and appended to the "pedo" FlashDB TSDB — that is the durable
+ * history. Today's running totals are RAM-only and restart at zero after a
+ * reboot; app_health_get_today() reads them in O(1) without touching TSDB.
  *
  * Consumer API
  * ------------
