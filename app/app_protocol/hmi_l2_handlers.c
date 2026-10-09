@@ -9,6 +9,7 @@
 #include "hmi_l2_cmd_log.h"
 #include "hmi_l2_cmd_xfer.h"
 #include "hmi_l2_cmd_conn_param.h"
+#include "hmi_l2_cmd_model.h"
 
 /**
  * @brief  Register every L2 command handler in one place.
@@ -42,6 +43,7 @@ static int hmi_l2_handlers_register(void)
     hmi_l2_log_register();
     hmi_l2_xfer_register();
     hmi_l2_conn_param_register();
+    hmi_l2_model_register();
     return 0;
 }
 

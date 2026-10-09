@@ -60,6 +60,16 @@ zephyr_compile_options(
 
 set(APP_TARGET_NAME app)
 
+target_include_directories(${APP_TARGET_NAME} PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/port/ui"
+)
+
+# HoneyGUI Designer exported product UI.  Keep the project as the source of
+# truth so regenerating it does not require copying hundreds of generated
+# files into the firmware tree.
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../UIproj/smartwatchui360360
+                 ${CMAKE_BINARY_DIR}/smartwatch_ui_360360)
+
 if(1) #set to 1 to enable or variable to for depnedency
 
     file(GLOB SOURCES "*.c" "*.cpp")

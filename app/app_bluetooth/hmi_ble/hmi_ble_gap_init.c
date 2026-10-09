@@ -65,9 +65,9 @@ uint8_t adv_data[] =
     GAP_ADTYPE_FLAGS_GENERAL | GAP_ADTYPE_FLAGS_BREDR_NOT_SUPPORTED,
 
     /* Local name */
-    0x06,           /* length     */
+    0x0C,           /* length     */
     GAP_ADTYPE_LOCAL_NAME_COMPLETE, /* type="Complete local name" */
-    'W', 'a', 't', 'c', 'h', /* Watch */
+    'H', 'B', 'o', 'x', '-', 'S', 't', 'e', 'p', '0', '1',
 
     /* Service */
     0x03,           /* length     */
@@ -93,7 +93,7 @@ uint8_t adv_data[] =
 void hmi_ble_gap_init(void)
 {
     /* Device name and device appearance */
-    uint8_t  device_name[GAP_DEVICE_NAME_LEN] = "Watch";
+    uint8_t  device_name[GAP_DEVICE_NAME_LEN] = "HBox-Step01";
     uint16_t appearance = GAP_GATT_APPEARANCE_WRIST_WORN;
     uint8_t  slave_init_mtu_req = true;
 

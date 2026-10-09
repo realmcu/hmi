@@ -111,6 +111,10 @@ int  health_db_init(void);
  * Returns 0 on success, negative on failure. */
 int  health_db_append_pedo(health_pedo_record_t *rec);
 
+/* Restore the completed buckets belonging to the current wall-clock day.
+ * This is boot-time backup recovery only; runtime consumers read the health worker. */
+int  health_db_load_today(uint32_t now, health_daily_rollup_t *out);
+
 /* The sequential read cursor is NOT declared here: health_db.c defines
  * app_health_history_read() directly, since the batch cursor and the persisted
  * watermark it advances are both file-static there. See app_health.h. */
@@ -122,9 +126,8 @@ int  health_db_append_pedo(health_pedo_record_t *rec);
  * calling it again while already running is a no-op that returns 0.
  * -------------------------------------------------------------- */
 
-/* Start the acquisition task. Today's totals begin at zero — they are RAM-only
- * and nothing is restored from flash. Returns 0 on success (running or newly
- * created), negative if the gsa slot is contested or thread creation fails. */
+/* Start the acquisition task. Today's totals are restored from completed
+ * FlashDB buckets, then the health worker becomes the runtime source of truth. */
 int  health_worker_start(void);
 
 /* Create worker synchronization objects. Called once during module init. */

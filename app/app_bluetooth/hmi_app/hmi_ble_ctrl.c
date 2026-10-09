@@ -14,6 +14,7 @@
 #include "hmi_ctrl_service.h"
 #include "app_event.h"
 #include "app_event_defs.h"
+#include "gui_port_sysval.h"
 
 #define HMI_CONN_HANDLE_INVALID     0xFFFF
 
@@ -133,6 +134,7 @@ static void gap_hmi_msg(T_IO_MSG *p_gap_msg)
             case GAP_CONN_STATE_DISCONNECTED:
                 hmi_conn_handle    = HMI_CONN_HANDLE_INVALID;
                 hmi_event_cccd_enabled = false;
+                gui_port_sysval_ble_update(false);
                 /* Broadcast to any interested subscriber (xfer receive session
                  * reset, UI, power module, ...). Delivery is asynchronous on
                  * app_task; the xfer reset used to be posted to l2_task via
@@ -152,6 +154,7 @@ static void gap_hmi_msg(T_IO_MSG *p_gap_msg)
                 {
                     uint8_t conn_id = gap_msg.msg_data.gap_conn_state_change.conn_id;
                     hmi_conn_handle = le_get_conn_handle(conn_id);
+                    gui_port_sysval_ble_update(true);
                     APP_PRINT_INFO1("gap_hmi_msg: connected, conn_handle 0x%x", hmi_conn_handle);
 
                     app_evt_ble_connected_t ev =
