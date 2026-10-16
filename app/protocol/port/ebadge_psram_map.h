@@ -51,23 +51,22 @@
  * ---------------------------------------------------------------------------
  * THE MAP -- SPIC1 (MPU region 2)
  * ---------------------------------------------------------------------------
- *   0x22000000  +3   MB   HoneyGUI lower heap
- *   0x22300000  +512 KB   unclaimed (the Wi-Fi receive cache used to live here)
+ *   0x22000000  +3.5 MB   HoneyGUI lower heap
  *   0x22380000  +128 KB   psram1_nc: SPI slot buffers, GDMA target
  *   0x223A0000  +128 KB   preview frame reassembly buffer
  *   0x223C0000  +256 KB   unclaimed
  *   0x22400000            end of the non-cacheable MPU region
  *
- * The 512 KB hole below psram1_nc is deliberately left unclaimed rather than
- * folded back into the GUI heap.  Growing that heap is a change in GUI memory
- * behaviour -- it only shows up under pressure, at which point the surfaces that
- * newly fit are the ones that change what gets drawn -- and nothing asked for
- * it.  It is contiguous and documented, so whichever module needs it next can
- * take it in one line.
+ * The heap ends exactly where psram1_nc begins, so the 512 KB that used to sit
+ * unclaimed between them is now heap.  That makes psram1_nc's DT address the
+ * binding constraint on EB_PSRAM_GUI_LOWER_SIZE: the heap cannot grow by one
+ * byte without moving that node first, which the assert at the bottom enforces.
  *
  * The preview buffer sits ABOVE psram1_nc, which breaks the "contiguous from the
  * bottom" arrangement.  Deliberate: psram1_nc's address is fixed in a .overlay,
  * and moving it to preserve the ordering would be a DT change for cosmetics.
+ * Because of that gap its base is written as an absolute address rather than
+ * derived from the end of the heap.
  *
  * ---------------------------------------------------------------------------
  * THE MAP -- SPIC3 (MPU region 4)
@@ -110,18 +109,22 @@ extern "C" {
 /*----------------------------------------------------------------------------*
  *  SPIC1: HoneyGUI lower heap
  *
- *  Was the full 0x400000.  Reduced to 3 MB when the receive cache was carved
- *  out below psram1_nc, and left at 3 MB after that cache moved to SPIC3 -- see
- *  the note about the resulting hole in the file header.
+ *  Was the full 0x400000, then 3 MB when the receive cache was carved out below
+ *  psram1_nc, and now 3.5 MB -- the receive cache moved to SPIC3 and the 512 KB
+ *  it vacated went back to the heap.
  *
  *  What this heap actually holds is HoneyGUI's off-screen surfaces and decoded
  *  image buffers, sized by widget usage rather than by anything fixed, so there
- *  is no formula that says 3 MB is enough -- only that the app has to fit.  A
+ *  is no formula that says 3.5 MB is enough -- only that the app has to fit.  A
  *  heap exhaustion here shows up as gui_lower_malloc returning NULL, which the
  *  GUI logs, so it is loud rather than silent.
  *----------------------------------------------------------------------------*/
 #define EB_PSRAM_GUI_LOWER_BASE      (SPIC1_MEM_BASE)
-#define EB_PSRAM_GUI_LOWER_SIZE      0x300000u        /* 3 MB */
+/* 3.5 MB -- the hard ceiling, not a choice: psram1_nc is pinned at 0x22380000
+ * by snippets/wifi/wifi.overlay, so the heap cannot reach past 0x380000.
+ * This is the old 3 MB plus the 512 KB hole the file header used to describe as
+ * deliberately unclaimed; that hole is now part of the heap. */
+#define EB_PSRAM_GUI_LOWER_SIZE      0x380000u        /* 3.5 MB */
 
 /** First byte after the GUI heap.  psram1_nc must not start below this. */
 #define EB_PSRAM_GUI_LOWER_END       (EB_PSRAM_GUI_LOWER_BASE + \
@@ -145,6 +148,9 @@ extern "C" {
  *  absolute address that stream_session.c and the size ladder in the STP
  *  producer both agree on, and moving it would be churn for no gain.
  *----------------------------------------------------------------------------*/
+/* Explicitly 0x223A0000, NOT EB_PSRAM_GUI_LOWER_END: this buffer sits ABOVE
+ * psram1_nc (0x22380000 + 128 KB), so deriving it from the heap's end would land
+ * it on top of that node -- the heap now ends exactly where the node starts. */
 #define EB_PSRAM_STREAM_FRAME_BASE   0x223A0000u
 #define EB_PSRAM_STREAM_FRAME_SIZE   0x20000u         /* 128 KB */
 

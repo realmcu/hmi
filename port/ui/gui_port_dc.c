@@ -238,10 +238,10 @@ static struct gui_dispdev dc =
 #if 1
 DSP_RAM_BSS_SECTION static uint8_t __attribute__((aligned(4))) __attribute__((
         used)) disp_write_buff1_port[DRV_LCD_WIDTH *
-                                                   LCD_SECTION_HEIGHT * 2];
+                                                   LCD_SECTION_HEIGHT * 3];
 DSP_RAM_BSS_SECTION static uint8_t __attribute__((aligned(4))) __attribute__((
         used)) disp_write_buff2_port[DRV_LCD_WIDTH *
-                                                   LCD_SECTION_HEIGHT * 2];
+                                                   LCD_SECTION_HEIGHT * 3];
 #else
 static uint8_t __attribute__((aligned(4))) __attribute__((
                                                              used)) disp_write_buff1_port[DRV_LCD_WIDTH *
