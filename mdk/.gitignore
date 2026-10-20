@@ -1,0 +1,14 @@
+#
+# .gitignore: Ignore untracked files or directories.
+#
+
+# Others
+RTE/
+app/
+bin/
+Objects/
+Listings/
+build/
+./../../../inc/platform/version.h
+EventRecorderStub.scvd
+sdk/inc/platform/version.h

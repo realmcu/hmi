@@ -1,0 +1,75 @@
+Import('SDK_ROOT')
+Import('WEARABLE_ROOT')
+from building import *
+
+# get current directory
+cwd = GetCurrentDir()
+
+src = Split("""
+""")
+
+CPPDEFINES = ['RTL8762D']
+CPPDEFINES += ['SUPPORT_ALONE_UPPERSTACK_IMG']
+CPPDEFINES += ['ARM_MATH_CM4']
+
+path = [SDK_ROOT + '/inc',
+        SDK_ROOT + '/inc/app',
+        SDK_ROOT + '/inc/peripheral',
+        SDK_ROOT + '/inc/platform',
+        SDK_ROOT + '/inc/os',
+        SDK_ROOT + '/inc/os/osif',
+        SDK_ROOT + '/src/dfu',
+        SDK_ROOT + '/inc/os/FreeRTOS',
+        SDK_ROOT + '/inc/bluetooth',
+        SDK_ROOT + '/inc/bluetooth/profile',
+        SDK_ROOT + '/inc/bluetooth/profile/client',
+        SDK_ROOT + '/inc/bluetooth/profile/server',
+        SDK_ROOT + '/bin/upperstack_img/upperstack_0_0',
+        SDK_ROOT + '/inc/bluetooth/gap']
+
+group_rtk_bsp = DefineGroup('RTK_BSP', src, depend = [''], CPPPATH = path, CPPDEFINES = CPPDEFINES)
+
+src_8762d_device =  [SDK_ROOT + '/bin/ROM.lib']
+src_8762d_device += [SDK_ROOT + '/bin/adc.lib']
+src_8762d_device += [SDK_ROOT + '/bin/upperstack_img/upperstack_0_0/gap_utils.lib']
+src_8762d_device += [SDK_ROOT + '/bin/rtl8762d_sdk.lib']
+src_8762d_device += [SDK_ROOT + '/src/mcu/rtl876x/arm/startup_rtl876x.s']
+src_8762d_device += [SDK_ROOT + '/src/mcu/rtl876x/overlay_mgr.c']
+src_8762d_device += [SDK_ROOT + '/src/mcu/rtl876x/system_rtl876x.c']
+# src_8762d_device += [SDK_ROOT + '/src/dfu/dfu_application.c']
+# src_8762d_device += [SDK_ROOT + '/src/dfu/dfu_main.c']
+# src_8762d_device += [SDK_ROOT + '/src/dfu/dfu_task.c']
+# src_8762d_device += [SDK_ROOT + '/src/platform/dfu_flash.c']
+src_8762d_device += [SDK_ROOT + '/src/platform/qspi_lcd_platform.c']
+# src_8762d_device += [SDK_ROOT + '/src/ble/profile/server/bas.c']
+# src_8762d_device += [SDK_ROOT + '/src/ble/profile/server/dis.c']
+# src_8762d_device += [SDK_ROOT + '/src/ble/profile/server/hids_kb.c']
+# src_8762d_device += [SDK_ROOT + '/src/ble/profile/server/ota_service.c']
+# src_8762d_device += [SDK_ROOT + '/src/ble/profile/server/dfu_service.c']
+# src_8762d_device += [SDK_ROOT + '/src/ble/profile/client/ancs_client.c']
+# src_8762d_device += [SDK_ROOT + '/src/ble/profile/client/ams_client.c']
+# src_8762d_device += [SDK_ROOT + '/src/ble/profile/client/gcs_client.c']
+# src_8762d_device += [SDK_ROOT + '/src/ble/profile/client/gatts_client.c']
+
+group_8762d_device = DefineGroup('8762d_device', src_8762d_device, depend = ['CONFIG_REALTEK_8762D_DEVICE'])
+
+
+
+src_peri = [SDK_ROOT + '/src/mcu/peripheral/rtl876x_pinmux.c']
+src_peri += [SDK_ROOT + '/src/mcu/peripheral/rtl876x_rcc.c']
+src_peri += [SDK_ROOT + '/src/mcu/peripheral/rtl876x_nvic.c']
+src_peri += [SDK_ROOT + '/src/mcu/peripheral/rtl876x_tim.c']
+src_peri += [SDK_ROOT + '/src/mcu/peripheral/rtl876x_io_dlps.c']
+src_peri += [SDK_ROOT + '/src/mcu/peripheral/rtl876x_gdma.c']
+src_peri += [SDK_ROOT + '/src/mcu/peripheral/rtl876x_gpio.c']
+src_peri += [SDK_ROOT + '/src/mcu/peripheral/rtl876x_uart.c']
+src_peri += [SDK_ROOT + '/src/mcu/peripheral/rtl876x_adc.c']
+src_peri += [SDK_ROOT + '/src/mcu/peripheral/rtl876x_spi.c']
+src_peri += [SDK_ROOT + '/src/mcu/peripheral/rtl876x_i2c.c']
+src_peri += [SDK_ROOT + '/src/mcu/peripheral/rtl876x_rtc.c']
+
+group_peri = DefineGroup('peripheral', src_peri, depend = [''], CPPPATH = path)
+
+group = group_rtk_bsp + group_8762d_device + group_peri
+
+Return('group')
