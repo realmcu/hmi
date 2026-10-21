@@ -67,7 +67,15 @@ bool port_thread_mdelay(uint32_t ms)
 
 uint32_t port_thread_ms_get(void)
 {
-    return sys_timestamp_get();
+    static uint32_t time_ms_record = 0;
+    static uint32_t time_ms_last = 0;
+    uint32_t time_ms = sys_timestamp_get(); // max: 0xFFFFFFFF / 1000 ms
+    if (time_ms_last > time_ms)
+    {
+        time_ms_record += 0xFFFFFFFF / 1000; // overflow
+    }
+    time_ms_last = time_ms;
+    return time_ms_record + time_ms;
 }
 
 uint32_t port_thread_us_get(void)
