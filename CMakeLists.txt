@@ -70,6 +70,10 @@ if(1) #set to 1 to enable or variable to for depnedency
     # Process subdirectories regardless
     file(GLOB SUBDIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
 
+    # ui_design/ is wired up explicitly at the end of this file: it is a separate git
+    # repository exported by HoneyGUI Designer and must stay free of build files.
+    list(REMOVE_ITEM SUBDIRS ui_design)
+
     foreach(subdir ${SUBDIRS})
         if(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${subdir})
             if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt)
@@ -79,4 +83,43 @@ if(1) #set to 1 to enable or variable to for depnedency
             endif()
         endif()
     endforeach()
+endif()
+
+# ---------------------------------------------------------------------------
+# HoneyGUI Visual Designer UI (ui_design/)
+#
+# Handled here instead of a ui_design/CMakeLists.txt, because ui_design/ is its
+# own git repository exported by the designer: keeping the build wiring in the
+# application avoids leaving an untracked file inside that repository.
+#
+# The designer emits the UI as C code under ui_design/src/:
+#   src/dashboardEntry.c          - GUI_INIT_APP_EXPORT entry, mounts romfs + creates the root view
+#   src/ui/DashboardMain_ui.c     - view / widget tree
+#   src/callbacks/                - widget callbacks
+#   src/user/                     - application logic (data refresh, shell commands, ...)
+#
+# Assets (images/fonts) are read at runtime from the romfs in flash. The address
+# comes from romfsBaseAddr in ui_design/project.json and must match
+# USER_DATA1_ADDR in flash_map.h. The content (ui_design/build/app_romfs.bin) is
+# flashed to that address and is not part of the compile step.
+# ---------------------------------------------------------------------------
+set(UI_DESIGN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ui_design)
+file(GLOB_RECURSE UI_SOURCES "${UI_DESIGN_DIR}/src/*.c" "${UI_DESIGN_DIR}/src/*.cpp")
+
+if(NOT UI_SOURCES)
+    message(WARNING "ui_design: no generated sources under ${UI_DESIGN_DIR}/src, UI will not be built")
+else()
+    target_sources(${APP_TARGET_NAME} PRIVATE ${UI_SOURCES})
+
+    # Generated code includes its siblings through paths such as ../callbacks/ and
+    # ../user/, so every level is exported as an include directory to keep the
+    # build layout identical to the designer project.
+    target_include_directories(${APP_TARGET_NAME} PUBLIC
+        ${UI_DESIGN_DIR}/src
+        ${UI_DESIGN_DIR}/src/callbacks
+        ${UI_DESIGN_DIR}/src/ui
+        ${UI_DESIGN_DIR}/src/user
+    )
+    list(LENGTH UI_SOURCES UI_SOURCE_COUNT)
+    message(STATUS "ui_design: ${UI_SOURCE_COUNT} generated source(s) added to ${APP_TARGET_NAME}")
 endif()
