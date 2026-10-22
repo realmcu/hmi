@@ -5,6 +5,7 @@
  */
 
 #include "app_ble_client.h"
+#include "app_ble_flags.h"
 #include "bt_gatt_client.h"
 #if F_APP_BT_ANCS_CLIENT_SUPPORT
 #include "ancs_sample.h"

@@ -16,6 +16,7 @@
 #include "bt_bond_common.h"
 #include "gap_bond_manager.h"
 #include "bt_bond_api.h"
+#include "app_ble_flags.h"
 #if F_APP_BT_GATT_CLIENT_SUPPORT
 #include "bt_gatt_client.h"
 #endif

@@ -11,6 +11,7 @@
  */
 
 #include "navi_projection_service.h"
+#include "app_ble_flags.h"
 #include <string.h>
 #include <stdio.h>
 #include "trace.h"

@@ -3,6 +3,11 @@ set(POSIX_DEVICE_PORT_COMMON ${POSIX_DEVICE_ROOT}/examples/port/common)
 set(POSIX_DEVICE_PORT ${POSIX_DEVICE_ROOT}/examples/port/zephyr-rtk)
 set(POSIX_DEVICE_DEMO ${POSIX_DEVICE_ROOT}/examples/demo)
 
+if(NOT EXISTS ${POSIX_DEVICE_ROOT}/core/posix_device.c)
+    message(STATUS "port/posix: skip (missing ${POSIX_DEVICE_ROOT})")
+    return()
+endif()
+
 target_sources(app PRIVATE
     ${POSIX_DEVICE_ROOT}/core/posix_device.c
     ${POSIX_DEVICE_ROOT}/core/posix_init.c

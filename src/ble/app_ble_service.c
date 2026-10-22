@@ -5,6 +5,7 @@
  */
 
 #include "app_ble_service.h"
+#include "app_ble_flags.h"
 #include "navi_projection_service.h"
 #include "bt_gatt_svc.h"
 #include "gap_conn_le.h"

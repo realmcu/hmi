@@ -1,23 +1,32 @@
 # Copyright (c) 2024, Realtek Semiconductor Corporation.
 # SPDX-License-Identifier: Apache-2.0
 #
-# FlashDB 移植层 CMakeLists —— eBadge 平台
+# FlashDB port layer CMakeLists
 #
-# 此文件负责：
-#   1. 引入 FlashDB 核心源码（来自独立 West project，不修改）
-#   2. 引入 FAL 抽象层源码（来自 FlashDB 仓库的 port/fal/）
-#   3. 编译本目录下的 RTK 平台移植文件
-#   4. 将所有必要头文件路径注入 app target
+# This file is responsible for:
+#   1. Pulling in the FlashDB core sources (upstream repository, read-only)
+#   2. Pulling in the FAL abstraction layer (upstream port/fal/, read-only)
+#   3. Compiling the RTK platform port files kept in this directory
+#   4. Exporting all required include directories to the app target
 #
-# 被 port/CMakeLists.txt 的 foreach 子目录扫描自动发现并 add_subdirectory。
+# Discovered and added by the sub-directory scan in port/CMakeLists.txt.
 
 cmake_minimum_required(VERSION 3.20.0)
 
-# FlashDB West project 路径（port/flashdb/ → eBadge/ → FlashDB/）
+# FlashDB sources location (port/flashdb/ -> component/FlashDB/)
 set(FLASHDB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../component/FlashDB)
 
+# The component/ directory is not part of this application yet (the FlashDB
+# repository is not vendored here). Skip the whole port when the sources are
+# missing, so CMake does not fail with "Cannot find source file".
+# Once FlashDB is placed under component/FlashDB this block activates on its own.
+if(NOT EXISTS ${FLASHDB_DIR}/src/fdb.c)
+    message(STATUS "port/flashdb: skip (missing ${FLASHDB_DIR})")
+    return()
+endif()
+
 # ============================================================
-# 1. FlashDB 核心源码（仓库本身，只读，不修改）
+# 1. FlashDB core sources (upstream repository, read-only)
 # ============================================================
 target_sources(${APP_TARGET_NAME} PRIVATE
     ${FLASHDB_DIR}/src/fdb.c
@@ -32,7 +41,7 @@ target_include_directories(${APP_TARGET_NAME} PUBLIC
 )
 
 # ============================================================
-# 2. FAL 抽象层源码（来自 FlashDB 仓库，只读，不修改）
+# 2. FAL abstraction layer sources (from the FlashDB repository, read-only)
 # ============================================================
 set(FAL_DIR ${FLASHDB_DIR}/port/fal)
 
@@ -40,7 +49,7 @@ target_sources(${APP_TARGET_NAME} PRIVATE
     ${FAL_DIR}/src/fal.c
     ${FAL_DIR}/src/fal_flash.c
     ${FAL_DIR}/src/fal_partition.c
-    # fal_rtt.c 为 RT-Thread 专用，Zephyr 不引入
+    # fal_rtt.c is RT-Thread specific and is not used on Zephyr
 )
 
 target_include_directories(${APP_TARGET_NAME} PUBLIC
@@ -48,22 +57,22 @@ target_include_directories(${APP_TARGET_NAME} PUBLIC
 )
 
 # ============================================================
-# 3. RTK 平台移植文件 + 配置头文件（本目录，应用工程维护）
-#    fal_flash_rtk_port.c  — Flash 驱动，使用 Realtek FMC API
-#    fdb_cfg.h             — FlashDB 功能配置
-#    fal_cfg.h             — FAL 设备表 + 分区表
+# 3. RTK platform port files + configuration headers (maintained here)
+#    fal_flash_rtk_port.c  - flash driver built on the Realtek FMC API
+#    fdb_cfg.h             - FlashDB feature configuration
+#    fal_cfg.h             - FAL device table + partition table
 # ============================================================
 target_sources(${APP_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/fal_flash_rtk_port.c
     ${CMAKE_CURRENT_SOURCE_DIR}/flashdb_test.c
 )
 
-# fmc_api.h 路径（Realtek HAL 模块）
+# fmc_api.h location (Realtek HAL module)
 set(FMC_API_INC_DIR
     ${ZEPHYR_BASE}/../modules/hal/realtek/rtl87x3g/platform/hal_lib/inc/platform)
 
-# BEFORE 确保本目录头文件优先于 FlashDB/inc，
-# 使 fdb_cfg.h / fal_cfg.h 能覆盖仓库内的模板文件
+# BEFORE guarantees this directory wins over FlashDB/inc, so that
+# fdb_cfg.h / fal_cfg.h override the template files shipped with the repository
 target_include_directories(${APP_TARGET_NAME} BEFORE PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${FMC_API_INC_DIR}
