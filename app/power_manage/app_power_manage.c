@@ -478,6 +478,21 @@ void gui_port_power_off(void)
     power_off();
 }
 
+void gui_port_reboot(void)
+{
+    app_power_reboot();
+}
+
+FUNC_NORETURN void app_power_reboot(void)
+{
+    DBG_DIRECT("[power-key] reboot requested\n");
+
+    /* A stale marker would make app_power_on_gate() reject this reset as a
+     * non-PAD wake and drop straight back into power-down. */
+    btaon_fast_write_safe(POWER_OFF_AON_REG, 0);
+    sys_reboot(SYS_REBOOT_COLD);
+}
+
 void app_power_manage_handle_long_press(void)
 {
     if (power_off_requested)
@@ -485,8 +500,7 @@ void app_power_manage_handle_long_press(void)
         /* Power-down wake is handled by app_power_on_gate() during boot.
          * This branch only applies to a screen-off state that did not power down. */
         DBG_DIRECT("[power-key] wake long press reached %u ms\n", APP_POWER_LONG_PRESS_MS);
-        btaon_fast_write_safe(POWER_OFF_AON_REG, 0);
-        sys_reboot(SYS_REBOOT_COLD);
+        app_power_reboot();
     }
     else
     {

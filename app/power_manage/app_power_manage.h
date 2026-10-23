@@ -15,6 +15,7 @@
  *
  * Typical flows
  *   - Power off     : gui_port_power_off()    -> app_power_down_enter()
+ *   - Reboot        : app_power_reboot()
  *   - Cancel / wake : gui_port_reset_power_off_request()
  *   - Wake decision : main()                  -> app_power_on_gate()
  *   - Screen state  : app_screen_on_off_power_set() (panel on/off, not power-down)
@@ -24,6 +25,7 @@
 #define APP_POWER_MANAGE_H_
 
 #include <stdbool.h>
+#include <zephyr/toolchain.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -84,6 +86,23 @@ void gui_port_reset_power_off_request(void);
  * @note Standard entry point for UI confirm and shell power-off.
  */
 void gui_port_power_off(void);
+
+void gui_port_reboot(void);
+
+/**
+ * @brief Reboot the SoC.
+ *
+ * Clears the AON power-off marker and performs a cold reset
+ * (sys_reboot(SYS_REBOOT_COLD)).  The application restarts from main(); the
+ * power-on gate lets it straight through, since the marker is gone and the
+ * reset is not a PAD wake.
+ *
+ * @note Does not return.  This is an immediate reset: it does not quiesce
+ *       threads, park the radio or flush application state, so do that first
+ *       if it matters.  Also used by app_power_manage_handle_long_press() to
+ *       wake from a screen-off state.
+ */
+FUNC_NORETURN void app_power_reboot(void);
 
 /**
  * @brief Boot-time power-on gate.
