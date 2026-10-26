@@ -69,20 +69,10 @@
 		};
 	};
 
-	i2c1_default: i2c1_default {
-		group1 {
-			psels =
-				<RTL87X3G_PSEL(I2C1_CLK, ADC_0, DIR_OUT, DRV_HIGH, PULL_NONE)>,
-				<RTL87X3G_PSEL(I2C1_DAT, ADC_1, DIR_OUT, DRV_HIGH, PULL_NONE)>;
-		};
-	};
-	i2c1_sleep: i2c1_sleep {
-		group1 {
-			psels =
-				<RTL87X3G_PSEL(SW_MODE, ADC_0, DIR_IN, DRV_LOW, PULL_UP)>,
-				<RTL87X3G_PSEL(SW_MODE, ADC_1, DIR_IN, DRV_LOW, PULL_UP)>;
-		};
-	};
+	/*
+	 * i2c1_default / i2c1_sleep were removed together with the touch panel,
+	 * see the "touch panel removed" note at the end of this file.
+	 */
 };
 
 &gpioa {
@@ -129,20 +119,61 @@
 			label = "wifi int";
 		};
 	};
-};
 
-&i2c1 {
-	status = "okay";
-	clock-frequency = <400000>;
-	pinctrl-0 = <&i2c1_default>;
-	pinctrl-1 = <&i2c1_sleep>;
-	pinctrl-names = "default", "sleep";
-	touch_device: touch_chsc6417@2e {
-		compatible = "chipsemi,chsc6417";
-		reg = <0x2E>;
-		irq-gpios = <&gpioa 2 GPIO_ACTIVE_HIGH>;  /* P0_2 */
-		rst-gpios = <&gpioa 3 GPIO_ACTIVE_HIGH>;  /* P0_3 */
-		gesture-release-timeout-ms = <30>;
-		status = "okay";
+	/*
+	 * Panel keys driven by the realtek,gpio-keys driver. Each child is read
+	 * through gpio_button_read_key()/gpio_button_register_callback() with its
+	 * key,id, see port/ui/gui_port_indev.c for the Home/Menu/Power mapping.
+	 *
+	 * The MFB (multi function button, used as Back) is a dedicated pad that
+	 * is not part of the GPIO controller, so it is handled through the MFB
+	 * API and has no node here.
+	 */
+	gpio_keys: gpio_keys {
+		compatible = "realtek,gpio-keys";
+		debounce-interval-ms = <30>;
+
+		key1: key1 {            /* Home, P3_0 */
+			gpios = <&gpioa 23 (GPIO_ACTIVE_LOW | GPIO_PULL_UP |
+					     RTL87X3G_GPIO_INPUT_PM_WAKEUP)>;
+			label = "key1";
+			key,id = <100>;
+			status = "okay";
+		};
+
+		key2: key2 {            /* Power, ADC_0 = P0_0 */
+			gpios = <&gpioa 0 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			label = "key2";
+			key,id = <101>;
+			/*
+			 * P0_0 is shared with I2C1_CLK on the EVB. The touch panel was
+			 * removed (see below), so the pad is free for this key.
+			 */
+			status = "okay";
+		};
+
+		key3: key3 {            /* Menu, P3_1 */
+			gpios = <&gpioa 24 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			label = "key3";
+			key,id = <102>;
+			status = "okay";
+		};
 	};
 };
+
+/*
+ * Touch panel removed.
+ *
+ * The CHSC6417 panel used i2c1 (SCL = P0_0/ADC_0, SDA = P0_1/ADC_1) plus
+ * P0_2 (IRQ) and P0_3 (reset). P0_0 is the pad of key2 (Power), so the whole
+ * panel is dropped here and the bus stays disabled.
+ *
+ * To bring the panel back: enable i2c1 (400 kHz) with an i2c1 pinctrl group,
+ * add the chipsemi,chsc6417 child again, restore the i2c1_default/i2c1_sleep
+ * pinctrl groups, turn CONFIG_REALTEK_TOUCH_CHSC6417_ZEPHYR back on in prj.conf,
+ * and give key2 another pad.
+ */
+&i2c1 {
+	status = "disabled";
+};
+
