@@ -367,6 +367,12 @@ static void power_off(void)
 
     DBG_DIRECT("[power-key] power off requested\n");
 
+    /* Persist the UI state while every thread is still runnable: the FlashDB
+     * lock waits forever on the db mutex, so a writer suspended by the quiesce
+     * below would deadlock the shutdown. */
+    extern void mainface_user_settings_save(void);
+    mainface_user_settings_save();
+
     /* Panel off first, so the badge looks off immediately. */
     gui_dispdev_t *dc = gui_get_dc();
     dc->lcd_power_off();
@@ -486,6 +492,16 @@ void gui_port_reboot(void)
 FUNC_NORETURN void app_power_reboot(void)
 {
     DBG_DIRECT("[power-key] reboot requested\n");
+
+    /* A reset would otherwise discard settings changed since the last
+     * power-off.  Skip it once the quiesce has run -- the KVDB lock has no
+     * timeout, and a suspended writer could hold it forever. */
+    if (!system_quiesced)
+    {
+        extern void mainface_user_settings_save(void);
+        mainface_user_settings_save();
+    }
+    // platform_delay_ms(20);
 
     /* A stale marker would make app_power_on_gate() reject this reset as a
      * non-PAD wake and drop straight back into power-down. */

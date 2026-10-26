@@ -34,7 +34,7 @@ void *port_thread_create(const char *name, void (*entry)(void *param), void *par
                          uint32_t stack_size, uint8_t priority)
 {
     void *handle = NULL;
-    if (os_task_create(&handle, name, entry, 0, stack_size, 1))
+    if (os_task_create(&handle, name, entry, 0, stack_size, 2))
     {
         return handle;
     }
