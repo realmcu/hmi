@@ -17,7 +17,7 @@
 #include "lv_log.h"
 
 #define APP_TASK_PRIORITY               1   /* Task priorities. */
-#define APP_TASK_STACK_SIZE             (512 * 8)
+#define APP_TASK_STACK_SIZE             (512 * 16)
 
 static void port_log(const char *format, ...)
 {

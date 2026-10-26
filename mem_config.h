@@ -53,7 +53,7 @@ example:
 #define UPPERSTACK_GLOBAL_SIZE         (4 * 1024)
 
 /** @brief data ram size for app global variables and code, could be changed, but (APP_GLOBAL_SIZE + HEAP_DATA_ON_SIZE) must be 65k */
-#define APP_GLOBAL_SIZE                (80 * 1024)
+#define APP_GLOBAL_SIZE                (88 * 1024)
 
 /** @brief data ram size for heap, could be changed, but (UPPERSTACK_GLOBAL_SIZE + APP_GLOBAL_SIZE + HEAP_DATA_ON_SIZE) must be 115k, and can't less than 10KB  */
 #define HEAP_DATA_ON_SIZE              (115 * 1024 - APP_GLOBAL_SIZE - UPPERSTACK_GLOBAL_SIZE)

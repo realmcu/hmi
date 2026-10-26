@@ -69,8 +69,7 @@
 
 #if LV_USE_STDLIB_MALLOC == LV_STDLIB_BUILTIN
 /** Size of memory available for `lv_malloc()` in bytes (>= 2kB) */
-/* APP_GLOBAL_SIZE is 80K, keep room for 2 x 7.7K draw buffers in lv_port_disp.c */
-#define LV_MEM_SIZE (44 * 1024U)          /**< [bytes] */
+#define LV_MEM_SIZE (64 * 1024U)          /**< [bytes] */
 
 /** Size of the memory expand for `lv_malloc()` in bytes */
 #define LV_MEM_POOL_EXPAND_SIZE 0
@@ -144,7 +143,7 @@
  * and can't be drawn in chunks. */
 
 /** The target buffer size for simple layer chunks. */
-#define LV_DRAW_LAYER_SIMPLE_BUF_SIZE    (24 * 1024)    /**< [bytes]*/
+#define LV_DRAW_LAYER_SIMPLE_BUF_SIZE    (12 * 1024)    /**< [bytes]*/
 
 /* Limit the max allocated memory for simple and transformed layers.
  * It should be at least `LV_DRAW_LAYER_SIMPLE_BUF_SIZE` sized but if transformed layers are also used
@@ -210,7 +209,7 @@
 /** Allow buffering some shadow calculation.
  *  LV_DRAW_SW_SHADOW_CACHE_SIZE is the maximum shadow size to buffer, where shadow size is
  *  `shadow_width + radius`.  Caching has LV_DRAW_SW_SHADOW_CACHE_SIZE^2 RAM cost. */
-#define LV_DRAW_SW_SHADOW_CACHE_SIZE 110
+#define LV_DRAW_SW_SHADOW_CACHE_SIZE 0
 
 /** Set number of maximally-cached circle data.
  *  The circumference of 1/4 circle are saved for anti-aliasing.
@@ -455,7 +454,7 @@
 #define LV_FONT_MONTSERRAT_20 1
 #define LV_FONT_MONTSERRAT_22 0
 #define LV_FONT_MONTSERRAT_24 1
-#define LV_FONT_MONTSERRAT_26 0
+#define LV_FONT_MONTSERRAT_26 1
 #define LV_FONT_MONTSERRAT_28 0
 #define LV_FONT_MONTSERRAT_30 0
 #define LV_FONT_MONTSERRAT_32 0
@@ -1102,7 +1101,7 @@
 #define LV_BUILD_EXAMPLES 1
 
 /** Build the demos */
-#define LV_BUILD_DEMOS 0
+#define LV_BUILD_DEMOS 1
 
 /*===================
  * DEMO USAGE
@@ -1120,7 +1119,7 @@
 
 #if LV_USE_DEMO_BENCHMARK
 /** Use fonts where bitmaps are aligned 16 byte and has Nx16 byte stride */
-#define LV_DEMO_BENCHMARK_ALIGNED_FONTS 1
+#define LV_DEMO_BENCHMARK_ALIGNED_FONTS 0
 #endif
 
 /** Render test for each primitive.
@@ -1131,7 +1130,7 @@
 #define LV_USE_DEMO_STRESS 0
 
 /** Music player demo */
-#define LV_USE_DEMO_MUSIC 1
+#define LV_USE_DEMO_MUSIC 0
 #if LV_USE_DEMO_MUSIC
 #define LV_DEMO_MUSIC_SQUARE    0
 #define LV_DEMO_MUSIC_LANDSCAPE 0
