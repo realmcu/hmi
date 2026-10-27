@@ -16,6 +16,8 @@
 
 &display_lcd {
 	status = "okay";
+	width = <410>;
+	height = <502>;
 };
 
 &uart2 {

@@ -21,11 +21,19 @@
 #include <zephyr/kernel.h>
 
 #define GPIO_KEYS_NODE  DT_NODELABEL(gpio_keys)
-
 /* key,id of every gpio-keys child, see boards/rtl87x3g_evb.overlay. */
 #define KEY_ID_HOME     DT_PROP(DT_NODELABEL(key1), key_id)
 #define KEY_ID_POWER    DT_PROP(DT_NODELABEL(key2), key_id)
 #define KEY_ID_MENU     DT_PROP(DT_NODELABEL(key3), key_id)
+
+/*
+ * A key can be disabled in devicetree, e.g. while its pad is used by the
+ * console UART. The gpio-keys driver only instantiates status "okay" children,
+ * so a disabled key must not be registered here either.
+ */
+#define KEY_HOME_ENABLED  DT_NODE_HAS_STATUS(DT_NODELABEL(key1), okay)
+#define KEY_POWER_ENABLED DT_NODE_HAS_STATUS(DT_NODELABEL(key2), okay)
+#define KEY_MENU_ENABLED  DT_NODE_HAS_STATUS(DT_NODELABEL(key3), okay)
 
 /* Debounce time of the MFB key, the gpio-keys driver uses 30 ms as well. */
 #define MFB_DEBOUNCE_MS 30
@@ -70,10 +78,16 @@ typedef struct
 
 static T_APP_KEY app_keys[] =
 {
+#if KEY_HOME_ENABLED
     { .name = "Home",  .source = KEY_SOURCE_GPIO, .key_id = KEY_ID_HOME  },
+#endif
     { .name = "Back",  .source = KEY_SOURCE_MFB,  .key_id = 0            },
+#if KEY_MENU_ENABLED
     { .name = "Menu",  .source = KEY_SOURCE_GPIO, .key_id = KEY_ID_MENU  },
+#endif
+#if KEY_POWER_ENABLED
     { .name = "Power", .source = KEY_SOURCE_GPIO, .key_id = KEY_ID_POWER },
+#endif
 };
 
 static struct k_work_delayable mfb_debounce_work;
