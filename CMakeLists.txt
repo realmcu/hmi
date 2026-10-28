@@ -18,7 +18,7 @@ rtk_post_build()
 set(ZEPHYR_FLASHDB_KCONFIG ${CMAKE_CURRENT_SOURCE_DIR}/port/flashdb/Kconfig)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(deskmate)
+project(dashboard)
 
 target_link_libraries(app PRIVATE realtek_display_driver_library)
 target_link_libraries(app PRIVATE guiLib)
