@@ -33,6 +33,22 @@ config RTK_BR_PROFILE_PAN
 	depends on RTK_BT_BREDR
 	default n
 
+config RTK_LOG_BACKEND
+	bool "Forward the Zephyr log to the Realtek log channel"
+	default y
+	help
+	  Forward every Zephyr log message to the Realtek log channel -- the same
+	  one DBG_DIRECT() writes to and the Realtek debug analyzer displays.
+
+	  This covers everything the log subsystem emits, including the register
+	  dump from the ARM fault handler and the coredump, and it also routes
+	  printf() there. The channel is polled, so it keeps working from the
+	  fault handler.
+
+	  Set this to n only if the Zephyr console is the sole log destination
+	  (CONFIG_CONSOLE=y + CONFIG_LOG_BACKEND_UART=y); printf() then falls
+	  back to the default console path.
+
 endmenu
 
 menu "Zephyr Kernel"
