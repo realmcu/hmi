@@ -55,7 +55,7 @@ p {
     margin-bottom: 0;
 }
 
-/* 解决 iOS 设备对完全透明（不可见）元素的交互行为设计为无响应的问题 */
+/* iOS treats fully transparent (invisible) elements as non-interactive; keep them responsive. */
 .rst-content .code-block-caption .headerlink, 
 .rst-content .eqno .headerlink, 
 .rst-content .toctree-wrapper>p.caption .headerlink, 
@@ -108,10 +108,10 @@ p {
         padding-left: 30px;
         background-color: #f3f3f3; 
         z-index: 999;
-        /* 可以添加更多样式来改变目录栏的外观，例如背景色、宽度、间距等 */
+        /* Add more rules here to restyle the table-of-contents column: background, width, spacing, and so on. */
     }
 
-    /* 添加导航拖拽组件 */
+    /* Mount the navigation drag handle. */
     .resize-handle-left,
     .resize-handle-right {
         display: flex;
@@ -126,11 +126,11 @@ p {
         color: #333;
         background-color: #d0d0d0;
     }
-    /* 左侧导航拖拽组件 */
+    /* Left navigation drag handle. */
     .resize-handle-left {
         right: 1px;
     }
-    /* 右侧导航拖拽组件 */
+    /* Right navigation drag handle. */
     .resize-handle-right {
         left: 0;
     }
@@ -250,7 +250,7 @@ h1, h2, h3, h4, h5, h6 {
     margin: 24px 0;
 }
 
-/* 禁止标题自动编号 */
+/* Disable automatic heading numbering. */
 h1::before,
 h2::before,
 h3::before,
@@ -332,7 +332,7 @@ figcaption p{
 }
 
 /* ---------- Ordered Lists ---------- */
-/* 一级有序列表 */
+/* Ordered list, level 1. */
 .rst-content section ol li,
 .rst-content section ol.arabic li,
 .rst-content section ul li ol li,
@@ -343,7 +343,7 @@ figcaption p{
 .rst-content .admonition ul li ol li {
     list-style-type: decimal !important;
 }
-/* 二级有序列表 */
+/* Ordered list, level 2. */
 .rst-content section ol li ol li,
 .rst-content section ol.arabic li ol li,
 .rst-content section ul li ol li ol li,
@@ -354,7 +354,7 @@ figcaption p{
 .rst-content .admonition ul li ol li ol li {
     list-style-type: lower-latin !important;
 }
-/* 三级有序列表 */
+/* Ordered list, level 3. */
 .rst-content section ol li ol li ol li,
 .rst-content section ul ol li ol li ol li,
 .rst-content section ol.arabic li ol li ol li,
@@ -365,7 +365,7 @@ figcaption p{
 .rst-content .admonition ul ol li ol li ol li {
     list-style-type: lower-roman !important;
 }
-/* 四级有序列表 */
+/* Ordered list, level 4. */
 .rst-content section ol li ol li ol li ol li,
 .rst-content section ul ol li ol li ol li ol li,
 .rst-content section ol.arabic li ol li ol li ol li,
@@ -378,7 +378,7 @@ figcaption p{
 }
 
 /* ---------- Unordered Lists ---------- */
-/* 一级无序列表 */
+/* Unordered list, level 1. */
 .rst-content section ul li,
 .rst-content section ol li ul li,
 .rst-content section ol.arabic li ul li {
@@ -388,7 +388,7 @@ figcaption p{
 .rst-content .admonition ol li ul li {
     list-style-type: disc !important;
 }
-/* 二级无序列表 */
+/* Unordered list, level 2. */
 .rst-content section ul li ul li,
 .rst-content section ol ul li ul li,
 .rst-content section ol.arabic ul li ul li {
@@ -398,7 +398,7 @@ figcaption p{
 .rst-content .admonition ol ul li ul li {
     list-style-type: circle !important;
 }
-/* 三级无序列表 */
+/* Unordered list, level 3. */
 .rst-content section ul li ul li ul li,
 .rst-content section ol ul li ul li ul li,
 .rst-content section ol.arabic ul li ul li ul li {
@@ -408,7 +408,7 @@ figcaption p{
 .rst-content .admonition ol ul li ul li ul li {
     list-style-type: square !important;
 }
-/* 四级无序列表 */
+/* Unordered list, level 4. */
 .rst-content section ul li ul li ul li ul li,
 .rst-content section ol ul li ul li ul li ul li,
 .rst-content section ol.arabic ul li ul li ul li ul li {
@@ -438,10 +438,10 @@ html.writer-html5 .rst-content dl.field-list {
 }
 html.writer-html5 .rst-content dl.field-list dt,
 html.writer-html5 .rst-content dl.field-list dd {
-  overflow-wrap: break-word; /* 长词换行 */
-  word-wrap: break-word;     /* 确保兼容性 */
-  overflow: hidden;          /* 防止溢出 */
-  text-overflow: ellipsis;   /* 可选：在溢出时显示省略号 */
+  overflow-wrap: break-word; /* Wrap long words. */
+  word-wrap: break-word;     /* Legacy alias, kept for compatibility. */
+  overflow: hidden;          /* Prevent overflow. */
+  text-overflow: ellipsis;   /* Optional: show an ellipsis when the text is clipped. */
 }
 html.writer-html5 .rst-content dl.field-list>dt {
     padding-top: 3px;
@@ -521,10 +521,10 @@ dl.c.unexpanded dd, dl.cpp.unexpanded dd {
 .unexpanded .rtk-api-expansion-button::before {
     content: "\f0da \00a0";
 }
-.rst-content .guilabel {   /* 解决guilabel重叠的问题 */
+.rst-content .guilabel {   /* Fix overlapping .guilabel spans. */
     line-height: 1.3rem
 }
-.rst-content p>kbd.kbd {   /* 解决在平板微信中不显示kbd指令渲染效果的问题 */
+.rst-content p>kbd.kbd {   /* Fix kbd roles that do not render inside WeChat on tablets. */
     color: inherit;
     font-size: 80%;
     background-color: #fff;
@@ -544,7 +544,7 @@ dl.c.unexpanded dd, dl.cpp.unexpanded dd {
 button.copybtn {
     opacity: 1;
 }
-button.copybtn.o-tooltip--left:after {  /* 隐藏代码复制按钮组件自带的文字提示 */
+button.copybtn.o-tooltip--left:after {  /* Hide the tooltip text that ships with the copy button. */
     display: none;
 }
 html.writer-html4 .rst-content dl:not(.docutils)>dt, 
@@ -581,7 +581,7 @@ dl.macro span.sig-name ~ p {
   	overflow: auto; */
 }
 .full-width-table {
-    width: 100%;       /* 指定:class: full-width-table的表格宽度为全屏*/
+    width: 100%;       /* Tables marked with :class: full-width-table span the full page width. */
 }
 table, th, td {
     border: 1px solid #e1e4e5;
@@ -595,11 +595,11 @@ table {
     margin-bottom: 10px;
 }
 .rst-content table.docutils caption {
-    line-height: 17px;       /* 修正表格标题换行时行间距过小*/
+    line-height: 17px;       /* Fix the collapsed line spacing when a table caption wraps. */
 }
 .wy-table-responsive table td, 
 .wy-table-responsive table th {
-    /* 设置单元格中的文字自动换行 */
+    /* Let text wrap inside table cells. */
     white-space: normal;
 }
 table th {
@@ -618,10 +618,10 @@ html.writer-html5 .rst-content table.docutils th>p {
     margin-top: 0;
 }
 table code {
-    line-height: 22px; /* 修正表格中代码块换行重叠 */
+    line-height: 22px; /* Fix overlapping lines when a code block wraps inside a table. */
 }
 table td kbd {
-    line-height: 23px; /* 修正表格中kbd换行重叠 */
+    line-height: 23px; /* Fix overlapping lines when a kbd role wraps inside a table. */
 }
 /* ============ Render Table Style ============ */
 
@@ -660,10 +660,10 @@ html.writer-html5 .rst-content dl.field-list {
 }
 html.writer-html5 .rst-content dl.field-list dt,
 html.writer-html5 .rst-content dl.field-list dd {
-  overflow-wrap: break-word; /* 长词换行 */
-  word-wrap: break-word;     /* 确保兼容性 */
-  overflow: hidden;          /* 防止溢出 */
-  text-overflow: ellipsis;   /* 可选：在溢出时显示省略号 */
+  overflow-wrap: break-word; /* Wrap long words. */
+  word-wrap: break-word;     /* Legacy alias, kept for compatibility. */
+  overflow: hidden;          /* Prevent overflow. */
+  text-overflow: ellipsis;   /* Optional: show an ellipsis when the text is clipped. */
 }
 .rst-content .admonition, 
 .rst-content .admonition-todo, 
@@ -708,7 +708,7 @@ section[id*="deprecated-api"] .highlight-cpp {
 
 
 /* ========= Render text color ========= */
-/* 需同步在conf.py中添加 */
+/* Keep this in sync with conf.py. */
 .red-text {
     color: red;
 }
@@ -721,7 +721,7 @@ section[id*="deprecated-api"] .highlight-cpp {
 /* ========= Render text color ========= */
 
 /* ========= Render text style ========= */
-/* 需同步在conf.py中添加 */
+/* Keep this in sync with conf.py. */
 .bold {
     font-weight: bold;
 }
@@ -758,7 +758,7 @@ section[id*="deprecated-api"] .highlight-cpp {
 
 
 /* ====== Render image modal style ====== */
-/* 禁用点击图片跳转到图片地址的效果 */
+/* Stop images from linking to the image file when clicked. */
 a.no-cursor-link {
     cursor: default;
 }
@@ -877,31 +877,31 @@ a.no-cursor-link {
 .ai-summary-text ol {
     padding-inline-start: 1.5em;
 }
-/* 一级无序列表 */
+/* Unordered list, level 1. */
 .ai-summary-text ul,
 .ai-summary-text ol ul {
     list-style-type: disc;
 }
-/* 二级无序列表 */
+/* Unordered list, level 2. */
 .ai-summary-text ul ul,
 .ai-summary-text ol ul ul {
     list-style-type: circle;
 }
-/* 三级无序列表 */
+/* Unordered list, level 3. */
 .ai-summary-text ul ul ul {
     list-style-type: square;
 }
-/* 一级有序列表 */
+/* Ordered list, level 1. */
 .ai-summary-text ol,
 .ai-summary-text ul ol {
     list-style-type: decimal;
 }
-/* 二级有序列表 */
+/* Ordered list, level 2. */
 .ai-summary-text ol ol,
 .ai-summary-text ul ol ol {
     list-style-type: lower-latin;
 }
-/* 三级有序列表 */
+/* Ordered list, level 3. */
 .ai-summary-text ol ol ol {
     list-style-type: lower-roman;
 }
@@ -920,7 +920,7 @@ a.no-cursor-link {
     border-radius: 100%;
     animation: loadingCircle infinite 1s linear;
 }
-/* 闪烁动画 */
+/* Blinking animation. */
 @keyframes loadingCircle {
     0%, 100% {
         opacity: 0;
@@ -931,9 +931,9 @@ a.no-cursor-link {
 }
 
 /* ====== Render Mermaid Diagram Font ====== */
-/* 统一 mermaid 图文字字体与字号，覆盖 RTD 主题的 Lato 字体栈。
-   同时作用于 SVG <text> 与 htmlLabels 的 foreignObject 两条渲染路径。
-   若缺此规则，节点框按 Calibri 算宽、却用更宽的 Lato 渲染，文字会被框裁切。 */
+/* Normalise the font family and size of text inside mermaid diagrams, overriding the RTD Lato stack.
+   Applies to both render paths: SVG <text> and the foreignObject used by htmlLabels.
+   Without it, node boxes are measured with Calibri but painted with the wider Lato, so labels get clipped. */
 .mermaid text,
 .mermaid .nodeLabel,
 .mermaid .edgeLabel,
@@ -941,24 +941,27 @@ a.no-cursor-link {
 .mermaid span,
 .mermaid foreignObject div {
     font-family: "Calibri", Arial, sans-serif !important;
-    /* 12pt = 16px，与 RTD 正文字号对齐；!important 为字号的最终决定项，
-       覆盖各图 init 中的 fontSize 设置。 */
+    /* 12pt = 16px, matching the RTD body size, and !important is the final word on font size:
+       it overrides the fontSize set in each diagram's init. */
     font-size: 12pt !important;
 }
-/* :align: center 在老版 sphinxcontrib-mermaid 不生效，CSS 兜底让图水平居中 */
+/* The :align: center directive is ignored by older sphinxcontrib-mermaid releases;
+   centre the diagram here instead. */
 .mermaid {
     text-align: center;
 }
 .mermaid svg {
     display: block;
     margin: 0 auto;
-    /* useMaxWidth:false 让图按原生像素渲染(多图尺寸一致)，但超宽图会横向撑破页宽。
-       这条上限让放得下的图保持原生尺寸、放不下的自动缩到页宽内，既一致又不溢出。 */
+    /* useMaxWidth: false renders a diagram at its native pixel size, so several diagrams agree,
+       but an oversized one breaks out of the page width. Capping the width keeps diagrams
+       that fit at native size and scales the rest down: consistent and contained. */
     max-width: 100% !important;
     height: auto !important;
 }
-/* 箭头小一点：mermaid 没有箭头大小配置项，CSS 把箭头标记缩到 70%。
-   箭尖钉在线尾：End 标记箭尖在右、Start 标记箭尖在左，分别以那一侧为缩放原点。 */
+/* Smaller arrow heads: mermaid has no option for marker size, so scale the markers to 70%.
+   Pin the tip to the line end: the End marker's tip is on the right, the Start marker's on the
+   left, so each marker scales from that side. */
 .mermaid marker path {
     transform: scale(0.7);
     transform-box: fill-box;
@@ -970,9 +973,10 @@ a.no-cursor-link {
 .mermaid marker[id*="Start"] path {
     transform-origin: left center;
 }
-/* 子图(subgraph)框：ELK 把子图渲染成 <rect class="subgraph ... node">（不是 dagre 的 .cluster），
-   还给灰色实心底、忽略源码里的 style xx fill:none。这里强制成透明底 + 深钢蓝虚线，
-   对齐公司原图的虚线分组框。.cluster 那几条留给 dagre 兜底。 */
+/* Subgraph frames: the ELK renderer emits <rect class="subgraph ... node"> rather than dagre's
+   .cluster, and fills it grey regardless of style xx fill:none in the source. Force a transparent
+   fill with a dark steel-blue dashed border to match the grouped boxes of the original diagrams.
+   The .cluster rules stay as a dagre fallback. */
 .mermaid rect.subgraph,
 .mermaid .subgraphs rect,
 .mermaid .cluster rect,
@@ -982,9 +986,9 @@ a.no-cursor-link {
     stroke-width: 1px !important;
     stroke-dasharray: 5 5 !important;
 }
-/* 时序图圆角：mermaid sequence 没有角色框/分节条圆角的配置项，
-   用 CSS 给 <rect class="actor"> 和 <rect class="note">（分节橙条）设 rx/ry
-   （SVG 几何属性，现代浏览器认 CSS 写法），对齐 wiki「框图用圆角矩形」。 */
+/* Sequence-diagram corners: mermaid sequence has no option to round actor boxes or section bars,
+   so set rx/ry on <rect class="actor"> and <rect class="note"> (the orange section bar) here.
+   These are SVG geometry attributes, which modern browsers accept from CSS. */
 .mermaid rect.actor,
 .mermaid .actor-top,
 .mermaid .actor-bottom,
@@ -992,9 +996,10 @@ a.no-cursor-link {
     rx: 6px !important;
     ry: 6px !important;
 }
-/* 时序图 alt/loop/opt 分支框：框边线 + 标签框描黑、分支标签加粗，让结构分隔更清楚。
-   仅作用于 loop/alt/opt 关键字渲染出的元素，当前图未用到时无副作用。
-   如需与主题统一，可把 #000000 换成连接线色 #3C6F9D。 */
+/* Sequence alt/loop/opt frames: stroke the frame and its label box in black and bold the branch
+   label so the structure reads clearly. Only affects elements produced by the loop/alt/opt
+   keywords, so it is inert while no diagram uses them. To match the theme, swap #000000 for
+   the connector colour #3C6F9D. */
 .mermaid .loopLine {
     stroke: #000000 !important;
 }
@@ -1007,11 +1012,12 @@ a.no-cursor-link {
 .mermaid .loopText tspan {
     font-weight: bold !important;
 }
-/* 分层架构图取消所有连接线：ELK 渲染器不认 ~~~ 隐形边、也不吃 linkStyle stroke:none，
-   会把本该隐形的布局脚手架边画成实线。这类图本就不要任何可见连线，故给它套专属外层 class
-   （RST 端 .. container:: arch-noline），用 CSS 把这一张图里的所有「边组」整体隐藏。
-   只作用于 .arch-noline 这张，其他流程图的可见箭头完全不受影响；
-   节点框/子图框在 .nodes / .clusters 里、class 不含 "edge"，不会被误伤。 */
+/* Layered architecture diagrams: drop every connector. The ELK renderer ignores invisible ~~~ edges
+   and linkStyle stroke:none, so layout scaffolding that should stay invisible is drawn as solid
+   lines. These diagrams want no visible connectors at all, hence a dedicated wrapper class
+   (the RST side uses .. container:: arch-noline) that hides every edge group inside this one
+   diagram. Scoped to .arch-noline: arrows in other diagrams are untouched, and node and subgraph
+   frames live in .nodes / .clusters without an "edge" class, so they are safe. */
 .arch-noline .mermaid .edgePaths,
 .arch-noline .mermaid .edgeLabels,
 .arch-noline .mermaid g.edges,
@@ -1109,7 +1115,11 @@ body, .wy-body-for-nav { font-family: Lato, "Segoe UI", "Helvetica Neue", Arial,
   display: block; color: #fcfcfc; opacity: .85; font-size: 80%;
 }
 .wy-menu-vertical li.current > a.current { background: #fcfcfc; color: #404040; font-weight: 700; }
-.wy-menu-vertical li.active-section > a { background: #4d4d4d; color: #fff; }
+/* The always-expand-toc block above paints the whole .current chain white with a
+   higher specificity, so this highlight must win on both properties or the active
+   item ends up white text on white background. */
+.wy-menu-vertical li.active-section > a,
+.wy-menu-vertical li.active-section > a:hover { background: #4d4d4d !important; color: #fff !important; }
 #back-to-top { display: none; }
 #back-to-top.show { display: block; }
 /* This build has no theme.js, so the local toctree is expanded by hand. */
@@ -1257,7 +1267,13 @@ body, .wy-body-for-nav { font-family: Lato, "Segoe UI", "Helvetica Neue", Arial,
 </li>
 <li class="toctree-l4"><a class="reference internal" href="#logging">日志与调试</a>
 <ul>
+<li class="toctree-l5"><a class="reference internal" href="#log-destination">日志去向</a>
+</li>
+<li class="toctree-l5"><a class="reference internal" href="#rtk-log-path">Realtek 日志通路</a>
+</li>
 <li class="toctree-l5"><a class="reference internal" href="#log-channels">日志通道</a>
+</li>
+<li class="toctree-l5"><a class="reference internal" href="#capture-crash">抓一次崩溃</a>
 </li>
 <li class="toctree-l5"><a class="reference internal" href="#console-scripts">串口脚本</a>
 </li>
@@ -3133,10 +3149,69 @@ $ scripts/flash.sh COM8                 # another download port</pre></div></div
 </section>
 <section id="logging"><h2>日志与调试<a class="headerlink" href="#logging" title="Link to this heading"></a>
 </h2>
+<section id="log-destination"><h3>日志去向<a class="headerlink" href="#log-destination" title="Link to this heading"></a>
+</h3>
+<p>Zephyr 的日志和 Realtek 的 trace 是两条独立的通路。<code class="docutils literal notranslate"><span class="pre">prj.conf</span></code> 顶部的 "Logging destination" 区块决定日志走哪一条，三套配置同时只有一套生效。</p>
+<table class="docutils align-default" id="id30">
+<thead><tr class="row-odd">
+<th class="head"><p>模式</p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">LOG_*</span></code> 与 <code class="docutils literal notranslate"><span class="pre">printk()</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">printf()</span></code></p></th>
+<th class="head"><p>故障转储与 coredump</p></th>
+<th class="head"><p>uart2 (P1_1/P1_0)</p></th>
+</tr></thead>
+<tbody>
+<tr class="row-even">
+<td><p>A</p></td>
+<td><p>仅调试分析仪</p></td>
+<td><p>仅调试分析仪</p></td>
+<td><p>调试分析仪</p></td>
+<td><p>静默</p></td>
+</tr>
+<tr class="row-odd">
+<td><p>B</p></td>
+<td><p>仅 uart2 控制台</p></td>
+<td><p>仅 uart2 控制台</p></td>
+<td><p>uart2 控制台</p></td>
+<td><p>控制台</p></td>
+</tr>
+<tr class="row-even">
+<td><p>C</p></td>
+<td><p>两边都有</p></td>
+<td><p>两边都有</p></td>
+<td><p>两边都有</p></td>
+<td><p>控制台</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">DBG_DIRECT()</span></code> 和 <code class="docutils literal notranslate"><span class="pre">APP_PRINT_*</span></code> 在三种模式下都会进分析仪：它们直接调用 ROM 的日志接口，不经过日志子系统，这个开关拦不到它们。</p>
+<p>切换方式就是注释掉一套、放开另一套。模式 B 额外设置 <code class="file docutils literal notranslate"><span class="pre">CONFIG_RTK_LOG_BACKEND=n</span></code>，<code class="file docutils literal notranslate"><span class="pre">src/system/rtk_log_backend.c</span></code> 会被整个编译掉 —— <code class="docutils literal notranslate"><span class="pre">printf()</span></code> 回落到 newlib 走正常的控制台驱动。所以模式 B 做得更少，体积却大几 KB。</p>
+</section>
+<section id="rtk-log-path"><h3>Realtek 日志通路<a class="headerlink" href="#rtk-log-path" title="Link to this heading"></a>
+</h3>
+<p><code class="file docutils literal notranslate"><span class="pre">src/system/rtk_log_backend.c</span></code> 是一个 Zephyr 日志后端，把每条记录交给 Realtek 的日志通道 —— 也就是 <code class="docutils literal notranslate"><span class="pre">DBG_DIRECT()</span></code> 写的那一条：</p>
+<div class="highlight-none notranslate"><div class="highlight"><pre><span></span>LOG_*() / printk()
+    -&gt; 日志子系统（延迟模式）-&gt; 日志线程
+    -&gt; rtk_log_backend：格式化成一行 -&gt; DBG_DIRECT("%s", line)
+    -&gt; ROM log_direct() -&gt; Realtek trace 通道 -&gt; 调试分析仪</pre></div></div>
+<p>这套链路能在崩溃时工作，靠的是四点：</p>
+<ul class="simple">
+<li><p>ROM 那个接口是 printf 风格的，所以先格式化进 200 字节的 RAM 行缓冲，<strong>按行</strong>发送，而不是按字符。</p>
+</li>
+<li><p>通道是轮询输出，因此在故障处理函数里照样能用 —— 模式 A/C 下的寄存器转储和 coredump 就是这么送到分析仪的。</p>
+</li>
+<li><p>后端实现了 <code class="docutils literal notranslate"><span class="pre">panic</span></code> 回调，<code class="docutils literal notranslate"><span class="pre">LOG_PANIC()</span></code> 会先把队列里积压的记录排空，崩溃前最后几条不会丢。</p>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">printf()</span></code> 被重定向到同一条通道（见下），应用里的打印跟着同一个开关走，不会出现"日志跑一边、printf 跑另一边"。</p>
+</li>
+</ul>
+<p>日志线程跑在优先级 1，每条记录都会唤醒（<code class="file docutils literal notranslate"><span class="pre">CONFIG_LOG_PROCESS_TRIGGER_THRESHOLD=1</span></code>），所以延迟输出不会被压在 4 KB 缓冲的尾部。</p>
+<p><code class="file docutils literal notranslate"><span class="pre">CONFIG_RTK_LOG_BACKEND</span></code> 定义在应用的 <code class="docutils literal notranslate"><span class="pre">Kconfig</span></code> 里。关掉它是干净的移除：没有后端、没有 <code class="docutils literal notranslate"><span class="pre">printf</span></code> 覆盖、也没有死代码。</p>
+</section>
 <section id="log-channels"><h3>日志通道<a class="headerlink" href="#log-channels" title="Link to this heading"></a>
 </h3>
-<p>三套互相独立的机制都会向控制台打印，行为各不相同。判断某行来自哪一套能省下大量时间：</p>
-<table class="docutils align-default" id="id30">
+<p>四种机制都会产出文本，但并不是所有都听上面那个开关的。判断某行来自哪一套能省下大量时间：</p>
+<table class="docutils align-default" id="id31">
 <thead><tr class="row-odd">
 <th class="head"><p>通道</p></th>
 <th class="head"><p>路径</p></th>
@@ -3145,30 +3220,52 @@ $ scripts/flash.sh COM8                 # another download port</pre></div></div
 <tbody>
 <tr class="row-even">
 <td><p><code class="docutils literal notranslate"><span class="pre">LOG_INF()</span></code> 等</p></td>
-<td><p>Zephyr 日志子系统 → shell 日志后端 → uart2</p></td>
-<td><p>带时间戳、级别与模块名格式化，由 shell 打印。延迟模式；shell 后端可排队 512 条、超时 100 ms，shell 忙超过这个时间就会丢日志。</p></td>
+<td><p>日志子系统 → <code class="docutils literal notranslate"><span class="pre">rtk_log_backend</span></code> 和/或 <code class="docutils literal notranslate"><span class="pre">log_backend_uart</span></code></p></td>
+<td><p>带级别与模块名格式化。延迟模式；处理线程优先级 1。去向取决于所选模式。</p></td>
 </tr>
 <tr class="row-odd">
 <td><p><code class="docutils literal notranslate"><span class="pre">printk()</span></code></p></td>
-<td><p><code class="file docutils literal notranslate"><span class="pre">CONFIG_LOG_PRINTK=y</span></code> 时走日志子系统</p></td>
-<td><p>延迟模式下它和其他记录一样排队，因此故障转储里看不到它。本工程未设置 <code class="file docutils literal notranslate"><span class="pre">CONFIG_LOG_PRINTK</span></code>，所以 <code class="docutils literal notranslate"><span class="pre">printf</span></code> 直接输出。</p></td>
+<td><p>因为 <code class="file docutils literal notranslate"><span class="pre">CONFIG_LOG_PRINTK=y</span></code>，走日志子系统</p></td>
+<td><p>和普通记录一样排队，因此去向与 <code class="docutils literal notranslate"><span class="pre">LOG_*</span></code> 一致。模式 A/C 下崩溃转储里能看到它；模式 B 下看不到，因为分析仪根本收不到。</p></td>
 </tr>
 <tr class="row-even">
-<td><p><code class="docutils literal notranslate"><span class="pre">DBG_DIRECT()</span></code>、<code class="docutils literal notranslate"><span class="pre">APP_PRINT_INFO*</span></code></p></td>
-<td><p>ROM 的 <code class="docutils literal notranslate"><span class="pre">log_buffer()</span></code> / <code class="docutils literal notranslate"><span class="pre">log_direct()</span></code> 写入 Realtek trace 环形缓冲</p></td>
-<td><p>与 <code class="file docutils literal notranslate"><span class="pre">CONFIG_LOG_*</span></code> 无关，受 <code class="docutils literal notranslate"><span class="pre">trace.h</span></code> 里的 <code class="docutils literal notranslate"><span class="pre">DBG_LEVEL</span></code> 控制。能在崩溃后保留，并由 ROM 在故障时转储。<code class="file docutils literal notranslate"><span class="pre">app_lower_init.c</span></code> 和 BLE 代码用的就是它。</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">printf()</span></code></p></td>
+<td><p>被 <code class="docutils literal notranslate"><span class="pre">rtk_log_backend</span></code> 重定向到 <code class="docutils literal notranslate"><span class="pre">DBG_DIRECT()</span></code>；当控制台本身也是日志目的地时再镜像一份到控制台</p></td>
+<td><p>同步。模式 B 下这个覆盖被编译掉，newlib 直接写控制台。</p></td>
 </tr>
 <tr class="row-odd">
+<td><p><code class="docutils literal notranslate"><span class="pre">DBG_DIRECT()</span></code>、<code class="docutils literal notranslate"><span class="pre">APP_PRINT_INFO*</span></code></p></td>
+<td><p>ROM 的 <code class="docutils literal notranslate"><span class="pre">log_buffer()</span></code> / <code class="docutils literal notranslate"><span class="pre">log_direct()</span></code> 写入 Realtek trace 环形缓冲</p></td>
+<td><p>与 <code class="file docutils literal notranslate"><span class="pre">CONFIG_LOG_*</span></code> 无关，受 <code class="docutils literal notranslate"><span class="pre">trace.h</span></code> 里的 <code class="docutils literal notranslate"><span class="pre">DBG_LEVEL</span></code> 控制。始终进分析仪，始终能在崩溃后保留。<code class="file docutils literal notranslate"><span class="pre">app_lower_init.c</span></code> 和 BLE 代码用的就是它。</p></td>
+</tr>
+<tr class="row-even">
 <td><p><code class="docutils literal notranslate"><span class="pre">gui_log()</span></code></p></td>
-<td><p><code class="file docutils literal notranslate"><span class="pre">port/ui/gui_port_os.c</span></code> → <code class="docutils literal notranslate"><span class="pre">printf</span></code> → newlib → 控制台</p></td>
-<td><p>同步输出，从不排队。调试渲染时应该用它。</p></td>
+<td><p><code class="file docutils literal notranslate"><span class="pre">port/ui/gui_port_os.c</span></code> → <code class="docutils literal notranslate"><span class="pre">printf</span></code> → 因此与 <code class="docutils literal notranslate"><span class="pre">printf()</span></code> 同路</p></td>
+<td><p>同步，从不排队。调试渲染时应该用它。</p></td>
 </tr>
 </tbody>
 </table>
 </section>
+<section id="capture-crash"><h3>抓一次崩溃<a class="headerlink" href="#capture-crash" title="Link to this heading"></a>
+</h3>
+<p><code class="file docutils literal notranslate"><span class="pre">CONFIG_FAULT_DUMP=2</span></code> 下，ARM 故障处理函数会用 <code class="docutils literal notranslate"><span class="pre">LOG_ERR</span></code> 输出寄存器组、出错指令地址和当前线程，所以它同样遵循上面选的去向。想连 coredump 一起拿到，再加这四个选项：</p>
+<div class="highlight-conf notranslate"><div class="highlight"><pre><span></span>CONFIG_DEBUG_COREDUMP=y
+CONFIG_DEBUG_COREDUMP_BACKEND_LOGGING=y
+CONFIG_DEBUG_COREDUMP_MEMORY_DUMP_MIN=y
+CONFIG_EXTRA_EXCEPTION_INFO=y</pre></div></div>
+<p><code class="docutils literal notranslate"><span class="pre">MEMORY_DUMP_MIN</span></code> 只转储出错线程的 <code class="docutils literal notranslate"><span class="pre">k_thread</span></code> 结构和它的栈。这段数据以十六进制编码夹在 <code class="docutils literal notranslate"><span class="pre">#CD:BEGIN#</span></code> 与 <code class="docutils literal notranslate"><span class="pre">#CD:END#</span></code> 之间，每行 16 字节 —— 它是给工具解的不是给人读的：</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python zephyr/scripts/coredump/coredump_serial_log_parser.py crash.log coredump.bin
+python zephyr/scripts/coredump/coredump_gdbserver.py build/zephyr/zephyr.elf coredump.bin --port 1234
+arm-none-eabi-gdb build/zephyr/zephyr.elf -ex "target remote localhost:1234"</pre></div></div>
+<p>这样 <code class="docutils literal notranslate"><span class="pre">bt</span></code> 出来的是带文件名和行号的调用栈，因为栈内容被一起抓下来了。日志前缀不会干扰解析：parser 在整行里找 <code class="docutils literal notranslate"><span class="pre">#CD:</span></code>。</p>
+<div class="admonition note">
+<p class="admonition-title">另外两段没人配置的转储</p>
+<p>SDK 修改了默认的 <code class="docutils literal notranslate"><span class="pre">k_sys_fatal_error_handler</span></code>（<code class="docutils literal notranslate"><span class="pre">zephyr/kernel/fatal.c</span></code>），在停机前调用 ROM 的 <code class="docutils literal notranslate"><span class="pre">dump_log_buffer()</span></code> 和 <code class="docutils literal notranslate"><span class="pre">dump_raw_memory_all()</span></code>。这段输出与日志模式无关，出现在 <code class="docutils literal notranslate"><span class="pre">#CD:END#</span></code> 之后。</p>
+</div>
+</section>
 <section id="console-scripts"><h3>串口脚本<a class="headerlink" href="#console-scripts" title="Link to this heading"></a>
 </h3>
-<table class="docutils align-default" id="id31">
+<table class="docutils align-default" id="id32">
 <thead><tr class="row-odd">
 <th class="head"><p>脚本</p></th>
 <th class="head"><p>用途</p></th>
