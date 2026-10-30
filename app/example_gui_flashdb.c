@@ -14,6 +14,7 @@
 
 #include "flashdb.h"
 #include "os_sync.h"
+#include "ui_common.h"          /* TEAR_BF_KEY_PREFIX -- see bf_boot_enum_cb() */
 
 static struct fdb_kvdb s_kvdb = {0};
 static struct fdb_bf   s_bf   = {0};
@@ -32,12 +33,32 @@ static void db_unlock(fdb_db_t db)
     (void)db;
     os_mutex_give(s_db_mutex);
 }
+/* Tear previews found by the boot scan.  They are bare thumbnails with no
+ * PACKET_HEADER_T, so they cannot go through mainface_list_init(); the scan
+ * collects them and they are appended as SRC_TEARBADGE entries afterwards. */
+#define BF_BOOT_MAX_TEARS       FDB_BF_MAX_ENTRIES
+static void *s_tear_info[BF_BOOT_MAX_TEARS * 2];   /* xip_addr, size pairs */
+static uint32_t s_tear_num;
+
 static bool bf_boot_enum_cb(const char *key, const struct fdb_bf_dirent *ent,
                             uint32_t xip_addr, void *arg)
 {
-    (void)arg;
     void **array = (void **)(arg);
     uint32_t n = (uint32_t)array[0];
+
+    if (strncmp(key, TEAR_BF_KEY_PREFIX, strlen(TEAR_BF_KEY_PREFIX)) == 0)
+    {
+        if (s_tear_num < BF_BOOT_MAX_TEARS)
+        {
+            s_tear_info[2 * s_tear_num]     = (void *)xip_addr;
+            s_tear_info[2 * s_tear_num + 1] = (void *)(ent->size);
+            s_tear_num++;
+        }
+        printf("[bf] n=%u   '%-24s'  size=%-8u  xip=0x%08X  (tear preview)\n",
+               n, key, ent->size, xip_addr);
+        return false;
+    }
+
     array[2 * n + 1] = (void *)xip_addr;
     array[2 * n + 2] = (void *)(ent->size);
     array[0] = (void *)(n + 1);
@@ -97,6 +118,15 @@ int flashdb_prepare(void)
     mainface_list_init(&file_array[1], file_num);
 
     free(file_array);
+
+    /* Tear badges go last: the built-ins and received wallpapers are already in
+     * place, and mainface_list_init() only understands wallpapers. */
+    extern uint8_t mainface_list_add_tear(void *preview_addr);
+    for (uint32_t i = 0; i < s_tear_num; i++)
+    {
+        (void)mainface_list_add_tear(s_tear_info[2 * i]);
+    }
+    printf("[db] restored %u tear badge(s)", (unsigned)s_tear_num);
 
     /* Restore the persisted UI state (brightness, view toggles, screen-off
      * time, current mainface index...).  Runs after the list is built so the

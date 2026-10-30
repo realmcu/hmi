@@ -198,6 +198,16 @@ extern "C" {
                                       EB_PSRAM_OTA_STAGE_SIZE)
 
 /*----------------------------------------------------------------------------*
+ *  SPIC3: DC screen framebuffer
+ *
+ *----------------------------------------------------------------------------*/
+#define EB_PSRAM_DC_FRAMBUFFER_BASE  (EB_PSRAM_OTA_STAGE_END)
+#define EB_PSRAM_DC_FRAMBUFFER_SIZE  0x100000u        /* 1 MB */
+
+#define EB_PSRAM_DC_FRAMBUFFER_END   (EB_PSRAM_DC_FRAMBUFFER_BASE + \
+                                      EB_PSRAM_DC_FRAMBUFFER_SIZE)
+
+/*----------------------------------------------------------------------------*
  *  Consistency checks
  *
  *  These are the whole point of the file: the numbers above are absolute
@@ -221,6 +231,14 @@ BUILD_ASSERT(EB_PSRAM_OTA_STAGE_BASE >= EB_PSRAM_XFER_CACHE_END,
 
 BUILD_ASSERT(EB_PSRAM_OTA_STAGE_END <= SPIC3_MEM_BASE + EB_PSRAM3_NC_SPAN,
              "the OTA staging buffer overflows the non-cacheable MPU region "
+             "app_lower_init.c:app_mpu_config() maps over SPIC3 -- shrink "
+             "EB_PSRAM_OTA_STAGE_SIZE or give it a region of its own");
+
+BUILD_ASSERT(EB_PSRAM_DC_FRAMBUFFER_BASE >= EB_PSRAM_OTA_STAGE_END,
+             "the DC frame buffer overlaps the OTA staging buffer");
+
+BUILD_ASSERT(EB_PSRAM_DC_FRAMBUFFER_END <= SPIC3_MEM_BASE + EB_PSRAM3_NC_SPAN,
+             "the DC frame buffer overflows the non-cacheable MPU region "
              "app_lower_init.c:app_mpu_config() maps over SPIC3 -- shrink "
              "EB_PSRAM_OTA_STAGE_SIZE or give it a region of its own");
 
