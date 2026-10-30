@@ -11,7 +11,7 @@
 #include "gui_message.h"
 
 /* TODO: 旧的 Zephyr touch driver 已停用（CONFIG_REALTEK_TOUCH_CHSC6417_ZEPHYR=n，
- * DT node touch_device 也已从 overlay 移除）。这里暂时 stub，等 component/posix
+ * DT node touch_device 也已从 overlay 移除）。这里暂时 stub，等 posix
  * 里 CHSC6417 的新封装完成后，把 touch 数据源切过来。 */
 #include "key_button_8773g_zephyr.h"
 
@@ -28,7 +28,7 @@ static uint32_t home_timestamp_ms_release = 0;
 /***touch device***/
 gui_touch_port_data_t *port_touchpad_get_data()
 {
-    /* TODO: 接回 component/posix 的 touch 封装后，在这里读取 X/Y/pressing。
+    /* TODO: 接回 posix 的 touch 封装后，在这里读取 X/Y/pressing。
      * 目前返回上一次（全 0）数据，等价于永远 UP。 */
     raw_data.event = GUI_TOUCH_EVENT_UP;
     return &raw_data;

@@ -5,7 +5,9 @@ cmake_minimum_required(VERSION 3.20.0)
 # ============================================================
 # HMI 应用位置无关锚点
 #   HMI_APP_ROOT       — 本应用根目录（hmi repo checkout 位置）
-#   HMI_COMPONENT_ROOT — 应用组件目录（posix / FlashDB / protocol / gsensor-algorithm 等 west project 的挂载点）
+#   HMI_COMPONENT_ROOT — 应用组件挂载点：posix / FlashDB / protocol / gsensor-algorithm
+#                        这些 west project 直接挂在 west topdir（仓库根），与应用根目录
+#                        applications/ 平级，因此等于 HMI_APP_ROOT 的上一级。
 #   REALTEK_APP_ROOT   — realtek-app SDK 根目录
 #
 # REALTEK_APP_ROOT 必须在 find_package(Zephyr) 之前可用（version_generate /
@@ -17,7 +19,7 @@ cmake_minimum_required(VERSION 3.20.0)
 # 所有跨 hmi 边界的引用都必须通过这三个变量，禁止 ../../ 相对路径。
 # ============================================================
 set(HMI_APP_ROOT       ${CMAKE_CURRENT_SOURCE_DIR})
-set(HMI_COMPONENT_ROOT ${HMI_APP_ROOT}/component)
+get_filename_component(HMI_COMPONENT_ROOT ${HMI_APP_ROOT} DIRECTORY)
 set(REALTEK_APP_ROOT   $ENV{ZEPHYR_BASE}/../realtek-app)
 
 #===========version generation===========
@@ -59,6 +61,17 @@ zephyr_compile_options(
 )
 
 set(APP_TARGET_NAME app)
+
+# 组件已从 applications/ 移到 west topdir，不再被下面的 SUBDIRS glob 扫到，
+# 这里显式挂载自带 CMakeLists.txt 的组件。
+# FlashDB / posix 无需在此处理 —— 它们由 port/flashdb、port/posix 显式引用源码。
+add_subdirectory(${HMI_COMPONENT_ROOT}/protocol   ${CMAKE_CURRENT_BINARY_DIR}/component/protocol)
+add_subdirectory(${HMI_COMPONENT_ROOT}/gsensor-algorithm
+                 ${CMAKE_CURRENT_BINARY_DIR}/component/gsensor-algorithm)
+
+# HoneyGUI Designer 导出的产品 UI（west project watch_ui，同样挂在 topdir）。
+# 不拷贝生成产物进固件树，直接以 ui/ 为源目录编译，避免几百个生成文件的副本。
+add_subdirectory(${HMI_COMPONENT_ROOT}/ui ${CMAKE_CURRENT_BINARY_DIR}/watch_ui)
 
 if(1) #set to 1 to enable or variable to for depnedency
 

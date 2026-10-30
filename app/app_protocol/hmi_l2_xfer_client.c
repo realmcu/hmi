@@ -18,7 +18,7 @@
 #include <gap_conn_le.h>
 
 /*============================================================================*
- *   proto(L1) framing -- MUST match component/protocol/hmi_proto.c
+ *   proto(L1) framing -- MUST match protocol/hmi_proto.c
  *============================================================================*/
 #define PROTO_MAGIC        0xABu
 #define PROTO_HDR_LEN      8u
