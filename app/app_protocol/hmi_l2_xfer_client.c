@@ -8,6 +8,7 @@
  */
 #include "hmi_l2_xfer_client.h"
 #include "hmi_l2.h"
+#include "hmi_l2_cmd_xfer.h"
 #include "hmi_protocal_task.h"   /* hmi_proto_post_call -> run on l2_task */
 
 #include <string.h>
