@@ -211,6 +211,7 @@ void bt_task_entry(void *p_param)
 
 #include "app_module.h"
 #include "hmi_ble_ctrl.h"       /* hmi_ble_ctrl_send / _receive */
+#include "hmi_l2.h"             /* hmi_l2_handle */
 #include "hmi_protocal_task.h"  /* hmi_proto_task_init */
 
 static int hmi_bt_task_init(void)
@@ -220,7 +221,7 @@ static int hmi_bt_task_init(void)
     /* Wire our BLE transport into the (transport-agnostic) protocol stack;
      * this is the ONLY spot where "BLE" and "protocol" meet. Component
      * side no longer knows the transport exists. */
-    hmi_proto_task_init(hmi_ble_ctrl_send, hmi_ble_ctrl_receive);
+    hmi_proto_task_init(hmi_ble_ctrl_send, hmi_ble_ctrl_receive, hmi_l2_handle);
     return 0;
 }
 

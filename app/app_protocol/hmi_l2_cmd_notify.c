@@ -2,8 +2,9 @@
 #include "hmi_l2.h"
 #include "proto_log.h"
 
-static void on_cmd_notify(const hmi_l2_kv_t *kvs, uint8_t n)
+static void on_cmd_notify(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
 {
+    (void)version;
     for (uint8_t i = 0; i < n; i++)
     {
         PROTO_LOG("L2 NOTIFY  key=0x%02x val_len=%d", kvs[i].key, kvs[i].val_len);

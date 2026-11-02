@@ -9,7 +9,7 @@
 #include "hmi_l2_xfer_client.h"
 #include "hmi_l2.h"
 #include "hmi_l2_cmd_xfer.h"
-#include "hmi_protocal_task.h"   /* hmi_proto_post_call -> run on l2_task */
+#include "hmi_protocal_task.h"   /* hmi_proto_post_call -> run on protocol dispatch task */
 
 #include <string.h>
 #include <trace.h>
@@ -94,7 +94,7 @@ static void xc_finish(T_XFER_CLIENT_RESULT result);
 static void xc_fail(T_XFER_CLIENT_RESULT result);
 static void xc_timer_cb(void *p_handle);
 static bool xc_send_cmd(uint8_t key, const uint8_t *val, uint16_t vlen);
-static void xc_pump_cb(l2_msg_t *p_msg);
+static void xc_pump_cb(proto_msg_t *p_msg);
 
 /* Schedule the next DATA/END send on l2_task.  client_attr_write MUST NOT be
  * issued from a GATT stack callback (write-completion or notify) -- doing so is
@@ -357,7 +357,7 @@ static void xc_send_next_data(void)
     /* advance on the ATT write-response (on_write_done -> xc_pump) */
 }
 
-static void xc_pump_cb(l2_msg_t *p_msg)
+static void xc_pump_cb(proto_msg_t *p_msg)
 {
     (void)p_msg;
     xc_send_next_data();

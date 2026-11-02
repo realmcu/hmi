@@ -26,8 +26,9 @@ static bool send_bind_response(uint8_t status)
     return proto_send(rsp, sizeof(rsp));
 }
 
-static void on_cmd_bind(const hmi_l2_kv_t *kvs, uint8_t n)
+static void on_cmd_bind(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
 {
+    (void)version;
     for (uint8_t i = 0; i < n; i++)
     {
         PROTO_LOG("L2 BIND    key=0x%02x val_len=%d", kvs[i].key, kvs[i].val_len);
