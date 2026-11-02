@@ -11,24 +11,26 @@
 #include "lv_demo_widgets.h"
 #include "os_sched.h"
 #include "trace.h"
-#include <stdio.h>
-#include <stdarg.h>
 #include "lv_timer.h"
 #include "lv_log.h"
 
 #define APP_TASK_PRIORITY               1   /* Task priorities. */
 #define APP_TASK_STACK_SIZE             (512 * 16)
 
-static void port_log(const char *format, ...)
+#define PORT_LOG_MAX_LEN            100
+
+static void port_log(lv_log_level_t level, const char *buf)
 {
-    va_list args;
-    va_start(args, format);
-    char buf[512];
-    vsnprintf(buf, sizeof(buf), format, args);
+    LV_UNUSED(level);   /* level tag is already part of buf ("[Warn]", "[User]", ...) */
 
-    DBG_DIRECT("[GUI MODULE]%s", buf);
+    int len = 0;
+    while (len < PORT_LOG_MAX_LEN && buf[len] != '\0' &&
+           buf[len] != '\n' && buf[len] != '\r')
+    {
+        len++;
+    }
 
-    va_end(args);
+    DBG_DIRECT("[GUI MODULE]%.*s", len, buf);
 }
 
 void *lvgl_task_handle;
@@ -54,7 +56,7 @@ static void lvgl_demo_run(void *p)
 {
     lv_init();
     lv_tick_set_cb(port_tick_get);
-    lv_log_register_print_cb((lv_log_print_g_cb_t)port_log);
+    lv_log_register_print_cb(port_log);
     lv_port_disp_init();
     lv_port_indev_init();
 #if LV_USE_DEMO_BENCHMARK
