@@ -229,6 +229,17 @@ void app_system_lower_init(void)
     {
         DBG_DIRECT("flash switch 4bit fail");
     }
+    if (fmc_flash_get_flash_size(FMC_SPIC_ID_0) > 16 * 1024 * 1024)
+    {
+        if (fmc_flash_set_4_byte_address_mode(FMC_SPIC_ID_0, true))
+        {
+            DBG_DIRECT("flash 4byte addr mode on");
+        }
+        else
+        {
+            DBG_DIRECT("flash 4byte addr mode FAILED");
+        }
+    }
     if (fmc_flash_nor_clock_switch(FMC_SPIC_ID_0, 200, &spic0_freq))
     {
         DBG_DIRECT("set flash clock 200M success");
