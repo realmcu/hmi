@@ -4,7 +4,6 @@
 #include <os_task.h>
 #include <os_msg.h>
 #include "hmi_proto.h"
-#include "hmi_l2.h"
 #include "hmi_protocal_task.h"
 #include "proto_log.h"
 #include <os_sched.h>
@@ -12,13 +11,14 @@
 #define PROTO_TASK_STACK_SIZE   4096
 #define PROTO_TASK_PRIORITY     3
 
-#define L2_TASK_STACK_SIZE      4096
-#define L2_TASK_PRIORITY        3
-#define L2_QUEUE_SIZE           8
+#define PROTO_DISPATCH_TASK_STACK_SIZE  4096
+#define PROTO_DISPATCH_TASK_PRIORITY    3
+#define PROTO_QUEUE_SIZE                8
 
 static void *s_proto_task_handle;
-static void *s_l2_task_handle;
-static void *s_l2_queue_handle;
+static void *s_dispatch_task_handle;
+static void *s_queue_handle;
+static proto_recv_cb_t s_frame_cb;
 
 static void proto_task(void *p_param)
 {
@@ -36,27 +36,31 @@ static void proto_task(void *p_param)
     }
 }
 
-static void l2_task(void *p_param)
+static void proto_dispatch_task(void *p_param)
 {
-    l2_msg_t msg;
+    proto_msg_t msg;
 
     while (true)
     {
-        if (os_msg_recv(s_l2_queue_handle, &msg, 0xFFFFFFFF) != true)
+        if (os_msg_recv(s_queue_handle, &msg, 0xFFFFFFFF) != true)
         {
             continue;
         }
 
         switch (msg.type)
         {
-        case L2_MSG_FRAME:
-            hmi_l2_handle(msg.u.frame.p_data, msg.u.frame.len);
+        case PROTO_MSG_FRAME:
+            if (s_frame_cb != NULL)
+            {
+                s_frame_cb(msg.u.frame.p_data, msg.u.frame.len);
+            }
             free(msg.u.frame.p_data);
             break;
 
-        case L2_MSG_CALL:
-            /* Callback posted by other tasks: executes in l2_task context to avoid
-             * racing with BLE frame processing over non-thread-safe resources like proto_send */
+        case PROTO_MSG_CALL:
+            /* Callback posted by other tasks: executes in the protocol dispatch
+             * context to avoid racing with frame processing over non-thread-safe
+             * resources like proto_send. */
             if (msg.cb != NULL)
             {
                 msg.cb(&msg);
@@ -73,8 +77,8 @@ void hmi_on_proto_frame(const uint8_t *data, uint16_t len)
 {
     PROTO_LOG_HEX("hmi_on_proto_frame", data, len);
 
-    l2_msg_t msg;
-    msg.type = L2_MSG_FRAME;
+    proto_msg_t msg;
+    msg.type = PROTO_MSG_FRAME;
     msg.cb   = NULL;
     msg.u.frame.p_data = malloc(len);
     if (msg.u.frame.p_data == NULL)
@@ -85,42 +89,44 @@ void hmi_on_proto_frame(const uint8_t *data, uint16_t len)
     memcpy(msg.u.frame.p_data, data, len);
     msg.u.frame.len = len;
 
-    if (os_msg_send(s_l2_queue_handle, &msg, 0) != true)
+    if (os_msg_send(s_queue_handle, &msg, 0) != true)
     {
-        PROTO_LOG("hmi_on_proto_frame: l2 queue full, drop");
+        PROTO_LOG("hmi_on_proto_frame: protocol queue full, drop");
         free(msg.u.frame.p_data);
     }
 }
 
-bool hmi_proto_post_call(l2_msg_cb_t cb, void *buf)
+bool hmi_proto_post_call(proto_msg_cb_t cb, void *buf)
 {
-    if (cb == NULL || s_l2_queue_handle == NULL)
+    if (cb == NULL || s_queue_handle == NULL)
     {
         return false;
     }
 
-    l2_msg_t msg;
-    msg.type  = L2_MSG_CALL;
+    proto_msg_t msg;
+    msg.type  = PROTO_MSG_CALL;
     msg.cb    = cb;
     msg.u.buf = buf;
 
-    if (os_msg_send(s_l2_queue_handle, &msg, 0) != true)
+    if (os_msg_send(s_queue_handle, &msg, 0) != true)
     {
-        PROTO_LOG("hmi_proto_post_call: l2 queue full, drop");
+        PROTO_LOG("hmi_proto_post_call: protocol queue full, drop");
         return false;
     }
     return true;
 }
 
-void hmi_proto_task_init(proto_send_fn_t send, proto_receive_fn_t receive)
+void hmi_proto_task_init(proto_send_fn_t send, proto_receive_fn_t receive,
+                         proto_recv_cb_t frame_cb)
 {
+    s_frame_cb = frame_cb;
     proto_init(send, receive, hmi_on_proto_frame);
 
-    os_msg_queue_create(&s_l2_queue_handle, "l2Q",
-                        L2_QUEUE_SIZE, sizeof(l2_msg_t));
+    os_msg_queue_create(&s_queue_handle, "protoQ",
+                        PROTO_QUEUE_SIZE, sizeof(proto_msg_t));
 
     os_task_create(&s_proto_task_handle, "proto", proto_task,
                    NULL, PROTO_TASK_STACK_SIZE, PROTO_TASK_PRIORITY);
-    os_task_create(&s_l2_task_handle, "l2", l2_task,
-                   NULL, L2_TASK_STACK_SIZE, L2_TASK_PRIORITY);
+    os_task_create(&s_dispatch_task_handle, "protoDispatch", proto_dispatch_task,
+                   NULL, PROTO_DISPATCH_TASK_STACK_SIZE, PROTO_DISPATCH_TASK_PRIORITY);
 }
