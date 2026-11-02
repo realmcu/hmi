@@ -14,10 +14,9 @@
  *    N bytes  Key Value  (N = v-length, may be 0)
  *
  *  The Key Header used to be [15:9] Reserve + [8:0] v-length (max 511).
- *  It was widened to a full 16-bit v-length to carry chunks >= 512 bytes
- *  (see HMI_L2_XFER_CHUNK_MAX = 2048). A v-length of 0 still occupies the
- *  full 2 bytes. Frame capacity is bounded by PROTO_MAX_PAYLOAD_LEN, not
- *  by this field.
+ *  It was widened to a full 16-bit v-length so upper layers can carry large
+ *  values. A v-length of 0 still occupies the full 2 bytes. Frame capacity is
+ *  bounded by PROTO_MAX_PAYLOAD_LEN, not by this field.
  *============================================================================*/
 
 #define L2_HDR_LEN      2u
