@@ -80,6 +80,11 @@ static void gdma_wait_transfer_done(void)
 
 void port_gui_lcd_update(struct gui_dispdev *dc)
 {
+    if (!app_dlps_check_enter_bits(APP_DLPS_ENTER_CHECK_DISPLAY))
+    {
+        return;
+    }
+    
     rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_NO_TE);
     
     uint32_t transfer_height = (dc->section_count == dc->section_total - 1) ? 
@@ -128,6 +133,11 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
 #else
 void port_gui_lcd_update(struct gui_dispdev *dc)
 {
+    if (!app_dlps_check_enter_bits(APP_DLPS_ENTER_CHECK_DISPLAY))
+    {
+        return;
+    }
+    
     rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_NO_TE);
     rtk_lcd_hal_transfer_done();
     // SCB_CleanInvalidateDCache();
@@ -139,6 +149,11 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
 #else
 void port_gui_lcd_update(struct gui_dispdev *dc)
 {
+    if (!app_dlps_check_enter_bits(APP_DLPS_ENTER_CHECK_DISPLAY))
+    {
+        return;
+    }
+    
     uint32_t total_section_cnt = (rtk_lcd_hal_get_height() / LCD_SECTION_HEIGHT +
                                   ((rtk_lcd_hal_get_height() % LCD_SECTION_HEIGHT) ? 1 : 0));
 
@@ -198,12 +213,11 @@ static uint8_t __attribute__((aligned(4))) __attribute__((
 
 static void gui_dc_lcd_power_on(void)
 {
-    gui_log("port_gui_lcd_power_on\n");
     if (app_dlps_check_enter_bits(APP_DLPS_ENTER_CHECK_DISPLAY))
     {
         return;
     }
-    /* Claim the DLPS gate *before* touching LCDC, not after. */
+    gui_log("port_gui_lcd_power_on\n");
     app_dlps_disable(APP_DLPS_ENTER_CHECK_DISPLAY);
     app_screen_on_off_power_set(true);
     rtk_lcd_hal_init();
@@ -214,12 +228,15 @@ static void gui_dc_lcd_power_on(void)
 extern void rtk_lcd_hal_set_display(bool on);
 static void gui_dc_lcd_power_off(void)
 {
-    gui_log("port_gui_lcd_power_off\n");
     if (!app_dlps_check_enter_bits(APP_DLPS_ENTER_CHECK_DISPLAY))
     {
         return;
     }
+    gui_log("port_gui_lcd_power_off\n");
     platform_delay_ms(20);
+#if !LCD_USE_PFB
+    rtk_lcd_hal_transfer_done();
+#endif
     rtk_lcd_hal_set_display(false);
     is_screenon = false;
     app_dlps_enable(APP_DLPS_ENTER_CHECK_DISPLAY);
