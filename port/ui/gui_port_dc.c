@@ -29,7 +29,7 @@
 #define DRV_LCD_HEIGHT  466
 
 #define LCD_SECTION_HEIGHT                   20
-#define LCD_USE_PFB                          1
+#define LCD_USE_PFB                          0
 
 #define PSRAM_GUI_START_ADDR                EB_PSRAM_DC_FRAMBUFFER_BASE
 #define PSRAM_FRAME_BUF1_ADDR               PSRAM_GUI_START_ADDR
@@ -107,6 +107,16 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
         gdma_wait_transfer_done();
         psram_offset = 0;
         rtk_lcd_hal_transfer_done();
+
+        extern void rtk_lcd_hal_set_brightness(uint8_t badge_brightness);
+        extern uint8_t badge_brightness;
+        extern bool update_brightness;
+        if (update_brightness)
+        {
+            update_brightness = false;
+            rtk_lcd_hal_set_brightness(100 + badge_brightness * 50);
+        }
+
         rtk_lcd_hal_set_window(0, 0, dc->screen_width, dc->screen_height);
         rtk_lcd_hal_start_transfer(p_psram_addr, dc->screen_width * dc->screen_height);
 
@@ -136,6 +146,16 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
     {
         rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_NO_TE);
         rtk_lcd_hal_transfer_done();
+
+        extern void rtk_lcd_hal_set_brightness(uint8_t badge_brightness);
+        extern uint8_t badge_brightness;
+        extern bool update_brightness;
+        if (update_brightness)
+        {
+            update_brightness = false;
+            rtk_lcd_hal_set_brightness(100 + badge_brightness * 50);
+        }
+
         rtk_lcd_hal_set_window(0, dc->fb_height * dc->section_count, dc->fb_width, dc->fb_height);
         rtk_lcd_hal_start_transfer(dc->frame_buf, dc->fb_width * dc->fb_height);
     }
