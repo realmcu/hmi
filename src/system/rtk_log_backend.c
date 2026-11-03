@@ -162,7 +162,6 @@ int printf(const char *fmt, ...)
     char buf[RTK_PRINTF_BUF_SIZE];
     va_list ap;
     int len;
-    int n;
 
     va_start(ap, fmt);
     len = vsnprintf(buf, sizeof(buf), fmt, ap);
@@ -173,12 +172,12 @@ int printf(const char *fmt, ...)
         return len;
     }
 
-    /* vsnprintf returns the untruncated length; buf is always terminated. */
-    n = MIN(len, (int)sizeof(buf) - 1);
-
     DBG_DIRECT("%s", buf);
 
 #ifdef RTK_PRINTF_MIRROR_CONSOLE
+    /* vsnprintf returns the untruncated length; buf is always terminated. */
+    int n = MIN(len, (int)sizeof(buf) - 1);
+
     for (int i = 0; i < n; i++)
     {
         uart_poll_out(rtk_console, buf[i]);

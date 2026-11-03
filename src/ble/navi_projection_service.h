@@ -241,6 +241,16 @@ navi_state_t navi_projection_get_state(void);
 void navi_projection_close(void);
 
 /**
+ * @brief Drop the session after the link has been lost.
+ *
+ * Unlike navi_projection_close(), this does not try to notify the peer - the
+ * connection is gone, so sending would use a stale connection handle. Call it
+ * from the GAP disconnection handler; without it the state stays ACTIVE and the
+ * next OPEN is answered with BUSY.
+ */
+void navi_projection_on_disconnect(void);
+
+/**
  * @brief Get the registered GATT service ID.
  *
  * @return Registered service ID, or 0xFF before successful initialization.

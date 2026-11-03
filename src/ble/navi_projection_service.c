@@ -64,7 +64,8 @@ static void navi_reset_frame_slots(void);
 #define NAVI_ATTR_COUNT             11
 
 /* CRC-16/ARC: polynomial 0x8005, initial value 0x0000, reflected. */
-static const uint16_t crc16_table[256] = {
+static const uint16_t crc16_table[256] =
+{
     0x0000, 0xC0C1, 0xC181, 0x0140, 0xC301, 0x03C0, 0x0280, 0xC241, 0xC601, 0x06C0, 0x0780, 0xC741,
     0x0500, 0xC5C1, 0xC481, 0x0440, 0xCC01, 0x0CC0, 0x0D80, 0xCD41, 0x0F00, 0xCFC1, 0xCE81, 0x0E40,
     0x0A00, 0xCAC1, 0xCB81, 0x0B40, 0xC901, 0x09C0, 0x0880, 0xC841, 0xD801, 0x18C0, 0x1980, 0xD941,
@@ -135,104 +136,137 @@ static navi_frame_ready_cb_t pfn_frame_ready_cb = NULL;
 static navi_gui_frame_cb_t pfn_gui_frame_cb = NULL;
 static T_SERVER_ID navi_service_id = 0xFF;
 
-const T_ATTRIB_APPL navi_projection_tbl[] = {
+const T_ATTRIB_APPL navi_projection_tbl[] =
+{
     /* [0] <<Primary Service>>, FFD0 */
-    { (ATTRIB_FLAG_VALUE_INCL | ATTRIB_FLAG_LE),
-      { LO_WORD(GATT_UUID_PRIMARY_SERVICE),
-        HI_WORD(GATT_UUID_PRIMARY_SERVICE),
-        LO_WORD(NAVI_SERVICE_UUID),
-        HI_WORD(NAVI_SERVICE_UUID) },
-      UUID_16BIT_SIZE,
-      NULL,
-      GATT_PERM_READ },
+    {
+        (ATTRIB_FLAG_VALUE_INCL | ATTRIB_FLAG_LE),
+        {
+            LO_WORD(GATT_UUID_PRIMARY_SERVICE),
+            HI_WORD(GATT_UUID_PRIMARY_SERVICE),
+            LO_WORD(NAVI_SERVICE_UUID),
+            HI_WORD(NAVI_SERVICE_UUID)
+        },
+        UUID_16BIT_SIZE,
+        NULL,
+        GATT_PERM_READ
+    },
 
     /* [1] <<Characteristic>> FFD1 CTRL_TX (Write) */
-    { ATTRIB_FLAG_VALUE_INCL,
-      {
-          LO_WORD(GATT_UUID_CHARACTERISTIC),
-          HI_WORD(GATT_UUID_CHARACTERISTIC),
-          GATT_CHAR_PROP_WRITE /* Write only */
-      },
-      1,
-      NULL,
-      GATT_PERM_READ },
+    {
+        ATTRIB_FLAG_VALUE_INCL,
+        {
+            LO_WORD(GATT_UUID_CHARACTERISTIC),
+            HI_WORD(GATT_UUID_CHARACTERISTIC),
+            GATT_CHAR_PROP_WRITE /* Write only */
+        },
+        1,
+        NULL,
+        GATT_PERM_READ
+    },
 
     /* [2] FFD1 CTRL_TX value */
-    { ATTRIB_FLAG_VALUE_APPL,
-      { LO_WORD(NAVI_CHAR_CTRL_TX_UUID), HI_WORD(NAVI_CHAR_CTRL_TX_UUID) },
-      0,
-      NULL,
-      GATT_PERM_WRITE },
+    {
+        ATTRIB_FLAG_VALUE_APPL,
+        { LO_WORD(NAVI_CHAR_CTRL_TX_UUID), HI_WORD(NAVI_CHAR_CTRL_TX_UUID) },
+        0,
+        NULL,
+        GATT_PERM_WRITE
+    },
 
     /* [3] <<Characteristic>> FFD2 CTRL_RX (Notify) */
-    { ATTRIB_FLAG_VALUE_INCL,
-      { LO_WORD(GATT_UUID_CHARACTERISTIC),
-        HI_WORD(GATT_UUID_CHARACTERISTIC),
-        GATT_CHAR_PROP_NOTIFY },
-      1,
-      NULL,
-      GATT_PERM_READ },
+    {
+        ATTRIB_FLAG_VALUE_INCL,
+        {
+            LO_WORD(GATT_UUID_CHARACTERISTIC),
+            HI_WORD(GATT_UUID_CHARACTERISTIC),
+            GATT_CHAR_PROP_NOTIFY
+        },
+        1,
+        NULL,
+        GATT_PERM_READ
+    },
 
     /* [4] FFD2 CTRL_RX value */
-    { ATTRIB_FLAG_VALUE_APPL,
-      { LO_WORD(NAVI_CHAR_CTRL_RX_UUID), HI_WORD(NAVI_CHAR_CTRL_RX_UUID) },
-      0,
-      NULL,
-      GATT_PERM_NONE },
+    {
+        ATTRIB_FLAG_VALUE_APPL,
+        { LO_WORD(NAVI_CHAR_CTRL_RX_UUID), HI_WORD(NAVI_CHAR_CTRL_RX_UUID) },
+        0,
+        NULL,
+        GATT_PERM_NONE
+    },
 
     /* [5] FFD2 CTRL_RX CCCD */
-    { ATTRIB_FLAG_VALUE_INCL | ATTRIB_FLAG_CCCD_APPL,
-      { LO_WORD(GATT_UUID_CHAR_CLIENT_CONFIG),
-        HI_WORD(GATT_UUID_CHAR_CLIENT_CONFIG),
-        LO_WORD(GATT_CLIENT_CHAR_CONFIG_DEFAULT),
-        HI_WORD(GATT_CLIENT_CHAR_CONFIG_DEFAULT) },
-      2,
-      NULL,
-      (GATT_PERM_READ | GATT_PERM_WRITE) },
+    {
+        ATTRIB_FLAG_VALUE_INCL | ATTRIB_FLAG_CCCD_APPL,
+        {
+            LO_WORD(GATT_UUID_CHAR_CLIENT_CONFIG),
+            HI_WORD(GATT_UUID_CHAR_CLIENT_CONFIG),
+            LO_WORD(GATT_CLIENT_CHAR_CONFIG_DEFAULT),
+            HI_WORD(GATT_CLIENT_CHAR_CONFIG_DEFAULT)
+        },
+        2,
+        NULL,
+        (GATT_PERM_READ | GATT_PERM_WRITE)
+    },
 
     /* [6] <<Characteristic>> FFD3 DATA_TX (WriteWithoutResponse) */
-    { ATTRIB_FLAG_VALUE_INCL,
-      {
-          LO_WORD(GATT_UUID_CHARACTERISTIC),
-          HI_WORD(GATT_UUID_CHARACTERISTIC),
-          GATT_CHAR_PROP_WRITE_NO_RSP /* WriteWithoutResponse */
-      },
-      1,
-      NULL,
-      GATT_PERM_READ },
+    {
+        ATTRIB_FLAG_VALUE_INCL,
+        {
+            LO_WORD(GATT_UUID_CHARACTERISTIC),
+            HI_WORD(GATT_UUID_CHARACTERISTIC),
+            GATT_CHAR_PROP_WRITE_NO_RSP /* WriteWithoutResponse */
+        },
+        1,
+        NULL,
+        GATT_PERM_READ
+    },
 
     /* [7] FFD3 DATA_TX value */
-    { ATTRIB_FLAG_VALUE_APPL,
-      { LO_WORD(NAVI_CHAR_DATA_TX_UUID), HI_WORD(NAVI_CHAR_DATA_TX_UUID) },
-      0,
-      NULL,
-      GATT_PERM_WRITE },
+    {
+        ATTRIB_FLAG_VALUE_APPL,
+        { LO_WORD(NAVI_CHAR_DATA_TX_UUID), HI_WORD(NAVI_CHAR_DATA_TX_UUID) },
+        0,
+        NULL,
+        GATT_PERM_WRITE
+    },
 
     /* [8] <<Characteristic>> FFD4 DATA_RX (Notify) */
-    { ATTRIB_FLAG_VALUE_INCL,
-      { LO_WORD(GATT_UUID_CHARACTERISTIC),
-        HI_WORD(GATT_UUID_CHARACTERISTIC),
-        GATT_CHAR_PROP_NOTIFY },
-      1,
-      NULL,
-      GATT_PERM_READ },
+    {
+        ATTRIB_FLAG_VALUE_INCL,
+        {
+            LO_WORD(GATT_UUID_CHARACTERISTIC),
+            HI_WORD(GATT_UUID_CHARACTERISTIC),
+            GATT_CHAR_PROP_NOTIFY
+        },
+        1,
+        NULL,
+        GATT_PERM_READ
+    },
 
     /* [9] FFD4 DATA_RX value */
-    { ATTRIB_FLAG_VALUE_APPL,
-      { LO_WORD(NAVI_CHAR_DATA_RX_UUID), HI_WORD(NAVI_CHAR_DATA_RX_UUID) },
-      0,
-      NULL,
-      GATT_PERM_NONE },
+    {
+        ATTRIB_FLAG_VALUE_APPL,
+        { LO_WORD(NAVI_CHAR_DATA_RX_UUID), HI_WORD(NAVI_CHAR_DATA_RX_UUID) },
+        0,
+        NULL,
+        GATT_PERM_NONE
+    },
 
     /* [10] FFD4 DATA_RX CCCD */
-    { ATTRIB_FLAG_VALUE_INCL | ATTRIB_FLAG_CCCD_APPL,
-      { LO_WORD(GATT_UUID_CHAR_CLIENT_CONFIG),
-        HI_WORD(GATT_UUID_CHAR_CLIENT_CONFIG),
-        LO_WORD(GATT_CLIENT_CHAR_CONFIG_DEFAULT),
-        HI_WORD(GATT_CLIENT_CHAR_CONFIG_DEFAULT) },
-      2,
-      NULL,
-      (GATT_PERM_READ | GATT_PERM_WRITE) },
+    {
+        ATTRIB_FLAG_VALUE_INCL | ATTRIB_FLAG_CCCD_APPL,
+        {
+            LO_WORD(GATT_UUID_CHAR_CLIENT_CONFIG),
+            HI_WORD(GATT_UUID_CHAR_CLIENT_CONFIG),
+            LO_WORD(GATT_CLIENT_CHAR_CONFIG_DEFAULT),
+            HI_WORD(GATT_CLIENT_CHAR_CONFIG_DEFAULT)
+        },
+        2,
+        NULL,
+        (GATT_PERM_READ | GATT_PERM_WRITE)
+    },
 };
 
 static navi_state_t s_state = NAVI_STATE_IDLE;
@@ -619,7 +653,7 @@ static void navi_request_high_throughput(void)
                "conn_cause=0x%X dle_cause=0x%X phy_update=%u phy_cause=0x%X",
                conn_id,
                conn_interval < NAVI_CONN_INTERVAL_MIN || conn_interval > NAVI_CONN_INTERVAL_MAX ||
-                   conn_latency != NAVI_CONN_LATENCY,
+               conn_latency != NAVI_CONN_LATENCY,
                conn_cause,
                dle_cause,
                tx_phy != GAP_PHYS_2M || rx_phy != GAP_PHYS_2M,
@@ -637,7 +671,16 @@ static void navi_send_l1_frame(uint8_t ctrl, uint16_t seq, const uint8_t *payloa
     }
 
     uint8_t buf[NAVI_L1_HEADER_LEN + NAVI_L1_MAX_PAYLOAD];
-    uint16_t crc = navi_crc16(payload, pay_len);
+    uint16_t crc = 0;
+
+    /* ACK and ERROR frames carry no payload and pass NULL. memcpy(dst, NULL, 0)
+     * is still undefined behaviour, so the copy only happens when there is
+     * something to copy. */
+    if (pay_len > 0 && payload != NULL)
+    {
+        crc = navi_crc16(payload, pay_len);
+        memcpy(buf + NAVI_L1_HEADER_LEN, payload, pay_len);
+    }
 
     buf[0] = NAVI_L1_SYNC;
     buf[1] = ctrl;
@@ -647,7 +690,6 @@ static void navi_send_l1_frame(uint8_t ctrl, uint16_t seq, const uint8_t *payloa
     buf[5] = LO_16(crc);
     buf[6] = HI_16(seq);
     buf[7] = LO_16(seq);
-    memcpy(buf + NAVI_L1_HEADER_LEN, payload, pay_len);
 
     gatt_svc_send_data(s_conn_handle,
                        s_cid,
@@ -779,14 +821,12 @@ static void navi_l1_parse(const uint8_t *data, uint16_t len)
                     }
                 }
 
+                /* Bytes are appended one at a time, so rx_len reaches
+                 * total_needed exactly and never carries a residue of the next
+                 * frame; parsing just restarts sync detection on the byte
+                 * after this one. */
                 s_l1_synced = false;
                 s_l1_rx_len = 0;
-
-                if (s_l1_rx_len > 0)
-                {
-                    memmove(s_l1_rx_buf, s_l1_rx_buf + total_needed, s_l1_rx_len - total_needed);
-                    s_l1_rx_len -= total_needed;
-                }
             }
         }
     }
@@ -972,6 +1012,16 @@ void navi_projection_close(void)
         uint8_t err[2] = { NAVI_ERR_TIMEOUT, 0 };
         navi_send_l2(NAVI_KEY_ERROR, err, 2);
     }
+    navi_reset_session();
+}
+
+void navi_projection_on_disconnect(void)
+{
+    /* Invalidate the link first: the peer is gone, so the timeout notification
+     * in navi_projection_close() would be sent to a stale connection handle. */
+    s_conn_handle = 0xFFFF;
+    s_cid = 0xFFFF;
+    s_conn_id = 0xFF;
     navi_reset_session();
 }
 
@@ -1210,7 +1260,8 @@ static void navi_detect_gaps_and_report(navi_frame_slot_t *slot)
                 break;
             }
             mask = (uint8_t)(1U << (offset & 7));
-        } while ((slot->chunk_bitmap[offset >> 3] & mask) == 0);
+        }
+        while ((slot->chunk_bitmap[offset >> 3] & mask) == 0);
 
         gaps[gap_count].gap_end = offset;
         gap_count++;
@@ -1428,7 +1479,8 @@ static void navi_cccd_update_cb(
 
 static const T_FUN_GATT_EXT_SERVICE_CBS navi_service_cbs = { navi_attr_read_cb,
                                                              navi_attr_write_cb,
-                                                             navi_cccd_update_cb };
+                                                             navi_cccd_update_cb
+                                                           };
 
 uint8_t navi_projection_init(void *service_cb, navi_frame_ready_cb_t frame_cb)
 {
@@ -1474,9 +1526,12 @@ void navi_projection_set_gui_frame_cb(navi_gui_frame_cb_t frame_cb)
 int navi_projection_build_qr_url(char *buf, size_t len)
 {
 #if defined(_WIN32) || defined(__linux__)
+    /* NAVI_QR_ADDR_SIM contains percent-encoded colons, so it must be an
+     * argument, never part of the format string. */
     return snprintf(buf, len,
                     NAVI_QR_URL_BASE "?modelid=" NAVI_QR_MODEL_ID
-                    "&sn=" NAVI_QR_SN "&addr=" NAVI_QR_ADDR_SIM);
+                    "&sn=" NAVI_QR_SN "&addr=%s",
+                    NAVI_QR_ADDR_SIM);
 #else
     uint8_t bt_addr[6] = {0};
     gap_get_param(GAP_PARAM_BD_ADDR, bt_addr);

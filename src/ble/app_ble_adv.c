@@ -10,6 +10,7 @@
 #include "string.h"
 #include "ble_ext_adv.h"
 #include "app_ble_adv.h"
+#include "navi_projection_service.h"
 #include "simple_ble_service.h"
 
 #define HI_WORD(x)                    ((uint8_t)((x & 0xFF00) >> 8))
@@ -20,22 +21,24 @@
 static uint8_t adv_handle = 0xFF;
 static T_BLE_EXT_ADV_MGR_STATE adv_state = BLE_EXT_ADV_MGR_ADV_DISABLED;
 
-static uint8_t scan_rsp_data[] = {
+static uint8_t scan_rsp_data[] =
+{
     0x03,
     GAP_ADTYPE_APPEARANCE,
     LO_WORD(GAP_GATT_APPEARANCE_UNKNOWN),
     HI_WORD(GAP_GATT_APPEARANCE_UNKNOWN),
 };
 
-static uint8_t adv_data[] = {
+static uint8_t adv_data[] =
+{
     0x02,
     GAP_ADTYPE_FLAGS,
-    GAP_ADTYPE_FLAGS_LIMITED | GAP_ADTYPE_FLAGS_BREDR_NOT_SUPPORTED,
+    GAP_ADTYPE_FLAGS_GENERAL | GAP_ADTYPE_FLAGS_BREDR_NOT_SUPPORTED,
 
     0x03,
     GAP_ADTYPE_16BIT_COMPLETE,
-    LO_WORD(GATT_UUID_SIMPLE_PROFILE),
-    HI_WORD(GATT_UUID_SIMPLE_PROFILE),
+    LO_WORD(NAVI_SERVICE_UUID),
+    HI_WORD(NAVI_SERVICE_UUID),
 
     0x09,
     GAP_ADTYPE_LOCAL_NAME_COMPLETE,
@@ -64,25 +67,25 @@ static void app_ble_adv_callback(uint8_t cb_type, void *p_cb_data)
     switch (cb_type)
     {
     case BLE_EXT_ADV_STATE_CHANGE:
-    {
-        APP_PRINT_TRACE2("app_ble_adv_callback: adv_state %d, adv_handle %d",
-                         cb_data.p_ble_state_change->state,
-                         cb_data.p_ble_state_change->adv_handle);
-        adv_state = cb_data.p_ble_state_change->state;
+        {
+            APP_PRINT_TRACE2("app_ble_adv_callback: adv_state %d, adv_handle %d",
+                             cb_data.p_ble_state_change->state,
+                             cb_data.p_ble_state_change->adv_handle);
+            adv_state = cb_data.p_ble_state_change->state;
 
-        if (adv_state == BLE_EXT_ADV_MGR_ADV_ENABLED)
-        {
-            APP_PRINT_TRACE0("app_ble_adv_callback: BLE_EXT_ADV_MGR_ADV_ENABLED");
+            if (adv_state == BLE_EXT_ADV_MGR_ADV_ENABLED)
+            {
+                APP_PRINT_TRACE0("app_ble_adv_callback: BLE_EXT_ADV_MGR_ADV_ENABLED");
+            }
+            else if (adv_state == BLE_EXT_ADV_MGR_ADV_DISABLED)
+            {
+                APP_PRINT_TRACE0("app_ble_adv_callback: BLE_EXT_ADV_MGR_ADV_DISABLED");
+                APP_PRINT_TRACE2("app_ble_adv_callback: stop cause 0x%x, app cause 0x%02x",
+                                 cb_data.p_ble_state_change->stop_cause,
+                                 cb_data.p_ble_state_change->app_cause);
+            }
         }
-        else if (adv_state == BLE_EXT_ADV_MGR_ADV_DISABLED)
-        {
-            APP_PRINT_TRACE0("app_ble_adv_callback: BLE_EXT_ADV_MGR_ADV_DISABLED");
-            APP_PRINT_TRACE2("app_ble_adv_callback: stop cause 0x%x, app cause 0x%02x",
-                             cb_data.p_ble_state_change->stop_cause,
-                             cb_data.p_ble_state_change->app_cause);
-        }
-    }
-    break;
+        break;
 
     case BLE_EXT_ADV_SET_CONN_INFO:
         APP_PRINT_TRACE1("app_ble_adv_callback: BLE_EXT_ADV_SET_CONN_INFO conn_id 0x%x",
@@ -98,7 +101,7 @@ uint32_t app_ble_adv_load_static_random_address(T_APP_STATIC_RANDOM_ADDR *p_addr
 {
     uint32_t result;
     result = ftl_load_from_storage(
-        p_addr, APP_STATIC_RANDOM_ADDR_OFFSET, sizeof(T_APP_STATIC_RANDOM_ADDR));
+                 p_addr, APP_STATIC_RANDOM_ADDR_OFFSET, sizeof(T_APP_STATIC_RANDOM_ADDR));
     APP_PRINT_INFO1("app_ble_adv_load_static_random_address: result 0x%x", result);
     if (result)
     {
@@ -111,7 +114,7 @@ uint32_t app_ble_adv_save_static_random_address(T_APP_STATIC_RANDOM_ADDR *p_addr
 {
     APP_PRINT_INFO0("app_ble_adv_save_static_random_address");
     return ftl_save_to_storage(
-        p_addr, APP_STATIC_RANDOM_ADDR_OFFSET, sizeof(T_APP_STATIC_RANDOM_ADDR));
+               p_addr, APP_STATIC_RANDOM_ADDR_OFFSET, sizeof(T_APP_STATIC_RANDOM_ADDR));
 }
 
 void app_ble_adv_init_conn_public(void)
