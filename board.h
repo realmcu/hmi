@@ -18,7 +18,7 @@ extern "C" {
 #define HYBRID_KEY_NUM          8
 #define PIN_KEY0                0xFF
 #define PIN_KEY1                ADC_2
-#define PIN_KEY2                0xFF // key2 must be p2_1 due to hardware design, but this pin is configured by lcd BL, so key2 is not worked unless changing hardware design
+#define PIN_KEY2                P2_1 // MENU key, driven by src/application/app_key_button.c
 #define PIN_KEY3                P3_5
 #define PIN_KEY4                0xFF
 #define PIN_KEY5                0xFF

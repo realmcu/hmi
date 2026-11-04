@@ -7,10 +7,11 @@
 Import('SDK_ROOT')
 from building import *
 
-# get current directory
-cwd = GetCurrentDir()
-
-src = Glob('*.c')
+# Startup and system init live in the SDK's MCU layer so the Keil (SCons) and
+# GCC (CMake) builds compile the same files. The former board-local copies
+# (src/bsp/startup_rtl.c, src/bsp/system_rtl87x3.c) have been removed.
+src = [SDK_ROOT + '/src/mcu/rtl87x3/arm/startup_rtl87x3ep_clang.c']
+src += [SDK_ROOT + '/src/mcu/rtl87x3/system_rtl87x3.c']
 
 CPPDEFINES = ['TARGET_RTL8773E']
 CPPDEFINES += ['SUPPORT_ACCESS_SHM = 1']
@@ -59,6 +60,9 @@ lib = DefineGroup('lib', lib_src, depend = [''], CPPPATH = path, CPPDEFINES = LI
 
 io_hal_src = []
 io_hal_src += [SDK_ROOT + '/src/mcu/io_hal/common/hw_tim.c']
+io_hal_src += [SDK_ROOT + '/src/mcu/io_hal/rtl87x3ep/hal_gpio_int.c']
+io_hal_src += [SDK_ROOT + '/src/mcu/io_hal/common/hal_gpio.c']
+io_hal_src += [SDK_ROOT + '/src/mcu/io_hal/common/hal_pinmux.c']
 path = [SDK_ROOT + '/inc/hal/io']
 IO_HAL_CPPDEFINES = []
 io_hal = DefineGroup('io_hal', io_hal_src, depend = [''], CPPPATH = path, CPPDEFINES = IO_HAL_CPPDEFINES)

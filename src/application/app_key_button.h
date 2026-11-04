@@ -19,6 +19,8 @@ extern "C" {
  */
 void app_key_button_init(void);
 
+void app_key_mfb_init(void);
+
 #ifdef __cplusplus
 }
 #endif

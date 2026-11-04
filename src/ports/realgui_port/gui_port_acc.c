@@ -4,29 +4,36 @@
  * SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
  */
 
-#include <draw_img.h>
-#include "gui_port.h"
 #include "gui_api.h"
+#include "section.h"
 
+extern gui_blit_ops_t hw_acc_blit_ops;
 
-extern void sw_acc_init(void);
-extern void sw_acc_blit(draw_img_t *image, struct gui_dispdev *dc, gui_rect_t *rect);
-extern void hw_acc_init(void);
-extern void hw_acc_blit(draw_img_t *image, struct gui_dispdev *dc, gui_rect_t *rect);
-static struct acc_engine acc =
+#include "acc_sw_entry.h"   /* sw_acc_init(), sw_acc_blit() */
+extern void sw_acc_deinit(void);
+static gui_blit_ops_t sw_acc_blit_ops =
 {
-    .blit = sw_acc_blit
+    .init = sw_acc_init,
+    .process = sw_acc_blit,
+    .deinit = sw_acc_deinit,
 };
 
+extern gui_blur_ops_t sw_arm2d_blur_ops;
+
+
+static struct acc_engine acc =
+{
+    .blit = &hw_acc_blit_ops,
+    .blur = &sw_arm2d_blur_ops,
+    .enable_thread_sync = false,
+};
 
 void gui_port_acc_init(void)
 {
-#if 1
-    hw_acc_init();
-    acc.blit = hw_acc_blit;
-#else
-    sw_acc_init();
-    acc.blit = sw_acc_blit;
-#endif
     gui_acc_info_register(&acc);
+}
+
+void gui_port_acc_deinit(void)
+{
+    gui_acc_info_register(NULL);
 }

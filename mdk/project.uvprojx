@@ -17,7 +17,7 @@
         <TargetCommonOption>
           <Device>ARMv8MML_SP</Device>
           <Vendor>ARM</Vendor>
-          <PackID>ARM.CMSIS.5.8.0</PackID>
+          <PackID>ARM.CMSIS.5.9.0</PackID>
           <PackURL>http://www.keil.com/pack/</PackURL>
           <Cpu>IRAM(0x20000000,0x00020000) IRAM2(0x20200000,0x00020000) IROM(0x00000000,0x00200000) IROM2(0x00200000,0x00200000) CPUTYPE("ARMV8MML") FPU3(SFPU) TZ CLOCK(12000000) ESEL ELITTLE</Cpu>
           <FlashUtilSpec></FlashUtilSpec>
@@ -338,9 +338,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>  --include pre_define.h  --include stdbool.h --include app_flags.h</MiscControls>
-              <Define>TARGET_RTL8773E, RTK_HAL_LCD, SUPPORT_ACCESS_SHM = 1, ENABLE_HONEYGUI, CONFIG_SOC_SERIES_RTL8773E=1, RTK_HAL_DRIVER</Define>
+              <Define>CONFIG_SOC_SERIES_RTL8773E=1, ENABLE_HONEYGUI, RTK_HAL_DRIVER, RTK_HAL_LCD, SUPPORT_ACCESS_SHM = 1, TARGET_RTL8773E</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..;..\src\application;..\src\application;..\src\application\designer\src;..\src\application\designer\src;..\src\application\designer\src\callbacks;..\src\application\designer\src\ui;..\src\application\designer\src\user;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\..\..\..\inc\hal\io;..\..\..\..\src\mcu\module\rtc_calendar;..\src\hmi_rtk_bt\hmi_app;..\src\hmi_rtk_bt\hmi_ble;..\src\hmi_rtk_bt\hmi_ble\private_service;..\src\hmi_rtk_bt\hmi_br_edr;..\src\ota;..\..\..\..\src\sample\common\app_ble_service;..\src\ports\realgui_port;..\src\protocol;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\..\..\..\src\mcu\display;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\mipi\inc;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\segcom\inc;..\..\..\..\src\mcu\display\hardware\jpu\inc;..\..\..\..\src\mcu\display\hardware\jpu\src\device\rtl8773e</IncludePath>
+              <IncludePath>..;..;..\src\application;..\src\application;..\src\application\designer\src;..\src\application\designer\src;..\src\application\designer\src\callbacks;..\src\application\designer\src\generated;..\src\application\designer\src\ui;..\src\application\designer\src\user;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\..\..\..\inc\hal\io;..\..\..\..\src\mcu\module\rtc_calendar;..\src\hmi_rtk_bt\hmi_app;..\src\hmi_rtk_bt\hmi_ble;..\src\hmi_rtk_bt\hmi_ble\private_service;..\src\hmi_rtk_bt\hmi_br_edr;..\src\ota;..\..\..\..\src\sample\common\app_ble_service;..\src\ports\realgui_port;..\src\protocol;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\mcu\display\device\general\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\..\..\..\src\mcu\display;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\mipi\inc;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\segcom\inc;..\..\..\..\src\mcu\display\hardware\jpu\inc;..\..\..\..\src\mcu\display\hardware\jpu\src\device\rtl8773e</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -450,6 +450,11 @@
               <FilePath>..\src\application\designer\src\callbacks\DashboardMain_callbacks.c</FilePath>
             </File>
             <File>
+              <FileName>auto_generated_bindings.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\application\designer\src\generated\auto_generated_bindings.c</FilePath>
+            </File>
+            <File>
               <FileName>DashboardMain_ui.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\src\application\designer\src\ui\DashboardMain_ui.c</FilePath>
@@ -465,14 +470,14 @@
           <GroupName>bsp</GroupName>
           <Files>
             <File>
-              <FileName>startup_rtl.c</FileName>
+              <FileName>startup_rtl87x3ep_clang.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\src\bsp\startup_rtl.c</FilePath>
+              <FilePath>..\..\..\..\src\mcu\rtl87x3\arm\startup_rtl87x3ep_clang.c</FilePath>
             </File>
             <File>
               <FileName>system_rtl87x3.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\src\bsp\system_rtl87x3.c</FilePath>
+              <FilePath>..\..\..\..\src\mcu\rtl87x3\system_rtl87x3.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -533,6 +538,21 @@
               <FileName>hw_tim.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\src\mcu\io_hal\common\hw_tim.c</FilePath>
+            </File>
+            <File>
+              <FileName>hal_gpio_int.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\io_hal\rtl87x3ep\hal_gpio_int.c</FilePath>
+            </File>
+            <File>
+              <FileName>hal_gpio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\io_hal\common\hal_gpio.c</FilePath>
+            </File>
+            <File>
+              <FileName>hal_pinmux.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\io_hal\common\hal_pinmux.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -757,7 +777,7 @@
             <File>
               <FileName>lcd_st7265_800480_rgb.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\app\Wearable\device\lcd\8773E\lcd_st7265_800480_rgb.c</FilePath>
+              <FilePath>..\..\..\..\src\mcu\display\device\general\lcd\8773E\lcd_st7265_800480_rgb.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1168,9 +1188,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls>  --include pre_define.h  --include stdbool.h --include app_flags.h</MiscControls>
-              <Define>TARGET_RTL8773E, RTK_HAL_LCD, SUPPORT_ACCESS_SHM = 1, ENABLE_HONEYGUI, CONFIG_SOC_SERIES_RTL8773E=1, RTK_HAL_DRIVER</Define>
+              <Define>CONFIG_SOC_SERIES_RTL8773E=1, ENABLE_HONEYGUI, RTK_HAL_DRIVER, RTK_HAL_LCD, SUPPORT_ACCESS_SHM = 1, TARGET_RTL8773E</Define>
               <Undefine></Undefine>
-              <IncludePath>..;..;..\src\application;..\src\application;..\src\application\designer\src;..\src\application\designer\src;..\src\application\designer\src\callbacks;..\src\application\designer\src\ui;..\src\application\designer\src\user;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\..\..\..\inc\hal\io;..\..\..\..\src\mcu\module\rtc_calendar;..\src\hmi_rtk_bt\hmi_app;..\src\hmi_rtk_bt\hmi_ble;..\src\hmi_rtk_bt\hmi_ble\private_service;..\src\hmi_rtk_bt\hmi_br_edr;..\src\ota;..\..\..\..\src\sample\common\app_ble_service;..\src\ports\realgui_port;..\src\protocol;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\..\..\..\src\mcu\display;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\mipi\inc;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\segcom\inc;..\..\..\..\src\mcu\display\hardware\jpu\inc;..\..\..\..\src\mcu\display\hardware\jpu\src\device\rtl8773e</IncludePath>
+              <IncludePath>..;..;..\src\application;..\src\application;..\src\application\designer\src;..\src\application\designer\src;..\src\application\designer\src\callbacks;..\src\application\designer\src\generated;..\src\application\designer\src\ui;..\src\application\designer\src\user;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\..\..\..\inc\app;..\..\..\..\inc\os;..\..\..\..\inc\platform;..\..\..\..\inc\rtl87x3ep\platform;..\..\..\..\inc\rtl87x3ep\hal;..\..\..\..\inc\ble_mgr;..\..\..\..\inc\framework\bt;..\..\..\..\inc\framework\remote;..\..\..\..\inc\framework\sysm;..\..\..\..\inc\framework\audio;..\..\..\..\inc\bluetooth\gap;..\..\..\..\inc\bluetooth\profile;..\..\..\..\inc\rtl87x3ep\hal\stack;..\..\..\..\bin\rtl87x3ep\upperstack_stamp;..\..\..\..\bin\rtl87x3ep\flash_map_config\16M\flash_16M;..\..\..\..\inc\hal\platform;..\..\..\..\inc\hal\io;..\..\..\..\inc\rtl87x3ep\io;..\..\..\..\inc\os\FreeRTOS;..\src\gui_lib;..\src\gui_lib\armclang;..\src\gui_lib\gcc;..\src\gui_lib\include;..\..\..\..\inc\hal\io;..\..\..\..\src\mcu\module\rtc_calendar;..\src\hmi_rtk_bt\hmi_app;..\src\hmi_rtk_bt\hmi_ble;..\src\hmi_rtk_bt\hmi_ble\private_service;..\src\hmi_rtk_bt\hmi_br_edr;..\src\ota;..\..\..\..\src\sample\common\app_ble_service;..\src\ports\realgui_port;..\src\protocol;..\..\..\..\src\app\Wearable\device\key_button\8773E;..\..\..\..\src\app\Wearable\device\knob\8773E;..\..\..\..\src\app\Wearable\device\lcd\8762G;..\..\..\..\src\app\Wearable\device\lcd\8772F;..\..\..\..\src\app\Wearable\device\lcd\8773E;..\..\..\..\src\mcu\display\device\general\lcd\8773E;..\..\..\..\src\app\Wearable\device\touch\8762G;..\..\..\..\src\app\Wearable\device\touch\8773E;..\..\..\..\src\app\Wearable\driver\io;..\..\..\..\src\app\Wearable\system\dfs\romfs;..\..\..\..\src\mcu\display;..\..\..\..\src\mcu\display\hardware\lcdc\inc;..\..\..\..\src\mcu\display\hardware\lcdc\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\idu\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\idu\inc;..\..\..\..\src\mcu\display\hardware\mipi\inc;..\..\..\..\src\mcu\display\hardware\ppe\inc\rtl8773e;..\..\..\..\src\mcu\display\hardware\ppe\src\device\rtl8773e;..\..\..\..\src\mcu\display\hardware\segcom\inc;..\..\..\..\src\mcu\display\hardware\jpu\inc;..\..\..\..\src\mcu\display\hardware\jpu\src\device\rtl8773e</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1280,6 +1300,11 @@
               <FilePath>..\src\application\designer\src\callbacks\DashboardMain_callbacks.c</FilePath>
             </File>
             <File>
+              <FileName>auto_generated_bindings.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\src\application\designer\src\generated\auto_generated_bindings.c</FilePath>
+            </File>
+            <File>
               <FileName>DashboardMain_ui.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\src\application\designer\src\ui\DashboardMain_ui.c</FilePath>
@@ -1295,14 +1320,14 @@
           <GroupName>bsp</GroupName>
           <Files>
             <File>
-              <FileName>startup_rtl.c</FileName>
+              <FileName>startup_rtl87x3ep_clang.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\src\bsp\startup_rtl.c</FilePath>
+              <FilePath>..\..\..\..\src\mcu\rtl87x3\arm\startup_rtl87x3ep_clang.c</FilePath>
             </File>
             <File>
               <FileName>system_rtl87x3.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\src\bsp\system_rtl87x3.c</FilePath>
+              <FilePath>..\..\..\..\src\mcu\rtl87x3\system_rtl87x3.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1363,6 +1388,21 @@
               <FileName>hw_tim.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\src\mcu\io_hal\common\hw_tim.c</FilePath>
+            </File>
+            <File>
+              <FileName>hal_gpio_int.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\io_hal\rtl87x3ep\hal_gpio_int.c</FilePath>
+            </File>
+            <File>
+              <FileName>hal_gpio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\io_hal\common\hal_gpio.c</FilePath>
+            </File>
+            <File>
+              <FileName>hal_pinmux.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\src\mcu\io_hal\common\hal_pinmux.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1587,7 +1627,7 @@
             <File>
               <FileName>lcd_st7265_800480_rgb.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\..\..\..\src\app\Wearable\device\lcd\8773E\lcd_st7265_800480_rgb.c</FilePath>
+              <FilePath>..\..\..\..\src\mcu\display\device\general\lcd\8773E\lcd_st7265_800480_rgb.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1675,15 +1715,25 @@
       </filter>
       <package name="CMSIS" schemaVersion="1.3" url="http://www.keil.com/pack/" vendor="ARM" version="5.8.0">
         <targetInfos>
-          <targetInfo name="dashboard_dual_bank0" versionMatchMode="fixed"/>
           <targetInfo name="non_secure_app" versionMatchMode="fixed"/>
+        </targetInfos>
+      </package>
+      <package name="CMSIS" schemaVersion="1.7.7" url="http://www.keil.com/pack/" vendor="ARM" version="5.9.0">
+        <targetInfos>
+          <targetInfo name="dashboard_dual_bank0" versionMatchMode="fixed"/>
+          <targetInfo name="dashboard_dual_bank1" versionMatchMode="fixed"/>
+        </targetInfos>
+      </package>
+      <package name="V2M-MPS2_CMx_BSP" schemaVersion="1.2" url="https://www.keil.com/pack/" vendor="Keil" version="1.8.2">
+        <targetInfos>
+          <targetInfo name="dashboard_dual_bank1" versionMatchMode="fixed"/>
         </targetInfos>
       </package>
     </packages>
     <apis/>
     <components>
-      <component Cclass="CMSIS" Cgroup="CORE" Cvendor="ARM" Cversion="5.5.0" condition="ARMv6_7_8-M Device">
-        <package name="CMSIS" schemaVersion="1.3" url="http://www.keil.com/pack/" vendor="ARM" version="5.8.0"/>
+      <component Cclass="CMSIS" Cgroup="CORE" Cvendor="ARM" Cversion="5.6.0" condition="ARMv6_7_8-M Device">
+        <package name="CMSIS" schemaVersion="1.7.7" url="http://www.keil.com/pack/" vendor="ARM" version="5.9.0"/>
         <targetInfos>
           <targetInfo name="dashboard_dual_bank0"/>
           <targetInfo name="dashboard_dual_bank1"/>

@@ -8,7 +8,6 @@
  *                              Header Files
  *============================================================================*/
 
-#include "app_gui.h"
 #include "board.h"
 #include "section.h"
 #include "trace.h"

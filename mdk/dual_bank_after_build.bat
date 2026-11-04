@@ -49,7 +49,10 @@ if %SIGN_TYPE%==ECDSA (
 )
 
 "%PREPEND_HEADER%" /mp_ini %MP_INI% /app_code "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%.bin"
-bash %MD5% "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%_MP.bin" "../version.h"
+rem Forward slashes on purpose: GNU md5sum prefixes its output with a backslash
+rem when the input path contains backslashes, which leaks into the MD5 string
+rem in md5_generate.sh and breaks the final rename.
+bash %MD5% "bin/%IC_TYPE%/%TARGET_DIR%/%TARGET_BANK%/%TARGET_NAME%_%TARGET_BANK%_MP.bin" "../version.h"
 if exist "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%_MP.bin" del "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%_MP.bin"
 
 copy "%TARGET_OBJ_PATH%\%TARGET_NAME%.htm" "bin\%IC_TYPE%\%TARGET_DIR%\%TARGET_BANK%\%TARGET_NAME%_%TARGET_BANK%.htm"

@@ -187,8 +187,15 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/protocol
 #==============================================================================
 # IO HAL Sources
 #==============================================================================
+# hal_gpio / hal_pinmux / hal_gpio_int back the HAL GPIO API used by
+# src/application/app_key_button.c (hal_gpio_* / hal_gpio_int_*).
 target_sources(dashboard PRIVATE
-    ${REALTEK_SDK_BASE_PATH}/src/mcu/io_hal/common/hw_tim.c)
+    ${REALTEK_SDK_BASE_PATH}/src/mcu/io_hal/common/hw_tim.c
+    ${REALTEK_SDK_BASE_PATH}/src/mcu/io_hal/common/hal_gpio.c
+    ${REALTEK_SDK_BASE_PATH}/src/mcu/io_hal/common/hal_pinmux.c
+    ${REALTEK_SDK_BASE_PATH}/src/mcu/io_hal/rtl87x3ep/hal_gpio_int.c)
+target_include_directories(dashboard PRIVATE
+    ${REALTEK_SDK_BASE_PATH}/inc/hal/io)
 
 #==============================================================================
 # RTC Calendar Module (used by application/app_rtc_time.c to retarget time())
