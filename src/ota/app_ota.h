@@ -82,6 +82,7 @@
 #define DFU_LENGTH_CONN_PARA_TO_UPDATE_REQ  (1+2+2+2+2)
 #define DFU_LENGTH_BUFFER_CHECK_EN          0x01
 #define DFU_LENGTH_REPORT_BUFFER_CRC        (1+2+2)
+#define DFU_LENGTH_COPY_IMG                 (1+2)
 
 /** @brief  spp ota command length. */
 #define OTA_LENGTH_OTA_GET_INFO         0
@@ -100,6 +101,7 @@
 #define OTA_LRNGTH_RWS_INFO             0
 #define OTA_LRNGTH_OTHER_INFO           0
 #define OTA_LENGTH_SECTION_SIZE         0
+#define OTA_LENGTH_COPY_IMG             2
 
 /** @brief image exit indicator. */
 #define IMAGE_LOCATION_BANK0        1

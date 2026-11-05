@@ -1010,9 +1010,12 @@ static uint8_t app_ota_copy_img(uint8_t *p_data)
     uint32_t buffer_size = MAX_BUFFER_SIZE;
     uint8_t *p_copy_buffer = NULL;
     uint8_t bp_lv;
-
+    uint32_t remain_size;
 
     ota_struct.ota_flag.skip_flag = 1;
+    /* Copy erases whole sectors, so a stale non-aligned header offset left by a
+       previous image-info query would shift every chunk by that offset. */
+    ota_struct.buffer_check_offset = 0;
 
     if (ota_struct.test.t_copy_fail)
     {
@@ -1020,7 +1023,7 @@ static uint8_t app_ota_copy_img(uint8_t *p_data)
         return ret;
     }
 
-    if (p_data == NULL)
+    if ((p_data == NULL) || !ota_struct.ota_flag.is_ota_process)
     {
         ret = DFU_ARV_FAIL_OPERATION;
         return ret;
@@ -1055,7 +1058,15 @@ static uint8_t app_ota_copy_img(uint8_t *p_data)
         return ret;
     }
 
-    uint32_t remain_size = p_data_header->ctrl_header.payload_len + DEFAULT_HEADER_SIZE;
+    remain_size = p_data_header->ctrl_header.payload_len + DEFAULT_HEADER_SIZE;
+
+    /* Nothing validates a copied image against the layout before the write, and
+       the write erases whole sectors, so an oversized header clobbers neighbours. */
+    if (app_ota_check_section_size(remain_size, img_id) == false)
+    {
+        ret = DFU_ARV_FAIL_INVALID_PARAMETER;
+        return ret;
+    }
 
     if (ota_struct.p_ota_temp_buf_head != NULL)
     {
@@ -1090,7 +1101,7 @@ static uint8_t app_ota_copy_img(uint8_t *p_data)
         if (app_ota_write_to_flash(img_id, offset, 0, copy_len, buffer_addr) != 0)
         {
             ret = DFU_ARV_FAIL_FLASH_WRITE_ERROR;
-            return ret;
+            break;
         }
         remain_size -= copy_len;
         offset += copy_len;
@@ -1100,7 +1111,7 @@ static uint8_t app_ota_copy_img(uint8_t *p_data)
         }
     }
 
-    if (app_ota_checksum((IMG_ID)img_id, 0) == false)
+    if (ret == DFU_ARV_SUCCESS && app_ota_checksum((IMG_ID)img_id, 0) == false)
     {
         ret = DFU_ARV_FAIL_CRC_ERROR;
     }
@@ -1430,7 +1441,10 @@ uint32_t app_ota_write_to_flash(uint16_t img_id, uint32_t offset, uint32_t total
     {
         dest_addr = dfu_base_addr + offset + ota_struct.buffer_check_offset;
         fmc_flash_nor_write(dest_addr, p_void, length);
-        fmc_flash_nor_write(dest_addr, ota_struct.p_ota_temp_buf_head,
+        /* The preserved prefix belongs to the start of the erased sector, which
+           is buffer_check_offset bytes below the image, not the image start. */
+        fmc_flash_nor_write(dest_addr - ota_struct.buffer_check_offset,
+                            ota_struct.p_ota_temp_buf_head,
                             ota_struct.buffer_check_offset);
     }
     else
@@ -1874,9 +1888,16 @@ void app_ota_cmd_handle(uint8_t path, uint16_t length, uint8_t *p_value, uint8_t
         break;
     case CMD_OTA_COPY_IMG:
         {
-            app_report_event(path, EVENT_ACK, app_idx, ack_pkt, 3);
-            results = app_ota_copy_img(p);
-            app_report_event(path, EVENT_OTA_COPY_IMG, app_idx, &results, sizeof(results));
+            if (length == OTA_LENGTH_COPY_IMG)
+            {
+                app_report_event(path, EVENT_ACK, app_idx, ack_pkt, 3);
+                results = app_ota_copy_img(p);
+                app_report_event(path, EVENT_OTA_COPY_IMG, app_idx, &results, sizeof(results));
+            }
+            else
+            {
+                ack_flag = true;
+            }
         }
         break;
     case CMD_OTA_CHECK_SHA256:
@@ -2188,9 +2209,16 @@ T_APP_RESULT app_ota_ble_handle_cp_req(uint16_t conn_handle, uint16_t cid, uint1
         break;
     case DFU_OPCODE_COPY_IMG:
         {
-            cause = APP_RESULT_SUCCESS;
-            results = app_ota_copy_img(p);
-            app_ota_service_prepare_send_notify(conn_handle, cid, DFU_OPCODE_COPY_IMG, 1, &results);
+            if (length == DFU_LENGTH_COPY_IMG)
+            {
+                cause = APP_RESULT_SUCCESS;
+                results = app_ota_copy_img(p);
+                app_ota_service_prepare_send_notify(conn_handle, cid, DFU_OPCODE_COPY_IMG, 1, &results);
+            }
+            else
+            {
+                error_flag = true;
+            }
         }
         break;
     case DFU_OPCODE_GET_IMAGE_VER:
