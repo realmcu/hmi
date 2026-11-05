@@ -6,6 +6,22 @@
 message(STATUS "[APP]hmi_dashboard cmake start build")
 
 #==============================================================================
+# Optimization Level
+#==============================================================================
+# The SDK-wide default in config/cmake/compile.cmake is -Os (size). The Keil
+# project builds this board with -O2 (speed, see <Optim>3 in project.uvprojx),
+# and the HMI workload is compute bound (image blit/scale/blend), so speed is
+# worth more than size here. Added to this directory scope so it applies to the
+# dashboard target and every add_subdirectory() below it (display, gui, bt...).
+# GCC honours the last -O option, so this overrides the global -Os.
+add_compile_options(-O2)
+
+# C standard: match the Keil build, which uses AC6 with <v6Lang>6 (-std=gnu11).
+# The SDK default in config/cmake/compile.cmake is gnu99. Restricted to the C
+# language so the C++ sources under src/sample/gui keep their own defaults.
+add_compile_options($<$<COMPILE_LANGUAGE:C>:-std=gnu11>)
+
+#==============================================================================
 # Global Include Paths (for submodules: display driver needs os_mem.h etc.)
 # TODO: Remove when display library properly propagates SDK include paths via target
 #==============================================================================
@@ -23,6 +39,18 @@ add_compile_options(-include ${PRE_DEFINE_FILE})
 #==============================================================================
 if(CONFIG_REALTEK_DISPLAY)
     add_subdirectory(${REALTEK_SDK_BASE_PATH}/src/mcu/display ${CMAKE_CURRENT_BINARY_DIR}/display)
+
+    # Drop two display sources this board does not use, so the GCC build compiles
+    # the same set as the Keil build:
+    #   rtk_display_mem.c : malloc/free wrapper, no callers anywhere in the SDK
+    #   rtl_lcdc_dphy.c   : empty placeholder (MIPI DPHY; this board uses RGB/DPI)
+    # The display CMakeLists collects sources with file(GLOB), so they have to be
+    # removed from the target after the subdirectory has been processed.
+    get_target_property(_disp_srcs realtek_display_driver_library SOURCES)
+    if(_disp_srcs)
+        list(FILTER _disp_srcs EXCLUDE REGEX "/(rtk_display_mem|rtl_lcdc_dphy)\\.c$")
+        set_property(TARGET realtek_display_driver_library PROPERTY SOURCES "${_disp_srcs}")
+    endif()
 
     # PUBLIC: propagates to dashboard via link, so no need to re-define there.
     target_compile_definitions(realtek_display_driver_library PUBLIC

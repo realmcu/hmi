@@ -221,9 +221,6 @@
 
 // <h> Other Configuration (independent of GUI build mode)
 
-// <c> Enable RTK GUI ROMFS
-#define CONFIG_REALTEK_ROMFS
-// </c>
 
 // <c> BLE navigation projection (designer)
 #define CONFIG_REALTEK_APP_NAVI_PROJECTION
