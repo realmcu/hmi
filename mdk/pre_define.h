@@ -4,6 +4,17 @@
  * SPDX-License-Identifier: LicenseRef-Realtek-5-Clause
  */
 
+#include <stdbool.h>
+
+/* The CMake/GCC build force-includes build/.../include/generated/config.h
+ * through its precompiled header, so every Kconfig symbol is visible in every
+ * translation unit. The Keil project has neither that header nor its include
+ * path, hence the board's Kconfig selection is mirrored here for the symbols
+ * the sources test with #ifdef. Keep in sync with Kconfig. */
+#ifndef CONFIG_REALTEK_APP_NAVI_PROJECTION
+#define CONFIG_REALTEK_APP_NAVI_PROJECTION 1
+#endif
+
 #ifndef   __WEAK
 #define __WEAK                                 __attribute__((weak))
 #endif
