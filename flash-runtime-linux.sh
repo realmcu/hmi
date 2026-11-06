@@ -2,15 +2,15 @@
 #
 # flash-runtime-linux.sh —— 在原生 Linux 下用 mpcli 烧录随包自带的 runtime 固件。
 #
-# 与 flash-linux.sh 的区别：
-#   - flash-linux.sh 烧的是单个 App 镜像（-p -A 0x7009E000 -F bin/app.bin）。
+# 与 flash-linux-app.sh 的区别：
+#   - flash-linux-app.sh 烧的是单个 App 镜像（-p -A 0x7009E000 -F bin/app.bin）。
 #   - 本脚本烧的是整套 runtime（boot patch / upperstack / OTA header /
 #     stack & sys patch / DSP sys+app+cfg / SYSTEM & APP Config，共 11 个镜像），
 #     由 mpcli 的 --flash-runtime 一条命令生成 flash_image.json 后 -a 全刷。
 #
 # runtime 里【不含 APP】（地址表里没有 0x7009E000），完整刷机顺序：
 #   1. scripts/flash-runtime-linux.sh      # 先烧 runtime
-#   2. scripts/flash-linux.sh              # 再烧 bin/app.bin
+#   2. scripts/flash-linux-app.sh          # 再烧 bin/app.bin
 #
 # 用法：
 #   scripts/flash-runtime-linux.sh                      # 默认 /dev/ttyUSB0
@@ -47,7 +47,7 @@ echo "[flash-runtime] mpcli = $MPCLI"
 echo "[flash-runtime] port  = $PORT   chip = $CHIP   baud = $BAUD"
 
 # mpcli(frozen) 用 sys.executable 目录定位 fw/、config/，与 CWD 无关；
-# 这里 cd 到 mpcli 目录纯粹是和 flash-linux.sh 的行为保持一致。
+# 这里 cd 到 mpcli 目录纯粹是和 flash-linux-app.sh 的行为保持一致。
 cd "$(dirname "$MPCLI")"
 
 # -u -d 必须显式给：mpcli 的 --flash-runtime 只注入 -M 5 -r -b 3000000，

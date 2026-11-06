@@ -5,10 +5,10 @@
 # Later runs reuse that environment and upload only the app image.
 #
 # Usage:
-#   scripts/flash-ssh-app.sh
-#   scripts/flash-ssh-app.sh COM4
-#   WIN_HOST=main-win-pc FW=/path/to/app.bin scripts/flash-ssh-app.sh
-#   DRY=1 scripts/flash-ssh-app.sh
+#   scripts/flash-linux2win-app.sh
+#   scripts/flash-linux2win-app.sh COM4
+#   WIN_HOST=main-win-pc FW=/path/to/app.bin scripts/flash-linux2win-app.sh
+#   DRY=1 scripts/flash-linux2win-app.sh
 
 set -euo pipefail
 
@@ -29,7 +29,7 @@ if [ "$DRY" = "1" ]; then
   echo "[ssh-flash][dry-run] fw   = $FW"
   echo "[ssh-flash][dry-run] addr = $ADDR   baud = $BAUD"
   echo "[ssh-flash][dry-run] env  = %USERPROFILE%\\.rtl87-flash"
-  echo "[ssh-flash][dry-run] provision from tool/mpcli and flash-win32-app.bat when missing"
+  echo "[ssh-flash][dry-run] provision from tool/mpcli and app/runtime batch files when missing"
   exit 0
 fi
 
@@ -52,18 +52,21 @@ WIN_TEMP="$(ssh -o BatchMode=yes "$WIN_HOST" 'echo %TEMP%' | tr -d '\r' | head -
 
 ENV_DIR="${WIN_PROFILE}\\.rtl87-flash"
 WIN_FLASH="${ENV_DIR}\\flash-win32-app.bat"
+WIN_RUNTIME_FLASH="${ENV_DIR}\\flash-runtime-win32.bat"
 WIN_MPCLI="${ENV_DIR}\\tool\\mpcli\\mpcli.exe"
 WIN_MARKER="${ENV_DIR}\\.bundle.sha256"
 
+# Keep this signature identical to the other flash-linux2win-* scripts. The
+# shared environment contains both app and runtime launchers plus one mpcli tree.
 SIGNATURE="$(
   cd "$SCRIPT_DIR"
   {
-    sha256sum flash-win32-app.bat
+    sha256sum flash-win32-app.bat flash-runtime-win32.bat
     find tool/mpcli -type f -print0 | sort -z | xargs -0 sha256sum
   } | sha256sum | awk '{print $1}'
 )"
 
-REMOTE_STATE="$(ssh -o BatchMode=yes "$WIN_HOST" "if exist \"$WIN_FLASH\" (if exist \"$WIN_MPCLI\" (if exist \"$WIN_MARKER\" (type \"$WIN_MARKER\") else (echo MISSING)) else (echo MISSING)) else (echo MISSING)" | tr -d '\r' | head -n 1)"
+REMOTE_STATE="$(ssh -o BatchMode=yes "$WIN_HOST" "if exist \"$WIN_FLASH\" (if exist \"$WIN_RUNTIME_FLASH\" (if exist \"$WIN_MPCLI\" (if exist \"$WIN_MARKER\" (type \"$WIN_MARKER\") else (echo MISSING)) else (echo MISSING)) else (echo MISSING)) else (echo MISSING)" | tr -d '\r' | head -n 1)"
 
 if [ "$REMOTE_STATE" != "$SIGNATURE" ]; then
   echo "[ssh-flash] provisioning Windows environment"
@@ -72,6 +75,7 @@ if [ "$REMOTE_STATE" != "$SIGNATURE" ]; then
   STAGE_DIR="$WORK_DIR/bundle"
   mkdir -p "$STAGE_DIR/tool"
   cp "$SCRIPT_DIR/flash-win32-app.bat" "$STAGE_DIR/"
+  cp "$SCRIPT_DIR/flash-runtime-win32.bat" "$STAGE_DIR/"
   cp -a "$SCRIPT_DIR/tool/mpcli" "$STAGE_DIR/tool/mpcli"
   BUNDLE="$WORK_DIR/rtl87-flash-env.tgz"
   tar -czf "$BUNDLE" -C "$STAGE_DIR" .

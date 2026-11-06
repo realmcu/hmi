@@ -11,10 +11,10 @@
 #   - 烧录：-p -A 0x7009E000 -b 2000000 -M 5 -r -u -d -T RTL87X3G
 #
 # 用法：
-#   scripts/flash.sh                 # 默认 COM13
-#   scripts/flash.sh COM8            # 指定下载口
-#   PORT=COM8 BAUD=2000000 scripts/flash.sh
-#   DRY=1 scripts/flash.sh           # 只打印将要执行的命令，不真正烧录
+#   scripts/flash-wsl-app.sh                 # 默认 COM13
+#   scripts/flash-wsl-app.sh COM8            # 指定下载口
+#   PORT=COM8 BAUD=2000000 scripts/flash-wsl-app.sh
+#   DRY=1 scripts/flash-wsl-app.sh           # 只打印将要执行的命令，不真正烧录
 #
 set -euo pipefail
 

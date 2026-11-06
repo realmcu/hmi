@@ -2,7 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 rem Flash the RTL87X3G application from native Windows cmd.exe.
-rem Usage: flash-win32.bat COM13
+rem Usage: flash-win32-app.bat COM13
 rem Optional environment variables: BAUD, FW, ADDR, MPCLI_EXE, DRY, NOPAUSE.
 
 for %%I in ("%~dp0..") do set "REPO_ROOT=%%~fI"
@@ -16,7 +16,7 @@ if not defined ADDR set "ADDR=0x7009E000"
 if not defined BAUD set "BAUD=2000000"
 
 if not defined PORT (
-  echo [flash] Missing COM port. Usage: scripts\flash-win32.bat COMx 1>&2
+  echo [flash] Missing COM port. Usage: scripts\flash-win32-app.bat COMx 1>&2
   goto :fail
 )
 if not exist "%MPCLI_EXE%" (

@@ -1,15 +1,18 @@
 # scripts
 
-本目录下的常用工具脚本，覆盖 RTL87X3G 应用的**编译 → 下载 → 抓 log** 完整链路。所有脚本默认从**仓库根目录**跑也行、从 `scripts/` 里跑也行，路径都是相对 `scripts/` 自身解析的。
+本目录下的常用工具脚本，覆盖 RTL87X3G 应用的**编译 → 下载 → 抓 log** 完整链路。以下命令默认在 `applications/` 目录执行，因此写作 `scripts/...`；若从 west 工作区根目录执行，请加上 `applications/` 前缀。脚本内部路径按自身位置解析，不依赖调用时的当前目录。
 
 - `build.sh` —— `west build` 封装
-- `flash-linux.sh` —— 原生 Linux 下用 Linux 版 `mpcli` 烧录（本机当前用这个）
-- `flash-remote-app.sh` —— Linux 编译电脑通过工位电脑的远程烧录服务下载 `bin/app.bin`，无需本地串口
-- `flash-wsl.sh` —— WSL 里驱动 Windows 版 `mpcli.exe` 烧录（旧环境留档，Linux 下不用）
-- `flash-win32.bat` —— Windows 原生 cmd 下直接调 `mpcli.exe` 烧录（不进 WSL）
-- `flash-runtime-linux.sh` / `flash-runtime-wsl.sh` / `flash-runtime-win32.bat` —— 烧录**整套 runtime**（boot patch / upperstack / stack & sys patch / DSP / Config，共 11 个镜像），与上面三个「只烧 app.bin」的脚本一一对应，见「2.5 烧录 runtime」
+- `flash-linux-app.sh` —— 原生 Linux 下用 Linux 版 `mpcli` 烧录 App
+- `flash-linux2win-app.sh` —— Linux 工作电脑通过 SSH 驱动连接开发板的 Windows 电脑烧录 App
+- `flash-wsl-app.sh` —— WSL2 里驱动 Windows 版 `mpcli.exe` 烧录 App
+- `flash-win32-app.bat` —— Windows 原生 cmd 下直接调用 `mpcli.exe` 烧录 App
+- `flash-runtime-linux.sh` / `flash-runtime-wsl.sh` / `flash-runtime-win32.bat` —— 烧录**整套 runtime**（boot patch / upperstack / stack & sys patch / DSP / Config，共 11 个镜像），见「2.5 烧录 runtime」
+- `flash-linux2win-runtime.sh` —— Linux 工作电脑通过 SSH 驱动 Windows 电脑烧录 runtime
+- `flash-wsl-romfs.sh` / `flash-linux2win-romfs.sh` —— 烧录 HoneyGUI romfs 资源镜像，见「2.6 烧录 romfs」
 - `tool/mpcli/` —— 随仓库自带的 mpcli v4.0.0.7；`mpcli`（ELF）与 `mpcli.exe`（Windows）并排放，`fw/` 和 `config/` 共用。所有 flash 脚本默认从这里取，不再依赖外部安装
 - `serial_term.py` —— **Windows 专用**串口终端（依赖 `msvcrt`，Linux 下跑不了）。Linux 下看 log 见「查看 LOG」章节，用现成命令即可
+- `generate_sdk.py` —— 按 `SDK_COMMON.py` / `SDK_HMI.py` 的发布配置生成裁剪后的 SDK 包，参数见 `python scripts/generate_sdk.py --help`
 
 ---
 
@@ -31,7 +34,7 @@ DRY=1 scripts/build.sh                  # 只打印将要执行的命令，不�
 - 默认 board：`rtl87x3g_evb`，可用环境变量 `BOARD=` 覆盖。
 - 参数解析只认 `-p` / `--pristine`，其它未知参数会直接报错退出（防手滑）。
 - 脚本自己 `cd` 到仓库根，无需担心当前目录。
-- 编译产物：`build/`，最终烧录用的固件在 `bin/app.bin`（由 `flash-linux.sh` 使用）。
+- 编译产物：`build/`，最终烧录用的固件在 `bin/app.bin`（由 App 烧录脚本使用）。
 
 ### 常见问题
 
@@ -42,37 +45,36 @@ DRY=1 scripts/build.sh                  # 只打印将要执行的命令，不�
 
 ## 2. 下载
 
-### 远程下载（编译电脑）
+### Linux → Windows 烧录（开发板接在 Windows）
 
-工位电脑启动 `remote_flash_server.exe` 并在界面中启动 SSH 反向隧道后，Linux 编译电脑执行：
-
-```bash
-scripts/flash-remote-app.sh
-```
-
-默认连接 `127.0.0.1:18790`，上传 `<repo>/bin/app.bin`，并使用与本地 App 烧录相同的
-MPCLI 参数。服务地址、固件、地址和波特率可覆盖：
+适用于“Linux 编译、开发板连接 Windows 工位机”的场景。Linux 通过 SSH alias 登录 Windows，首次运行时把 `mpcli.exe`、烧录批处理和固件目录部署到 `%USERPROFILE%\.rtl87-flash`，之后上传 App 镜像并远程执行烧录。
 
 ```bash
-scripts/flash-remote-app.sh 127.0.0.1:18790
-SERVER=127.0.0.1:18790 FW=/path/to/app.bin scripts/flash-remote-app.sh
-ADDR=0x7009E000 BAUD=2000000 scripts/flash-remote-app.sh
-DRY=1 scripts/flash-remote-app.sh
+scripts/flash-linux2win-app.sh COM4
 ```
 
-远程下载不传 `-c`，下载串口由工位电脑的服务端界面选择。
+默认 SSH 主机为 `main-win-pc`，COM 口为 `COM4`。主机、固件、地址和波特率可覆盖：
+
+```bash
+WIN_HOST=my-win-pc scripts/flash-linux2win-app.sh COM8
+FW=/path/to/app.bin scripts/flash-linux2win-app.sh COM8
+ADDR=0x7009E000 BAUD=2000000 scripts/flash-linux2win-app.sh COM8
+DRY=1 scripts/flash-linux2win-app.sh COM4
+```
+
+Windows 端需要启用 OpenSSH Server，并配置 `ssh main-win-pc` 免交互登录。runtime 和 romfs 分别使用 `flash-linux2win-runtime.sh`、`flash-linux2win-romfs.sh`，三者共用同一份 Windows 缓存。
 
 ### 本地下载
 
-用 `scripts/flash-linux.sh` 在原生 Linux 下直接调用 **Linux 版 `mpcli`**（原生 ELF，v4.0.0.7）。烧录参数对齐 `flash-wsl.sh`。
+用 `scripts/flash-linux-app.sh` 在原生 Linux 下直接调用 **Linux 版 `mpcli`**（原生 ELF，v4.0.0.7）。烧录参数对齐 `flash-wsl-app.sh`。
 
 ### 常用命令
 
 ```bash
-scripts/flash-linux.sh                          # 默认 /dev/ttyUSB0
-scripts/flash-linux.sh /dev/ttyUSB1             # 位置参数指定下载口
-PORT=/dev/ttyUSB1 BAUD=3000000 scripts/flash-linux.sh  # 环境变量覆盖端口 / 波特率
-DRY=1 scripts/flash-linux.sh                    # 只打印将要执行的命令,不真正烧录
+scripts/flash-linux-app.sh                          # 默认 /dev/ttyUSB0
+scripts/flash-linux-app.sh /dev/ttyUSB1             # 位置参数指定下载口
+PORT=/dev/ttyUSB1 BAUD=3000000 scripts/flash-linux-app.sh  # 环境变量覆盖端口 / 波特率
+DRY=1 scripts/flash-linux-app.sh                    # 只打印将要执行的命令，不真正烧录
 ```
 
 ### 默认配置
@@ -105,14 +107,14 @@ DRY=1 scripts/flash-linux.sh                    # 只打印将要执行的命令
 
 ### 在 Windows / WSL 下烧录
 
-如果开发环境不是原生 Linux，用下面两个脚本，参数集与 `flash-linux.sh` 完全一致（`-p -A 0x7009E000 -b 2000000 -M 5 -r -u -d -T RTL87X3G`），只是执行环境不同。两个脚本默认都从仓库自带的 `scripts/tool/mpcli/mpcli.exe`（v4.0.0.7）取工具，无需额外安装。
+WSL 和 Windows 原生脚本的参数集与 `flash-linux-app.sh` 完全一致（`-p -A 0x7009E000 -b 2000000 -M 5 -r -u -d -T RTL87X3G`），只是执行环境不同。两个脚本默认都从仓库自带的 `scripts/tool/mpcli/mpcli.exe`（v4.0.0.7）取工具，无需额外安装。
 
 #### WSL2 里驱动 Windows 版 `mpcli.exe`
 
 ```bash
-scripts/flash-wsl.sh COM8                    # 位置参数指定 COM 口（默认 COM13）
-PORT=COM8 BAUD=2000000 scripts/flash-wsl.sh  # 环境变量覆盖
-DRY=1 scripts/flash-wsl.sh COM8              # 只打印将要执行的命令，不真正烧录
+scripts/flash-wsl-app.sh COM8                    # 位置参数指定 COM 口（默认 COM13）
+PORT=COM8 BAUD=2000000 scripts/flash-wsl-app.sh  # 环境变量覆盖
+DRY=1 scripts/flash-wsl-app.sh COM8              # 只打印将要执行的命令，不真正烧录
 ```
 
 - 默认 `mpcli.exe` 路径：`scripts/tool/mpcli/mpcli.exe`（仓库自带），用 `MPCLI_EXE=` 覆盖。
@@ -121,21 +123,21 @@ DRY=1 scripts/flash-wsl.sh COM8              # 只打印将要执行的命令，
 #### Windows 原生 cmd（不进 WSL）
 
 ```bat
-scripts\flash-win32.bat COM8              :: COM 口必须传，没有默认值
-set BAUD=3000000 && scripts\flash-win32.bat COM8
-set DRY=1 && scripts\flash-win32.bat COM8       :: 干跑，只打印命令
-set NOPAUSE=1 && scripts\flash-win32.bat COM8   :: 结束不 pause（脚本 / tasks 调用用）
+scripts\flash-win32-app.bat COM8              :: COM 口必须传，没有默认值
+set BAUD=3000000 && scripts\flash-win32-app.bat COM8
+set DRY=1 && scripts\flash-win32-app.bat COM8       :: 干跑，只打印命令
+set NOPAUSE=1 && scripts\flash-win32-app.bat COM8   :: 结束不 pause（脚本 / tasks 调用用）
 ```
 
 - 默认 `mpcli.exe` 路径：`scripts\tool\mpcli\mpcli.exe`（仓库自带），用 `set MPCLI_EXE=` 覆盖。
-- 双击也可跑：先 `set PORT=COMx`，再双击 `flash-win32.bat`；执行完自动 `pause`，方便看输出。CI / tasks.json 里调用时把 `NOPAUSE=1` 打开即可。
+- 双击也可跑：先 `set PORT=COMx`，再双击 `flash-win32-app.bat`；执行完自动 `pause`，方便看输出。CI / tasks.json 里调用时把 `NOPAUSE=1` 打开即可。
 - 可覆盖的环境变量：`PORT` / `BAUD` / `FW` / `ADDR` / `MPCLI_EXE` / `DRY` / `NOPAUSE`。
 
 ---
 
 ## 2.5 烧录 runtime
 
-上面三个 `flash-*` 脚本只烧**单个 App 镜像**（`-p -A 0x7009E000 -F bin/app.bin`）。换板子、刷新 BT stack / DSP、或板子是空片时，还得先烧一套 **runtime**。这由 `flash-runtime-*` 三个脚本负责，内部调 mpcli 的 `--flash-runtime`，一条命令生成 `flash_image.json` 再 `-a` 全刷。
+各 App 烧录脚本只烧**单个 App 镜像**（`-p -A 0x7009E000 -F bin/app.bin`）。换板子、刷新 BT stack / DSP、或板子是空片时，还得先烧一套 **runtime**。这由 `flash-runtime-*` 和 `flash-linux2win-runtime.sh` 负责，内部调 mpcli 的 `--flash-runtime`，生成 `flash_image.json` 后全刷。
 
 ### 常用命令
 
@@ -146,6 +148,9 @@ CHIP=RTL8783G scripts/flash-runtime-linux.sh          # 换芯片
 DRY=1 scripts/flash-runtime-linux.sh                  # 干跑，不接板子也能看命令
 
 scripts/flash-runtime-wsl.sh COM8                     # WSL 驱动 mpcli.exe（默认 COM13）
+scripts/flash-linux2win-runtime.sh COM8               # Linux 通过 SSH 驱动 Windows 烧录（默认 COM4）
+CHIP=RTL8783G scripts/flash-linux2win-runtime.sh COM8
+DRY=1 scripts/flash-linux2win-runtime.sh COM8         # 只打印配置，不连接 Windows
 ```
 
 ```bat
@@ -158,18 +163,31 @@ set CHIP=RTL8783G && scripts\flash-runtime-win32.bat COM8
 | 项 | 值 | 覆盖方式 |
 |---|---|---|
 | 芯片 | `RTL8773G`（取 `tool/mpcli/fw/runtime_system_bin/` 下的目录名，可选 `RTL8773G` / `RTL8783G` / `RTL87X3EP`） | `CHIP=` |
-| 下载口 | `/dev/ttyUSB0`（linux）、`COM13`（wsl）、无默认（win32） | 位置参数 或 `PORT=` |
+| 下载口 | `/dev/ttyUSB0`（linux）、`COM13`（wsl）、`COM4`（linux2win）、无默认（win32） | 位置参数 或 `PORT=` |
 | 波特率 | `2000000` | `BAUD=` |
 | 完整参数 | `--flash-runtime <CHIP> -c <port> -u -d -b 2000000` | — |
 
 `-T` 不用传，mpcli 从 `CHIP` 自动推导（`RTL8773G` → `RTL87X3G`）。
+
+`flash-linux2win-runtime.sh` 用于“Linux 编译、开发板接在 Windows”的场景。Linux 通过 SSH
+连接 `WIN_HOST`（默认 `main-win-pc`），首次运行时把 `mpcli.exe`、App/runtime 批处理和
+runtime 固件目录部署到 Windows 的 `%USERPROFILE%\.rtl87-flash`，之后直接远程执行
+`flash-runtime-win32.bat`：
+
+```bash
+scripts/flash-linux2win-runtime.sh COM4
+WIN_HOST=my-win-pc CHIP=RTL8783G scripts/flash-linux2win-runtime.sh COM8
+```
+
+该脚本与 `flash-linux2win-app.sh`、`flash-linux2win-romfs.sh` 共用 Windows 缓存。runtime
+烧完后仍需执行 `scripts/flash-linux2win-app.sh COM4` 烧入 App。
 
 ### 注意事项
 
 - **runtime 不含 APP**。烧的 11 个镜像地址是 `0x70002000`(SYSTEM_Config) / `4000`+`7000`(boot patch0/1) / `a000`(upperstack) / `49000`(OTA header) / `4a000`(stack patch) / `7c000`(sys patch) / `21e000`+`2bc000`+`2fc000`(DSP sys/app/cfg) / `306000`(APP_Config)，**没有 APP 的 `0x7009E000`**。完整刷机要两步：
   ```bash
   scripts/flash-runtime-linux.sh          # 1. 先烧 runtime
-  scripts/flash-linux.sh                  # 2. 再烧 bin/app.bin
+  scripts/flash-linux-app.sh              # 2. 再烧 bin/app.bin
   ```
 - **`-u -d` 是脚本显式加的，别去掉**。mpcli 的 `--flash-runtime` 只注入 `-M 5 -r -b 3000000`，而 `SYSTEM_Config` 落在受保护的 `0x70002000`（OEM_CFG 区），少了 `-u` 写不进去。
 - `--flash-runtime` **不支持** `--gen-output-dir`，生成的 `flash_image.json` / `flash_image_report.txt` 必然落在 `fw/runtime_system_bin/<CHIP>/`。已在 `tool/mpcli/.gitignore` 里忽略，不会污染仓库。
@@ -189,8 +207,29 @@ set CHIP=RTL8783G && scripts\flash-runtime-win32.bat COM8
   ```
 - **只烧某一个镜像**：现有 `flash-*` 脚本的 `ADDR=` / `FW=` 就够用，地址查上面列表或 `fw/runtime_system_bin/<CHIP>/flash_map.ini`：
   ```bash
-  ADDR=0x7000A000 FW=/path/to/upperstack.bin scripts/flash-linux.sh
+  ADDR=0x7000A000 FW=/path/to/upperstack.bin scripts/flash-linux-app.sh
   ```
+
+---
+
+## 2.6 烧录 romfs
+
+HoneyGUI 资源镜像是独立于 App 的裸镜像，烧录地址必须与 `ui/project.json` 的 `romfsBaseAddr`、`gui_vfs_mount_romfs()` 调用以及分区表地址一致。地址必须按 4 KB 对齐。
+
+### WSL2
+
+```bash
+scripts/flash-wsl-romfs.sh ../ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM8
+```
+
+### Linux → Windows
+
+```bash
+scripts/flash-linux2win-romfs.sh ../ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM4
+WIN_HOST=my-win-pc DRY=1 scripts/flash-linux2win-romfs.sh
+```
+
+脚本会检查地址对齐、镜像内烘焙的基址和 romfs root dirent。资源镜像与 App、runtime 使用不同的 flash 偏移。
 
 ---
 
@@ -240,7 +279,7 @@ dd if="$PORT" of="$LOG" bs=1
 > **抓开机 boot log 的正确姿势**：boot 信息只在上电/复位那一瞬间打印，错过就没了。
 > 所以要 **先起监测、再复位**：
 > 1. 先在一个终端跑 `stdbuf -oL cat "$PORT" | tee "$LOG"`（或 `dd ...`）；
-> 2. 监测起来后再按板上复位键 / 重新烧录（`flash-linux.sh` 结尾会 `Reboot`）；
+> 2. 监测起来后再按板上复位键 / 重新烧录（App 烧录脚本结尾会 `Reboot`）；
 > 3. 正在监听的进程就能完整抓到 `Booting Zephyr OS ...` 那一段。
 > 顺序反了（先复位再起 cat）就只能抓到 boot 之后的静默，看着像"没输出"。
 
@@ -254,7 +293,7 @@ dd if="$PORT" of="$LOG" bs=1
 
 1. 终端里 `cat "$PORT"` 看 log
 2. `Ctrl+C` 停掉，释放端口
-3. `scripts/flash-linux.sh` 下载固件
+3. `scripts/flash-linux-app.sh` 下载固件
 4. 再 `cat "$PORT"` 继续看
 
 ### 怎么看已存下来的 log

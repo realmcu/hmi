@@ -3,14 +3,14 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 rem Flash the bundled runtime firmware from native Windows cmd.exe.
 rem
-rem Unlike flash-win32.bat (which flashes a single App image at 0x7009E000),
+rem Unlike flash-win32-app.bat (which flashes a single App image at 0x7009E000),
 rem this script flashes the whole runtime set (boot patch / upperstack /
 rem OTA header / stack & sys patch / DSP sys+app+cfg / SYSTEM & APP Config,
 rem 11 images) via mpcli --flash-runtime.
 rem
 rem The runtime does NOT include the APP, so the full sequence is:
 rem   1. scripts\flash-runtime-win32.bat COM13   :: runtime first
-rem   2. scripts\flash-win32.bat COM13           :: then bin\app.bin
+rem   2. scripts\flash-win32-app.bat COM13       :: then bin\app.bin
 rem
 rem Usage: flash-runtime-win32.bat COM13
 rem Optional environment variables: BAUD, CHIP, MPCLI_EXE, DRY, NOPAUSE.
