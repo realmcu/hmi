@@ -17,6 +17,7 @@
  *                              Header Files
  *============================================================================*/
 #include <gap.h>
+#include <string.h>
 #include <gap_le.h>
 #include <gap_bond_le.h>
 #include <gap_adv.h>
@@ -24,6 +25,7 @@
 #include "hmi_ble_gap_cb.h"
 #include "trace.h"
 #include "gatt.h"
+#include "app_ota_mode.h"
 
 
 
@@ -35,6 +37,7 @@
 
 #define GATT_UUID128_BWPS_ADV   0x12, 0xA2, 0x4D, 0x2E, 0xFE, 0x14, 0x48, 0x8e, 0x93, 0xD2, 0x17, 0x3C, 0xFF, 0x01, 0x00, 0x00
 #define GATT_UUID128_BEACON_SERVICE_ADV           0x12, 0xA2, 0x4D, 0x2E, 0xFE, 0x14, 0x48, 0x8e, 0x93, 0xD2, 0x17, 0x3C, 0xFF, 0x02, 0x00, 0x00
+#define GATT_UUID128_DFU_SERVICE_ADV              0x12, 0xA2, 0x4D, 0x2E, 0xFE, 0x14, 0x48, 0x8e, 0x93, 0xD2, 0x17, 0x3C, 0x87, 0x62, 0x00, 0x00
 
 // GAP - SCAN RSP data (max size = 31 bytes)
 static uint8_t scan_rsp_data[] =
@@ -50,6 +53,29 @@ static uint8_t scan_rsp_data[] =
     GAP_ADTYPE_APPEARANCE,            /* type="Appearance" */
     LO_WORD(GAP_GATT_APPEARANCE_WRIST_WORN),
     HI_WORD(GAP_GATT_APPEARANCE_WRIST_WORN),
+};
+
+static uint8_t ota_adv_data[] =
+{
+    0x02,
+    GAP_ADTYPE_FLAGS,
+    GAP_ADTYPE_FLAGS_GENERAL | GAP_ADTYPE_FLAGS_BREDR_NOT_SUPPORTED,
+
+    0x11,
+    GAP_ADTYPE_128BIT_COMPLETE,
+    GATT_UUID128_DFU_SERVICE_ADV,
+
+    0x09,
+    GAP_ADTYPE_MANUFACTURER_SPECIFIC,
+    0x5D, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+static uint8_t ota_scan_rsp_data[] =
+{
+    0x06,
+    GAP_ADTYPE_LOCAL_NAME_COMPLETE,
+    'B', 'e', 'T', 'g', 't',
 };
 
 // GAP - Advertisement data (max size = 31 bytes, though this is
@@ -92,6 +118,7 @@ uint8_t adv_data[] =
   */
 void hmi_ble_gap_init(void)
 {
+    bool ota_mode = app_ota_mode_is_active();
     /* Device name and device appearance */
     uint8_t  device_name[GAP_DEVICE_NAME_LEN] = "Watch";
     uint16_t appearance = GAP_GATT_APPEARANCE_WRIST_WORN;
@@ -118,6 +145,11 @@ void hmi_ble_gap_init(void)
 
     uint8_t  auth_sec_req_enable = false;
     uint16_t auth_sec_req_flags = GAP_AUTHEN_BIT_BONDING_FLAG;
+
+    if (ota_mode)
+    {
+        memcpy(device_name, "BeTgt", sizeof("BeTgt"));
+    }
 
     /* Set device name and device appearance */
     le_set_gap_param(GAP_PARAM_DEVICE_NAME, GAP_DEVICE_NAME_LEN, device_name);
@@ -146,15 +178,27 @@ void hmi_ble_gap_init(void)
     /* fill MAC address into manufacturer specific data at runtime */
     uint8_t bt_bd_addr[6];
     gap_get_param(GAP_PARAM_BD_ADDR, bt_bd_addr);
-    adv_data[18] = bt_bd_addr[5];
-    adv_data[19] = bt_bd_addr[4];
-    adv_data[20] = bt_bd_addr[3];
-    adv_data[21] = bt_bd_addr[2];
-    adv_data[22] = bt_bd_addr[1];
-    adv_data[23] = bt_bd_addr[0];
+    if (ota_mode)
+    {
+        for (uint8_t i = 0; i < 6; i++)
+        {
+            ota_adv_data[25 + i] = bt_bd_addr[5 - i];
+        }
+        le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(ota_adv_data), ota_adv_data);
+        le_adv_set_param(GAP_PARAM_SCAN_RSP_DATA, sizeof(ota_scan_rsp_data), ota_scan_rsp_data);
+    }
+    else
+    {
+        adv_data[18] = bt_bd_addr[5];
+        adv_data[19] = bt_bd_addr[4];
+        adv_data[20] = bt_bd_addr[3];
+        adv_data[21] = bt_bd_addr[2];
+        adv_data[22] = bt_bd_addr[1];
+        adv_data[23] = bt_bd_addr[0];
 
-    le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(adv_data), adv_data);
-    le_adv_set_param(GAP_PARAM_SCAN_RSP_DATA, sizeof(scan_rsp_data), (void *)scan_rsp_data);
+        le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(adv_data), adv_data);
+        le_adv_set_param(GAP_PARAM_SCAN_RSP_DATA, sizeof(scan_rsp_data), (void *)scan_rsp_data);
+    }
 
     /* Setup the GAP Bond Manager */
     gap_set_param(GAP_PARAM_BOND_PAIRING_MODE, sizeof(auth_pair_mode), &auth_pair_mode);
@@ -171,6 +215,29 @@ void hmi_ble_gap_init(void)
     /* register gap message callback */
     le_register_app_cb(hmi_ble_gap_callback);
 
+}
+
+void hmi_ble_gap_update_adv_identity(void)
+{
+    uint8_t bt_bd_addr[6] = {0};
+    gap_get_param(GAP_PARAM_BD_ADDR, bt_bd_addr);
+
+    if (app_ota_mode_is_active())
+    {
+        for (uint8_t i = 0; i < 6; i++)
+        {
+            ota_adv_data[25 + i] = bt_bd_addr[5 - i];
+        }
+        le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(ota_adv_data), ota_adv_data);
+    }
+    else
+    {
+        for (uint8_t i = 0; i < 6; i++)
+        {
+            adv_data[18 + i] = bt_bd_addr[5 - i];
+        }
+        le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(adv_data), adv_data);
+    }
 }
 
 /** @} */ /* End of group PERIPH_APP_TASK */

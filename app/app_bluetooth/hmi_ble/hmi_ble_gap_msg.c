@@ -141,6 +141,7 @@ static void app_handle_dev_state_evt(T_GAP_DEV_STATE new_state, uint16_t cause)
         {
             APP_PRINT_INFO0("GAP stack ready");
             /*stack ready*/
+            hmi_ble_gap_update_adv_identity();
             hmi_ble_gap_start_adv();
         }
     }

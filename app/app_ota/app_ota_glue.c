@@ -11,6 +11,7 @@
 #include "app_cfg.h"
 #include "app_ble_gap.h"
 #include "app_ota_service.h"
+#include "app_ota_mode.h"
 
 /* Globals the OTA code expects (see compat app_main.h / app_cfg.h). */
 T_APP_DB     app_db;
@@ -91,6 +92,12 @@ void app_ota_glue_link_disconnected(uint8_t conn_id, uint16_t disc_cause)
     T_APP_LE_LINK *p_link = app_link_find_le_link_by_conn_id(conn_id);
     if (p_link == NULL)
     {
+        return;
+    }
+    if (app_ota_mode_consume_switch_request())
+    {
+        memset(p_link, 0, sizeof(T_APP_LE_LINK));
+        app_ota_mode_switch_and_reset();
         return;
     }
     if (p_link->disc_callback != NULL)

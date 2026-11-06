@@ -15,6 +15,8 @@
 #include "app_lower_init.h"
 #include "gui_server.h"
 #include "app_core.h"
+#include "app_ota_mode.h"
+#include "hmi_bt_task.h"
 
 
 
@@ -30,6 +32,21 @@ int main(void)
     DBG_DIRECT("!!!!! remap log pin!!!");
 #endif
     app_system_lower_init();
+
+#if CONFIG_DFU_NORMAL_OTA
+    if (app_ota_mode_requested())
+    {
+        printf("[OTA] enter dedicated normal OTA mode\n");
+        app_ota_mode_clear_request();
+        app_ota_mode_set_active(true);
+        if (hmi_bt_task_start_ota_mode())
+        {
+            return 0;
+        }
+        printf("[OTA] failed to start OTA task\n");
+    }
+#endif
+
     printf("Hello World! %s\n", CONFIG_BOARD_TARGET);
     printf("[APP] build: %s %s\n", __DATE__, __TIME__);
     printf("[main] thread id: %p, name: %s, priority: %d\n",

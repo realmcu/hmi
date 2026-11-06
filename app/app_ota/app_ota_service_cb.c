@@ -12,6 +12,7 @@
 #include "ota_service.h"
 #include "app_ota.h"
 #include "app_ota_service.h"
+#include "app_ota_mode.h"
 
 static T_APP_RESULT app_ble_service_ota_srv_cb(T_SERVER_ID service_id, void *p_data)
 {
@@ -19,6 +20,13 @@ static T_APP_RESULT app_ble_service_ota_srv_cb(T_SERVER_ID service_id, void *p_d
 
     APP_PRINT_INFO2("app_ble_service_ota_srv_cb: service_id %d, msg_type %d",
                     service_id, p_ota_cb->msg_type);
+
+    if ((p_ota_cb->msg_type == SERVICE_CALLBACK_TYPE_WRITE_CHAR_VALUE) &&
+        (p_ota_cb->msg_data.write.opcode == OTA_WRITE_CHAR_VAL) &&
+        (p_ota_cb->msg_data.write.value == OTA_VALUE_ENTER))
+    {
+        app_ota_mode_request_switch(p_ota_cb->conn_id);
+    }
 
     return APP_RESULT_SUCCESS;
 }

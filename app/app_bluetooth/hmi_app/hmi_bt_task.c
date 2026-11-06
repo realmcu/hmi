@@ -76,6 +76,7 @@
 void *app_task_handle;   //!< APP Task handle
 void *evt_queue_handle;  //!< Event queue handle
 void *io_queue_handle;   //!< IO queue handle
+static bool ota_only_task;
 
 
 
@@ -156,31 +157,39 @@ void bt_task_entry(void *p_param)
 #ifndef CONFIG_RTK_BT_BREDR
     /* When BREDR is enabled, gap_lib_init() is called inside hmi_br_edr_gap_init() */
     gap_lib_init();
+#else
+    if (ota_only_task)
+    {
+        gap_lib_init();
+    }
 #endif
     hmi_ble_gap_init();
     hmi_ble_profile_init();
 
+    if (!ota_only_task)
+    {
 #ifdef CONFIG_RTK_BT_BREDR
-    framework_init();
-    hmi_br_edr_gap_init();
-    hmi_bt_spp_init();
+        framework_init();
+        hmi_br_edr_gap_init();
+        hmi_bt_spp_init();
 #ifdef CONFIG_RTK_BR_PROFILE_A2DP
-    hmi_bt_a2dp_init();
+        hmi_bt_a2dp_init();
 #endif
 #ifdef CONFIG_RTK_BR_PROFILE_AVRCP
-    hmi_bt_avrcp_init();
+        hmi_bt_avrcp_init();
 #endif
 #ifdef CONFIG_RTK_BR_PROFILE_HFP
-    hmi_bt_hfp_init();
+        hmi_bt_hfp_init();
 #endif
 #ifdef CONFIG_RTK_BR_PROFILE_PAN
-    {
-        uint8_t bd_addr[6];
-        gap_get_param(GAP_PARAM_BD_ADDR, bd_addr);
-        hmi_bt_pan_init(bd_addr);
+        {
+            uint8_t bd_addr[6];
+            gap_get_param(GAP_PARAM_BD_ADDR, bd_addr);
+            hmi_bt_pan_init(bd_addr);
+        }
+#endif
+#endif
     }
-#endif
-#endif
     gap_start_bt_stack(evt_queue_handle, io_queue_handle, MAX_NUMBER_OF_GAP_MESSAGE);
 
     while (true)
@@ -216,6 +225,7 @@ void bt_task_entry(void *p_param)
 
 static int hmi_bt_task_init(void)
 {
+    ota_only_task = false;
     os_task_create(&app_task_handle, "bt_task", bt_task_entry, 0, BLE_TASK_STACK_SIZE, 2);
 
     /* Wire our BLE transport into the (transport-agnostic) protocol stack;
@@ -223,6 +233,13 @@ static int hmi_bt_task_init(void)
      * side no longer knows the transport exists. */
     hmi_proto_task_init(hmi_ble_ctrl_send, hmi_ble_ctrl_receive, hmi_l2_handle);
     return 0;
+}
+
+bool hmi_bt_task_start_ota_mode(void)
+{
+    ota_only_task = true;
+    return os_task_create(&app_task_handle, "ota_task", bt_task_entry, 0,
+                          BLE_TASK_STACK_SIZE, 2);
 }
 
 const app_module_t app_bluetooth_module =

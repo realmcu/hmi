@@ -11,6 +11,7 @@ target_sources(${APP_TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ota_service.c
     ${CMAKE_CURRENT_SOURCE_DIR}/app_ota_glue.c
     ${CMAKE_CURRENT_SOURCE_DIR}/app_ota_service_cb.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/app_ota_mode.c
 )
 
 # app/ota own headers + the copied compat shims (app_main.h/app_cfg.h/app_link_util.h/app_ble_gap.h).

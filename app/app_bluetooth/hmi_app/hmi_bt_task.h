@@ -28,6 +28,7 @@
  */
 
 bool hmi_send_msg_to_bt_task(T_IO_MSG *p_msg);
+bool hmi_bt_task_start_ota_mode(void);
 /** End of PERIPH_BT_TASK
 * @}
 */

@@ -7,6 +7,7 @@
 #include "hmi_ble_ctrl.h"
 #include "hmi_ble_nus.h"
 #include "app_ota_service.h"
+#include "app_ota_mode.h"
 
 static void app_gatt_svc_general_cb(uint8_t type, void *p_data)
 {
@@ -27,6 +28,14 @@ static void app_gatt_svc_general_cb(uint8_t type, void *p_data)
 
 void hmi_ble_profile_init(void)
 {
+    if (app_ota_mode_is_active())
+    {
+        gatt_svc_init(GATT_SVC_USE_EXT_SERVER, 1);
+        gatt_svc_register_general_cb(app_gatt_svc_general_cb);
+        app_ota_service_init();
+        return;
+    }
+
     gatt_svc_init(GATT_SVC_USE_EXT_SERVER, 4);   /* +1 for the OTA/DFU service */
     gatt_svc_register_general_cb(app_gatt_svc_general_cb);
     hmi_ble_ctrl_init();
