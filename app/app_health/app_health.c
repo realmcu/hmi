@@ -71,8 +71,9 @@ void app_health_get_today(health_daily_rollup_t *out)
     health_worker_get_today(out);
 }
 
-/* Called from either app_task or the worker task. Keep it short: the event bus
- * copies the u32 payload into its bounded queue. */
+/* Steady-state pedometer updates are limited to 1 Hz by health_worker, while
+ * lifecycle and TSDB-flush paths publish immediately. The sysval bridge
+ * snapshots distance and calories when it handles the event. */
 void app_health_publish_steps_updated(uint32_t steps)
 {
     int rc = app_event_publish(EVT_HEALTH_STEPS_UPDATED,

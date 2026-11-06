@@ -155,7 +155,8 @@ void health_worker_on_bucket_boundary(uint32_t boundary_sec);
 /* Local day rolled over: zero today's running totals. */
 void health_worker_on_day_changed(void);
 
-/* Publish the latest daily step total after a successful TSDB append.
+/* Publish that today's health rollup changed. The event payload is the step
+ * total for compatibility, but consumers may snapshot all today metrics.
  * Implemented in app_health.c and callable from app_task or the worker task. */
 void app_health_publish_steps_updated(uint32_t steps);
 

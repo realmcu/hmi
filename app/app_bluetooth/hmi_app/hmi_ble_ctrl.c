@@ -43,8 +43,13 @@ static void *s_hmi_recv_queue_handle;
 static void *s_bt_done_sem;
 static int   s_bt_send_result;
 
-static uint16_t hmi_conn_handle    = HMI_CONN_HANDLE_INVALID;
+static volatile uint16_t hmi_conn_handle = HMI_CONN_HANDLE_INVALID;
 static bool     hmi_event_cccd_enabled = false;
+
+bool hmi_ble_ctrl_is_connected(void)
+{
+    return hmi_conn_handle != HMI_CONN_HANDLE_INVALID;
+}
 
 static void app_hmi_send_data_cb(T_EXT_SEND_DATA_RESULT result)
 {

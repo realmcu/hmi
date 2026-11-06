@@ -43,6 +43,7 @@
 #include <os_sched.h>
 #include <os_sync.h>
 #include <os_task.h>
+#include <zephyr/kernel.h>
 
 #include "gsensor/rtk_gsa.h"
 #if HEALTH_USE_SD001_SAMPLE
@@ -80,6 +81,7 @@ typedef struct
 static health_acc_t s_bucket_acc;
 static uint8_t      s_bucket_last_mode;
 static uint32_t     s_bucket_samples;
+static uint32_t     s_last_today_publish_ms;
 
 /* Zeroed by health_worker_on_day_changed(); app_time owns the notion of
  * "the wall-clock day rolled over", so no day index is tracked here. */
@@ -126,7 +128,9 @@ void health_worker_on_day_changed(void)
 {
     mutex_take(s_state_mutex);
     memset(&s_today_acc, 0, sizeof(s_today_acc));
+    s_last_today_publish_ms = k_uptime_get_32();
     mutex_give(s_state_mutex);
+    app_health_publish_steps_updated(0);
     APP_LOGI("wall-clock day changed: today totals reset");
 }
 
@@ -157,7 +161,18 @@ static void pedometer_update_cb(gsa_pedo_info_t *info)
 
     uint32_t bucket_steps = s_bucket_acc.steps;
     uint32_t today_steps  = s_today_acc.steps;
+    uint32_t now_ms = k_uptime_get_32();
+    bool publish_today = (now_ms - s_last_today_publish_ms) >= 1000u;
+    if (publish_today)
+    {
+        s_last_today_publish_ms = now_ms;
+    }
     mutex_give(s_state_mutex);
+
+    if (publish_today)
+    {
+        app_health_publish_steps_updated(today_steps);
+    }
 
     APP_LOGI("pedo update: +%u steps mode=%u dist=%ucm bucket=%u today=%u",
              (unsigned)info->steps, (unsigned)info->mode,
@@ -368,8 +383,10 @@ static void discard_today(void)
     s_bucket_last_mode = 0u;
     s_bucket_samples   = 0u;
     memset(&s_today_acc, 0, sizeof(s_today_acc));
+    s_last_today_publish_ms = k_uptime_get_32();
     mutex_give(s_state_mutex);
     mutex_give(s_flush_mutex);
+    app_health_publish_steps_updated(0);
 }
 
 /* --------------------------------------------------------------
@@ -521,6 +538,7 @@ int health_worker_start(void)
      * per-bucket records already in the TSDB remain the durable history. */
     mutex_take(s_state_mutex);
     memset(&s_today_acc, 0, sizeof(s_today_acc));
+    s_last_today_publish_ms = k_uptime_get_32();
     mutex_give(s_state_mutex);
 
     key = os_lock();
@@ -537,6 +555,7 @@ int health_worker_start(void)
         APP_LOGE("health worker task creation failed");
         return -ENOMEM;
     }
+    app_health_publish_steps_updated(0);
     return 0;
 }
 

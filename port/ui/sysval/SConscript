@@ -1,0 +1,10 @@
+import os
+from building import *
+
+cwd = GetCurrentDir()
+src = Glob('*.c') + Glob('*.cpp')
+ui_user_dir = os.path.abspath(os.path.join(cwd, '../../../../ui/src/user'))
+CPPPATH = [cwd, ui_user_dir]
+
+group = DefineGroup('port/ui/sysval', src, depend=[''], CPPPATH=CPPPATH)
+Return('group')

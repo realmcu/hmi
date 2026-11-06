@@ -27,9 +27,9 @@
 
 | 模块 | 发布事件 | 发布时机 |
 | --- | --- | --- |
-| app_power | `EVT_POWER_LEVEL` (`0x0200`) | （规划）电量百分比变化时发布 |
-| app_power | `EVT_POWER_LOW` (`0x0201`) | （规划）跌破低电阈值时发布，边沿触发 |
-| app_power | `EVT_POWER_CHARGING` (`0x0202`) | （规划）充放电状态变化时发布 |
+| app_power | `EVT_POWER_LEVEL` (`0x0200`) | 电量百分比变化时发布 |
+| app_power | `EVT_POWER_LOW` (`0x0201`) | 跌破 20% 时发布，边沿触发 |
+| app_power | `EVT_POWER_CHARGING` (`0x0202`) | 充放电状态变化时发布 |
 
 ### 订阅
 
@@ -101,7 +101,7 @@ L2 协议命令处理（hmi_l2）。
 
 | 模块 | 发布事件 | 发布时机 |
 | --- | --- | --- |
-| app_health | `EVT_HEALTH_STEPS_UPDATED` (`0x0500`) | 计步 worker 成功写入 TSDB 后发布当日总步数 |
+| app_health | `EVT_HEALTH_STEPS_UPDATED` (`0x0500`) | 当日健康汇总变化时发布，最多 1 Hz；启动、归零和 TSDB 落库时也会发布 |
 | app_health | `EVT_HEALTH_HR_UPDATED` (`0x0501`) | （规划）心率测量更新时发布 |
 | app_health | `EVT_HEALTH_SPO2_UPDATED` (`0x0502`) | （规划）血氧测量更新时发布 |
 | app_health | `EVT_HEALTH_SLEEP_UPDATED` (`0x0503`) | （规划）睡眠数据更新时发布 |
