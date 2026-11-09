@@ -10,7 +10,7 @@
  *
  *   posix_read(/dev/gsensor0)
  *     -> scale mg -> Q9 counts (1g ~ 512 in the 2g range)
- *     -> rtk_gsa_fsm(accs)
+ *     -> health_algorithm_feed()
  *        -> pedometer_update_cb accumulates into BOTH s_bucket_acc (what gets
  *           persisted) and s_today_acc (what a watch face reads). Feeding the
  *           day total here rather than at flush time is why "today" tracks a
@@ -45,7 +45,7 @@
 #include <os_task.h>
 #include <zephyr/kernel.h>
 
-#include "gsensor/rtk_gsa.h"
+#include "health_algorithm.h"
 #if HEALTH_USE_SD001_SAMPLE
 #include "sample_25hz_sd001.h"
 #endif
@@ -134,10 +134,11 @@ void health_worker_on_day_changed(void)
     APP_LOGI("wall-clock day changed: today totals reset");
 }
 
-static void pedometer_update_cb(gsa_pedo_info_t *info)
+static void pedometer_update_cb(const health_pedometer_t *info, void *context)
 {
-    uint32_t dist_cm  = (uint32_t)info->distance >> 4;
-    uint32_t cal_x100 = ((uint32_t)info->calories * 100u) >> 2;
+    (void)context;
+    uint32_t dist_cm  = (uint32_t)info->distance_q4_cm >> 4;
+    uint32_t cal_x100 = ((uint32_t)info->calories_q2 * 100u) >> 2;
 
     mutex_take(s_state_mutex);
 
@@ -179,26 +180,28 @@ static void pedometer_update_cb(gsa_pedo_info_t *info)
              (unsigned)dist_cm, (unsigned)bucket_steps, (unsigned)today_steps);
 }
 
-static bool gsa_algorithm_init(uint32_t odr_hz)
+static bool health_algorithm_driver_init(uint32_t odr_hz)
 {
-    /* rtk_gsa_init takes pointers that MUST outlive the SDK's use of them;
+    /* health_algorithm_init takes pointers that MUST outlive the SDK's use of them;
      * keep them file-static so the memory is trivially long-lived. */
-    static usr_prof_t prof =
+    static health_profile_t profile =
     {
-        .gender = 1, .age = 30,
-        .height = 170.0f, .weight = 65.0f,
+        .weight_q1 = 130, .height_q1 = 340,
+        .age_years = 30, .male = true,
     };
-    static gsa_gs_inf_t gs =
+    static health_sensor_t sensor =
     {
-        .xpos = GS_XPOS_RIGHT,
-        .zpos = GS_ZPOS_UP,
+        .odr_q10 = HEALTH_ODR_HZ * 1024u,
+        .x_position = 0,
+        .z_position = 0,
     };
-    static gsa_cbs_t cbs =
+    static health_callbacks_t callbacks =
     {
-        .pedo_cb = pedometer_update_cb,
+        .pedometer = pedometer_update_cb,
     };
-    gs.odr = (float)odr_hz;
-    return rtk_gsa_init(&prof, &gs, &cbs);
+    sensor.odr_q10 = odr_hz * 1024u;
+    health_result_t result = health_algorithm_init(&profile, &sensor, &callbacks);
+    return result == HEALTH_OK || result == HEALTH_SLEEP_ONLY;
 }
 
 /* Put a failed flush's snapshot back into the bucket, folded in with whatever
@@ -423,9 +426,9 @@ static void worker_fn(void *context)
         posix_close(gs);
         goto done;
     }
-    if (!gsa_algorithm_init(HEALTH_ODR_HZ))
+    if (!health_algorithm_driver_init(HEALTH_ODR_HZ))
     {
-        APP_LOGE("rtk_gsa_init failed");
+        APP_LOGE("health_algorithm_init failed");
         posix_close(gs);
         goto done;
     }
@@ -475,7 +478,16 @@ static void worker_fn(void *context)
                 (int16_t)((axis.z * 512) / 1000),
             };
 #endif
-            rtk_gsa_fsm(accs);
+            health_input_t input =
+            {
+                .xyz = accs,
+                .count = 1,
+                .last_sample_ms = k_uptime_get_32(),
+                .hr_bpm = 0,
+                .hr_updated = false,
+                .worn = true,
+            };
+            (void)health_algorithm_feed(&input);
         }
 
         os_delay(period_ms);

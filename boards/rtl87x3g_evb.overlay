@@ -14,6 +14,21 @@
 	};
 };
 
+/* HealthAlgorithm adds about 3 KiB of static RAM. Move 4 KiB from the
+ * separate DTCM heap into the linked DTCM region. */
+&dtcm {
+	reg = <0x2000b800 DT_SIZE_K(64)>;
+};
+
+&{/dtcm} {
+	/delete-node/ memory@2001a800;
+
+	heap_dtcm: memory@2001b800 {
+		device_type = "heap dtcm region";
+		reg = <0x2001b800 DT_SIZE_K(18)>;
+	};
+};
+
 &display_lcd {
 	status = "okay";
 	/* ST77916 360x360 QSPI: override dtsi default (480x272) */

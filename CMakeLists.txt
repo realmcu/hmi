@@ -66,8 +66,15 @@ set(APP_TARGET_NAME app)
 # 这里显式挂载自带 CMakeLists.txt 的组件。
 # FlashDB / posix 无需在此处理 —— 它们由 port/flashdb、port/posix 显式引用源码。
 add_subdirectory(${HMI_COMPONENT_ROOT}/protocol   ${CMAKE_CURRENT_BINARY_DIR}/component/protocol)
-add_subdirectory(${HMI_COMPONENT_ROOT}/gsensor-algorithm
-                 ${CMAKE_CURRENT_BINARY_DIR}/component/gsensor-algorithm)
+set(GSENSOR_ALGORITHM_ROOT ${HMI_COMPONENT_ROOT}/gsensor-algorithm)
+file(GLOB GSENSOR_ALGORITHM_SOURCES ${GSENSOR_ALGORITHM_ROOT}/src/*.c)
+if(NOT GSENSOR_ALGORITHM_SOURCES)
+    message(FATAL_ERROR "gsensor-algorithm: no sources found under ${GSENSOR_ALGORITHM_ROOT}/src")
+endif()
+target_sources(${APP_TARGET_NAME} PRIVATE ${GSENSOR_ALGORITHM_SOURCES})
+target_include_directories(${APP_TARGET_NAME} PUBLIC
+    ${GSENSOR_ALGORITHM_ROOT}/include
+    ${GSENSOR_ALGORITHM_ROOT}/src)
 
 # HoneyGUI Designer 导出的产品 UI（west project watch_ui，同样挂在 topdir）。
 # 不拷贝生成产物进固件树，直接以 ui/ 为源目录编译，避免几百个生成文件的副本。
