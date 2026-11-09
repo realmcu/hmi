@@ -38,7 +38,7 @@
 
 
 #define LCD_SECTION_HEIGHT                   20
-#define LCD_USE_PFB                          1
+#define LCD_USE_PFB                          0
 
 #define PSRAM_GUI_START_ADDR                EB_PSRAM_DC_FRAMBUFFER_BASE
 #define PSRAM_FRAME_BUF1_ADDR               PSRAM_GUI_START_ADDR
@@ -94,7 +94,7 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
         return;
     }
     
-    rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_NO_TE);
+    rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_HW_TE);
     
     uint32_t transfer_height = (dc->section_count == dc->section_total - 1) ? 
                                (dc->screen_height - dc->section_count * dc->fb_height) : 
@@ -147,7 +147,7 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
         return;
     }
     
-    rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_NO_TE);
+    rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_HW_TE);
     rtk_lcd_hal_transfer_done();
     // SCB_CleanInvalidateDCache();
     rtk_lcd_hal_set_window(0, dc->fb_height * dc->section_count, dc->fb_width, dc->fb_height);
@@ -165,10 +165,11 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
     
     uint32_t total_section_cnt = (rtk_lcd_hal_get_height() / LCD_SECTION_HEIGHT +
                                   ((rtk_lcd_hal_get_height() % LCD_SECTION_HEIGHT) ? 1 : 0));
+    
+    rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_NO_TE);
 
     if (dc->section_count == 0)
     {
-        rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_NO_TE);
         rtk_lcd_hal_transfer_done();
 
         extern void rtk_lcd_hal_set_brightness(uint8_t badge_brightness);
@@ -187,7 +188,6 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
     {
         uint32_t last_height = dc->screen_height - dc->section_count * dc->fb_height;
         rtk_lcd_hal_transfer_done();
-        rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_NO_TE);
         rtk_lcd_hal_set_window(0, dc->fb_height * dc->section_count, dc->fb_width, last_height);
         rtk_lcd_hal_start_transfer(dc->frame_buf, dc->fb_width * last_height);
         rtk_lcd_hal_transfer_done();
@@ -195,7 +195,6 @@ void port_gui_lcd_update(struct gui_dispdev *dc)
     else
     {
         rtk_lcd_hal_transfer_done();
-        rtk_lcd_hal_set_TE_type(LCDC_TE_TYPE_NO_TE);
         rtk_lcd_hal_set_window(0, dc->fb_height * dc->section_count, dc->fb_width, dc->fb_height);
         rtk_lcd_hal_start_transfer(dc->frame_buf, dc->fb_width * dc->fb_height);
     }
