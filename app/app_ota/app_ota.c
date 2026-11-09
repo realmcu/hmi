@@ -399,13 +399,16 @@ static uint8_t app_ota_start_dfu_handle(uint8_t *p_data)
                                 &ota_struct.bp_level);
     }
 
-    /* RTL87x3G uses the task-safe region unlock rather than writing the global
-     * BP level directly. Single-bank normal OTA first lands in OTA_TMP, so both
-     * the active bank and TMP must be writable before the first CRC command. */
-    if (!fmc_flash_nor_unlock_block_protect(
-            flash_partition_addr_get(PARTITION_FLASH_OTA_BANK_0)) ||
-        !fmc_flash_nor_unlock_block_protect(
-            flash_partition_addr_get(PARTITION_FLASH_OTA_TMP)))
+    /* Single-bank normal OTA first lands in OTA_TMP, so both the active bank
+     * and TMP must be writable before the first CRC command. The SDK BOM used
+     * by this product exposes the BP-level API, not the newer region-unlock
+     * helper. */
+    if (!fmc_flash_nor_set_bp_lv(
+            flash_partition_addr_get(PARTITION_FLASH_OTA_BANK_0),
+            DISABLE_FLASH_BP) ||
+        !fmc_flash_nor_set_bp_lv(
+            flash_partition_addr_get(PARTITION_FLASH_OTA_TMP),
+            DISABLE_FLASH_BP))
     {
         ota_struct.ota_flag.is_ota_process = false;
         results = DFU_ARV_FAIL_OPERATION;
