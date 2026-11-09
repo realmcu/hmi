@@ -13,7 +13,6 @@
 #include "section.h"
 #include "app_power_manage.h"
 #include "app_dlps.h"
-#include "lcd_st7801n_466_466_qspi.h"
 #include "dma_channel.h"
 #include "rtl_ppe.h"
 #include "ebadge_psram_map.h"
@@ -25,11 +24,21 @@
     #undef DRV_LCD_HEIGHT
 #endif
 
+#ifdef CONFIG_REALTEK_LCD_ST7801N_466_466_QSPI
+#include "lcd_st7801n_466_466_qspi.h"
 #define DRV_LCD_WIDTH   466
 #define DRV_LCD_HEIGHT  466
+#endif
+
+#ifdef CONFIG_REALTEK_LCD_JD9855_360_360_QSPI
+#include "lcd_jd9855_360_360_qspi.h"
+#define DRV_LCD_WIDTH   360
+#define DRV_LCD_HEIGHT  360
+#endif
+
 
 #define LCD_SECTION_HEIGHT                   20
-#define LCD_USE_PFB                          0
+#define LCD_USE_PFB                          1
 
 #define PSRAM_GUI_START_ADDR                EB_PSRAM_DC_FRAMBUFFER_BASE
 #define PSRAM_FRAME_BUF1_ADDR               PSRAM_GUI_START_ADDR
