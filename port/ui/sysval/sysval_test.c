@@ -9,7 +9,6 @@
 #include "gui_sysval_keys.h"
 #include "ui_sysval.h"
 
-#include <app_version.h>
 #include <zephyr/shell/shell.h>
 
 static int cmd_sysval_get(const struct shell *sh, size_t argc, char **argv)
@@ -75,7 +74,6 @@ static int cmd_sysval_get(const struct shell *sh, size_t argc, char **argv)
         shell_print(sh, "system/time = unavailable");
         shell_print(sh, "system/date = unavailable");
     }
-    shell_print(sh, "device/firmware_version = %s", APP_VERSION_STRING);
     return 0;
 }
 

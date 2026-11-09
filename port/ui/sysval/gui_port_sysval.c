@@ -10,7 +10,6 @@
 #include "gui_sysval.h"
 #include "gui_sysval_adapter.h"
 
-#include <app_version.h>
 #include <stddef.h>
 
 static void respond_int(gui_sysval_request_t *request, int32_t value)
@@ -100,12 +99,6 @@ static void get_calorie_target(gui_sysval_request_t *request)
     respond_int(request, APP_UI_SYSVAL_CALORIE_TARGET_DEFAULT);
 }
 
-static void get_firmware_version(gui_sysval_request_t *request)
-{
-    gui_sysval_value_t out = gui_sysval_value_str(APP_VERSION_STRING);
-    gui_sysval_respond(request, GUI_SYSVAL_STATUS_OK, &out);
-}
-
 static void get_unavailable(gui_sysval_request_t *request)
 {
     respond_error(request);
@@ -186,12 +179,6 @@ static gui_sysval_adapter_t calorie_target_adapter = {
     .get_request = get_calorie_target,
 };
 
-static gui_sysval_adapter_t firmware_adapter = {
-    .key = GUI_SYSVAL_KEY_DEVICE_FIRMWARE_VERSION,
-    .type = GUI_SYSVAL_TYPE_STR,
-    .get_request = get_firmware_version,
-};
-
 static gui_sysval_adapter_t heart_rate_adapter = {
     .key = GUI_SYSVAL_KEY_HEALTH_HEART_RATE,
     .type = GUI_SYSVAL_TYPE_INT,
@@ -232,7 +219,6 @@ static int gui_port_sysval_init(void)
     gui_sysval_adapter_register(&calories_adapter);
     gui_sysval_adapter_register(&step_target_adapter);
     gui_sysval_adapter_register(&calorie_target_adapter);
-    gui_sysval_adapter_register(&firmware_adapter);
     gui_sysval_adapter_register(&heart_rate_adapter);
     gui_sysval_adapter_register(&sleep_deep_adapter);
     gui_sysval_adapter_register(&sleep_light_adapter);
