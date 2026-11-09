@@ -17,6 +17,8 @@
 #include "lcd_st77916_360_360_qspi.h"
 #elif CONFIG_REALTEK_LCD_ST7801N_466_466_QSPI
 #include "lcd_st7801n_466_466_qspi.h"
+#elif CONFIG_REALTEK_LCD_JD9855_360_360_QSPI
+#include "lcd_jd9855_360_360_qspi.h"
 #else
 #error "posix_port_lcd.c: no supported panel Kconfig enabled"
 #endif
