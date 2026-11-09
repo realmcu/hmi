@@ -7,7 +7,7 @@
  *
  *  Offset  Size  Field
  *  0       1     Magic  (0xAB)
- *  1       1     Version/Flags  [7:6]=reserve  [5]=err_flag  [4]=ack_flag  [3:0]=ver
+ *  1       1     Version/Flags  [7]=reserve  [6]=ack_request  [5]=err_flag  [4]=ack_flag  [3:0]=ver
  *  2       2     Payload length (BE, MSB first)
  *  4       2     CRC16/ARC over payload only (BE, MSB first)
  *  6       2     Sequence ID (BE, MSB first)
@@ -19,8 +19,10 @@
 #define PROTO_HDR_LEN           8
 #define PROTO_MAX_FRAME_LEN     (PROTO_HDR_LEN + PROTO_MAX_PAYLOAD_LEN)
 
+#define PROTO_FLAG_ACK_REQUEST  (1u << 6)   /* bit[6] per spec */
 #define PROTO_FLAG_ACK          (1u << 4)   /* bit[4] per spec */
 #define PROTO_FLAG_ERR          (1u << 5)   /* bit[5] per spec */
+#define PROTO_FLAG_MASK         (PROTO_FLAG_ACK_REQUEST | PROTO_FLAG_ERR | PROTO_FLAG_ACK)
 
 #define PROTO_MAX_RETRY         3
 #define PROTO_ACK_TIMEOUT_MS    3000
@@ -44,6 +46,8 @@ static proto_recv_cb_t  s_recv_cb  = NULL;
 static void            *s_ack_sem  = NULL;
 static bool     s_ack_ok       = false;
 static uint16_t s_seq_id       = 0;
+static uint16_t s_wait_ack_seq = 0;
+static bool     s_wait_ack_armed = false;
 
 static uint8_t  s_tx_frame[PROTO_MAX_FRAME_LEN];
 static uint16_t s_tx_frame_len = 0;
@@ -88,7 +92,7 @@ static uint16_t build_frame(uint8_t *buf, uint8_t flags,
                             uint16_t seq, const uint8_t *payload, uint16_t len)
 {
     buf[HDR_OFF_MAGIC]  = PROTO_MAGIC;
-    buf[HDR_OFF_VER]    = (PROTO_VERSION & 0x0F) | (flags & 0x30);
+    buf[HDR_OFF_VER]    = (PROTO_VERSION & 0x0F) | (flags & PROTO_FLAG_MASK);
     buf[HDR_OFF_LEN_LO] = (uint8_t)(len & 0xFF);
     buf[HDR_OFF_LEN_HI] = (uint8_t)(len >> 8);
     buf[HDR_OFF_SEQ_LO] = (uint8_t)(seq & 0xFF);
@@ -186,24 +190,35 @@ void proto_handle(const uint8_t *data, uint16_t len)
                                    | ((uint16_t)s_rx_buf[HDR_OFF_CRC_HI] << 8);
             uint16_t seq         = (uint16_t)s_rx_buf[HDR_OFF_SEQ_LO]
                                    | ((uint16_t)s_rx_buf[HDR_OFF_SEQ_HI] << 8);
-            uint8_t  flags       = s_rx_buf[HDR_OFF_VER] & 0x30;
+            uint8_t  flags       = s_rx_buf[HDR_OFF_VER] & PROTO_FLAG_MASK;
 
             bool crc_ok = (frame_crc(s_rx_buf, payload_len) == rx_crc);
 
             if (flags & PROTO_FLAG_ACK)
             {
-                s_ack_ok = crc_ok && !(flags & PROTO_FLAG_ERR);
-                os_sem_give(s_ack_sem);
+                if ((flags & PROTO_FLAG_ACK_REQUEST) == 0 &&
+                    s_wait_ack_armed && seq == s_wait_ack_seq)
+                {
+                    s_ack_ok = crc_ok && !(flags & PROTO_FLAG_ERR);
+                    s_wait_ack_armed = false;
+                    os_sem_give(s_ack_sem);
+                }
             }
             else
             {
                 if (!crc_ok)
                 {
-                    proto_send_ack(seq, false);
+                    if (flags & PROTO_FLAG_ACK_REQUEST)
+                    {
+                        proto_send_ack(seq, false);
+                    }
                 }
                 else
                 {
-                    proto_send_ack(seq, true);
+                    if (flags & PROTO_FLAG_ACK_REQUEST)
+                    {
+                        proto_send_ack(seq, true);
+                    }
                     if (s_recv_cb && payload_len > 0)
                     {
                         s_recv_cb(s_rx_buf + PROTO_HDR_LEN, payload_len);
@@ -229,6 +244,8 @@ void proto_init(proto_send_fn_t send, proto_receive_fn_t receive, proto_recv_cb_
     s_rx_offset    = 0;
     s_rx_expected  = 0;
     s_ack_ok       = false;
+    s_wait_ack_seq = 0;
+    s_wait_ack_armed = false;
 
     os_sem_create(&s_ack_sem, "protoack", 0, 1);
 }
@@ -242,7 +259,7 @@ int proto_receive(uint8_t *buf, uint16_t max_len)
     return s_receive(buf, max_len);
 }
 
-bool proto_send(const uint8_t *data, uint16_t len)
+bool proto_send_ex(const uint8_t *data, uint16_t len, bool ack_required)
 {
     if (!s_send || !data || len == 0 || len > PROTO_MAX_PAYLOAD_LEN)
     {
@@ -250,10 +267,20 @@ bool proto_send(const uint8_t *data, uint16_t len)
     }
 
     uint16_t seq = s_seq_id++;
-    s_tx_frame_len = build_frame(s_tx_frame, 0, seq, data, len);
+    uint8_t flags = ack_required ? PROTO_FLAG_ACK_REQUEST : 0;
+    s_tx_frame_len = build_frame(s_tx_frame, flags, seq, data, len);
+
+    if (!ack_required)
+    {
+        s_wait_ack_armed = false;
+        return s_send(s_tx_frame, s_tx_frame_len) >= 0;
+    }
 
     /* drain any stale ACK left over from a previous timed-out send */
     while (os_sem_take(s_ack_sem, 0)) { }
+
+    s_wait_ack_seq = seq;
+    s_wait_ack_armed = true;
 
     for (int attempt = 0; attempt < PROTO_MAX_RETRY; attempt++)
     {
@@ -261,6 +288,7 @@ bool proto_send(const uint8_t *data, uint16_t len)
 
         if (s_send(s_tx_frame, s_tx_frame_len) < 0)
         {
+            s_wait_ack_armed = false;
             return false;
         }
 
@@ -271,9 +299,21 @@ bool proto_send(const uint8_t *data, uint16_t len)
 
         if (s_ack_ok)
         {
+            s_wait_ack_armed = false;
             return true;
         }
     }
 
+    s_wait_ack_armed = false;
     return false;
+}
+
+bool proto_send(const uint8_t *data, uint16_t len)
+{
+    return proto_send_ex(data, len, true);
+}
+
+bool proto_send_no_ack(const uint8_t *data, uint16_t len)
+{
+    return proto_send_ex(data, len, false);
 }

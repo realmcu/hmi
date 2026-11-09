@@ -51,6 +51,25 @@ void proto_init(proto_send_fn_t send, proto_receive_fn_t receive, proto_recv_cb_
 bool proto_send(const uint8_t *data, uint16_t len);
 
 /**
+ * @brief  Send a framed payload with an explicit ACK policy.
+ *
+ * When @p ack_required is true, the ACK request bit is set and the call blocks
+ * until a matching ACK arrives or all retries time out. When false, the frame
+ * is sent once and the call returns after the transport send completes.
+ *
+ * @param data          Payload pointer; must not exceed PROTO_MAX_PAYLOAD_LEN bytes.
+ * @param len           Payload length.
+ * @param ack_required  Whether the receiver must return an L1 ACK.
+ * @return true on successful send policy completion, false on failure.
+ */
+bool proto_send_ex(const uint8_t *data, uint16_t len, bool ack_required);
+
+/**
+ * @brief  Send a framed payload without requesting or waiting for an L1 ACK.
+ */
+bool proto_send_no_ack(const uint8_t *data, uint16_t len);
+
+/**
  * @brief  Blocking raw receive; called in a loop by proto_task.
  *
  * @param buf      Receive buffer; recommended size PROTO_MAX_PAYLOAD_LEN + 8.
