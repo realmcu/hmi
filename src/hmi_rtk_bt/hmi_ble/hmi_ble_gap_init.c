@@ -29,56 +29,61 @@
 #define GATT_UUID128_BEACON_SERVICE_ADV           0x12, 0xA2, 0x4D, 0x2E, 0xFE, 0x14, 0x48, 0x8e, 0x93, 0xD2, 0x17, 0x3C, 0xFF, 0x02, 0x00, 0x00
 #define GATT_UUID128_OTA_ADV    0x12, 0xA2, 0x4D, 0x2E, 0xFE, 0x14, 0x48, 0x8e, 0x93, 0xD2, 0x17, 0x3C, 0xFF, 0xD0, 0x00, 0x00
 
+/* Advertised identity, see PRODUCT spec:
+ *   ADV_IND  (31 B, fully used) = flags + 128-bit HMIS UUID + manufacturer data
+ *   SCAN_RSP                    = complete local name
+ */
+#define HMI_ADV_NAME            "HMI-Dashboard"
+
+/* HMIS service 484D4953-0000-1000-8000-00805F9B34FB, little-endian. */
+#define HMI_ADV_UUID128_HMIS \
+    0xFB, 0x34, 0x9B, 0x5F, 0x80, 0x00, 0x00, 0x80, \
+    0x00, 0x10, 0x00, 0x00, 0x53, 0x49, 0x4D, 0x48
+
+#define HMI_ADV_COMPANY_ID_LO   0x5D
+#define HMI_ADV_COMPANY_ID_HI   0x00
+
+/* Manufacturer payload (6 B):
+ *   [0] payload version, [1] model (1=RTL8773G 2=RTL8773E 3=RTL8782),
+ *   [2] capabilities (bit0 projection, bit1 bonded, bit2 charging),
+ *   [3] battery %, [4..5] short device id (BD address low 16 bits, LSB first)
+ */
+#define HMI_ADV_MODEL_ID        0x02U   /* RTL8773E */
+#define HMI_ADV_CAP_PROJECTION  0x01U
+#define HMI_ADV_PAYLOAD_IDX     25U     /* 3 (flags) + 18 (uuid) + 4 (mfr hdr) */
+
 // GAP - SCAN RSP data (max size = 31 bytes)
 static uint8_t scan_rsp_data[] =
 {
-    /* Service */
-    17,             /* length     */
-    GAP_ADTYPE_128BIT_MORE,            /* type="Complete 128-bit UUIDs available" */
-    GATT_UUID128_OTA_ADV,
-
-    /* place holder for Local Name, filled by BT stack. if not present */
-    /* BT stack appends Local Name.                                    */
-    0x03,           /* length     */
-    GAP_ADTYPE_APPEARANCE,            /* type="Appearance" */
-    LO_WORD(GAP_GATT_APPEARANCE_WRIST_WORN),
-    HI_WORD(GAP_GATT_APPEARANCE_WRIST_WORN),
+    /* Complete local name: 1 (type) + 13 (chars) */
+    0x0E,
+    GAP_ADTYPE_LOCAL_NAME_COMPLETE,
+    'H', 'M', 'I', '-', 'D', 'a', 's', 'h', 'b', 'o', 'a', 'r', 'd',
 };
 
-// GAP - Advertisement data (max size = 31 bytes, though this is
-// best kept short to conserve power while advertisting)
-// **note**: adverdata array will used to store device name which can be re-configured, so except to
-// the first 5 Bytes, remaining 26 Byte space will used for device name configure.
+// GAP - Advertisement data (max size = 31 bytes). This array is full, so the
+// stack has no room to append the local name; the name lives in scan_rsp_data.
 uint8_t adv_data[] =
 {
-    /* Core spec. Vol. 3, Part C, Chapter 18 */
-    /* Flags */
-    0x02,            /* length     */
+    /* Flags: LE General Discoverable + BR/EDR not supported */
+    0x02,
     GAP_ADTYPE_FLAGS,
     GAP_ADTYPE_FLAGS_GENERAL | GAP_ADTYPE_FLAGS_BREDR_NOT_SUPPORTED,
 
-    /* Local name */
-    0x07,           /* length     */
-    GAP_ADTYPE_LOCAL_NAME_COMPLETE, /* type="Complete local name" */
-    'R', 'T', 'K', 'H', 'M', 'I', /* RTKHMI */
+    /* Complete 128-bit UUID list: HMIS service */
+    0x11,
+    GAP_ADTYPE_128BIT_COMPLETE,
+    HMI_ADV_UUID128_HMIS,
 
-#ifdef CONFIG_REALTEK_APP_NAVI_PROJECTION
-    /* Services: legacy FEE7 plus Navigation FFD0 (fits in the 31-byte payload). */
-    0x05,
-    GAP_ADTYPE_16BIT_COMPLETE,
-    0xE7, 0xFE,
-    0xD0, 0xFF,
-#else
-    /* Service: legacy FEE7. */
-    0x03,
-    GAP_ADTYPE_16BIT_COMPLETE,
-    0xE7, 0xFE,
-#endif
-    /* Manufacture specified data*/
-    0x09,           /* length     */
-    0xFF,           /* type: manufacture specific data*/
-    0xC5, 0xFE,     /* company id */
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* mac address, filled at runtime */
+    /* Manufacturer specific data: company id + 6-byte payload */
+    0x09,
+    GAP_ADTYPE_MANUFACTURER_SPECIFIC,
+    HMI_ADV_COMPANY_ID_LO, HMI_ADV_COMPANY_ID_HI,
+    0x01,                   /* payload version */
+    HMI_ADV_MODEL_ID,
+    HMI_ADV_CAP_PROJECTION, /* capabilities */
+    0x00,                   /* battery %, filled at runtime */
+    0x00, 0x00,             /* short device id, filled at runtime */
 };
 
 
@@ -98,7 +103,7 @@ void hmi_ble_gap_init(void)
     (void)log_module_trace_set(MODULE_BTM, LEVEL_TRACE, false);
 
     /* Device name and device appearance */
-    uint8_t  device_name[GAP_DEVICE_NAME_LEN] = "RTKHMI";
+    uint8_t  device_name[GAP_DEVICE_NAME_LEN] = HMI_ADV_NAME;
     uint16_t appearance = GAP_GATT_APPEARANCE_WRIST_WORN;
     uint8_t  slave_init_mtu_req = true;
 
@@ -151,10 +156,9 @@ void hmi_ble_gap_init(void)
 
     uint8_t bt_bd_addr[6];
     gap_get_param(GAP_PARAM_BD_ADDR, bt_bd_addr);
-    for (uint8_t i = 0; i < GAP_BD_ADDR_LEN; i++)
-    {
-        adv_data[sizeof(adv_data) - GAP_BD_ADDR_LEN + i] = bt_bd_addr[GAP_BD_ADDR_LEN - 1U - i];
-    }
+    /* Short device id: BD address low 16 bits, LSB first. */
+    adv_data[HMI_ADV_PAYLOAD_IDX + 4U] = bt_bd_addr[0];
+    adv_data[HMI_ADV_PAYLOAD_IDX + 5U] = bt_bd_addr[1];
 #ifdef CONFIG_REALTEK_APP_NAVI_PROJECTION
     navi_projection_on_address_ready(bt_bd_addr);
 #endif
