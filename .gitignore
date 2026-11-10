@@ -8,6 +8,9 @@
 *.swo
 *~
 
+# Separate west project checked out under this repository
+/scripts/
+
 # Emacs
 \#*\#
 
@@ -106,4 +109,4 @@ Pylint.txt
 SphinxLint.txt
 TextEncoding.txt
 YAMLLint.txt
-
+VERSION

@@ -6,6 +6,8 @@
 
 #include <gatt.h>
 #include <stdlib.h>
+#include <stddef.h>
+#include <string.h>
 #include <bt_types.h>
 #include "trace.h"
 #include "ota_service.h"
@@ -14,6 +16,8 @@
 #include "app_ota.h"
 #include "gap_conn_le.h"
 #include "bt_gatt_svc.h"
+#include "fmc_api.h"
+#include "ota_ext.h"
 
 /** @defgroup  OTA_SERVICE OTA Service
     * @brief LE Service to implement OTA feature
@@ -619,6 +623,31 @@ static T_APP_RESULT ota_service_attr_read_cb(uint16_t conn_handle, uint16_t cid,
                 cause = APP_RESULT_PENDING;
             }
             free(device_info);
+        }
+        break;
+    case BLE_SERVICE_CHAR_APP_VERSION_INDEX:
+        {
+            uint8_t *app_version = malloc(sizeof(uint32_t));
+            uint64_t raw_version = 0;
+            uint32_t version = 0;
+            uint32_t image_addr = app_get_active_bank_addr(IMG_MCUAPP);
+
+            if (image_addr != 0)
+            {
+                fmc_flash_nor_read(image_addr + offsetof(T_IMG_HEADER_FORMAT, git_ver),
+                                   (uint8_t *)&raw_version, sizeof(raw_version));
+                version = (uint32_t)((raw_version >> 56) & 0xFF) |
+                          (uint32_t)(((raw_version >> 48) & 0xFF) << 8) |
+                          (uint32_t)(((raw_version >> 32) & 0xFFFF) << 16);
+            }
+            memcpy(app_version, &version, sizeof(version));
+            if (gatt_svc_read_confirm(conn_handle, cid, service_id,
+                                      attr_index, app_version + offset,
+                                      sizeof(uint32_t) - offset, sizeof(uint32_t), APP_RESULT_SUCCESS))
+            {
+                cause = APP_RESULT_PENDING;
+            }
+            free(app_version);
         }
         break;
     case BLE_SERVICE_CHAR_IMAGE_VERSION_FIRST_INDEX:

@@ -5,8 +5,9 @@
 #include "app_event.h"
 #include "app_event_defs.h"
 
-static void on_cmd_settings(const hmi_l2_kv_t *kvs, uint8_t n)
+static void on_cmd_settings(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
 {
+    (void)version;
     for (uint8_t i = 0; i < n; i++)
     {
         PROTO_LOG("L2 SETTINGS key=0x%02x val_len=%u",

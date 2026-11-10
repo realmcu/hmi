@@ -3,6 +3,13 @@
 
 menu "DeskMate Application"
 
+config DFU_NORMAL_OTA
+	bool "Enable normal OTA with dedicated OTA mode"
+	default y
+	help
+	  Keep the DFU service in the normal application, then switch through
+	  FFD1 into a dedicated OTA-only firmware mode before receiving an image.
+
 config RTK_BT_BREDR
 	bool "Enable Classic Bluetooth (BR/EDR) support"
 	default n

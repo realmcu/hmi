@@ -34,8 +34,9 @@ static void on_ble_disconnected(app_event_id_t id, const void *payload,
     memset(&s_last_info, 0, sizeof s_last_info);
 }
 
-static void on_cmd_conn_param(const hmi_l2_kv_t *kvs, uint8_t n)
+static void on_cmd_conn_param(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
 {
+    (void)version;
     for (uint8_t i = 0; i < n; i++)
     {
         if (kvs[i].key != HMI_L2_CONN_PARAM_REQ)

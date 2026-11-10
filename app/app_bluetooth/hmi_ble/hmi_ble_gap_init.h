@@ -21,6 +21,7 @@ extern "C" {
 #endif
 
 void hmi_ble_gap_init(void);
+void hmi_ble_gap_update_adv_identity(void);
 
 /** End of PERIPH_APP
 * @}

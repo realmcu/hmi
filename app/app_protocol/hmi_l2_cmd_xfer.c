@@ -1,7 +1,7 @@
 #include "hmi_l2_cmd_xfer.h"
 #include "hmi_l2.h"
 #include "hmi_proto.h"
-#include "hmi_protocal_task.h"    /* hmi_proto_post_call + l2_msg_t */
+#include "hmi_protocal_task.h"    /* hmi_proto_post_call + proto_msg_t */
 #include "proto_log.h"
 #include "app_event.h"
 #include "app_event_defs.h"
@@ -57,8 +57,9 @@ static void xfer_reset(void)
     s_xfer_next_seq = 0;
 }
 
-static void on_cmd_xfer(const hmi_l2_kv_t *kvs, uint8_t n)
+static void on_cmd_xfer(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
 {
+    (void)version;
     static uint32_t id = 0;
     /* flash db file: `rc` and `file` are file-scope (see top) so the disconnect
      * hook can abort a half-written file. */
@@ -243,7 +244,7 @@ static void hmi_l2_xfer_reset(void)
 /* Runs on l2_task (posted by the disconnect subscriber). Executing on l2_task
  * is essential: it serialises fdb_bf_abort against any DATA-frame fdb_bf_append
  * still queued ahead of us. Reset on app_task would race the flash writer. */
-static void xfer_reset_on_l2_task(l2_msg_t *p_msg)
+static void xfer_reset_on_l2_task(proto_msg_t *p_msg)
 {
     (void)p_msg;
     hmi_l2_xfer_reset();

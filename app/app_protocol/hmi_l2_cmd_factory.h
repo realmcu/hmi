@@ -1,6 +1,8 @@
 #ifndef _HMI_L2_CMD_FACTORY_H_
 #define _HMI_L2_CMD_FACTORY_H_
 
+#include "hmi_l2_cmd_ids.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

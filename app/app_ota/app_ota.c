@@ -9,6 +9,7 @@
  *============================================================================*/
 
 #include <string.h>
+#include <zephyr/kernel.h>
 #include <bt_types.h>
 #include <stddef.h>
 #include "trace.h"
@@ -17,6 +18,7 @@
 #include "ota_service.h"
 #include "app_timer.h"
 #include "app_ota.h"
+#include "app_ota_mode.h"
 #include "fmc_api.h"
 #include "gap_conn_le.h"
 #include "app_ble_gap.h"
@@ -150,6 +152,9 @@ static void app_ota_clear_local(uint8_t cause)
     {
         fmc_flash_nor_set_bp_lv(flash_partition_addr_get(PARTITION_FLASH_OTA_BANK_0),
                                 ota_struct.bp_level);
+        fmc_flash_nor_set_bp_lv(flash_partition_addr_get(PARTITION_FLASH_OTA_TMP),
+                                ota_struct.bp_level);
+        ota_struct.bp_level = 0;
     }
     memset(&ota_struct, 0, offsetof(T_APP_OTA_DB, test));
 }
@@ -336,6 +341,13 @@ static uint8_t app_ota_start_dfu_handle(uint8_t *p_data)
         return results;
     }
 
+#if CONFIG_DFU_NORMAL_OTA
+    if (!app_ota_mode_is_active())
+    {
+        return DFU_ARV_FAIL_OPERATION;
+    }
+#endif
+
     if (app_ota_enc_setting())
     {
         aes256_decrypt_16byte(p_data);
@@ -349,7 +361,6 @@ static uint8_t app_ota_start_dfu_handle(uint8_t *p_data)
 
     ota_struct.image_total_length = start_dfu_para->payload_len + DEFAULT_HEADER_SIZE;
     ota_struct.image_id = start_dfu_para->image_id;
-
     APP_PRINT_TRACE4("app_ota_start_dfu: ic_type=0x%x, CtrlFlag=0x%x, img_id=0x%x, Length=0x%x",
                      start_dfu_para->ic_type,
                      start_dfu_para->ctrl_flag,
@@ -382,7 +393,24 @@ static uint8_t app_ota_start_dfu_handle(uint8_t *p_data)
     ota_struct.ota_temp_buf_used_size = 0;
     ota_struct.cur_offset = 0;
 
-    fmc_flash_nor_set_bp_lv(flash_partition_addr_get(PARTITION_FLASH_OTA_BANK_0), DISABLE_FLASH_BP);
+    if (ota_struct.bp_level == 0)
+    {
+        fmc_flash_nor_get_bp_lv(flash_partition_addr_get(PARTITION_FLASH_OTA_TMP),
+                                &ota_struct.bp_level);
+    }
+
+    /* RTL87x3G uses the task-safe region unlock rather than writing the global
+     * BP level directly. Single-bank normal OTA first lands in OTA_TMP, so both
+     * the active bank and TMP must be writable before the first CRC command. */
+    if (!fmc_flash_nor_unlock_block_protect(
+            flash_partition_addr_get(PARTITION_FLASH_OTA_BANK_0)) ||
+        !fmc_flash_nor_unlock_block_protect(
+            flash_partition_addr_get(PARTITION_FLASH_OTA_TMP)))
+    {
+        ota_struct.ota_flag.is_ota_process = false;
+        results = DFU_ARV_FAIL_OPERATION;
+        return results;
+    }
 
     return results;
 }
@@ -428,7 +456,6 @@ static void app_ota_buffer_check_en(uint8_t *p_data, uint16_t max_buffer_size)
     }
     p_data[0] = ota_struct.ota_flag.buffer_check_en;
     LE_UINT16_TO_ARRAY(&p_data[1], ota_struct.buffer_size);
-
     APP_PRINT_TRACE2("app_ota_buffer_check_en: buffer_check_en=%d, buffer_size=%d",
                      ota_struct.ota_flag.buffer_check_en, ota_struct.buffer_size);
 }
@@ -447,7 +474,6 @@ static uint8_t app_ota_data_packet_handle(uint8_t *p_data, uint16_t length)
                      length, ota_struct.cur_offset, ota_struct.buffer_check_offset, ota_struct.image_total_length);
 
     ota_struct.ota_flag.skip_flag = 1;
-
     if ((p_data == NULL) || (ota_struct.ota_flag.is_ota_process == false))
     {
         results = DFU_ARV_FAIL_OPERATION;
@@ -575,7 +601,6 @@ static void app_ota_buffer_check_handle(uint8_t *p_data, uint8_t *data)
                                                              ota_struct.next_subimage_offset,
                                                              ota_struct.ota_temp_buf_used_size + ota_struct.buffer_check_offset,
                                                              ota_struct.p_ota_temp_buf_head);
-
         APP_PRINT_TRACE1("app_ota_buffer_check_handle: write ret: %d", flash_write_result);
 
         if (flash_write_result == 0)
@@ -1404,7 +1429,6 @@ uint32_t app_ota_write_to_flash(uint16_t img_id, uint32_t offset, uint32_t total
     }
 
     dfu_base_addr += total_offset;
-
     if (offset == 0)
     {
         T_IMG_HEADER_FORMAT *p_header = (T_IMG_HEADER_FORMAT *)p_void;
@@ -1413,25 +1437,24 @@ uint32_t app_ota_write_to_flash(uint16_t img_id, uint32_t offset, uint32_t total
         APP_PRINT_TRACE1("app_ota_write_to_flash dfu_base_addr:0x%x", dfu_base_addr);
     }
 
-    /* --- extend watchdog across erase+program: on this flash the sector erase can be
-       repeatedly erase-suspended (context-switch driven) and exceed the default WDG
-       timeout (~10s) -> wdt reset. Mirror app_ota_checksum(): bump the main WDG timeout
-       and pause AON WDG for the duration; restored right after the program below. --- */
+    /* Sector erase/update is synchronous and can hold the CPU long enough to trip
+     * both watchdogs. The Watch normal-OTA path disables WDG while it owns flash;
+     * do the same here for the narrow erase/program window, then restore the
+     * previous configuration before doing read-back checks. */
     wdg_ctrl_value.d32 = WDG->WDG_CTL;
     wdg_en = wdg_ctrl_value.b.en_byte == 0xA5;
     aon_wdg_en = aon_wdg_is_enable(AON_WDG2);
-    if (wdg_en)
-    {
-        wdg_start(WDG_TIMEOUT_TIME_MS, (T_WDG_MODE)wdg_ctrl_value.b.wdg_mode);
-    }
+    WDG_Kick();
+    WDG_Disable();
     if (aon_wdg_en)
     {
         aon_wdg_disable(AON_WDG2);
     }
-
     if (((offset + dfu_base_addr) % FMC_SEC_SECTION_LEN) == 0)
     {
+        unsigned int irq_key = irq_lock();
         fmc_flash_nor_erase(dfu_base_addr + offset, FMC_FLASH_NOR_ERASE_SECTOR);
+        irq_unlock(irq_key);
     }
     else
     {
@@ -1440,8 +1463,10 @@ uint32_t app_ota_write_to_flash(uint16_t img_id, uint32_t offset, uint32_t total
         {
             if ((offset + length + dfu_base_addr) % FMC_SEC_SECTION_LEN)
             {
+                unsigned int irq_key = irq_lock();
                 fmc_flash_nor_erase((dfu_base_addr + offset + length) & ~(FMC_SEC_SECTION_LEN - 1),
                                     FMC_FLASH_NOR_ERASE_SECTOR);
+                irq_unlock(irq_key);
             }
         }
     }
@@ -1449,14 +1474,18 @@ uint32_t app_ota_write_to_flash(uint16_t img_id, uint32_t offset, uint32_t total
     if ((!ota_struct.ota_flag.buffer_check_en) && (ota_struct.buffer_check_offset != 0))
     {
         dest_addr = dfu_base_addr + offset + ota_struct.buffer_check_offset;
+        unsigned int irq_key = irq_lock();
         fmc_flash_nor_write(dest_addr, p_void, length);
         fmc_flash_nor_write(dest_addr, ota_struct.p_ota_temp_buf_head,
                             ota_struct.buffer_check_offset);
+        irq_unlock(irq_key);
     }
     else
     {
         dest_addr = dfu_base_addr + offset;
+        unsigned int irq_key = irq_lock();
         fmc_flash_nor_write(dest_addr, p_void, length);
+        irq_unlock(irq_key);
     }
 
     cache_flush_by_addr((uint32_t *)dest_addr, length);
@@ -1467,22 +1496,14 @@ uint32_t app_ota_write_to_flash(uint16_t img_id, uint32_t offset, uint32_t total
     {
         WDG_Config(wdg_ctrl_value.b.div_factor, wdg_ctrl_value.b.cnt_limit,
                    (T_WDG_MODE)wdg_ctrl_value.b.wdg_mode);
+        WDG_Enable();
+        WDG_Kick();
     }
     if (aon_wdg_en)
     {
         aon_wdg_kick(AON_WDG2);
         aon_wdg_enable(AON_WDG2);
     }
-
-    /* ==== OTA flash-write diagnostics (temporary, remove after debugging) ==== */
-    {
-        uint8_t dbg_bp_lv = 0xFF;
-        fmc_flash_nor_get_bp_lv(dest_addr, &dbg_bp_lv);
-        APP_PRINT_ERROR3("OTA_WR_DBG: dest=0x%x len=%d bp_lv=%d (0=unprotected)",
-                         dest_addr, length, dbg_bp_lv);
-    }
-    /* ======================================================================== */
-
     while (remain_size)
     {
         uint32_t read_back_len = (remain_size >= READBACK_BUFFER_SIZE) ? READBACK_BUFFER_SIZE : remain_size;
@@ -1490,12 +1511,6 @@ uint32_t app_ota_write_to_flash(uint16_t img_id, uint32_t offset, uint32_t total
         fmc_flash_nor_read(dest_addr, readback_buffer, read_back_len);
         if (memcmp(readback_buffer, p_src, read_back_len) != 0)
         {
-            APP_PRINT_ERROR2("OTA_WR_DBG mismatch @0x%x readlen=%d", dest_addr, read_back_len);
-            APP_PRINT_ERROR4("OTA_WR_DBG readback = %x %x %x %x",
-                             readback_buffer[0], readback_buffer[1],
-                             readback_buffer[2], readback_buffer[3]);
-            APP_PRINT_ERROR4("OTA_WR_DBG expected = %x %x %x %x",
-                             p_src[0], p_src[1], p_src[2], p_src[3]);
             return __LINE__;
         }
 
