@@ -66,6 +66,25 @@ void app_health_get_today(health_daily_rollup_t *out);
  */
 int app_health_history_read(health_pedo_record_t *out);
 
+/**
+ * @brief  Count activity records newer than the persisted sync watermark.
+ *
+ * Used by CMD 0x05 sync-start (0x40) to report the snapshot denominator before
+ * any records are consumed. The count includes records already prefetched by
+ * app_health_history_read() but not yet handed to the caller.
+ *
+ * @return 0 on success, negative errno when the store is unusable.
+ */
+int app_health_history_pending_count(uint32_t *out_count);
+
+/** Commit the newest record read in the current sync after the phone confirms
+ *  with CMD 0x05 key 0x42. */
+int app_health_history_commit(void);
+
+/** Forget unconfirmed reads so the next sync restarts at the committed
+ *  watermark. Called on disconnect or a failed transfer. */
+void app_health_history_reset_uncommitted(void);
+
 #ifdef __cplusplus
 }
 #endif

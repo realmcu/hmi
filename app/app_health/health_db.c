@@ -294,6 +294,8 @@ typedef struct
 {
     bool     loaded;                          /* watermark read from KV yet? */
     uint32_t synced_ts;                       /* newest ts handed out    */
+    uint32_t pending_ts;                      /* newest unconfirmed read */
+    bool     has_pending;
     health_pedo_record_t buf[HISTORY_PREFETCH];
     uint8_t  n;                               /* records in buf              */
     uint8_t  taken;                           /* delivered out of buf        */
@@ -376,16 +378,76 @@ int app_health_history_read(health_pedo_record_t *out)
 
     *out = read_cursor.buf[read_cursor.taken++];
 
-    /* Advance the watermark over what was actually delivered, and persist once
-     * per drained batch rather than per record: a full 476-record sync then
-     * costs ~60 KV writes instead of 476. Losing a batch's tail to a power cut
-     * just re-sends those records, which the phone de-dupes. */
-    read_cursor.synced_ts = out->ts;
-    if (read_cursor.taken >= read_cursor.n &&
-        health_db_save_synced_ts(read_cursor.synced_ts) != 0)
-    {
-        APP_LOGW("synced watermark save failed (will re-send on reboot)");
-    }
+    /* Reading is not confirmation. CMD 0x05 key 0x42 commits the watermark
+     * only after the phone has stored the batch. */
+    read_cursor.pending_ts = out->ts;
+    read_cursor.has_pending = true;
 
     return 1;
+}
+
+int app_health_history_commit(void)
+{
+    if (!read_cursor.has_pending)
+    {
+        return 0;
+    }
+    read_cursor.synced_ts = read_cursor.pending_ts;
+    read_cursor.has_pending = false;
+    if (health_db_save_synced_ts(read_cursor.synced_ts) != 0)
+    {
+        APP_LOGW("synced watermark save failed (will re-send on reboot)");
+        return -EIO;
+    }
+    return 0;
+}
+
+void app_health_history_reset_uncommitted(void)
+{
+    read_cursor.n = 0u;
+    read_cursor.taken = 0u;
+    read_cursor.has_pending = false;
+}
+
+typedef struct
+{
+    uint32_t count;
+} pending_count_ctx_t;
+
+static bool pending_count_cb(const health_pedo_record_t *rec, void *user)
+{
+    (void)rec;
+    pending_count_ctx_t *ctx = (pending_count_ctx_t *)user;
+    ctx->count++;
+    return false;
+}
+
+int app_health_history_pending_count(uint32_t *out_count)
+{
+    if (out_count == NULL)
+    {
+        return -EINVAL;
+    }
+    *out_count = 0u;
+
+    if (health_db_init() != 0)
+    {
+        return -EIO;
+    }
+
+    uint32_t synced_ts = 0u;
+    int rc = health_db_load_synced_ts(&synced_ts);
+    if (rc != 0)
+    {
+        return rc;
+    }
+
+    pending_count_ctx_t ctx = { .count = 0u };
+    uint32_t from = (synced_ts == 0u) ? 0u : synced_ts + 1u;
+    if (synced_ts != UINT32_MAX)
+    {
+        (void)health_db_iter(from, 0u, pending_count_cb, &ctx);
+    }
+    *out_count = ctx.count;
+    return 0;
 }

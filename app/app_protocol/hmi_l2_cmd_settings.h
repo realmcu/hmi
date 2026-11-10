@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 #define HMI_L2_SET_TIME         0x01u
+#define HMI_L2_DEVICE_INFO      0x30u
 #define HMI_L2_SET_STEP_TARGET  0x05u
 #define HMI_L2_SET_USER_PROFILE 0x10u
 #define HMI_L2_SET_ANTI_LOST    0x20u
