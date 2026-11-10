@@ -93,10 +93,10 @@ static uint16_t build_frame(uint8_t *buf, uint8_t flags,
 {
     buf[HDR_OFF_MAGIC]  = PROTO_MAGIC;
     buf[HDR_OFF_VER]    = (PROTO_VERSION & 0x0F) | (flags & PROTO_FLAG_MASK);
-    buf[HDR_OFF_LEN_LO] = (uint8_t)(len & 0xFF);
     buf[HDR_OFF_LEN_HI] = (uint8_t)(len >> 8);
-    buf[HDR_OFF_SEQ_LO] = (uint8_t)(seq & 0xFF);
+    buf[HDR_OFF_LEN_LO] = (uint8_t)(len & 0xFF);
     buf[HDR_OFF_SEQ_HI] = (uint8_t)(seq >> 8);
+    buf[HDR_OFF_SEQ_LO] = (uint8_t)(seq & 0xFF);
 
     if (payload && len > 0)
     {
@@ -104,8 +104,8 @@ static uint16_t build_frame(uint8_t *buf, uint8_t flags,
     }
 
     uint16_t crc = frame_crc(buf, len);
-    buf[HDR_OFF_CRC_LO] = (uint8_t)(crc & 0xFF);
     buf[HDR_OFF_CRC_HI] = (uint8_t)(crc >> 8);
+    buf[HDR_OFF_CRC_LO] = (uint8_t)(crc & 0xFF);
 
     return PROTO_HDR_LEN + len;
 }
@@ -165,8 +165,8 @@ void proto_handle(const uint8_t *data, uint16_t len)
                 s_rx_active = false;
                 continue;
             }
-            uint16_t payload_len = (uint16_t)s_rx_buf[HDR_OFF_LEN_LO]
-                                   | ((uint16_t)s_rx_buf[HDR_OFF_LEN_HI] << 8);
+            uint16_t payload_len = ((uint16_t)s_rx_buf[HDR_OFF_LEN_HI] << 8)
+                                   | (uint16_t)s_rx_buf[HDR_OFF_LEN_LO];
             if (payload_len > PROTO_MAX_PAYLOAD_LEN)
             {
                 s_rx_active = false;
@@ -184,12 +184,12 @@ void proto_handle(const uint8_t *data, uint16_t len)
         {
             s_rx_active = false;
 
-            uint16_t payload_len = (uint16_t)s_rx_buf[HDR_OFF_LEN_LO]
-                                   | ((uint16_t)s_rx_buf[HDR_OFF_LEN_HI] << 8);
-            uint16_t rx_crc      = (uint16_t)s_rx_buf[HDR_OFF_CRC_LO]
-                                   | ((uint16_t)s_rx_buf[HDR_OFF_CRC_HI] << 8);
-            uint16_t seq         = (uint16_t)s_rx_buf[HDR_OFF_SEQ_LO]
-                                   | ((uint16_t)s_rx_buf[HDR_OFF_SEQ_HI] << 8);
+            uint16_t payload_len = ((uint16_t)s_rx_buf[HDR_OFF_LEN_HI] << 8)
+                                   | (uint16_t)s_rx_buf[HDR_OFF_LEN_LO];
+            uint16_t rx_crc      = ((uint16_t)s_rx_buf[HDR_OFF_CRC_HI] << 8)
+                                   | (uint16_t)s_rx_buf[HDR_OFF_CRC_LO];
+            uint16_t seq         = ((uint16_t)s_rx_buf[HDR_OFF_SEQ_HI] << 8)
+                                   | (uint16_t)s_rx_buf[HDR_OFF_SEQ_LO];
             uint8_t  flags       = s_rx_buf[HDR_OFF_VER] & PROTO_FLAG_MASK;
 
             bool crc_ok = (frame_crc(s_rx_buf, payload_len) == rx_crc);
