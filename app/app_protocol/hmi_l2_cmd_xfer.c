@@ -116,17 +116,21 @@ static void on_cmd_xfer(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
                 PROTO_LOG("fdb_bf_create (stubbed — app_get_bf() unavailable)");
                 /* rc = fdb_bf_create(app_get_bf(), name, s_xfer_total, &file); */
                 rc = FDB_NO_ERR;
-                PROTO_LOG("fdb_bf_create done");
-                if (rc != FDB_NO_ERR)
-                {
-                    APP_PRINT_ERROR2("[bf] create '%s' failed (%d)", name, (int)rc);
-                }
+                file = NULL;
+
+                /* Do not advertise success when the storage backend is still a
+                 * stub. Otherwise DATA would call fdb_bf_append(NULL, ...). */
+                bool accepted = (rc == FDB_NO_ERR && file != NULL);
 
                 uint8_t rsp[3];
-                rsp[0] = (rc == FDB_NO_ERR) ? HMI_L2_XFER_BEGIN_OK : HMI_L2_XFER_BEGIN_NO_SPACE;
+                rsp[0] = accepted ? HMI_L2_XFER_BEGIN_OK : HMI_L2_XFER_BEGIN_NO_SPACE;
                 rsp[1] = (uint8_t)(s_xfer_chunk >> 8);
                 rsp[2] = (uint8_t)(s_xfer_chunk & 0xFFu);
                 xfer_send(HMI_L2_XFER_BEGIN_RSP, rsp, sizeof(rsp));
+                if (!accepted)
+                {
+                    xfer_reset();
+                }
                 break;
             }
 
