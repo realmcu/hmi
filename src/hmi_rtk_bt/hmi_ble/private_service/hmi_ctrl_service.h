@@ -21,10 +21,11 @@ extern "C" {
 /* 128-bit Service UUID */
 extern const uint8_t GATT_UUID128_HMI_SERVICE[16];
 
-/* Characteristic UUIDs (16-bit, vendor specific) */
-#define BLE_UUID_HMI_CMD                0xFFD1  /* Write: peer -> display */
-#define BLE_UUID_HMI_EVENT              0xFFD2  /* Notify: display -> peer */
-#define BLE_UUID_HMI_STATUS             0xFFD3  /* Read: display status   */
+/* HMIS private service (HoneyProtocol 2.2.1):
+ *   0xFFC1 write (phone -> device), 0xFFC2 notify, 0xFFC3 read (status only) */
+#define BLE_UUID_HMI_CMD                0xFFC1  /* Write: peer -> display */
+#define BLE_UUID_HMI_EVENT              0xFFC2  /* Notify: display -> peer */
+#define BLE_UUID_HMI_STATUS             0xFFC3  /* Read: display status   */
 
 #define HMI_CMD_MAX_LEN                 512
 #define HMI_STATUS_MAX_LEN              32

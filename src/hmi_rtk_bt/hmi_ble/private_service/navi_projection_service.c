@@ -31,6 +31,10 @@ extern uint32_t sys_timestamp_get(void);
 #define NAVI_L1_CTRL_DATA                  0x00
 #define NAVI_L1_CTRL_ACK                   0x10
 #define NAVI_L1_CTRL_ERROR                 0x30
+/* byte1 bit fields, HoneyProtocol 2.3.2 */
+#define NAVI_L1_ACK_REQ                    0x40  /* request an ACK from the peer */
+#define NAVI_L1_BIT_ERR                    0x20
+#define NAVI_L1_BIT_ACK                    0x10
 
 #define NAVI_L2_CMD                        0x11
 #define NAVI_L2_HEADER_LEN                 5U
@@ -60,7 +64,7 @@ extern uint32_t sys_timestamp_get(void);
 #define NAVI_MAX_FRAME_PACKETS             \
     (1U + (NAVI_MAX_JPEG_SIZE - (NAVI_MIN_PACKET - NAVI_FRAME_FIRST_HEADER_LEN) + \
            (NAVI_MIN_PACKET - NAVI_FRAME_HEADER_LEN) - 1U) / \
-          (NAVI_MIN_PACKET - NAVI_FRAME_HEADER_LEN))
+     (NAVI_MIN_PACKET - NAVI_FRAME_HEADER_LEN))
 #define NAVI_SESSION_TIMEOUT_MS            10000UL
 #define NAVI_POLL_PERIOD_MS                100UL
 #define NAVI_TX_FIFO_DEPTH                 8U
@@ -145,71 +149,6 @@ typedef struct
     uint8_t data[NAVI_TX_MAX_LEN];
 } navi_tx_item_t;
 
-static const T_ATTRIB_APPL navi_projection_tbl[] =
-{
-    {
-        ATTRIB_FLAG_VALUE_INCL | ATTRIB_FLAG_LE,
-        { LO_WORD(GATT_UUID_PRIMARY_SERVICE), HI_WORD(GATT_UUID_PRIMARY_SERVICE),
-          LO_WORD(NAVI_SERVICE_UUID), HI_WORD(NAVI_SERVICE_UUID) },
-        UUID_16BIT_SIZE, NULL, GATT_PERM_READ
-    },
-    {
-        ATTRIB_FLAG_VALUE_INCL,
-        { LO_WORD(GATT_UUID_CHARACTERISTIC), HI_WORD(GATT_UUID_CHARACTERISTIC),
-          GATT_CHAR_PROP_WRITE },
-        1, NULL, GATT_PERM_READ
-    },
-    {
-        ATTRIB_FLAG_VALUE_APPL,
-        { LO_WORD(NAVI_CHAR_CTRL_TX_UUID), HI_WORD(NAVI_CHAR_CTRL_TX_UUID) },
-        0, NULL, GATT_PERM_WRITE
-    },
-    {
-        ATTRIB_FLAG_VALUE_INCL,
-        { LO_WORD(GATT_UUID_CHARACTERISTIC), HI_WORD(GATT_UUID_CHARACTERISTIC),
-          GATT_CHAR_PROP_NOTIFY },
-        1, NULL, GATT_PERM_READ
-    },
-    {
-        ATTRIB_FLAG_VALUE_APPL,
-        { LO_WORD(NAVI_CHAR_CTRL_RX_UUID), HI_WORD(NAVI_CHAR_CTRL_RX_UUID) },
-        0, NULL, GATT_PERM_NONE
-    },
-    {
-        ATTRIB_FLAG_VALUE_INCL | ATTRIB_FLAG_CCCD_APPL,
-        { LO_WORD(GATT_UUID_CHAR_CLIENT_CONFIG), HI_WORD(GATT_UUID_CHAR_CLIENT_CONFIG),
-          LO_WORD(GATT_CLIENT_CHAR_CONFIG_DEFAULT), HI_WORD(GATT_CLIENT_CHAR_CONFIG_DEFAULT) },
-        2, NULL, GATT_PERM_READ | GATT_PERM_WRITE
-    },
-    {
-        ATTRIB_FLAG_VALUE_INCL,
-        { LO_WORD(GATT_UUID_CHARACTERISTIC), HI_WORD(GATT_UUID_CHARACTERISTIC),
-          GATT_CHAR_PROP_WRITE_NO_RSP },
-        1, NULL, GATT_PERM_READ
-    },
-    {
-        ATTRIB_FLAG_VALUE_APPL,
-        { LO_WORD(NAVI_CHAR_DATA_TX_UUID), HI_WORD(NAVI_CHAR_DATA_TX_UUID) },
-        0, NULL, GATT_PERM_WRITE
-    },
-    {
-        ATTRIB_FLAG_VALUE_INCL,
-        { LO_WORD(GATT_UUID_CHARACTERISTIC), HI_WORD(GATT_UUID_CHARACTERISTIC),
-          GATT_CHAR_PROP_NOTIFY },
-        1, NULL, GATT_PERM_READ
-    },
-    {
-        ATTRIB_FLAG_VALUE_APPL,
-        { LO_WORD(NAVI_CHAR_DATA_RX_UUID), HI_WORD(NAVI_CHAR_DATA_RX_UUID) },
-        0, NULL, GATT_PERM_NONE
-    },
-    {
-        ATTRIB_FLAG_VALUE_INCL | ATTRIB_FLAG_CCCD_APPL,
-        { LO_WORD(GATT_UUID_CHAR_CLIENT_CONFIG), HI_WORD(GATT_UUID_CHAR_CLIENT_CONFIG),
-          LO_WORD(GATT_CLIENT_CHAR_CONFIG_DEFAULT), HI_WORD(GATT_CLIENT_CHAR_CONFIG_DEFAULT) },
-        2, NULL, GATT_PERM_READ | GATT_PERM_WRITE
-    },
-};
 
 static T_SERVER_ID s_service_id = NAVI_INVALID_SERVICE_ID;
 static navi_state_t s_state = NAVI_STATE_IDLE;
@@ -238,6 +177,9 @@ static uint8_t s_l1_rx_buf[NAVI_L1_HEADER_LEN + NAVI_L1_MAX_PAYLOAD];
 static uint16_t s_l1_rx_len;
 static uint16_t s_l1_expected;
 static uint16_t s_l1_tx_seq;
+static bool     s_link_info_logged;
+static uint16_t s_x10_frame_w;      /* geometry of the accepted stream */
+static uint16_t s_x10_frame_h;
 
 static navi_tx_item_t s_tx_fifo[NAVI_TX_FIFO_DEPTH];
 static uint8_t s_tx_head;
@@ -261,6 +203,11 @@ static navi_gui_stream_active_cb_t s_stream_active_cb;
 
 static uint8_t s_timer_module_id;
 static uint8_t s_poll_timer_idx;
+
+/* L1 carrier: when set, every outbound L1 frame is handed to this function
+ * instead of the private FFD characteristic. The NUS transport installs it so
+ * the same 0x10 stack runs on the spec-mandated UART profile. */
+static navi_carrier_tx_t s_carrier_tx;
 
 static uint32_t navi_time_ms(void)
 {
@@ -482,32 +429,6 @@ static bool navi_tx_enqueue(uint16_t attrib_idx, const uint8_t *data, uint16_t l
     return navi_tx_enqueue_effect(attrib_idx, data, len, NAVI_TX_EFFECT_NONE, 0, true);
 }
 
-static void navi_send_complete_cb(T_EXT_SEND_DATA_RESULT result)
-{
-    if (result.service_id != s_service_id || !s_tx_inflight || s_tx_count == 0)
-    {
-        return;
-    }
-
-    navi_tx_item_t *item = &s_tx_fifo[s_tx_head];
-    if (result.conn_handle != s_conn_handle || result.cid != s_cid ||
-        result.attrib_idx != item->attrib_idx)
-    {
-        APP_PRINT_WARN0("Navi ignored stale notify completion");
-        return;
-    }
-
-    if (result.cause != GAP_SUCCESS)
-    {
-        APP_PRINT_ERROR2("Navi notify asynchronous failure: attr=%u cause=0x%x",
-                         result.attrib_idx, result.cause);
-        s_tx_inflight = false;
-        return;
-    }
-
-    navi_tx_commit_head();
-    navi_tx_try_send();
-}
 
 static bool navi_send_l1_internal(uint8_t control, uint16_t seq, const uint8_t *payload,
                                   uint16_t len, bool send_now)
@@ -515,7 +436,15 @@ static bool navi_send_l1_internal(uint8_t control, uint16_t seq, const uint8_t *
     uint8_t packet[NAVI_L1_HEADER_LEN + NAVI_L1_MAX_PAYLOAD];
     uint16_t crc;
 
+    (void)send_now;
+
     if (len > NAVI_L1_MAX_PAYLOAD || (len > 0 && payload == NULL))
+    {
+        return false;
+    }
+    /* HoneyProtocol L0 is the HMIS notify characteristic; without an installed
+     * carrier there is no way to put bytes on the air. */
+    if (s_carrier_tx == NULL)
     {
         return false;
     }
@@ -533,11 +462,8 @@ static bool navi_send_l1_internal(uint8_t control, uint16_t seq, const uint8_t *
     {
         memcpy(packet + NAVI_L1_HEADER_LEN, payload, len);
     }
-    if (send_now)
-    {
-        return navi_tx_enqueue(NAVI_ATTR_CTRL_RX_VALUE, packet, NAVI_L1_HEADER_LEN + len);
-    }
-    return navi_tx_enqueue_deferred(NAVI_ATTR_CTRL_RX_VALUE, packet, NAVI_L1_HEADER_LEN + len);
+    s_carrier_tx(packet, (uint16_t)(NAVI_L1_HEADER_LEN + len));
+    return true;
 }
 
 static bool navi_send_l1(uint8_t control, uint16_t seq, const uint8_t *payload, uint16_t len)
@@ -792,6 +718,9 @@ static void navi_gui_reset_event(void *message);
 static void navi_qr_ready_event(void *message);
 static bool navi_fail_frame(navi_frame_slot_t *slot, uint8_t error);
 static void navi_finish_frame(navi_frame_slot_t *slot);
+static void xfer10_stop(void);
+static void xfer10_drop_buffer(void);
+static bool xfer10_acquire_buffer(uint32_t total, stp_frame_t *out);
 
 /* Acquire a transport buffer for a slot about to receive a new frame. A buffer
  * already attached to the slot (kept from a prior aborted frame) is reused
@@ -944,8 +873,13 @@ static void navi_reset_session(bool link_lost)
         s_conn_handle = NAVI_INVALID_CONN_HANDLE;
         s_cid = NAVI_INVALID_CID;
         s_conn_id = NAVI_INVALID_CONN_ID;
+        s_link_info_logged = false;
+        s_x10_frame_w = 0;
+        s_x10_frame_h = 0;
+        xfer10_drop_buffer();
         navi_tx_clear();
     }
+    xfer10_stop();
     os_unlock(lock);
     navi_queue_gui_reset();
 }
@@ -1319,15 +1253,516 @@ static void navi_handle_open(const uint8_t *value, uint16_t len)
     navi_send_open_ack(NAVI_RESULT_OK, params.max_packet, s_credit);
 }
 
+/*============================================================================*
+ *                     L2 0x10 file transfer (one JPEG per file)
+ *
+ *  L2 = [0x10][ver|rsv][key][len_hi][len_lo][value ...], carried inside one L1
+ *  frame (0xAB header + CRC16 + seq). BEGIN opens the session, DATA carries
+ *  "chunk seq + bytes", END carries the whole-file CRC32 and triggers
+ *  validation + commit into the stream transport.
+ *============================================================================*/
+
+#define XFER10_CMD                  0x10
+#define XFER10_KEY_BEGIN_REQ        0x01
+#define XFER10_KEY_BEGIN_RSP        0x02
+#define XFER10_KEY_DATA             0x03
+#define XFER10_KEY_END_REQ          0x05
+#define XFER10_KEY_END_RSP          0x06
+#define XFER10_KEY_ABORT            0x07
+
+#define XFER10_TYPE_IMAGE           0x01
+#define XFER10_TYPE_VIDEO           0x02
+#define XFER10_TYPE_RAW             0x03
+
+/* 248 (L1 max payload) - 5 (L2 header) - 2 (chunk seq) */
+#define XFER10_CHUNK_MAX            241U
+#define XFER10_CHUNK_REQ_MAX        2048U
+#define XFER10_SESSION_TIMEOUT_MS   10000UL
+#define XFER10_RSP_LEN              3U
+
+#define XFER10_RSP_OK               0x00
+#define XFER10_RSP_BUSY             0x01
+#define XFER10_RSP_NO_SPACE         0x02
+#define XFER10_RSP_BAD_TYPE         0x03
+
+#define XFER10_END_OK               0x00
+#define XFER10_END_CRC_FAIL         0x01
+#define XFER10_END_INCOMPLETE       0x02
+
+#define XFER10_ERR_NONE             0x00
+#define XFER10_ERR_WRITE_FAIL       0x01
+#define XFER10_ERR_DECODE_FAIL      0x02
+
+#define XFER10_ABORT_USER           0x00
+#define XFER10_ABORT_ERROR          0x01
+#define XFER10_ABORT_TIMEOUT        0x02
+
+static bool        s_x10_active;
+static bool        s_x10_held;      /* transport buffer owned by this session */
+static stp_frame_t s_x10_desc;
+static uint32_t    s_x10_total;
+static uint32_t    s_x10_got;
+static uint16_t    s_x10_chunk;
+static uint16_t    s_x10_next_seq;
+static uint32_t    s_x10_last_ms;
+static uint32_t    s_x10_drop_log_ms;
+
+static void xfer10_send(uint8_t key, const uint8_t *value, uint16_t len)
+{
+    uint8_t packet[5U + 8U];
+
+    if (len > sizeof(packet) - 5U)
+    {
+        return;
+    }
+    packet[0] = XFER10_CMD;
+    packet[1] = 0;
+    packet[2] = key;
+    packet[3] = HI_16(len);
+    packet[4] = LO_16(len);
+    if (len > 0 && value != NULL)
+    {
+        memcpy(packet + 5, value, len);
+    }
+    (void)navi_send_l1_internal(NAVI_L1_CTRL_DATA, ++s_l1_tx_seq, packet,
+                                (uint16_t)(5U + len), true);
+}
+
+static void xfer10_stop(void)
+{
+    s_x10_active   = false;
+    s_x10_total    = 0;
+    s_x10_got      = 0;
+    s_x10_chunk    = 0;
+    s_x10_next_seq = 0;
+}
+
+static void xfer10_drop_buffer(void)
+{
+    if (s_x10_held && s_transport != NULL)
+    {
+        (void)stp_release(s_transport, &s_x10_desc);
+    }
+    s_x10_held = false;
+    memset(&s_x10_desc, 0, sizeof(s_x10_desc));
+}
+
+/* Take a transit buffer, reclaiming the oldest stale frame if the ring is full
+ * (the GUI transport runs STP_DROP_NONE and never discards on its own). */
+static bool xfer10_acquire_buffer(uint32_t total, stp_frame_t *out)
+{
+    stp_frame_t stale;
+    uint8_t     reclaimed = 0;
+    uint8_t     guard;
+
+    if (s_transport == NULL || out == NULL)
+    {
+        return false;
+    }
+    if (stp_acquire_free(s_transport, total, out))
+    {
+        return true;
+    }
+
+    for (guard = 0; guard < (NAVI_FRAME_SLOTS + 4U); guard++)
+    {
+        if (!stp_acquire_oldest(s_transport, 0, &stale))
+        {
+            break;
+        }
+        (void)stp_release(s_transport, &stale);
+        reclaimed++;
+        if (stp_acquire_free(s_transport, total, out))
+        {
+            APP_PRINT_WARN1("xfer10: transport pool was full, reclaimed %u stale frame(s)",
+                            reclaimed);
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Locate the baseline SOF0 marker and return its dimensions. */
+static bool xfer10_jpeg_dims(const uint8_t *jpeg, uint32_t len,
+                             uint16_t *w, uint16_t *h)
+{
+    uint32_t pos = 2;
+
+    if (len < 10U || jpeg[0] != 0xFF || jpeg[1] != 0xD8)
+    {
+        return false;
+    }
+    while (pos + 3U < len)
+    {
+        if (jpeg[pos] != 0xFF)
+        {
+            return false;
+        }
+        while (pos < len && jpeg[pos] == 0xFF)
+        {
+            pos++;
+        }
+        if (pos >= len)
+        {
+            return false;
+        }
+        uint8_t marker = jpeg[pos++];
+        if (marker == 0xDA || marker == 0xD9)
+        {
+            return false;
+        }
+        if (pos + 2U > len)
+        {
+            return false;
+        }
+        uint16_t seg = BIG16(jpeg[pos], jpeg[pos + 1U]);
+        if (seg < 2U || pos + seg > len)
+        {
+            return false;
+        }
+        if (marker == 0xC0)
+        {
+            if (seg < 8U)
+            {
+                return false;
+            }
+            *h = BIG16(jpeg[pos + 3U], jpeg[pos + 4U]);
+            *w = BIG16(jpeg[pos + 5U], jpeg[pos + 6U]);
+            return (*w != 0U && *h != 0U);
+        }
+        pos += seg;
+    }
+    return false;
+}
+
+static void xfer10_abort(uint8_t reason)
+{
+    if (s_x10_active)
+    {
+        uint8_t value = reason;
+        xfer10_send(XFER10_KEY_ABORT, &value, 1);
+    }
+    xfer10_stop();
+    /* A gap/CRC error only kills one frame; keep the session "active" so the GUI
+     * stays on the map. Anything else (peer cancel, timeout) ends the stream. */
+    if (reason != XFER10_ABORT_ERROR)
+    {
+        s_state = NAVI_STATE_IDLE;
+        s_x10_frame_w = 0;
+        s_x10_frame_h = 0;
+        navi_queue_gui_reset();
+    }
+}
+
+static void xfer10_handle_begin(const uint8_t *v, uint16_t len)
+{
+    uint8_t  rsp[XFER10_RSP_LEN] = { XFER10_RSP_BAD_TYPE, 0, 0 };
+    uint32_t total;
+    uint16_t chunk;
+    uint8_t  type;
+    uint8_t  name_len;
+
+    if (len < 8U)
+    {
+        xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+        return;
+    }
+
+    type     = v[0];
+    total    = BIG32(v[1], v[2], v[3], v[4]);
+    chunk    = BIG16(v[5], v[6]);
+    name_len = v[7];
+
+    /* The pool, not NAVI_MAX_JPEG_SIZE, is the real ceiling; reject up front
+     * instead of failing later as a misleading NO_SPACE. */
+    uint32_t frame_cap = (s_transport != NULL) ? stp_max_frame_size(s_transport) : 0U;
+    if (frame_cap == 0U || frame_cap > NAVI_MAX_JPEG_SIZE)
+    {
+        frame_cap = NAVI_MAX_JPEG_SIZE;
+    }
+
+    if (len != (uint16_t)(8U + name_len) ||
+        type < XFER10_TYPE_IMAGE || type > XFER10_TYPE_RAW ||
+        total == 0U || total > frame_cap)
+    {
+        APP_PRINT_WARN2("xfer10: BEGIN rejected total=%u cap=%u", total, frame_cap);
+        xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+        return;
+    }
+    if (s_x10_active)
+    {
+        rsp[0] = XFER10_RSP_BUSY;
+        xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+        return;
+    }
+
+    if (chunk == 0U || chunk > XFER10_CHUNK_REQ_MAX)
+    {
+        chunk = XFER10_CHUNK_REQ_MAX;
+    }
+    {
+        /* Keep one L1 frame inside a single ATT write: the sender must not have
+         * to split a frame across writes. Budget = MTU-3 - L1(8) - L2(5) - seq(2). */
+        uint16_t mtu = 23;
+        uint8_t  conn_id = NAVI_INVALID_CONN_ID;
+        uint16_t frame_max = 1;
+
+        if (s_conn_handle != NAVI_INVALID_CONN_HANDLE &&
+            le_get_conn_id_by_handle(s_conn_handle, &conn_id))
+        {
+            le_get_conn_param(GAP_PARAM_CONN_MTU_SIZE, &mtu, conn_id);
+        }
+        if (mtu > (3U + NAVI_L1_HEADER_LEN + NAVI_L2_HEADER_LEN + 2U))
+        {
+            frame_max = (uint16_t)(mtu - 3U - NAVI_L1_HEADER_LEN - NAVI_L2_HEADER_LEN - 2U);
+        }
+        if (chunk > frame_max)
+        {
+            chunk = frame_max;
+        }
+    }
+    if (chunk > XFER10_CHUNK_MAX)
+    {
+        chunk = XFER10_CHUNK_MAX;
+    }
+
+    if (!s_x10_held)
+    {
+        if (s_transport == NULL)
+        {
+            /* Transport never bound by the GUI: report BUSY so the phone log can
+             * tell this apart from a genuinely exhausted frame pool. */
+            APP_PRINT_ERROR0("xfer10: stream transport not bound by the GUI");
+            rsp[0] = XFER10_RSP_BUSY;
+            xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+            return;
+        }
+        if (!xfer10_acquire_buffer(total, &s_x10_desc))
+        {
+            rsp[0] = XFER10_RSP_NO_SPACE;
+            xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+            return;
+        }
+        s_x10_held = true;
+    }
+    else if (total > s_x10_desc.capacity)
+    {
+        rsp[0] = XFER10_RSP_NO_SPACE;
+        xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+        return;
+    }
+
+    s_x10_total    = total;
+    s_x10_got      = 0;
+    s_x10_chunk    = chunk;
+    s_x10_next_seq = 0;
+    s_x10_last_ms  = navi_time_ms();
+    s_x10_active   = true;
+    /* A phone that opened a transfer is streaming: mirror the v2 OPEN semantics
+     * so the GUI swaps the QR page for the live map view. */
+    s_state = NAVI_STATE_ACTIVE;
+
+    /* One-shot readback of the negotiated link so the serial log always states
+     * the truth, even when the stack's own PHY-update callback is compiled out. */
+    if (!s_link_info_logged)
+    {
+        uint8_t link_id = 0;
+        if (le_get_conn_id_by_handle(s_conn_handle, &link_id))
+        {
+            uint16_t iv = 0, lat = 0, mtu = 0;
+            uint8_t  txp = 0, rxp = 0;
+
+            le_get_conn_param(GAP_PARAM_CONN_INTERVAL, &iv, link_id);
+            le_get_conn_param(GAP_PARAM_CONN_LATENCY, &lat, link_id);
+            le_get_conn_param(GAP_PARAM_CONN_MTU_SIZE, &mtu, link_id);
+            le_get_conn_param(GAP_PARAM_CONN_TX_PHY_TYPE, &txp, link_id);
+            le_get_conn_param(GAP_PARAM_CONN_RX_PHY_TYPE, &rxp, link_id);
+            APP_PRINT_INFO5("HMI link: interval=0x%x latency=%u mtu=%u tx_phy=%u rx_phy=%u",
+                            iv, lat, mtu, txp, rxp);
+
+            if (txp != GAP_PHYS_2M && rxp != GAP_PHYS_2M)
+            {
+                if (le_set_phy(link_id, 0, GAP_PHYS_PREFER_2M_BIT, GAP_PHYS_PREFER_2M_BIT,
+                               GAP_PHYS_OPTIONS_CODED_PREFER_NO) == GAP_CAUSE_SUCCESS)
+                {
+                    APP_PRINT_INFO0("HMI link: retried the 2M PHY request");
+                }
+            }
+        }
+        s_link_info_logged = true;
+    }
+
+    rsp[0] = XFER10_RSP_OK;
+    rsp[1] = HI_16(chunk);
+    rsp[2] = LO_16(chunk);
+    xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+
+    APP_PRINT_TRACE3("xfer10: BEGIN type=%u total=%u chunk=%u",
+                     type, total, chunk);
+}
+
+static void xfer10_handle_data(const uint8_t *v, uint16_t len)
+{
+    uint16_t seq;
+    uint16_t data_len;
+
+    if (!s_x10_active || len < 3U)
+    {
+        /* Rate-limited: this fires per packet while a dead session drains. */
+        if (s_x10_drop_log_ms == 0U || (navi_time_ms() - s_x10_drop_log_ms) >= 1000U)
+        {
+            s_x10_drop_log_ms = navi_time_ms();
+            APP_PRINT_WARN2("xfer10: DATA dropped active=%d len=%u", s_x10_active, len);
+        }
+        return;
+    }
+
+    seq      = BIG16(v[0], v[1]);
+    data_len = (uint16_t)(len - 2U);
+
+    if (seq != s_x10_next_seq || s_x10_desc.addr == NULL ||
+        s_x10_got + data_len > s_x10_total)
+    {
+        APP_PRINT_WARN2("xfer10: DATA out of order seq=%u expect=%u",
+                        seq, s_x10_next_seq);
+        xfer10_abort(XFER10_ABORT_ERROR);
+        return;
+    }
+
+    memcpy((uint8_t *)s_x10_desc.addr + s_x10_got, v + 2, data_len);
+    s_x10_got += data_len;
+    s_x10_next_seq++;
+    s_x10_last_ms = navi_time_ms();
+}
+
+static void xfer10_handle_end(const uint8_t *v, uint16_t len)
+{
+    uint8_t  rsp[2] = { XFER10_END_INCOMPLETE, XFER10_ERR_NONE };
+    uint32_t crc;
+    uint16_t w = 0;
+    uint16_t h = 0;
+    bool     ok;
+
+    if (!s_x10_active || len < 4U || s_x10_desc.addr == NULL)
+    {
+        APP_PRINT_WARN3("xfer10: END dropped active=%d len=%u addr=%p",
+                        s_x10_active, len, s_x10_desc.addr);
+        return;
+    }
+
+    crc = BIG32(v[0], v[1], v[2], v[3]);
+    ok  = (s_x10_got == s_x10_total) &&
+          (navi_crc32((const uint8_t *)s_x10_desc.addr, s_x10_total) == crc);
+
+    if (ok)
+    {
+        const uint8_t *jpeg = (const uint8_t *)s_x10_desc.addr;
+
+        /* validate_jpeg() compares the SOF geometry with what it is handed, so
+         * the pixel budget has to be stated here explicitly. */
+        ok = xfer10_jpeg_dims(jpeg, s_x10_total, &w, &h) &&
+             ((uint32_t)w * (uint32_t)h <= NAVI_MAX_DECODED_PIXELS) &&
+             ((s_x10_frame_w == 0U ||
+               (w == s_x10_frame_w && h == s_x10_frame_h))) &&
+             navi_projection_validate_jpeg(jpeg, s_x10_total, w, h) &&
+             navi_projection_jpeg_fits_heap(jpeg, s_x10_total);
+        if (!ok)
+        {
+            APP_PRINT_WARN5("xfer10: END rejected geometry=%ux%u (stream=%ux%u budget %u px)",
+                            w, h, s_x10_frame_w, s_x10_frame_h,
+                            (unsigned)NAVI_MAX_DECODED_PIXELS);
+            rsp[1] = XFER10_ERR_DECODE_FAIL;
+        }
+    }
+    else
+    {
+        rsp[0] = (s_x10_got != s_x10_total) ? XFER10_END_INCOMPLETE
+                 : XFER10_END_CRC_FAIL;
+    }
+
+    if (ok)
+    {
+        if (stp_commit(s_transport, &s_x10_desc, s_x10_total, true))
+        {
+            s_x10_held = false;
+            memset(&s_x10_desc, 0, sizeof(s_x10_desc));
+            s_x10_frame_w = w;
+            s_x10_frame_h = h;
+            /* Reveal the map only once a frame is on screen: revealing on the
+             * first DATA left a black map when the frame was later rejected. */
+            s_stream_started = true;
+            navi_queue_stream_active();
+            rsp[0] = XFER10_END_OK;
+            rsp[1] = XFER10_ERR_NONE;
+            APP_PRINT_TRACE2("xfer10: frame committed %ux%u", w, h);
+        }
+        else
+        {
+            rsp[0] = XFER10_END_INCOMPLETE;
+            rsp[1] = XFER10_ERR_WRITE_FAIL;
+            APP_PRINT_WARN0("xfer10: stp_commit failed");
+        }
+    }
+    else
+    {
+        APP_PRINT_WARN2("xfer10: END rejected status=%u err=%u", rsp[0], rsp[1]);
+    }
+
+    xfer10_send(XFER10_KEY_END_RSP, rsp, sizeof(rsp));
+    xfer10_stop();
+}
+
+static void xfer10_dispatch(uint8_t key, const uint8_t *v, uint16_t len)
+{
+    switch (key)
+    {
+    case XFER10_KEY_BEGIN_REQ:
+        xfer10_handle_begin(v, len);
+        break;
+    case XFER10_KEY_DATA:
+        xfer10_handle_data(v, len);
+        break;
+    case XFER10_KEY_END_REQ:
+        xfer10_handle_end(v, len);
+        break;
+    case XFER10_KEY_ABORT:
+        APP_PRINT_INFO1("xfer10: ABORT from peer reason=%u", len > 0 ? v[0] : 0);
+        xfer10_stop();
+        /* The phone cancelled: leave "active" so the GUI brings the QR back. */
+        s_state = NAVI_STATE_IDLE;
+        s_x10_frame_w = 0;
+        s_x10_frame_h = 0;
+        navi_queue_gui_reset();
+        break;
+    default:
+        APP_PRINT_WARN1("xfer10: unknown key=0x%02x", key);
+        break;
+    }
+}
+
 static void navi_handle_l2(const uint8_t *data, uint16_t len)
 {
-    if (len < NAVI_L2_HEADER_LEN || data[0] != NAVI_L2_CMD)
+    if (len < NAVI_L2_HEADER_LEN)
     {
         return;
     }
 
     uint16_t value_len = BIG16(data[3], data[4]);
     if (value_len != len - NAVI_L2_HEADER_LEN)
+    {
+        APP_PRINT_WARN3("navi: L2 length mismatch cmd=0x%02x declared=%u actual=%u",
+                        data[0], value_len, (unsigned)(len - NAVI_L2_HEADER_LEN));
+        return;
+    }
+
+    /* HoneyProtocol 3.12 file transfer (one JPEG frame per file). */
+    if (data[0] == XFER10_CMD)
+    {
+        xfer10_dispatch(data[2], data + NAVI_L2_HEADER_LEN, value_len);
+        return;
+    }
+
+    if (data[0] != NAVI_L2_CMD)
     {
         return;
     }
@@ -1377,20 +1812,42 @@ static void navi_l1_consume(const uint8_t *data, uint16_t len)
 
         if (s_l1_expected != 0 && s_l1_rx_len == s_l1_expected)
         {
-            uint8_t control = s_l1_rx_buf[1];
+            uint8_t  control = s_l1_rx_buf[1];
             uint16_t payload_len = (uint16_t)(s_l1_expected - NAVI_L1_HEADER_LEN);
             uint16_t received_crc = BIG16(s_l1_rx_buf[4], s_l1_rx_buf[5]);
             uint16_t seq = BIG16(s_l1_rx_buf[6], s_l1_rx_buf[7]);
             const uint8_t *payload = s_l1_rx_buf + NAVI_L1_HEADER_LEN;
+            bool ack_requested = (control & NAVI_L1_ACK_REQ) != 0;
 
-            if (received_crc != navi_crc16(payload, payload_len))
+            if (control & NAVI_L1_BIT_ACK)
             {
-                navi_send_l1(NAVI_L1_CTRL_ERROR, seq, NULL, 0);
+                /* Streaming mode: this endpoint never waits for ACKs, so an
+                 * inbound ACK carries no state we need. */
             }
-            else if (control == NAVI_L1_CTRL_DATA)
+            else if (received_crc != navi_crc16(payload, payload_len))
             {
-                navi_send_l1(NAVI_L1_CTRL_ACK, seq, NULL, 0);
-                navi_handle_l2(payload, payload_len);
+                /* HoneyProtocol 2.3.1: the receiver answers per request. A
+                 * streaming sender that did not ask for an ACK learns about the
+                 * gap from the L2 sequence check instead. */
+                if (ack_requested)
+                {
+                    navi_send_l1(NAVI_L1_CTRL_ERROR, seq, NULL, 0);
+                }
+                else
+                {
+                    APP_PRINT_WARN1("navi: L1 CRC error seq=%u (streaming, no ACK)", seq);
+                }
+            }
+            else
+            {
+                if (ack_requested)
+                {
+                    navi_send_l1(NAVI_L1_CTRL_ACK, seq, NULL, 0);
+                }
+                if (!(control & NAVI_L1_BIT_ERR))
+                {
+                    navi_handle_l2(payload, payload_len);
+                }
             }
             s_l1_rx_len = 0;
             s_l1_expected = 0;
@@ -1398,97 +1855,6 @@ static void navi_l1_consume(const uint8_t *data, uint16_t len)
     }
 }
 
-static bool navi_callback_link_matches(uint16_t conn_handle, uint16_t cid)
-{
-    uint8_t conn_id;
-
-    if (!s_link_alive || !le_get_conn_id_by_handle(conn_handle, &conn_id) || conn_id != s_conn_id)
-    {
-        return false;
-    }
-    if (s_conn_handle != conn_handle)
-    {
-        return false;
-    }
-    s_cid = cid;
-    return true;
-}
-
-static T_APP_RESULT navi_attr_read_cb(uint16_t conn_handle, uint16_t cid,
-                                      T_SERVER_ID service_id, uint16_t attrib_index,
-                                      uint16_t offset, uint16_t *p_length, uint8_t **pp_value)
-{
-    (void)conn_handle;
-    (void)cid;
-    (void)service_id;
-    (void)attrib_index;
-    (void)offset;
-    (void)p_length;
-    (void)pp_value;
-    return APP_RESULT_ATTR_NOT_FOUND;
-}
-
-static T_APP_RESULT navi_attr_write_cb(uint16_t conn_handle, uint16_t cid,
-                                       T_SERVER_ID service_id, uint16_t attrib_index,
-                                       T_WRITE_TYPE write_type, uint16_t length,
-                                       uint8_t *p_value,
-                                       P_FUN_EXT_WRITE_IND_POST_PROC *p_write_ind_post_proc)
-{
-    (void)p_write_ind_post_proc;
-
-    if (service_id != s_service_id || !navi_callback_link_matches(conn_handle, cid) ||
-        p_value == NULL || length == 0)
-    {
-        return APP_RESULT_APP_ERR;
-    }
-
-    if (attrib_index == NAVI_ATTR_CTRL_TX_VALUE)
-    {
-        if (write_type != WRITE_REQUEST)
-        {
-            return APP_RESULT_APP_ERR;
-        }
-        navi_l1_consume(p_value, length);
-        return APP_RESULT_SUCCESS;
-    }
-    if (attrib_index == NAVI_ATTR_DATA_TX_VALUE)
-    {
-        if (write_type != WRITE_WITHOUT_RESPONSE)
-        {
-            return APP_RESULT_APP_ERR;
-        }
-        /* One callback is exactly one independent protocol-v2 ATT packet. */
-        navi_handle_frame_packet(p_value, length);
-        return APP_RESULT_SUCCESS;
-    }
-    return APP_RESULT_ATTR_NOT_FOUND;
-}
-
-static void navi_cccd_update_cb(uint16_t conn_handle, uint16_t cid,
-                                T_SERVER_ID service_id, uint16_t index, uint16_t cccbits)
-{
-    if (service_id != s_service_id || !navi_callback_link_matches(conn_handle, cid))
-    {
-        return;
-    }
-
-    if (index == NAVI_ATTR_CTRL_RX_CCCD)
-    {
-        s_ctrl_cccd_enabled = (cccbits & GATT_CLIENT_CHAR_CONFIG_NOTIFY) != 0;
-    }
-    else if (index == NAVI_ATTR_DATA_RX_CCCD)
-    {
-        s_data_cccd_enabled = (cccbits & GATT_CLIENT_CHAR_CONFIG_NOTIFY) != 0;
-    }
-    navi_tx_try_send();
-}
-
-static const T_FUN_GATT_EXT_SERVICE_CBS navi_service_cbs =
-{
-    navi_attr_read_cb,
-    navi_attr_write_cb,
-    navi_cccd_update_cb
-};
 
 static void navi_poll_timer_cb(uint8_t timer_evt, uint16_t param)
 {
@@ -1497,30 +1863,6 @@ static void navi_poll_timer_cb(uint8_t timer_evt, uint16_t param)
     navi_projection_process();
 }
 
-T_SERVER_ID navi_projection_add_service(void)
-{
-    if (!navi_crc_self_test())
-    {
-        APP_PRINT_ERROR0("Navi CRC self-test failed");
-        return NAVI_INVALID_SERVICE_ID;
-    }
-
-    if (!gatt_svc_add(&s_service_id, (uint8_t *)navi_projection_tbl,
-                      sizeof(navi_projection_tbl), &navi_service_cbs,
-                      navi_send_complete_cb))
-    {
-        s_service_id = NAVI_INVALID_SERVICE_ID;
-        return s_service_id;
-    }
-
-    hmi_le_msg_cback_register(navi_projection_handle_gap_msg);
-    if (app_timer_reg_cb(navi_poll_timer_cb, &s_timer_module_id) == 0)
-    {
-        app_start_timer(&s_poll_timer_idx, "navi_poll", s_timer_module_id, 0, 0,
-                        true, NAVI_POLL_PERIOD_MS);
-    }
-    return s_service_id;
-}
 
 void navi_projection_process(void)
 {
@@ -1538,6 +1880,11 @@ void navi_projection_process(void)
     if (s_stream_started && s_gui_attached && !s_stream_active_delivered)
     {
         navi_queue_stream_active();
+    }
+    if (s_x10_active && (now_ms - s_x10_last_ms >= XFER10_SESSION_TIMEOUT_MS))
+    {
+        APP_PRINT_WARN0("xfer10: session timeout, aborting");
+        xfer10_abort(XFER10_ABORT_TIMEOUT);
     }
     if (s_state != NAVI_STATE_ACTIVE)
     {
@@ -1559,12 +1906,10 @@ void navi_projection_process(void)
         }
     }
 
-    if (now_ms - s_last_data_ms >= NAVI_SESSION_TIMEOUT_MS)
-    {
-        uint8_t value[2] = { NAVI_ERR_TIMEOUT, 0 };
-        navi_send_l2(NAVI_KEY_ERROR, value, sizeof(value));
-        navi_reset_session(false);
-    }
+    /* The protocol-v2 idle watchdog lived here. It keyed off s_last_data_ms,
+     * which only the v2 packet path ever refreshed, so once 0x10 took over it
+     * fired on every tick and tore the session down between BEGIN and DATA.
+     * Idle handling for 0x10 lives above (XFER10_SESSION_TIMEOUT_MS). */
 }
 
 void navi_projection_handle_gap_msg(T_IO_MSG *p_gap_msg)
@@ -1690,3 +2035,41 @@ int navi_projection_build_qr_url(char *buf, size_t len)
                     s_public_address[5], s_public_address[4], s_public_address[3],
                     s_public_address[2], s_public_address[1], s_public_address[0]);
 }
+
+/*============================================================================*
+ *                  Transport-agnostic entry points (NUS carrier)
+ *============================================================================*/
+
+void navi_projection_set_carrier(navi_carrier_tx_t tx)
+{
+    s_carrier_tx = tx;
+}
+
+void navi_projection_feed_l1(const uint8_t *data, uint16_t len)
+{
+    if (data == NULL || len == 0)
+    {
+        return;
+    }
+    navi_l1_consume(data, len);
+}
+
+void navi_projection_core_init(void)
+{
+    if (!navi_crc_self_test())
+    {
+        APP_PRINT_ERROR0("Navi CRC self-test failed");
+        return;
+    }
+
+    /* No GATT table of our own: HoneyProtocol L1/L2 ride on the HMIS private
+     * service (0xFFC1/0xFFC2) that hmi_ctrl_service owns. Only the session
+     * engine, the stream transport hook-up and the QR helpers live here. */
+    hmi_le_msg_cback_register(navi_projection_handle_gap_msg);
+    if (app_timer_reg_cb(navi_poll_timer_cb, &s_timer_module_id) == 0)
+    {
+        app_start_timer(&s_poll_timer_idx, "navi_poll", s_timer_module_id, 0, 0,
+                        true, NAVI_POLL_PERIOD_MS);
+    }
+}
+

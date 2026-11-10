@@ -60,7 +60,8 @@ void hmi_ble_profile_init(void)
     hmi_ble_nus_init();
     ota_add_service(ota_srv_cb);
 #ifdef CONFIG_REALTEK_APP_NAVI_PROJECTION
-    /* Keep Navigation last: current HoneyBox discovery chooses the last FFD1-FFD4 set. */
-    navi_projection_add_service();
+    /* HoneyProtocol L0 = BLE UART profile (NUS). The navigation engine no
+     * longer exposes its own GATT service; it is carried by NUS. */
+    navi_projection_core_init();
 #endif
 }

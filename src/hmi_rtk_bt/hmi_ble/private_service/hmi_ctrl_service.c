@@ -47,9 +47,9 @@ static uint16_t hmi_status_len = 1;
 
 static P_FUN_EXT_SERVER_GENERAL_CB pfn_hmi_ctrl_service_cb = NULL;
 
-static const uint8_t hmi_cmd_user_desc[]    = "HMI CMD";
-static const uint8_t hmi_event_user_desc[]  = "HMI Event";
-static const uint8_t hmi_status_user_desc[] = "HMI Status";
+static const uint8_t hmi_cmd_user_desc[]    = "HMIS Write";
+static const uint8_t hmi_event_user_desc[]  = "HMIS Notify";
+static const uint8_t hmi_status_user_desc[] = "HMIS Read";
 
 /* 128-bit Service UUID: 484D4953-0000-1000-8000-00805F9B34FB */
 const uint8_t GATT_UUID128_HMI_SERVICE[16] =

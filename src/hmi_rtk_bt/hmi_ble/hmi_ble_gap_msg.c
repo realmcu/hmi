@@ -152,6 +152,30 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
             APP_PRINT_INFO5("GAP_CONN_STATE_CONNECTED:remote_bd %s, remote_addr_type %d, conn_interval 0x%x, conn_latency 0x%x, conn_supervision_timeout 0x%x",
                             TRACE_BDADDR(remote_bd), remote_bd_type,
                             conn_interval, conn_latency, conn_supervision_timeout);
+
+            /* 2M PHY plus a longer connection event; the phone decides, so the
+             * result is read back on the first frame. */
+            {
+                uint8_t tx_phy = 0;
+                uint8_t rx_phy = 0;
+
+                le_get_conn_param(GAP_PARAM_CONN_TX_PHY_TYPE, &tx_phy, conn_id);
+                le_get_conn_param(GAP_PARAM_CONN_RX_PHY_TYPE, &rx_phy, conn_id);
+                APP_PRINT_INFO2("HMI link PHY before request: tx %d rx %d (1=1M 2=2M)",
+                                tx_phy, rx_phy);
+
+                if (le_set_phy(conn_id, 0, GAP_PHYS_PREFER_2M_BIT, GAP_PHYS_PREFER_2M_BIT,
+                               GAP_PHYS_OPTIONS_CODED_PREFER_NO) != GAP_CAUSE_SUCCESS)
+                {
+                    APP_PRINT_WARN0("HMI le_set_phy(2M) request rejected");
+                }
+
+                /* interval 7.5-15 ms, CE up to 7.5 ms (units of 0.625 ms). */
+                if (le_update_conn_param(conn_id, 6, 12, 0, 400, 4, 12) != GAP_CAUSE_SUCCESS)
+                {
+                    APP_PRINT_WARN0("HMI le_update_conn_param request rejected");
+                }
+            }
         }
         break;
 

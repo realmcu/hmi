@@ -13,6 +13,7 @@
 #include "nordic_uart_service.h"
 
 static bool nus_tx_cccd_enabled = false;
+static uint16_t nus_conn_handle = 0xFFFF;
 
 static void app_nus_send_data_cb(T_EXT_SEND_DATA_RESULT result)
 {
@@ -51,6 +52,8 @@ static T_APP_RESULT app_nus_callback(T_SERVER_ID service_id, void *p_data)
             break;
 
         case SERVICE_CALLBACK_TYPE_WRITE_CHAR_VALUE:
+            /* HoneyProtocol runs on the HMIS private service (0xFFC1/0xFFC2),
+             * not on the UART profile; NUS stays a plain debug channel. */
             APP_PRINT_INFO3("app_nus_callback: NUS RX write, type %d, len %d, data %b",
                             p_nus_cb->msg_data.write.write_type,
                             p_nus_cb->msg_data.write.len,

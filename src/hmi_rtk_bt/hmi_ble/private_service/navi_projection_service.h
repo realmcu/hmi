@@ -17,12 +17,6 @@ extern "C" {
 #include "app_msg.h"
 #include "profile_server_ext.h"
 
-#define NAVI_SERVICE_UUID                  0xFFD0
-#define NAVI_CHAR_CTRL_TX_UUID             0xFFD1
-#define NAVI_CHAR_CTRL_RX_UUID             0xFFD2
-#define NAVI_CHAR_DATA_TX_UUID             0xFFD3
-#define NAVI_CHAR_DATA_RX_UUID             0xFFD4
-
 #define NAVI_PROTOCOL_VERSION              0x02
 #define NAVI_FEATURE_RAW_ATT_PACKET        0x01
 #define NAVI_FEATURE_FRAME_CRC32           0x02
@@ -61,8 +55,21 @@ typedef void (*navi_qr_ready_cb_t)(void);
  *  published to the transport, so the QR page can be hidden. */
 typedef void (*navi_gui_stream_active_cb_t)(void);
 
-/** Register FFD0 last in the existing Upperstack GATT server. */
-T_SERVER_ID navi_projection_add_service(void);
+/** Outbound L1 frame sink. Installed by the L0 carrier that owns the BLE link
+ *  (HoneyProtocol 2.2: the HMIS private service, notify 0xFFC2). */
+typedef void (*navi_carrier_tx_t)(const uint8_t *data, uint16_t len);
+
+/** Initialise the session engine without registering any GATT service of its
+ *  own: L1/L2 ride on the HMIS private service, so only the gap callback and
+ *  the poll timer are needed here (QR helpers and stream transport hooks are
+ *  installed by the UI layer as before). */
+void navi_projection_core_init(void);
+
+/** Bind / unbind the outbound L1 carrier. */
+void navi_projection_set_carrier(navi_carrier_tx_t tx);
+
+/** Feed raw bytes received from the carrier into the L1 reassembler. */
+void navi_projection_feed_l1(const uint8_t *data, uint16_t len);
 
 void navi_projection_set_gui_callbacks(navi_gui_frame_cb_t frame_cb,
                                        navi_gui_reset_cb_t reset_cb,

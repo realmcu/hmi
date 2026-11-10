@@ -92,6 +92,11 @@ uint8_t adv_data[] =
   */
 void hmi_ble_gap_init(void)
 {
+    /* [BTM] is the controller-side manager module; its INFO/TRACE lines block on
+     * the shared log UART, so keep only errors and warnings. */
+    (void)log_module_trace_set(MODULE_BTM, LEVEL_INFO, false);
+    (void)log_module_trace_set(MODULE_BTM, LEVEL_TRACE, false);
+
     /* Device name and device appearance */
     uint8_t  device_name[GAP_DEVICE_NAME_LEN] = "RTKHMI";
     uint16_t appearance = GAP_GATT_APPEARANCE_WRIST_WORN;
@@ -146,7 +151,6 @@ void hmi_ble_gap_init(void)
 
     uint8_t bt_bd_addr[6];
     gap_get_param(GAP_PARAM_BD_ADDR, bt_bd_addr);
-    DBG_DIRECT("addr 1 %x %x %x %x %x %x", bt_bd_addr[5], bt_bd_addr[4], bt_bd_addr[3], bt_bd_addr[2], bt_bd_addr[1], bt_bd_addr[0]);
     for (uint8_t i = 0; i < GAP_BD_ADDR_LEN; i++)
     {
         adv_data[sizeof(adv_data) - GAP_BD_ADDR_LEN + i] = bt_bd_addr[GAP_BD_ADDR_LEN - 1U - i];

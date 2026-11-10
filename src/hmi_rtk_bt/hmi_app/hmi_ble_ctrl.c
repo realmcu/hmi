@@ -18,6 +18,7 @@
 #include "gap_msg.h"
 #include "gap_conn_le.h"
 #include "hmi_ctrl_service.h"
+#include "navi_projection_service.h"
 
 #define HMI_CONN_HANDLE_INVALID     0xFFFF
 
@@ -49,6 +50,22 @@ static int   s_bt_send_result;
 
 static uint16_t hmi_conn_handle    = HMI_CONN_HANDLE_INVALID;
 static bool     hmi_event_cccd_enabled = false;
+
+/* HoneyProtocol L0 carrier: every outbound L1 frame leaves through the HMIS
+ * notify characteristic (0xFFC2). The navi engine installs this via
+ * navi_projection_set_carrier(), so the protocol stack never touches a
+ * service of its own. */
+static void hmi_l1_carrier_tx(const uint8_t *data, uint16_t len)
+{
+    if (hmi_conn_handle == HMI_CONN_HANDLE_INVALID || !hmi_event_cccd_enabled)
+    {
+        return;
+    }
+    if (!hmi_ctrl_service_notify(hmi_conn_handle, (void *)data, len))
+    {
+        APP_PRINT_WARN1("hmi_l1_carrier_tx: notify %d bytes failed", len);
+    }
+}
 
 static void app_hmi_send_data_cb(T_EXT_SEND_DATA_RESULT result)
 {
@@ -93,23 +110,11 @@ static T_APP_RESULT app_hmi_callback(T_SERVER_ID service_id, void *p_data)
             break;
 
         case SERVICE_CALLBACK_TYPE_WRITE_CHAR_VALUE:
-            APP_PRINT_INFO2("app_hmi_callback: HMI CMD write, len %d, data %b",
-                            p_hmi_cb->msg_data.write.len,
-                            TRACE_BINARY(p_hmi_cb->msg_data.write.len, p_hmi_cb->msg_data.write.p_value));
-            {
-                T_HMI_RECV_MSG rx_msg;
-                rx_msg.len    = p_hmi_cb->msg_data.write.len;
-                rx_msg.p_data = malloc(rx_msg.len);
-                if (rx_msg.p_data != NULL)
-                {
-                    memcpy(rx_msg.p_data, p_hmi_cb->msg_data.write.p_value, rx_msg.len);
-                    if (!os_msg_send(s_hmi_recv_queue_handle, &rx_msg, 0))
-                    {
-                        APP_PRINT_ERROR0("app_hmi_callback: recv queue full, drop");
-                        free(rx_msg.p_data);
-                    }
-                }
-            }
+            /* HoneyProtocol L1/L2 arrive as a raw byte stream on 0xFFC1. The
+             * engine reassembles L1 frames, so a write may hold a partial
+             * frame, a whole frame, or several frames back to back. */
+            navi_projection_feed_l1(p_hmi_cb->msg_data.write.p_value,
+                                    p_hmi_cb->msg_data.write.len);
             break;
 
         default:
@@ -274,6 +279,9 @@ void hmi_ble_ctrl_init(void)
 
     hmi_ctrl_service_add_service(app_hmi_callback, app_hmi_send_data_cb);
     hmi_le_msg_cback_register(gap_hmi_msg);
+
+    /* Bind HoneyProtocol L1 egress to the HMIS notify characteristic. */
+    navi_projection_set_carrier(hmi_l1_carrier_tx);
 
     os_task_create(&s_hmi_send_task_handle, "hmisend", hmi_ble_send_task,
                    NULL, HMI_CTRL_TASK_STACK_SIZE, HMI_CTRL_TASK_PRIORITY);
