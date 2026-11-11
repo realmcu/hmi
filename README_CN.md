@@ -46,7 +46,7 @@ Zephyr SDK toolchain 是包含 ARM compiler、assembler 和 linker 的主机构�
 
 ```bash
 mkdir hmi && cd hmi
-west init -m https://github.com/realmcu/HMI-MANIFEST.git --mr master --mf rtl8773g-chargebox-github.yml .
+west init -m https://github.com/realmcu/HMI-MANIFEST.git --mr master --mf chargebox/rtl8773g-chargebox-github.yml .
 west update
 ```
 
@@ -54,7 +54,7 @@ west update
 
 ```bash
 mkdir hmi && cd hmi
-west init -m git@gitee.com:realmcu/hmi-manifest.git --mr master --mf rtl8773g-chargebox-gitee.yml .
+west init -m git@gitee.com:realmcu/hmi-manifest.git --mr master --mf chargebox/rtl8773g-chargebox-gitee.yml .
 west update
 ```
 
