@@ -400,6 +400,7 @@ static void worker_fn(void *context)
 {
     (void)context;
 
+#if !HEALTH_USE_SD001_SAMPLE
     /* posix_port_init_all is idempotent internally in every example we've
      * seen, but the health path may be the first caller; leave the guard
      * here so we don't depend on that. */
@@ -426,12 +427,13 @@ static void worker_fn(void *context)
         posix_close(gs);
         goto done;
     }
+#else
     if (!health_algorithm_driver_init(HEALTH_ODR_HZ))
     {
         APP_LOGE("health_algorithm_init failed");
-        posix_close(gs);
         goto done;
     }
+#endif
     /* Start the bucket clean; the today total is seeded by start() and must
      * survive a worker restart within the same day. */
     mutex_take(s_state_mutex);
@@ -454,30 +456,29 @@ static void worker_fn(void *context)
 
     while (!stop_is_requested())
     {
+#if HEALTH_USE_SD001_SAMPLE
+        int16_t accs[3] =
+        {
+            gsa_sample_25hz_sd001[s_sample_index][0],
+            gsa_sample_25hz_sd001[s_sample_index][1],
+            gsa_sample_25hz_sd001[s_sample_index][2],
+        };
+        s_sample_index++;
+        if (s_sample_index >= GSA_SAMPLE_25HZ_SD001_N)
+        {
+            s_sample_index = 0u;
+            APP_LOGI("SD_001 sample restarted");
+        }
+#else
         posix_gsensor_axis_t axis = {0};
         if (posix_read(gs, &axis, sizeof(axis)) == (posix_ssize_t)sizeof(axis))
         {
-#if HEALTH_USE_SD001_SAMPLE
-            int16_t accs[3] =
-            {
-                gsa_sample_25hz_sd001[s_sample_index][0],
-                gsa_sample_25hz_sd001[s_sample_index][1],
-                gsa_sample_25hz_sd001[s_sample_index][2],
-            };
-            s_sample_index++;
-            if (s_sample_index >= GSA_SAMPLE_25HZ_SD001_N)
-            {
-                s_sample_index = 0u;
-                APP_LOGI("SD_001 sample restarted");
-            }
-#else
             int16_t accs[3] =
             {
                 (int16_t)((axis.x * 512) / 1000),
                 (int16_t)((axis.y * 512) / 1000),
                 (int16_t)((axis.z * 512) / 1000),
             };
-#endif
             health_input_t input =
             {
                 .xyz = accs,
@@ -489,6 +490,20 @@ static void worker_fn(void *context)
             };
             (void)health_algorithm_feed(&input);
         }
+#endif
+
+#if HEALTH_USE_SD001_SAMPLE
+        health_input_t input =
+        {
+            .xyz = accs,
+            .count = 1,
+            .last_sample_ms = k_uptime_get_32(),
+            .hr_bpm = 0,
+            .hr_updated = false,
+            .worn = true,
+        };
+        (void)health_algorithm_feed(&input);
+#endif
 
         os_delay(period_ms);
     }
@@ -502,7 +517,9 @@ static void worker_fn(void *context)
         /* Stop path: one last flush so partial data isn't silently lost. */
         flush_step_bucket(true, 0u);
     }
+#if !HEALTH_USE_SD001_SAMPLE
     posix_close(gs);
+#endif
     APP_LOGI("worker stopped");
 
 done:

@@ -76,6 +76,17 @@ target_include_directories(${APP_TARGET_NAME} PUBLIC
     ${GSENSOR_ALGORITHM_ROOT}/include
     ${GSENSOR_ALGORITHM_ROOT}/src)
 
+# Optional embedded pedometer replay trace. The source is harmless when
+# HEALTH_USE_SD001_SAMPLE is 0 because the linker drops the unreferenced data.
+set(GSENSOR_SD001_SAMPLE_DIR
+    ${GSENSOR_ALGORITHM_ROOT}/sample/pedometer/25hz)
+if(EXISTS ${GSENSOR_SD001_SAMPLE_DIR}/sample_25hz_sd001.c)
+    target_sources(${APP_TARGET_NAME} PRIVATE
+        ${GSENSOR_SD001_SAMPLE_DIR}/sample_25hz_sd001.c)
+    target_include_directories(${APP_TARGET_NAME} PUBLIC
+        ${GSENSOR_SD001_SAMPLE_DIR})
+endif()
+
 # HoneyGUI Designer 导出的产品 UI（west project watch_ui，同样挂在 topdir）。
 # 不拷贝生成产物进固件树，直接以 ui/ 为源目录编译，避免几百个生成文件的副本。
 add_subdirectory(${HMI_COMPONENT_ROOT}/ui ${CMAKE_CURRENT_BINARY_DIR}/watch_ui)
