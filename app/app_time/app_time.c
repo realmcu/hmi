@@ -25,6 +25,16 @@ APP_LOG_MODULE_REGISTER(app_time);
 
 static posix_fd_t s_rtc_fd = POSIX_FD_NULL;
 
+static posix_fd_t rtc_fd_get(void)
+{
+    if (s_rtc_fd == POSIX_FD_NULL)
+    {
+        (void)posix_port_init_all();
+        s_rtc_fd = posix_open(APP_TIME_RTC_PATH);
+    }
+    return s_rtc_fd;
+}
+
 int app_time_set(uint32_t sec)
 {
     time_t    when = (time_t)sec;
@@ -36,8 +46,7 @@ int app_time_set(uint32_t sec)
         return -1;
     }
 
-    (void)posix_port_init_all();
-    posix_fd_t rtc = posix_open(APP_TIME_RTC_PATH);
+    posix_fd_t rtc = rtc_fd_get();
     if (rtc == POSIX_FD_NULL)
     {
         APP_LOGE("open %s failed", APP_TIME_RTC_PATH);
@@ -57,7 +66,6 @@ int app_time_set(uint32_t sec)
         .nsec   = 0u,
     };
     int rc = posix_ioctl(rtc, POSIX_RTC_IOCTL_SET_CALENDAR, &rtc_time);
-    posix_close(rtc);
     if (rc != POSIX_OK)
     {
         APP_LOGE("RTC SET_CALENDAR failed rc=%d", rc);
@@ -99,12 +107,11 @@ static uint32_t civil_to_epoch(const posix_rtc_time_t *t)
 
 uint32_t app_time_now(void)
 {
-    posix_fd_t rtc = posix_open(APP_TIME_RTC_PATH);
+    posix_fd_t rtc = rtc_fd_get();
     if (rtc == POSIX_FD_NULL) { return 0; }
 
     posix_rtc_time_t t;
     int rc = posix_ioctl(rtc, POSIX_RTC_IOCTL_GET_CALENDAR, &t);
-    posix_close(rtc);
     return (rc != POSIX_OK) ? 0 : civil_to_epoch(&t);
 }
 
@@ -144,15 +151,10 @@ static void rtc_second_cb(posix_fd_t fd, void *arg)
 
 static int tick_start(void)
 {
-    (void)posix_port_init_all();
-    if (s_rtc_fd == POSIX_FD_NULL)
+    if (rtc_fd_get() == POSIX_FD_NULL)
     {
-        s_rtc_fd = posix_open(APP_TIME_RTC_PATH);
-        if (s_rtc_fd == POSIX_FD_NULL)
-        {
-            APP_LOGE("open %s failed; boundary events disabled", APP_TIME_RTC_PATH);
-            return -1;
-        }
+        APP_LOGE("open %s failed; boundary events disabled", APP_TIME_RTC_PATH);
+        return -1;
     }
     posix_rtc_update_t u = { .callback = rtc_second_cb, .arg = NULL };
     int rc = posix_ioctl(s_rtc_fd, POSIX_RTC_IOCTL_SET_UPDATE_CB, &u);
