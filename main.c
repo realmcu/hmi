@@ -54,7 +54,10 @@ int main(void)
            k_thread_name_get(k_current_get()),
            k_thread_priority_get(k_current_get()));
     gui_server_init();
-    gui_set_keep_active_time(10000000);
+    /* The watch-face clock is refreshed by GUI object timers, which only run
+     * while the GUI frame loop is awake. A finite idle timeout freezes the
+     * displayed time permanently once it expires. */
+    gui_set_keep_active_time(0xFFFFFFFFu);
 
     app_core_init();
 
