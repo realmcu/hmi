@@ -45,7 +45,7 @@ mkdir hmi
 cd hmi
 
 # 2. Initialize the west workspace
-west init -m https://gitee.com/realmcu/hmi-manifest.git --mr master --mf rtl8773e-dashboard-gitee.yml .
+west init -m https://gitee.com/realmcu/hmi-manifest.git --mr master --mf dashboard/rtl8773e-dashboard-gitee.yml .
 
 # 3. Sync all sub-projects
 west update

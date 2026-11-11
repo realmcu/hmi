@@ -42,7 +42,7 @@ mkdir hmi
 cd hmi
 
 # 2. 初始化 west 工作空间
-west init -m https://gitee.com/realmcu/hmi-manifest.git --mr master --mf rtl8773e-dashboard-gitee.yml .
+west init -m https://gitee.com/realmcu/hmi-manifest.git --mr master --mf dashboard/rtl8773e-dashboard-gitee.yml .
 
 # 3. 同步所有子项目
 west update
