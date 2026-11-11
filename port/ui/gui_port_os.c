@@ -112,7 +112,6 @@ static bool port_mq_recv(void *handle, void *buffer, uint32_t size, uint32_t tim
 {
     return os_msg_recv(handle, buffer, timeout);
 }
-
 #define GUI_HEAP_SIZE                                           (30 * 1024)
 
 __attribute__((aligned(4))) static uint8_t port_mem_heap[GUI_HEAP_SIZE] = {0};
@@ -144,8 +143,8 @@ static struct gui_os_api os_api =
     .mem_threshold_size = 10 * 1024,
 
     /*enable this if use printf*/
-    .log = (log_func_t)printf,
-    // .log = port_log,
+    // .log = (log_func_t)printf,
+    .log = port_log,
 };
 
 void gui_port_os_add_exe_to_gui_task()

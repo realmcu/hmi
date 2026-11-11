@@ -34,6 +34,10 @@ extern bool hw_acc_blit_scale(uint8_t *target_buffer, const uint8_t *source_buff
 extern gui_jpeg_ops_t hw_jpeg_ops;
 #endif
 
+/* PPE source staging buffer in on-chip DSPRAM: rotated/scaled blits DMA the
+ * needed source sub-rect from XIP flash here so the PPE samples fast RAM. */
+DSP_RAM_BSS_SECTION static uint8_t __attribute__((aligned(4))) ppe_cache[40 * 1024];
+
 static struct acc_engine acc =
 {
 #if defined(CONFIG_REALTEK_DISPLAY_ENABLE_PPE)
@@ -53,8 +57,8 @@ static struct acc_engine acc =
     .idu = &hw_acc_idu_ops,
 #endif
     .enable_thread_sync = true,
-    .cache_mem = NULL,
-    .cache_size = 0,
+    .cache_mem = ppe_cache,
+    .cache_size = sizeof(ppe_cache),
 };
 
 
