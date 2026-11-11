@@ -56,7 +56,8 @@ typedef struct rtc_file_s
     void  *update_arg;
 } rtc_file_t;
 
-#define MAX_RTC_FILES 2
+/* app_time, FlashDB and diagnostics may each keep an RTC file open. */
+#define MAX_RTC_FILES 4
 static rtc_file_t s_rtc_files[MAX_RTC_FILES];
 
 /* 反查表：Zephyr 回调只带 (dev, id)，需据此找回 rtc_file_t
