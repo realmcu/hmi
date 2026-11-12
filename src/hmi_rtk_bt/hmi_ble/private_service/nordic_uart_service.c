@@ -11,6 +11,7 @@
 #include "bt_gatt_svc.h"
 #include "bt_types.h"
 #include "nordic_uart_service.h"
+#include "hmi_bt_log.h"
 
 /*============================================================================*
  *                              Macros
@@ -196,8 +197,8 @@ const T_ATTRIB_APPL nus_service_tbl[] =
 void nus_write_post_callback(uint16_t conn_handle, uint16_t cid, T_SERVER_ID service_id,
                              uint16_t attrib_index, uint16_t length, uint8_t *p_value)
 {
-    APP_PRINT_INFO5("nus_write_post_callback: conn_handle %d, cid %d, service_id %d, attrib_index 0x%x, length %d",
-                    conn_handle, cid, service_id, attrib_index, length);
+    HMI_LOG_INFO5("nus_write_post_callback: conn_handle %d, cid %d, service_id %d, attrib_index 0x%x, length %d",
+                  conn_handle, cid, service_id, attrib_index, length);
 }
 
 T_APP_RESULT nus_service_attr_read_cb(uint16_t conn_handle, uint16_t cid,
@@ -218,8 +219,8 @@ T_APP_RESULT nus_service_attr_write_cb(uint16_t conn_handle, uint16_t cid,
 
     T_APP_RESULT cause = APP_RESULT_SUCCESS;
 
-    APP_PRINT_INFO4("nus_service_attr_write_cb: attrib_index 0x%x, write_type 0x%x, conn_handle 0x%x, len %d",
-                    attrib_index, write_type, conn_handle, length);
+    HMI_LOG_INFO4("nus_service_attr_write_cb: attrib_index 0x%x, write_type 0x%x, conn_handle 0x%x, len %d",
+                  attrib_index, write_type, conn_handle, length);
 
     *p_write_ind_post_proc = nus_write_post_callback;
 
@@ -334,7 +335,7 @@ bool nus_service_send_data(uint16_t conn_handle, void *p_value, uint16_t length)
         return false;
     }
 
-    APP_PRINT_INFO1("nus_service_send_data: len %d", length);
+    HMI_LOG_INFO1("nus_service_send_data: len %d", length);
     return gatt_svc_send_data(conn_handle, L2C_FIXED_CID_ATT, nus_service_id,
                               NUS_SVC_CHAR_TX_NOTIFY_INDEX,
                               p_value, length, GATT_PDU_TYPE_ANY);

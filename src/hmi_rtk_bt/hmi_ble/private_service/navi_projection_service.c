@@ -18,6 +18,7 @@
 #include "gap_msg.h"
 #include "gui_message.h"
 #include "hmi_ble_gap_msg.h"
+#include "hmi_bt_log.h"
 #include "os_sync.h"
 #include "rtl876x.h"
 #include "stream_transport.h"
@@ -178,8 +179,8 @@ static uint16_t s_l1_rx_len;
 static uint16_t s_l1_expected;
 static uint16_t s_l1_tx_seq;
 static bool     s_link_info_logged;
-static uint16_t s_x10_frame_w;      /* geometry of the accepted stream */
-static uint16_t s_x10_frame_h;
+static uint16_t s_navi_file_frame_w;     /* geometry of the accepted stream */
+static uint16_t s_navi_file_frame_h;
 
 static navi_tx_item_t s_tx_fifo[NAVI_TX_FIFO_DEPTH];
 static uint8_t s_tx_head;
@@ -718,9 +719,9 @@ static void navi_gui_reset_event(void *message);
 static void navi_qr_ready_event(void *message);
 static bool navi_fail_frame(navi_frame_slot_t *slot, uint8_t error);
 static void navi_finish_frame(navi_frame_slot_t *slot);
-static void xfer10_stop(void);
-static void xfer10_drop_buffer(void);
-static bool xfer10_acquire_buffer(uint32_t total, stp_frame_t *out);
+static void navi_file_stop(void);
+static void navi_file_drop_buffer(void);
+static bool navi_file_acquire_buffer(uint32_t total, stp_frame_t *out);
 
 /* Acquire a transport buffer for a slot about to receive a new frame. A buffer
  * already attached to the slot (kept from a prior aborted frame) is reused
@@ -874,12 +875,12 @@ static void navi_reset_session(bool link_lost)
         s_cid = NAVI_INVALID_CID;
         s_conn_id = NAVI_INVALID_CONN_ID;
         s_link_info_logged = false;
-        s_x10_frame_w = 0;
-        s_x10_frame_h = 0;
-        xfer10_drop_buffer();
+        s_navi_file_frame_w = 0;
+        s_navi_file_frame_h = 0;
+        navi_file_drop_buffer();
         navi_tx_clear();
     }
-    xfer10_stop();
+    navi_file_stop();
     os_unlock(lock);
     navi_queue_gui_reset();
 }
@@ -1262,52 +1263,52 @@ static void navi_handle_open(const uint8_t *value, uint16_t len)
  *  validation + commit into the stream transport.
  *============================================================================*/
 
-#define XFER10_CMD                  0x10
-#define XFER10_KEY_BEGIN_REQ        0x01
-#define XFER10_KEY_BEGIN_RSP        0x02
-#define XFER10_KEY_DATA             0x03
-#define XFER10_KEY_END_REQ          0x05
-#define XFER10_KEY_END_RSP          0x06
-#define XFER10_KEY_ABORT            0x07
+#define NAVI_FILE_CMD                  0x10
+#define NAVI_FILE_KEY_BEGIN_REQ        0x01
+#define NAVI_FILE_KEY_BEGIN_RSP        0x02
+#define NAVI_FILE_KEY_DATA             0x03
+#define NAVI_FILE_KEY_END_REQ          0x05
+#define NAVI_FILE_KEY_END_RSP          0x06
+#define NAVI_FILE_KEY_ABORT            0x07
 
-#define XFER10_TYPE_IMAGE           0x01
-#define XFER10_TYPE_VIDEO           0x02
-#define XFER10_TYPE_RAW             0x03
+#define NAVI_FILE_TYPE_IMAGE           0x01
+#define NAVI_FILE_TYPE_VIDEO           0x02
+#define NAVI_FILE_TYPE_RAW             0x03
 
 /* 248 (L1 max payload) - 5 (L2 header) - 2 (chunk seq) */
-#define XFER10_CHUNK_MAX            241U
-#define XFER10_CHUNK_REQ_MAX        2048U
-#define XFER10_SESSION_TIMEOUT_MS   10000UL
-#define XFER10_RSP_LEN              3U
+#define NAVI_FILE_CHUNK_MAX            241U
+#define NAVI_FILE_CHUNK_REQ_MAX        2048U
+#define NAVI_FILE_SESSION_TIMEOUT_MS   10000UL
+#define NAVI_FILE_RSP_LEN              3U
 
-#define XFER10_RSP_OK               0x00
-#define XFER10_RSP_BUSY             0x01
-#define XFER10_RSP_NO_SPACE         0x02
-#define XFER10_RSP_BAD_TYPE         0x03
+#define NAVI_FILE_RSP_OK               0x00
+#define NAVI_FILE_RSP_BUSY             0x01
+#define NAVI_FILE_RSP_NO_SPACE         0x02
+#define NAVI_FILE_RSP_BAD_TYPE         0x03
 
-#define XFER10_END_OK               0x00
-#define XFER10_END_CRC_FAIL         0x01
-#define XFER10_END_INCOMPLETE       0x02
+#define NAVI_FILE_END_OK               0x00
+#define NAVI_FILE_END_CRC_FAIL         0x01
+#define NAVI_FILE_END_INCOMPLETE       0x02
 
-#define XFER10_ERR_NONE             0x00
-#define XFER10_ERR_WRITE_FAIL       0x01
-#define XFER10_ERR_DECODE_FAIL      0x02
+#define NAVI_FILE_ERR_NONE             0x00
+#define NAVI_FILE_ERR_WRITE_FAIL       0x01
+#define NAVI_FILE_ERR_DECODE_FAIL      0x02
 
-#define XFER10_ABORT_USER           0x00
-#define XFER10_ABORT_ERROR          0x01
-#define XFER10_ABORT_TIMEOUT        0x02
+#define NAVI_FILE_ABORT_USER           0x00
+#define NAVI_FILE_ABORT_ERROR          0x01
+#define NAVI_FILE_ABORT_TIMEOUT        0x02
 
-static bool        s_x10_active;
-static bool        s_x10_held;      /* transport buffer owned by this session */
-static stp_frame_t s_x10_desc;
-static uint32_t    s_x10_total;
-static uint32_t    s_x10_got;
-static uint16_t    s_x10_chunk;
-static uint16_t    s_x10_next_seq;
-static uint32_t    s_x10_last_ms;
-static uint32_t    s_x10_drop_log_ms;
+static bool        s_navi_file_active;
+static bool        s_navi_file_held;      /* transport buffer owned by this session */
+static stp_frame_t s_navi_file_desc;
+static uint32_t    s_navi_file_total;
+static uint32_t    s_navi_file_got;
+static uint16_t    s_navi_file_chunk;
+static uint16_t    s_navi_file_next_seq;
+static uint32_t    s_navi_file_last_ms;
+static uint32_t    s_navi_file_drop_log_ms;
 
-static void xfer10_send(uint8_t key, const uint8_t *value, uint16_t len)
+static void navi_file_send(uint8_t key, const uint8_t *value, uint16_t len)
 {
     uint8_t packet[5U + 8U];
 
@@ -1315,7 +1316,7 @@ static void xfer10_send(uint8_t key, const uint8_t *value, uint16_t len)
     {
         return;
     }
-    packet[0] = XFER10_CMD;
+    packet[0] = NAVI_FILE_CMD;
     packet[1] = 0;
     packet[2] = key;
     packet[3] = HI_16(len);
@@ -1328,28 +1329,28 @@ static void xfer10_send(uint8_t key, const uint8_t *value, uint16_t len)
                                 (uint16_t)(5U + len), true);
 }
 
-static void xfer10_stop(void)
+static void navi_file_stop(void)
 {
-    s_x10_active   = false;
-    s_x10_total    = 0;
-    s_x10_got      = 0;
-    s_x10_chunk    = 0;
-    s_x10_next_seq = 0;
+    s_navi_file_active   = false;
+    s_navi_file_total    = 0;
+    s_navi_file_got      = 0;
+    s_navi_file_chunk    = 0;
+    s_navi_file_next_seq = 0;
 }
 
-static void xfer10_drop_buffer(void)
+static void navi_file_drop_buffer(void)
 {
-    if (s_x10_held && s_transport != NULL)
+    if (s_navi_file_held && s_transport != NULL)
     {
-        (void)stp_release(s_transport, &s_x10_desc);
+        (void)stp_release(s_transport, &s_navi_file_desc);
     }
-    s_x10_held = false;
-    memset(&s_x10_desc, 0, sizeof(s_x10_desc));
+    s_navi_file_held = false;
+    memset(&s_navi_file_desc, 0, sizeof(s_navi_file_desc));
 }
 
 /* Take a transit buffer, reclaiming the oldest stale frame if the ring is full
  * (the GUI transport runs STP_DROP_NONE and never discards on its own). */
-static bool xfer10_acquire_buffer(uint32_t total, stp_frame_t *out)
+static bool navi_file_acquire_buffer(uint32_t total, stp_frame_t *out)
 {
     stp_frame_t stale;
     uint8_t     reclaimed = 0;
@@ -1374,8 +1375,8 @@ static bool xfer10_acquire_buffer(uint32_t total, stp_frame_t *out)
         reclaimed++;
         if (stp_acquire_free(s_transport, total, out))
         {
-            APP_PRINT_WARN1("xfer10: transport pool was full, reclaimed %u stale frame(s)",
-                            reclaimed);
+            NAVI_FILE_LOG_WARN1("navi_file: transport pool was full, reclaimed %u stale frame(s)",
+                                reclaimed);
             return true;
         }
     }
@@ -1383,8 +1384,8 @@ static bool xfer10_acquire_buffer(uint32_t total, stp_frame_t *out)
 }
 
 /* Locate the baseline SOF0 marker and return its dimensions. */
-static bool xfer10_jpeg_dims(const uint8_t *jpeg, uint32_t len,
-                             uint16_t *w, uint16_t *h)
+static bool navi_file_jpeg_dims(const uint8_t *jpeg, uint32_t len,
+                                uint16_t *w, uint16_t *h)
 {
     uint32_t pos = 2;
 
@@ -1435,28 +1436,28 @@ static bool xfer10_jpeg_dims(const uint8_t *jpeg, uint32_t len,
     return false;
 }
 
-static void xfer10_abort(uint8_t reason)
+static void navi_file_abort(uint8_t reason)
 {
-    if (s_x10_active)
+    if (s_navi_file_active)
     {
         uint8_t value = reason;
-        xfer10_send(XFER10_KEY_ABORT, &value, 1);
+        navi_file_send(NAVI_FILE_KEY_ABORT, &value, 1);
     }
-    xfer10_stop();
+    navi_file_stop();
     /* A gap/CRC error only kills one frame; keep the session "active" so the GUI
      * stays on the map. Anything else (peer cancel, timeout) ends the stream. */
-    if (reason != XFER10_ABORT_ERROR)
+    if (reason != NAVI_FILE_ABORT_ERROR)
     {
         s_state = NAVI_STATE_IDLE;
-        s_x10_frame_w = 0;
-        s_x10_frame_h = 0;
+        s_navi_file_frame_w = 0;
+        s_navi_file_frame_h = 0;
         navi_queue_gui_reset();
     }
 }
 
-static void xfer10_handle_begin(const uint8_t *v, uint16_t len)
+static void navi_file_handle_begin(const uint8_t *v, uint16_t len)
 {
-    uint8_t  rsp[XFER10_RSP_LEN] = { XFER10_RSP_BAD_TYPE, 0, 0 };
+    uint8_t  rsp[NAVI_FILE_RSP_LEN] = { NAVI_FILE_RSP_BAD_TYPE, 0, 0 };
     uint32_t total;
     uint16_t chunk;
     uint8_t  type;
@@ -1464,7 +1465,7 @@ static void xfer10_handle_begin(const uint8_t *v, uint16_t len)
 
     if (len < 8U)
     {
-        xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+        navi_file_send(NAVI_FILE_KEY_BEGIN_RSP, rsp, sizeof(rsp));
         return;
     }
 
@@ -1482,23 +1483,23 @@ static void xfer10_handle_begin(const uint8_t *v, uint16_t len)
     }
 
     if (len != (uint16_t)(8U + name_len) ||
-        type < XFER10_TYPE_IMAGE || type > XFER10_TYPE_RAW ||
+        type < NAVI_FILE_TYPE_IMAGE || type > NAVI_FILE_TYPE_RAW ||
         total == 0U || total > frame_cap)
     {
-        APP_PRINT_WARN2("xfer10: BEGIN rejected total=%u cap=%u", total, frame_cap);
-        xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+        NAVI_FILE_LOG_WARN2("navi_file: BEGIN rejected total=%u cap=%u", total, frame_cap);
+        navi_file_send(NAVI_FILE_KEY_BEGIN_RSP, rsp, sizeof(rsp));
         return;
     }
-    if (s_x10_active)
+    if (s_navi_file_active)
     {
-        rsp[0] = XFER10_RSP_BUSY;
-        xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+        rsp[0] = NAVI_FILE_RSP_BUSY;
+        navi_file_send(NAVI_FILE_KEY_BEGIN_RSP, rsp, sizeof(rsp));
         return;
     }
 
-    if (chunk == 0U || chunk > XFER10_CHUNK_REQ_MAX)
+    if (chunk == 0U || chunk > NAVI_FILE_CHUNK_REQ_MAX)
     {
-        chunk = XFER10_CHUNK_REQ_MAX;
+        chunk = NAVI_FILE_CHUNK_REQ_MAX;
     }
     {
         /* Keep one L1 frame inside a single ATT write: the sender must not have
@@ -1521,43 +1522,43 @@ static void xfer10_handle_begin(const uint8_t *v, uint16_t len)
             chunk = frame_max;
         }
     }
-    if (chunk > XFER10_CHUNK_MAX)
+    if (chunk > NAVI_FILE_CHUNK_MAX)
     {
-        chunk = XFER10_CHUNK_MAX;
+        chunk = NAVI_FILE_CHUNK_MAX;
     }
 
-    if (!s_x10_held)
+    if (!s_navi_file_held)
     {
         if (s_transport == NULL)
         {
             /* Transport never bound by the GUI: report BUSY so the phone log can
              * tell this apart from a genuinely exhausted frame pool. */
-            APP_PRINT_ERROR0("xfer10: stream transport not bound by the GUI");
-            rsp[0] = XFER10_RSP_BUSY;
-            xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+            APP_PRINT_ERROR0("navi_file: stream transport not bound by the GUI");
+            rsp[0] = NAVI_FILE_RSP_BUSY;
+            navi_file_send(NAVI_FILE_KEY_BEGIN_RSP, rsp, sizeof(rsp));
             return;
         }
-        if (!xfer10_acquire_buffer(total, &s_x10_desc))
+        if (!navi_file_acquire_buffer(total, &s_navi_file_desc))
         {
-            rsp[0] = XFER10_RSP_NO_SPACE;
-            xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+            rsp[0] = NAVI_FILE_RSP_NO_SPACE;
+            navi_file_send(NAVI_FILE_KEY_BEGIN_RSP, rsp, sizeof(rsp));
             return;
         }
-        s_x10_held = true;
+        s_navi_file_held = true;
     }
-    else if (total > s_x10_desc.capacity)
+    else if (total > s_navi_file_desc.capacity)
     {
-        rsp[0] = XFER10_RSP_NO_SPACE;
-        xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+        rsp[0] = NAVI_FILE_RSP_NO_SPACE;
+        navi_file_send(NAVI_FILE_KEY_BEGIN_RSP, rsp, sizeof(rsp));
         return;
     }
 
-    s_x10_total    = total;
-    s_x10_got      = 0;
-    s_x10_chunk    = chunk;
-    s_x10_next_seq = 0;
-    s_x10_last_ms  = navi_time_ms();
-    s_x10_active   = true;
+    s_navi_file_total    = total;
+    s_navi_file_got      = 0;
+    s_navi_file_chunk    = chunk;
+    s_navi_file_next_seq = 0;
+    s_navi_file_last_ms  = navi_time_ms();
+    s_navi_file_active   = true;
     /* A phone that opened a transfer is streaming: mirror the v2 OPEN semantics
      * so the GUI swaps the QR page for the live map view. */
     s_state = NAVI_STATE_ACTIVE;
@@ -1592,27 +1593,27 @@ static void xfer10_handle_begin(const uint8_t *v, uint16_t len)
         s_link_info_logged = true;
     }
 
-    rsp[0] = XFER10_RSP_OK;
+    rsp[0] = NAVI_FILE_RSP_OK;
     rsp[1] = HI_16(chunk);
     rsp[2] = LO_16(chunk);
-    xfer10_send(XFER10_KEY_BEGIN_RSP, rsp, sizeof(rsp));
+    navi_file_send(NAVI_FILE_KEY_BEGIN_RSP, rsp, sizeof(rsp));
 
-    APP_PRINT_TRACE3("xfer10: BEGIN type=%u total=%u chunk=%u",
-                     type, total, chunk);
+    NAVI_FILE_LOG_DEBUG3("navi_file: BEGIN type=%u total=%u chunk=%u",
+                         type, total, chunk);
 }
 
-static void xfer10_handle_data(const uint8_t *v, uint16_t len)
+static void navi_file_handle_data(const uint8_t *v, uint16_t len)
 {
     uint16_t seq;
     uint16_t data_len;
 
-    if (!s_x10_active || len < 3U)
+    if (!s_navi_file_active || len < 3U)
     {
         /* Rate-limited: this fires per packet while a dead session drains. */
-        if (s_x10_drop_log_ms == 0U || (navi_time_ms() - s_x10_drop_log_ms) >= 1000U)
+        if (s_navi_file_drop_log_ms == 0U || (navi_time_ms() - s_navi_file_drop_log_ms) >= 1000U)
         {
-            s_x10_drop_log_ms = navi_time_ms();
-            APP_PRINT_WARN2("xfer10: DATA dropped active=%d len=%u", s_x10_active, len);
+            s_navi_file_drop_log_ms = navi_time_ms();
+            NAVI_FILE_LOG_WARN2("navi_file: DATA dropped active=%d len=%u", s_navi_file_active, len);
         }
         return;
     }
@@ -1620,122 +1621,122 @@ static void xfer10_handle_data(const uint8_t *v, uint16_t len)
     seq      = BIG16(v[0], v[1]);
     data_len = (uint16_t)(len - 2U);
 
-    if (seq != s_x10_next_seq || s_x10_desc.addr == NULL ||
-        s_x10_got + data_len > s_x10_total)
+    if (seq != s_navi_file_next_seq || s_navi_file_desc.addr == NULL ||
+        s_navi_file_got + data_len > s_navi_file_total)
     {
-        APP_PRINT_WARN2("xfer10: DATA out of order seq=%u expect=%u",
-                        seq, s_x10_next_seq);
-        xfer10_abort(XFER10_ABORT_ERROR);
+        NAVI_FILE_LOG_WARN2("navi_file: DATA out of order seq=%u expect=%u",
+                            seq, s_navi_file_next_seq);
+        navi_file_abort(NAVI_FILE_ABORT_ERROR);
         return;
     }
 
-    memcpy((uint8_t *)s_x10_desc.addr + s_x10_got, v + 2, data_len);
-    s_x10_got += data_len;
-    s_x10_next_seq++;
-    s_x10_last_ms = navi_time_ms();
+    memcpy((uint8_t *)s_navi_file_desc.addr + s_navi_file_got, v + 2, data_len);
+    s_navi_file_got += data_len;
+    s_navi_file_next_seq++;
+    s_navi_file_last_ms = navi_time_ms();
 }
 
-static void xfer10_handle_end(const uint8_t *v, uint16_t len)
+static void navi_file_handle_end(const uint8_t *v, uint16_t len)
 {
-    uint8_t  rsp[2] = { XFER10_END_INCOMPLETE, XFER10_ERR_NONE };
+    uint8_t  rsp[2] = { NAVI_FILE_END_INCOMPLETE, NAVI_FILE_ERR_NONE };
     uint32_t crc;
     uint16_t w = 0;
     uint16_t h = 0;
     bool     ok;
 
-    if (!s_x10_active || len < 4U || s_x10_desc.addr == NULL)
+    if (!s_navi_file_active || len < 4U || s_navi_file_desc.addr == NULL)
     {
-        APP_PRINT_WARN3("xfer10: END dropped active=%d len=%u addr=%p",
-                        s_x10_active, len, s_x10_desc.addr);
+        NAVI_FILE_LOG_WARN3("navi_file: END dropped active=%d len=%u addr=%p",
+                            s_navi_file_active, len, s_navi_file_desc.addr);
         return;
     }
 
     crc = BIG32(v[0], v[1], v[2], v[3]);
-    ok  = (s_x10_got == s_x10_total) &&
-          (navi_crc32((const uint8_t *)s_x10_desc.addr, s_x10_total) == crc);
+    ok  = (s_navi_file_got == s_navi_file_total) &&
+          (navi_crc32((const uint8_t *)s_navi_file_desc.addr, s_navi_file_total) == crc);
 
     if (ok)
     {
-        const uint8_t *jpeg = (const uint8_t *)s_x10_desc.addr;
+        const uint8_t *jpeg = (const uint8_t *)s_navi_file_desc.addr;
 
         /* validate_jpeg() compares the SOF geometry with what it is handed, so
          * the pixel budget has to be stated here explicitly. */
-        ok = xfer10_jpeg_dims(jpeg, s_x10_total, &w, &h) &&
+        ok = navi_file_jpeg_dims(jpeg, s_navi_file_total, &w, &h) &&
              ((uint32_t)w * (uint32_t)h <= NAVI_MAX_DECODED_PIXELS) &&
-             ((s_x10_frame_w == 0U ||
-               (w == s_x10_frame_w && h == s_x10_frame_h))) &&
-             navi_projection_validate_jpeg(jpeg, s_x10_total, w, h) &&
-             navi_projection_jpeg_fits_heap(jpeg, s_x10_total);
+             ((s_navi_file_frame_w == 0U ||
+               (w == s_navi_file_frame_w && h == s_navi_file_frame_h))) &&
+             navi_projection_validate_jpeg(jpeg, s_navi_file_total, w, h) &&
+             navi_projection_jpeg_fits_heap(jpeg, s_navi_file_total);
         if (!ok)
         {
-            APP_PRINT_WARN5("xfer10: END rejected geometry=%ux%u (stream=%ux%u budget %u px)",
-                            w, h, s_x10_frame_w, s_x10_frame_h,
-                            (unsigned)NAVI_MAX_DECODED_PIXELS);
-            rsp[1] = XFER10_ERR_DECODE_FAIL;
+            NAVI_FILE_LOG_WARN5("navi_file: END rejected geometry=%ux%u (stream=%ux%u budget %u px)",
+                                w, h, s_navi_file_frame_w, s_navi_file_frame_h,
+                                (unsigned)NAVI_MAX_DECODED_PIXELS);
+            rsp[1] = NAVI_FILE_ERR_DECODE_FAIL;
         }
     }
     else
     {
-        rsp[0] = (s_x10_got != s_x10_total) ? XFER10_END_INCOMPLETE
-                 : XFER10_END_CRC_FAIL;
+        rsp[0] = (s_navi_file_got != s_navi_file_total) ? NAVI_FILE_END_INCOMPLETE
+                 : NAVI_FILE_END_CRC_FAIL;
     }
 
     if (ok)
     {
-        if (stp_commit(s_transport, &s_x10_desc, s_x10_total, true))
+        if (stp_commit(s_transport, &s_navi_file_desc, s_navi_file_total, true))
         {
-            s_x10_held = false;
-            memset(&s_x10_desc, 0, sizeof(s_x10_desc));
-            s_x10_frame_w = w;
-            s_x10_frame_h = h;
+            s_navi_file_held = false;
+            memset(&s_navi_file_desc, 0, sizeof(s_navi_file_desc));
+            s_navi_file_frame_w = w;
+            s_navi_file_frame_h = h;
             /* Reveal the map only once a frame is on screen: revealing on the
              * first DATA left a black map when the frame was later rejected. */
             s_stream_started = true;
             navi_queue_stream_active();
-            rsp[0] = XFER10_END_OK;
-            rsp[1] = XFER10_ERR_NONE;
-            APP_PRINT_TRACE2("xfer10: frame committed %ux%u", w, h);
+            rsp[0] = NAVI_FILE_END_OK;
+            rsp[1] = NAVI_FILE_ERR_NONE;
+            NAVI_FILE_LOG_DEBUG2("navi_file: frame committed %ux%u", w, h);
         }
         else
         {
-            rsp[0] = XFER10_END_INCOMPLETE;
-            rsp[1] = XFER10_ERR_WRITE_FAIL;
-            APP_PRINT_WARN0("xfer10: stp_commit failed");
+            rsp[0] = NAVI_FILE_END_INCOMPLETE;
+            rsp[1] = NAVI_FILE_ERR_WRITE_FAIL;
+            NAVI_FILE_LOG_WARN0("navi_file: stp_commit failed");
         }
     }
     else
     {
-        APP_PRINT_WARN2("xfer10: END rejected status=%u err=%u", rsp[0], rsp[1]);
+        NAVI_FILE_LOG_WARN2("navi_file: END rejected status=%u err=%u", rsp[0], rsp[1]);
     }
 
-    xfer10_send(XFER10_KEY_END_RSP, rsp, sizeof(rsp));
-    xfer10_stop();
+    navi_file_send(NAVI_FILE_KEY_END_RSP, rsp, sizeof(rsp));
+    navi_file_stop();
 }
 
-static void xfer10_dispatch(uint8_t key, const uint8_t *v, uint16_t len)
+static void navi_file_dispatch(uint8_t key, const uint8_t *v, uint16_t len)
 {
     switch (key)
     {
-    case XFER10_KEY_BEGIN_REQ:
-        xfer10_handle_begin(v, len);
+    case NAVI_FILE_KEY_BEGIN_REQ:
+        navi_file_handle_begin(v, len);
         break;
-    case XFER10_KEY_DATA:
-        xfer10_handle_data(v, len);
+    case NAVI_FILE_KEY_DATA:
+        navi_file_handle_data(v, len);
         break;
-    case XFER10_KEY_END_REQ:
-        xfer10_handle_end(v, len);
+    case NAVI_FILE_KEY_END_REQ:
+        navi_file_handle_end(v, len);
         break;
-    case XFER10_KEY_ABORT:
-        APP_PRINT_INFO1("xfer10: ABORT from peer reason=%u", len > 0 ? v[0] : 0);
-        xfer10_stop();
+    case NAVI_FILE_KEY_ABORT:
+        NAVI_FILE_LOG_INFO1("navi_file: ABORT from peer reason=%u", len > 0 ? v[0] : 0);
+        navi_file_stop();
         /* The phone cancelled: leave "active" so the GUI brings the QR back. */
         s_state = NAVI_STATE_IDLE;
-        s_x10_frame_w = 0;
-        s_x10_frame_h = 0;
+        s_navi_file_frame_w = 0;
+        s_navi_file_frame_h = 0;
         navi_queue_gui_reset();
         break;
     default:
-        APP_PRINT_WARN1("xfer10: unknown key=0x%02x", key);
+        NAVI_FILE_LOG_WARN1("navi_file: unknown key=0x%02x", key);
         break;
     }
 }
@@ -1756,9 +1757,9 @@ static void navi_handle_l2(const uint8_t *data, uint16_t len)
     }
 
     /* HoneyProtocol 3.12 file transfer (one JPEG frame per file). */
-    if (data[0] == XFER10_CMD)
+    if (data[0] == NAVI_FILE_CMD)
     {
-        xfer10_dispatch(data[2], data + NAVI_L2_HEADER_LEN, value_len);
+        navi_file_dispatch(data[2], data + NAVI_L2_HEADER_LEN, value_len);
         return;
     }
 
@@ -1881,10 +1882,10 @@ void navi_projection_process(void)
     {
         navi_queue_stream_active();
     }
-    if (s_x10_active && (now_ms - s_x10_last_ms >= XFER10_SESSION_TIMEOUT_MS))
+    if (s_navi_file_active && (now_ms - s_navi_file_last_ms >= NAVI_FILE_SESSION_TIMEOUT_MS))
     {
-        APP_PRINT_WARN0("xfer10: session timeout, aborting");
-        xfer10_abort(XFER10_ABORT_TIMEOUT);
+        NAVI_FILE_LOG_WARN0("navi_file: session timeout, aborting");
+        navi_file_abort(NAVI_FILE_ABORT_TIMEOUT);
     }
     if (s_state != NAVI_STATE_ACTIVE)
     {
@@ -1909,7 +1910,7 @@ void navi_projection_process(void)
     /* The protocol-v2 idle watchdog lived here. It keyed off s_last_data_ms,
      * which only the v2 packet path ever refreshed, so once 0x10 took over it
      * fired on every tick and tore the session down between BEGIN and DATA.
-     * Idle handling for 0x10 lives above (XFER10_SESSION_TIMEOUT_MS). */
+     * Idle handling for 0x10 lives above (NAVI_FILE_SESSION_TIMEOUT_MS). */
 }
 
 void navi_projection_handle_gap_msg(T_IO_MSG *p_gap_msg)

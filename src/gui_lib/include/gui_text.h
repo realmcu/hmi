@@ -23,10 +23,59 @@ extern "C" {
 #include "draw_font.h"
 #include "gui_win.h"
 #include "font_types.h"
+#include "font_rendering_utils.h"
 
 /*============================================================================*
  *                         Types
  *============================================================================*/
+
+#define GUI_TEXT_GRADIENT_MAX_STOPS  8
+#define GUI_TEXT_GRADIENT_LUT_SIZE   256
+
+/** @brief Gradient direction, matching the rect widget's directions. */
+typedef enum
+{
+    GUI_TEXT_GRADIENT_HORIZONTAL = 0,   /**< Left to right. */
+    GUI_TEXT_GRADIENT_VERTICAL,         /**< Top to bottom. */
+    GUI_TEXT_GRADIENT_DIAGONAL_TL_BR,   /**< Top-left to bottom-right. */
+    GUI_TEXT_GRADIENT_DIAGONAL_TR_BL,   /**< Top-right to bottom-left. */
+} gui_text_gradient_dir_t;
+
+/** @brief Box the gradient handles are normalized against. */
+typedef enum
+{
+    GUI_TEXT_GRADIENT_BOX_INK = 0,  /**< Union of the glyph outlines. */
+    GUI_TEXT_GRADIENT_BOX_LAYOUT,   /**< Pen advances x line boxes, like a Figma auto-size text. */
+    GUI_TEXT_GRADIENT_BOX_WIDGET,   /**< Widget rectangle, like a Figma fixed-size text. */
+} gui_text_gradient_box_t;
+
+/** @brief Gradient color stop. */
+typedef struct
+{
+    float position;         /**< Position from the start handle (0.0) to the end handle (1.0). */
+    gui_color_t color;      /**< Color at this position, alpha included. */
+} gui_text_gradient_stop_t;
+
+/** @brief Text gradient state, allocated by gui_text_set_gradient(). */
+typedef struct gui_text_gradient
+{
+    gui_text_gradient_dir_t dir;
+    gui_text_gradient_box_t box;
+    float handle_x0;                /**< Start handle, normalized to the box. */
+    float handle_y0;
+    float handle_x1;                /**< End handle, normalized to the box. */
+    float handle_y1;
+    font_gradient_t view;           /**< Rebound by the font draw each time. */
+    bool bounds_valid;
+    uint32_t bounds_frame;          /**< Frame the box was measured in. */
+    int16_t bounds_x0;              /**< Box in screen coordinates, inclusive. */
+    int16_t bounds_y0;
+    int16_t bounds_x1;
+    int16_t bounds_y1;
+    int16_t shift_x;                /**< Offset of the copy being drawn from the measured box. */
+    int16_t shift_y;                /**< Set by scroll text for its loop copy; 0 otherwise. */
+    uint32_t lut[GUI_TEXT_GRADIENT_LUT_SIZE];   /**< ARGB8888 colors. */
+} gui_text_gradient_t;
 
 /* TEXT_MODE start */
 typedef enum
@@ -45,6 +94,13 @@ typedef enum
     MULTI_MID_LEFT       = 0x13,
     MULTI_MID_CENTER     = 0x14,
     MULTI_MID_RIGHT      = 0x15,
+    /* BOT */
+    BOT_LEFT             = 0x20,
+    BOT_CENTER           = 0x21,
+    BOT_RIGHT            = 0x22,
+    MULTI_BOT_LEFT       = 0x23,
+    MULTI_BOT_CENTER     = 0x24,
+    MULTI_BOT_RIGHT      = 0x25,
     /* SCROLL */
     SCROLL_X             = 0x30,
     SCROLL_X_REVERSE     = 0x31,
@@ -85,6 +141,7 @@ typedef struct gui_text
     void *data;
     void *path;
     gui_matrix_t *matrix;
+    gui_text_gradient_t *gradient;  /**< Optional gradient fill, NULL = flat color. */
 
     uint16_t len;
     uint16_t font_len;
@@ -124,9 +181,10 @@ typedef struct gui_text
     bool hebrew            : 1;
     uint8_t rendermode     : 2;
     uint8_t bold_mode      : 1;  /**< 0=BOLD_HORIZONTAL (fast), 1=BOLD_FULL */
-bool font_cache_enable :
-    1; /**< user opt-in: cross-frame glyph bitmap cache (identity/translate only) */
+    bool font_cache_enable : 1; /**< cross-frame glyph bitmap cache (identity/translate only) */
     bool font_cache_static : 1; /**< internal: chr[].buf currently holds a cross-frame static cache */
+    uint8_t missing_glyph_mode : 2; /**< gui_missing_glyph_mode_t, 0 = inherit global */
+
 } gui_text_t;
 
 /** @brief Text line structure. */
@@ -145,11 +203,21 @@ typedef struct gui_text_line
  *                         Macros
  *============================================================================*/
 
+/** @brief Maximum number of substitute code points in the chain. */
+#define GUI_TEXT_SUBSTITUTE_CHAIN_MAX  4
 
 /*============================================================================*
  *                         Variables
  *============================================================================*/
 
+/**
+ * @brief Substitute candidates for missing glyphs, 0x0000-terminated.
+ *
+ * Default order: U+FFFD replacement char, U+25A1 white square, U+0020 space.
+ * The space is the last resort: nearly every font has it, so a missing
+ * character degrades to a blank of the font's own width instead of vanishing.
+ */
+extern uint32_t gui_text_substitute_chain[GUI_TEXT_SUBSTITUTE_CHAIN_MAX + 1];
 
 /*============================================================================*
  *                         Functions
@@ -194,7 +262,8 @@ void gui_text_set(gui_text_t    *this_widget,
  * @brief Set text mode of this_widget text widget.
  * @note If text line count was more than one, it will display on the left even if it was set left or right.
  * @param this_widget Text widget pointer.
- * @param mode Text layout mode (e.g., LEFT, CENTER, RIGHT, MULTI_LEFT, SCROLL_X, VERTICAL_LEFT_TOP, RTL_RIGHT, etc.).
+ * @param mode Text layout mode (e.g., LEFT, CENTER, RIGHT, MULTI_LEFT, BOT_LEFT, MULTI_BOT_CENTER,
+ *             SCROLL_X, VERTICAL_LEFT_TOP, RTL_RIGHT, etc.).
  */
 void gui_text_mode_set(gui_text_t *this_widget, TEXT_MODE mode);
 
@@ -253,6 +322,43 @@ void gui_text_set_line_height(gui_text_t *this_widget, int16_t line_height);
  * @param space_width Space width in pixels. 0 = use the default approximation.
  */
 void gui_text_set_space_width(gui_text_t *this_widget, uint16_t space_width);
+
+/**
+ * @brief Set the global behavior for code points with no glyph anywhere.
+ *
+ * @param mode GUI_MISSING_GLYPH_SKIP or GUI_MISSING_GLYPH_SUBSTITUTE.
+ *             GUI_MISSING_GLYPH_INHERIT is ignored, it is per-widget only.
+ */
+void gui_text_set_missing_glyph_mode_global(gui_missing_glyph_mode_t mode);
+
+/**
+ * @brief Set this widget's behavior for characters missing from every font.
+ *
+ * Overrides the global mode set by gui_text_set_missing_glyph_mode_global().
+ *
+ * @param this_widget Text box widget pointer.
+ * @param mode Missing-glyph mode; INHERIT follows the global mode.
+ */
+void gui_text_set_missing_glyph_mode(gui_text_t *this_widget, gui_missing_glyph_mode_t mode);
+
+/**
+ * @brief Whether a text widget should substitute glyphs for missing characters.
+ *
+ * @param text Text widget, may be NULL to query the global mode.
+ * @return true if substitution is enabled.
+ */
+bool gui_text_substitute_enabled(const gui_text_t *text);
+
+/**
+ * @brief Override the substitute code point chain.
+ *
+ * Candidates are tried in order; the first one with a glyph wins. Takes effect
+ * when glyphs are loaded, so set it during init rather than per frame.
+ *
+ * @param cps Candidate code points; ignored when NULL.
+ * @param n Number of candidates, clamped to GUI_TEXT_SUBSTITUTE_CHAIN_MAX.
+ */
+void gui_text_substitute_chain_set(const uint32_t *cps, uint8_t n);
 
 /**
  * @brief Enable/disable matrix-based image rendering for text.
@@ -316,6 +422,9 @@ void gui_text_font_mode_set(gui_text_t *this_widget, FONT_SRC_MODE font_mode);
 /**
  * @brief Set font type.
  * @note The type must match the font size.
+ * @note With FONT_SRC_FILESYS on an XIP-capable VFS backend (romfs, ramfs) the
+ *       font is read in place and the widget switches to FONT_SRC_MEMADDR. The
+ *       file must stay mounted and unmodified while any widget uses the font.
  * @param this_widget Text widget pointer.
  * @param font_source Address of .ttf or .bin.
  * @param font_mode Font source mode.
@@ -447,6 +556,50 @@ void gui_text_set_scope_absolute(gui_text_t *this_widget, int16_t x, int16_t y, 
  * @param blend_mode Blend mode (e.g., IMG_PLUS_DARKER for darken blend).
  */
 void gui_text_set_font_blend_mode(gui_text_t *this_widget, BLEND_MODE_TYPE blend_mode);
+
+/**
+ * @brief Fill the text with a linear gradient.
+ *
+ * Replaces the text color's RGB; its alpha and the widget opacity still apply.
+ * Only vector (TTF) text drawn without scale or rotation on an RGB565 or
+ * ARGB8888 display shows the gradient; other cases keep the flat color.
+ * Resets the handles to the preset of dir; the box mode is kept.
+ *
+ * @param this_widget Text widget pointer.
+ * @param dir Gradient direction preset.
+ * @param stops Color stops, positions in 0.0 to 1.0; at most
+ *              GUI_TEXT_GRADIENT_MAX_STOPS are used.
+ * @param count Number of stops. NULL stops or count < 2 clears the gradient.
+ */
+void gui_text_set_gradient(gui_text_t *this_widget, gui_text_gradient_dir_t dir,
+                           const gui_text_gradient_stop_t *stops, uint8_t count);
+
+/**
+ * @brief Select the box the gradient handles are normalized against.
+ *
+ * Default is GUI_TEXT_GRADIENT_BOX_INK. No effect before gui_text_set_gradient().
+ *
+ * @param this_widget Text widget pointer.
+ * @param box Box mode.
+ */
+void gui_text_set_gradient_box(gui_text_t *this_widget, gui_text_gradient_box_t box);
+
+/**
+ * @brief Place the gradient start and end handles, overriding the dir preset.
+ *
+ * Coordinates are normalized to the box: (0, 0) top-left, (1, 1) bottom-right,
+ * matching Figma's gradientHandlePositions. Each value is clamped to -1.0..2.0.
+ * Handles closer than 1/16 of the box draw the first stop's color.
+ * No effect before gui_text_set_gradient().
+ *
+ * @param this_widget Text widget pointer.
+ * @param x0 Start handle X, stop position 0.0.
+ * @param y0 Start handle Y.
+ * @param x1 End handle X, stop position 1.0.
+ * @param y1 End handle Y.
+ */
+void gui_text_set_gradient_handles(gui_text_t *this_widget, float x0, float y0,
+                                   float x1, float y1);
 
 gui_inline bool gui_text_rect_hit(gui_text_rect_t *a, gui_rect_t *b)
 {

@@ -4,18 +4,17 @@
  * SPDX-License-Identifier: MIT
  */
 
-#ifndef __ACC_SW_RASTER_H__
-#define __ACC_SW_RASTER_H__
-
-#include "guidef.h"
-#include "draw_img.h"
-
+#ifndef GUI_ACC_DEFAULT_H
+#define GUI_ACC_DEFAULT_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void do_raster(draw_img_t *image, gui_dispdev_t *dc, gui_rect_t *rect);
+
+/* Registers the software default when the platform did not register an ACC. */
+void gui_acc_default_init(void);
+
 
 #ifdef __cplusplus
 }

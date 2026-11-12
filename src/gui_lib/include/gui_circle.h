@@ -24,11 +24,16 @@ extern "C" {
 #include "acc_api.h"
 #include "tp_algo.h"
 #include "lite_geometry.h"
-#include "gui_shape_path.h"
+#include "gui_geometry_image.h"
+#include "gui_geometry_effect.h"
+#include "gui_geometry_shadow.h"
 
 /*============================================================================*
  *                         Types
  *============================================================================*/
+#ifndef M_SQRT1_2
+#define M_SQRT1_2 0.707106781186547524401f /**< 1/sqrt(2) */
+#endif
 
 /** Circle gradient type */
 typedef enum
@@ -42,14 +47,9 @@ typedef struct
 {
     gui_obj_t base;             /**< Base widget. */
 
-    // Image parts
-    draw_img_t *center_rect;    /**< Center rectangle (inscribed square). */
-    draw_img_t *arc_left;    /**< Left arc. */
-    draw_img_t *arc_right;    /**< Right arc. */
-    draw_img_t *arc_top;    /**< Top arc. */
-    draw_img_t *arc_bottom;    /**< Bottom arc. */
-    draw_img_t *stroke_img;    /**< Optional inset stroke image. */
-    gui_shape_span_data_t *stroke_spans; /**< Cached path scanline spans. */
+    /** Non-overlapping pieces: the solid centre square and four strips drawn
+     *  from one payload -- or one image. */
+    gui_geometry_parts_t parts;
 
     // Circle geometry data
     int x;                      /**< Center X coordinate relative to widget. */
@@ -60,7 +60,6 @@ typedef struct
     gui_color_t stroke_color;   /**< Stroke color. */
     uint8_t opacity_value;      /**< Opacity value. */
     uint32_t checksum;          /**< Checksum for change detection. */
-    uint32_t stroke_path_checksum; /**< Geometry-only span checksum. */
 
     // Transformation parameters
     float degrees;              /**< Rotation angle in degrees. */
@@ -74,9 +73,61 @@ typedef struct
     bool use_gradient;          /**< Flag to enable gradient rendering. */
     gui_circle_gradient_type_t gradient_type; /**< Gradient type. */
     gui_matrix_t last_matrix;
+
+    gui_color_t glow_color;     /**< Glow colour; its alpha is the strength. */
+    uint8_t glow_blur;          /**< Glow blur radius; 0 disables the glow. */
+    struct gui_geometry_effect *glow;      /**< Glow state, allocated on first use. */
+
+    gui_shadow_t shadow;        /**< Shadow configuration, kept across off/on. */
+    struct gui_geometry_effect *shadow_layer; /**< Shadow state, allocated on first use. */
+    bool shadow_enabled;        /**< Configured on; blur/alpha 0 still stops drawing. */
 } gui_circle_t;
 
+/** Which rasterised part a cached payload holds. */
+typedef enum
+{
+    CIRCLE_PART_FULL = 1,       /**< Whole circle in one buffer. */
+    CIRCLE_PART_STRIP,          /**< Top strip; the other three are it turned. */
+} gui_circle_part_t;
 
+/**
+ * Identity of a cached circle payload.
+ *
+ * Everything that changes a pixel goes in here and nothing else does; notably
+ * position stays out, since it only ever reaches the draw_img matrix.  Gradient
+ * parts pass the whole struct, solid ones stop short of the gradient -- see
+ * circle_desc_len().
+ */
+typedef struct
+{
+    uint32_t part;              /**< gui_circle_part_t. */
+    int32_t radius;             /**< Circle radius. */
+    int32_t size_a;             /**< Payload width. */
+    int32_t size_b;             /**< Payload height. */
+    uint32_t color;             /**< ARGB baked into the pixels; alpha only when A8. */
+    uint32_t is_a8;             /**< Non-zero when the payload is a coverage mask. */
+    uint32_t gradient_type;     /**< CIRCLE_GRADIENT_*, or UINT32_MAX for none. */
+    float stroke_width;         /**< Inset stroke width, 0 for none. */
+    uint32_t stroke_color;      /**< ARGB stroke baked into the pixels; 0 for none. */
+    Gradient gradient;          /**< Only present when gradient_type is set. */
+} circle_desc_t;
+
+/**
+ * Geometry shared by every piece of one circle, centred at (radius, radius).
+ *
+ * The split is a solid centre square of side 2 * half, and around it four
+ * strips of band x (2 * half + band) laid out like a pinwheel.  @c half is
+ * the largest value whose square still lies fully inside the fill, so the
+ * centre is one solid colour.
+ */
+typedef struct
+{
+    int radius;                 /**< Circle radius. */
+    float stroke;               /**< Stroke width, clamped to the radius. */
+    float inner_radius;         /**< Fill radius inside the stroke. */
+    int half;                   /**< Half side of the solid centre square. */
+    int band;                   /**< radius - half: depth of the edge bands. */
+} circle_geom_t;
 /*============================================================================*
  *                         Functions
  *============================================================================*/
@@ -152,6 +203,86 @@ void gui_circle_set_stroke(gui_circle_t *circle, float width, gui_color_t color)
  * @param circle Circle widget pointer.
  */
 void gui_circle_clear_stroke(gui_circle_t *circle);
+
+/**
+ * @brief Draw an outer glow around the circle.
+ *
+ * The glow is a separate layer drawn under the body: the body's own fill and
+ * stroke are untouched, and changing the glow does not rebuild them.
+ *
+ * Its colour's alpha is the strength, so a dimmer glow is a lower alpha rather
+ * than a different blur.  Changing colour or strength repaints without
+ * rebuilding the mask; changing the radius or blur radius rebuilds it.
+ *
+ * @param circle Circle widget pointer.
+ * @param color Glow colour; alpha 0 switches the glow off.
+ * @param blur_radius Blur radius in pixels, clamped to 1..32.  0 switches the
+ *                    glow off.
+ */
+void gui_circle_set_glow(gui_circle_t *circle, gui_color_t color, uint8_t blur_radius);
+
+/**
+ * @brief Remove the circle's outer glow.
+ *
+ * @param circle Circle widget pointer.
+ */
+void gui_circle_clear_glow(gui_circle_t *circle);
+
+/**
+ * @brief Draw a drop shadow behind the circle.
+ *
+ * The shadow is its own layer, drawn first, then the glow if there is one, then
+ * the body.  The offset is a local vector and follows the body's rotation, even
+ * though the body folds that rotation into its own matrix instead of the cached
+ * mask -- a circle's mask is rotation-symmetric, the shadow's direction is not.
+ *
+ * @param circle Circle widget pointer.
+ */
+void gui_circle_set_shadow(gui_circle_t *circle);
+
+/**
+ * @brief Remove the circle's drop shadow.
+ *
+ * Stops drawing and frees the layer; the configuration is kept, so enabling it
+ * again resumes with whatever was last set rather than the defaults.
+ *
+ * @param circle Circle widget pointer.
+ */
+void gui_circle_clear_shadow(gui_circle_t *circle);
+
+/**
+ * @brief Set the circle shadow colour; its alpha is the strength.
+ * @param circle Circle widget pointer.
+ * @param color Shadow colour.
+ */
+void gui_circle_set_shadow_color(gui_circle_t *circle, gui_color_t color);
+
+/**
+ * @brief Set the circle shadow blur radius, clamped to 1..32 px.
+ *
+ * 0 stops the shadow being drawn without disabling it: raising the value again
+ * brings it back.  Use gui_circle_clear_shadow() to turn it off.
+ *
+ * @param circle Circle widget pointer.
+ * @param blur_radius Blur radius in pixels.
+ */
+void gui_circle_set_shadow_blur(gui_circle_t *circle, int32_t blur_radius);
+
+/**
+ * @brief Set how far the circle shadow inflates beyond the body, 0..32 px per side.
+ * @param circle Circle widget pointer.
+ * @param spread Pixels to add on every side.
+ */
+void gui_circle_set_shadow_spread(gui_circle_t *circle, int32_t spread);
+
+/**
+ * @brief Point the circle shadow in one of the nine presets.
+ * @param circle Circle widget pointer.
+ * @param direction Which way the shadow falls.
+ * @param distance Offset length in pixels, clamped to 0..64.
+ */
+void gui_circle_set_shadow_direction(gui_circle_t *circle,
+                                     gui_shadow_dir_t direction, int32_t distance);
 
 /**
  * @brief Set click callback for the circle.

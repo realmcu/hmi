@@ -19,7 +19,9 @@ extern "C" {
 #include "gui_obj.h"
 #include "draw_img.h"
 #include "lite_geometry.h"
-#include "gui_shape_path.h"
+#include "gui_geometry_image.h"
+#include "gui_geometry_effect.h"
+#include "gui_geometry_shadow.h"
 
 /*============================================================================*
  *                         Types
@@ -38,15 +40,9 @@ typedef enum
 typedef struct
 {
     gui_obj_t base;             /**< Base widget. */
-    draw_img_t *circle_00;
-    draw_img_t *circle_01;
-    draw_img_t *circle_10;
-    draw_img_t *circle_11;
-    draw_img_t *rect_0;
-    draw_img_t *rect_1;
-    draw_img_t *rect_2;
-    draw_img_t *stroke_img;    /**< Optional inset stroke image. */
-    gui_shape_span_data_t *stroke_spans; /**< Cached path scanline spans. */
+    /** Non-overlapping pieces: four corners, up to three runs (stroke, stroke/fill
+     *  edge, fill) along each of the four sides, and the centre. */
+    gui_geometry_parts_t parts;
     uint8_t opacity_value;      /**< Opacity value. */
 
     int radius;                 /**< Rect radius. */
@@ -54,7 +50,6 @@ typedef struct
     float stroke_width;         /**< Inset stroke width. Zero disables stroke. */
     gui_color_t stroke_color;   /**< Stroke color. */
     uint32_t checksum;          /**< Checksum for change detection. */
-    uint32_t stroke_path_checksum; /**< Geometry-only span checksum. */
 
     // Transformation parameters
     float degrees;              /**< Rotation angle in degrees. */
@@ -71,9 +66,63 @@ typedef struct
 
     // Matrix cache for change detection
     gui_matrix_t last_matrix;   /**< Cached matrix for change detection. */
+
+    gui_color_t glow_color;     /**< Glow colour; its alpha is the strength. */
+    uint8_t glow_blur;          /**< Glow blur radius; 0 disables the glow. */
+    struct gui_geometry_effect *glow;      /**< Glow state, allocated on first use. */
+
+    gui_shadow_t shadow;        /**< Shadow configuration, kept across off/on. */
+    struct gui_geometry_effect *shadow_layer; /**< Shadow state, allocated on first use. */
+    bool shadow_enabled;        /**< Configured on; blur/alpha 0 still stops drawing. */
 } gui_rounded_rect_t;
 
+/** Which rasterised part a cached payload holds. */
+typedef enum
+{
+    RECT_PART_ROUNDED = 1,      /**< Whole rounded rect in one buffer. */
+    RECT_PART_CORNER,           /**< One rounded corner, keyed by corner index. */
+} gui_rect_part_t;
 
+/**
+ * Identity of a cached rect payload.
+ *
+ * Everything that changes a pixel goes in here and nothing else does; position
+ * stays out, since it only ever reaches the draw_img matrix.  Gradient parts
+ * pass the whole struct, solid ones stop short of the gradient -- see
+ * rect_desc_len().
+ */
+typedef struct
+{
+    uint32_t part;              /**< gui_rect_part_t. */
+    int32_t size_a;             /**< Width, or side length for a corner. */
+    int32_t size_b;             /**< Height, or corner index for a corner. */
+    int32_t radius;             /**< Corner radius. */
+    uint32_t color;             /**< ARGB baked into the pixels; alpha only when A8. */
+    uint32_t is_a8;             /**< Non-zero when the payload is a coverage mask. */
+    uint32_t flags;             /**< Dither on/off, and gradient direction plus 1. */
+    float stroke_width;         /**< Inset stroke width, 0 for none. */
+    uint32_t stroke_color;      /**< ARGB stroke baked into the pixels; 0 for none. */
+    Gradient gradient;          /**< Only present when flags say a gradient is used. */
+} rect_desc_t;
+
+/**
+ * Geometry shared by every piece of one rect.
+ *
+ * @c straight is where the edges stop curving: past it, rows and columns are
+ * uniform along the edge, which is what lets the split draw them as solid
+ * rectangles.
+ */
+typedef struct
+{
+    int w;                      /**< Rect width. */
+    int h;                      /**< Rect height. */
+    int radius;                 /**< Effective corner radius. */
+    float stroke;               /**< Stroke width, clamped to the rect. */
+    float inner_w;              /**< Width inside the stroke. */
+    float inner_h;              /**< Height inside the stroke. */
+    float inner_radius;         /**< Corner radius inside the stroke. */
+    int straight;               /**< Corner square side: max(radius, stroke), rounded up. */
+} rect_geom_t;
 /*============================================================================*
  *                         Functions
  *============================================================================*/
@@ -157,6 +206,91 @@ void gui_rect_set_stroke(gui_rounded_rect_t *rect, float width, gui_color_t colo
  * @param rect Pointer to the rect widget.
  */
 void gui_rect_clear_stroke(gui_rounded_rect_t *rect);
+
+/**
+ * @brief Draw an outer glow around the rect.
+ *
+ * The glow is a separate layer drawn under the body: the body's own fill and
+ * stroke are untouched, and changing the glow does not rebuild them.
+ *
+ * Its colour's alpha is the strength, so a dimmer glow is a lower alpha rather
+ * than a different blur.  Changing colour or strength repaints without
+ * rebuilding the mask; changing size, radius or blur radius rebuilds it.
+ *
+ * @param rect Pointer to the rect widget.
+ * @param color Glow colour; alpha 0 switches the glow off.
+ * @param blur_radius Blur radius in pixels, clamped to 1..32.  0 switches the
+ *                    glow off.
+ */
+void gui_rect_set_glow(gui_rounded_rect_t *rect, gui_color_t color, uint8_t blur_radius);
+
+/**
+ * @brief Remove the rect's outer glow.
+ *
+ * @param rect Pointer to the rect widget.
+ */
+void gui_rect_clear_glow(gui_rounded_rect_t *rect);
+
+/**
+ * @brief Draw a drop shadow behind the rect.
+ *
+ * The shadow is its own layer, drawn first, then the glow if there is one, then
+ * the body -- so a half-transparent body lets the shadow show through instead of
+ * cutting a hole in it.  Its colour's alpha is the strength, and the offset is a
+ * local vector: the shadow turns with the rect unless the rect's own transform
+ * leaves it upright.
+ *
+ * Changing the direction, the distance or the colour repaints without
+ * rebuilding the mask; only the size, the corner radius, the blur and the
+ * spread change what the mask holds.
+ *
+ * @param rect Pointer to the rect widget.
+ */
+void gui_rect_set_shadow(gui_rounded_rect_t *rect);
+
+/**
+ * @brief Remove the rect's drop shadow.
+ *
+ * Stops drawing and frees the layer; the configuration is kept, so enabling it
+ * again resumes with whatever was last set rather than the defaults.
+ *
+ * @param rect Pointer to the rect widget.
+ */
+void gui_rect_clear_shadow(gui_rounded_rect_t *rect);
+
+/**
+ * @brief Set the rect shadow colour; its alpha is the strength.
+ * @param rect Pointer to the rect widget.
+ * @param color Shadow colour.
+ */
+void gui_rect_set_shadow_color(gui_rounded_rect_t *rect, gui_color_t color);
+
+/**
+ * @brief Set the rect shadow blur radius, clamped to 1..32 px.
+ *
+ * 0 stops the shadow being drawn without disabling it: raising the value again
+ * brings it back.  Use gui_rect_clear_shadow() to turn it off.
+ *
+ * @param rect Pointer to the rect widget.
+ * @param blur_radius Blur radius in pixels.
+ */
+void gui_rect_set_shadow_blur(gui_rounded_rect_t *rect, int32_t blur_radius);
+
+/**
+ * @brief Set how far the rect shadow inflates beyond the body, 0..32 px per side.
+ * @param rect Pointer to the rect widget.
+ * @param spread Pixels to add on every side.
+ */
+void gui_rect_set_shadow_spread(gui_rounded_rect_t *rect, int32_t spread);
+
+/**
+ * @brief Point the rect shadow in one of the nine presets.
+ * @param rect Pointer to the rect widget.
+ * @param direction Which way the shadow falls.
+ * @param distance Offset length in pixels, clamped to 0..64.
+ */
+void gui_rect_set_shadow_direction(gui_rounded_rect_t *rect,
+                                   gui_shadow_dir_t direction, int32_t distance);
 
 /**
  * @brief Register a click event callback for the rect widget.

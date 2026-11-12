@@ -11,6 +11,7 @@
 #include "bt_gatt_svc.h"
 #include "bt_types.h"
 #include "hmi_ctrl_service.h"
+#include "hmi_bt_log.h"
 
 /*============================================================================*
  *                              Macros
@@ -274,8 +275,8 @@ T_APP_RESULT hmi_ctrl_service_attr_read_cb(uint16_t conn_handle, uint16_t cid,
 void hmi_write_post_callback(uint16_t conn_handle, uint16_t cid, T_SERVER_ID service_id,
                              uint16_t attrib_index, uint16_t length, uint8_t *p_value)
 {
-    APP_PRINT_INFO5("hmi_write_post_callback: conn_handle %d, cid %d, service_id %d, attrib_index 0x%x, length %d",
-                    conn_handle, cid, service_id, attrib_index, length);
+    HMI_LOG_INFO5("hmi_write_post_callback: conn_handle %d, cid %d, service_id %d, attrib_index 0x%x, length %d",
+                  conn_handle, cid, service_id, attrib_index, length);
 }
 
 T_APP_RESULT hmi_ctrl_service_attr_write_cb(uint16_t conn_handle, uint16_t cid,
@@ -287,8 +288,8 @@ T_APP_RESULT hmi_ctrl_service_attr_write_cb(uint16_t conn_handle, uint16_t cid,
     le_get_conn_id_by_handle(conn_handle, &conn_id);
 
     T_APP_RESULT cause = APP_RESULT_SUCCESS;
-    APP_PRINT_INFO3("hmi_ctrl_service_attr_write_cb: write_type = 0x%x, conn_handle 0x%x, cid %d",
-                    write_type, conn_handle, cid);
+    HMI_LOG_INFO3("hmi_ctrl_service_attr_write_cb: write_type = 0x%x, conn_handle 0x%x, cid %d",
+                  write_type, conn_handle, cid);
     *p_write_ind_post_proc = hmi_write_post_callback;
 
     if (attrib_index == HMI_SVC_CHAR_CMD_WRITE_INDEX)
@@ -342,7 +343,7 @@ bool hmi_ctrl_service_notify(uint16_t conn_handle, void *p_value, uint16_t lengt
         return false;
     }
 
-    APP_PRINT_INFO1("hmi_ctrl_service_notify: len %d", length);
+    HMI_LOG_INFO1("hmi_ctrl_service_notify: len %d", length);
     return gatt_svc_send_data(conn_handle, L2C_FIXED_CID_ATT, hmi_ctrl_service_id,
                               HMI_SVC_CHAR_EVENT_NOTIFY_INDEX,
                               p_value, length, GATT_PDU_TYPE_ANY);

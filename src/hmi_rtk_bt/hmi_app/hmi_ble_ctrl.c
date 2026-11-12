@@ -19,6 +19,7 @@
 #include "gap_conn_le.h"
 #include "hmi_ctrl_service.h"
 #include "navi_projection_service.h"
+#include "hmi_bt_log.h"
 
 #define HMI_CONN_HANDLE_INVALID     0xFFFF
 
@@ -71,8 +72,8 @@ static void app_hmi_send_data_cb(T_EXT_SEND_DATA_RESULT result)
 {
     if (result.cause == GAP_SUCCESS)
     {
-        APP_PRINT_INFO2("app_hmi_send_data_cb: notify sent ok, conn_handle 0x%x, credits %d",
-                        result.conn_handle, result.credits);
+        HMI_LOG_INFO2("app_hmi_send_data_cb: notify sent ok, conn_handle 0x%x, credits %d",
+                      result.conn_handle, result.credits);
     }
     else
     {
@@ -180,8 +181,8 @@ static void hmi_ble_send_task(void *p_param)
             continue;
         }
 
-        APP_PRINT_INFO2("hmi_ble_send_task: conn_handle 0x%x, len %d",
-                        msg.conn_handle, msg.len);
+        HMI_LOG_INFO2("hmi_ble_send_task: conn_handle 0x%x, len %d",
+                      msg.conn_handle, msg.len);
 
         uint8_t  conn_id = 0xFF;
         uint16_t mtu     = 23;
@@ -237,8 +238,8 @@ int hmi_ble_ctrl_receive(uint8_t *data, uint16_t max_len)
         return -1;
     }
 
-    APP_PRINT_INFO2("hmi_ble_ctrl_receive: len %d, data %b",
-                    msg.len, TRACE_BINARY(msg.len, msg.p_data));
+    HMI_LOG_INFO2("hmi_ble_ctrl_receive: len %d, data %b",
+                  msg.len, TRACE_BINARY(msg.len, msg.p_data));
 
     uint16_t copy_len = (msg.len < max_len) ? msg.len : max_len;
     memcpy(data, msg.p_data, copy_len);
