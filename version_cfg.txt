@@ -1,0 +1,39 @@
+# hmi_dashboard version configuration
+#
+# This file is the single source of truth for the image version. tools/version_gen.sh
+# turns it into version.h on every build (uVision: Before Build; west/cmake: configure).
+# Do not edit version.h -- it is regenerated and its changes are lost.
+#
+# Format: KEY = VALUE. '#' starts a comment. Unknown keys are ignored.
+#
+#   VERSION_MAJOR      }  Free for the integrator to choose. Bump MAJOR for an
+#   VERSION_MINOR      }  incompatible change, MINOR for a feature, REVISION for
+#   VERSION_REVISION   }  a fix. Always set them explicitly: leaving one empty
+#                         only works in a repository that has release tags, and
+#                         this one has none, so an empty field silently becomes 0.
+#   VERSION_BUILDNUM      Build counter. Set a literal number, or "auto" for
+#                         "commits since the last git tag" -- which is 0 here,
+#                         because the repository has no tag. Export BUILD_NUMBER
+#                         to drive it from CI. Above 2048 the build fails, above
+#                         255 it warns (the MP header field is one byte).
+#   CUSTOMER_NAME         Up to 8 characters, encoded into the MP header as CN_1..CN_8.
+#
+# SDK_BASELINE is informational: it records which SDK release this project started
+# from, so a customer build stays traceable to the SDK it was derived from.
+
+VERSION_MAJOR    = 1
+VERSION_MINOR    = 0
+VERSION_REVISION = 0
+VERSION_BUILDNUM = 0
+CUSTOMER_NAME    = sdk-v1
+
+# OTA compares the version stored in the MP header, which comes from
+# mdk/mp.ini -- not from version.h. Keep this at 1 so the image actually
+# carries the version above; with it at 0 the device keeps reporting whatever
+# mp.ini happens to say and OTA sees no upgrade.
+SYNC_MP_INI      = 1
+
+SDK_BASELINE     = dashboard-v3.14.2
+# The tag above is gone from the local clones; the commit is what still resolves
+# once a tag is deleted, so keep both.
+SDK_BASELINE_COMMIT = a1f37b7

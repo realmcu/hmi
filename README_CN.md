@@ -228,7 +228,8 @@ BLE 私有通信协议实现（L0 / L1 / L2 三层架构）。
 | `mem_config.h` | DTCM / ITCM 内存区域布局 |
 | `menu_config.h` | GUI 菜单设置 |
 | `gcc/defconfig.*` | GCC 构建的 Kconfig 预设 |
-| `version.h` | 固件版本号（`VERSION`、`BUILD_NUM`） |
+| `version_cfg.txt` | 固件版本号（主/次/修订/构建号、客户名），构建时据此生成 `version.h` |
+| `tools/version_gen.sh` | 由 `version_cfg.txt` 生成 `version.h`，Keil 与 west 两条构建链共用 |
 
 ## 更多文档
 
@@ -238,6 +239,8 @@ BLE 私有通信协议实现（L0 / L1 / L2 三层架构）。
   [显示屏移植指南](docs/display-porting_CN.md)。
 - 如需修改或替换 Designer 工程，请参阅
   [UI 工程移植指南](docs/ui-porting_CN.md)。
+- 如需自行管控固件版本号（版本字段、构建号、客户名、MP header 一致性），请参阅
+  [版本号管控](docs/version-control_CN.md)。
 
 RTL8773E 系列的数据手册、Quick Start、硬件说明、SDK/GUI 在线文档等官方资料，
 参见 [RTL8773E-Series 文档中心](https://www.realmcu.com/zh/Resources/Documentation/RTL8773E-Series#pagetab)。

@@ -250,7 +250,8 @@ architecture).
 | `mem_config.h` | DTCM / ITCM memory region layout |
 | `menu_config.h` | GUI menu settings |
 | `gcc/defconfig.*` | Kconfig presets for GCC builds |
-| `version.h` | Firmware version (`VERSION`, `BUILD_NUM`) |
+| `version_cfg.txt` | Firmware version (major/minor/revision/build, customer name); `version.h` is generated from it at build time |
+| `tools/version_gen.sh` | Turns `version_cfg.txt` into `version.h`; shared by the Keil and west builds |
 
 ## More Documentation
 
@@ -260,6 +261,8 @@ architecture).
   [Display Porting Guide](docs/display-porting.md).
 - To modify or replace the Designer project, see the
   [UI Project Porting Guide](docs/ui-porting.md).
+- To control the firmware version yourself (version fields, build counter, customer name,
+  MP header consistency), see [Version control](docs/version-control.md).
 
 For official RTL8773E series datasheets, quick start guides, hardware notes, and SDK/GUI
 online documentation, see the [RTL8773E-Series documentation center](https://www.realmcu.com/zh/Resources/Documentation/RTL8773E-Series#pagetab).

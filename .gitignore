@@ -32,7 +32,8 @@ gcc/bin/
 **/mdk/JLinkLog.txt
 **/mdk/JLinkLog*.txt
 
-# Auto-generated at build time by version_gen_config.sh
+# Auto-generated at build time by tools/version_gen.sh (from version_cfg.txt)
 /version.h
+/version.h.tmp
 
 /src/application/designer
