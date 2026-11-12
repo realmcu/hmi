@@ -14,6 +14,7 @@ SECTION_PROLOGUE(posix_init,,)
     KEEP(*(".posix$initS"))   /* start sentinel */
     KEEP(*(".posix$init0"))   /* priority 0 – board */
     KEEP(*(".posix$init1"))   /* priority 1 – device */
+    KEEP(*(".posix$init1_5")) /* priority 1.5 – post-device */
     KEEP(*(".posix$init2"))   /* priority 2 – app */
     KEEP(*(".posix$initE"))   /* end sentinel */
 } GROUP_LINK_IN(ROMABLE_REGION)
