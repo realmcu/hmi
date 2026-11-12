@@ -7,10 +7,11 @@
 - `flash-linux2win-app.sh` —— Linux 工作电脑通过 SSH 驱动连接开发板的 Windows 电脑烧录 App
 - `flash-wsl-app.sh` —— WSL2 里驱动 Windows 版 `mpcli.exe` 烧录 App
 - `flash-win32-app.bat` —— Windows 原生 cmd 下直接调用 `mpcli.exe` 烧录 App
-- `flash-runtime-linux.sh` / `flash-runtime-wsl.sh` / `flash-runtime-win32.bat` —— 烧录**整套 runtime**（boot patch / upperstack / stack & sys patch / DSP / Config，共 11 个镜像），见「2.5 烧录 runtime」
+- `flash-macos-app.sh` —— **macOS** 下用 macOS 版 `mpcli` 烧录 App（串口自动探测 `cu.*`），见「macOS 原生」
+- `flash-runtime-linux.sh` / `flash-runtime-wsl.sh` / `flash-runtime-win32.bat` / `flash-macos-runtime.sh` —— 烧录**整套 runtime**（boot patch / upperstack / stack & sys patch / DSP / Config，共 11 个镜像），见「2.5 烧录 runtime」
 - `flash-linux2win-runtime.sh` —— Linux 工作电脑通过 SSH 驱动 Windows 电脑烧录 runtime
-- `flash-wsl-romfs.sh` / `flash-linux2win-romfs.sh` —— 烧录 HoneyGUI romfs 资源镜像，见「2.6 烧录 romfs」
-- `tool/mpcli/` —— 随仓库自带的 mpcli v4.0.0.7；`mpcli`（ELF）与 `mpcli.exe`（Windows）并排放，`fw/` 和 `config/` 共用。所有 flash 脚本默认从这里取，不再依赖外部安装
+- `flash-wsl-romfs.sh` / `flash-linux2win-romfs.sh` / `flash-macos-romfs.sh` —— 烧录 HoneyGUI romfs 资源镜像，见「2.6 烧录 romfs」
+- `tool/mpcli/` —— 随仓库自带的 mpcli v4.0.0.7；`mpcli`（Linux ELF）与 `mpcli.exe`（Windows）并排放，`fw/` 和 `config/` 共用。所有 flash 脚本默认从这里取，不再依赖外部安装。macOS 版 `mpcli-macos`（Mach-O，构建产物不入库）也放这个目录，脚本默认就取它，行为与其它平台脚本一致
 - `serial_term.py` —— **Windows 专用**串口终端（依赖 `msvcrt`，Linux 下跑不了）。Linux 下看 log 见「查看 LOG」章节，用现成命令即可
 - `generate_sdk.py` —— 按 `SDK_COMMON.py` / `SDK_HMI.py` 的发布配置生成裁剪后的 SDK 包，参数见 `python scripts/generate_sdk.py --help`
 
@@ -133,6 +134,87 @@ set NOPAUSE=1 && scripts\flash-win32-app.bat COM8   :: 结束不 pause（脚本 
 - 双击也可跑：先 `set PORT=COMx`，再双击 `flash-win32-app.bat`；执行完自动 `pause`，方便看输出。CI / tasks.json 里调用时把 `NOPAUSE=1` 打开即可。
 - 可覆盖的环境变量：`PORT` / `BAUD` / `FW` / `ADDR` / `MPCLI_EXE` / `DRY` / `NOPAUSE`。
 
+#### macOS 原生
+
+```bash
+scripts/flash-macos-app.sh                     # 只有一个 USB 串口时自动选它
+scripts/flash-macos-app.sh /dev/cu.usbserial-1420
+
+# 命名参数（推荐，不必记位置顺序）
+scripts/flash-macos-app.sh --fw /path/app.bin --addr 0x7000A000 --port /dev/cu.usbserial-1420
+scripts/flash-macos-app.sh --fw=/path/app.bin --addr=0x7000A000 --baud=3000000
+
+# 位置参数按内容自动归类，顺序随意：/dev/... 是串口，0x... 是地址，其余当固件
+scripts/flash-macos-app.sh /path/app.bin 0x7000A000 /dev/cu.usbserial-1420
+
+# 环境变量写法同样支持（与 Linux/WSL 脚本一致）
+PORT=/dev/cu.wchusbserial1420 BAUD=3000000 scripts/flash-macos-app.sh
+
+DRY=1 scripts/flash-macos-app.sh               # 只打印将要执行的命令，不真正烧录
+scripts/flash-macos-app.sh --help              # 打印脚本头部用法
+```
+
+优先级：**命令行参数 > 环境变量 > 默认值**（默认 `bin/app.bin` / `0x7009E000` / `2000000`）。
+
+烧录参数与其它平台逐字一致（`-p -A 0x7009E000 -b 2000000 -M 5 -r -u -d -T RTL87X3G`），差别只在运行环境。三个脚本 `flash-macos-app.sh` / `flash-macos-runtime.sh` / `flash-macos-romfs.sh` 与 Linux、WSL、win32 版本一一对应。
+
+三个 macOS 脚本都接受 `--fw` / `--addr` / `--port` / `--baud`（短名 `-f` / `-a` / `-c` / `-b`，也支持 `--opt=value`），runtime 另外接受 `--chip`。runtime 是固定 11 个镜像 + 固定地址表，**故意拒绝 `--fw` / `--addr`** 并提示改用 `flash-macos-app.sh`。
+
+**mpcli-macos 放在哪：和其它平台的 mpcli 同一个目录。** 三个 macOS 脚本默认就用 `scripts/tool/mpcli/mpcli-macos`，与 `mpcli`（Linux ELF）、`mpcli.exe`（Windows）并排，**不需要任何指定**，和 `flash-linux-app.sh` 取 `tool/mpcli/mpcli` 的行为一致。只有要临时换二进制时才用 `MPCLI=` 覆盖：
+
+```bash
+MPCLI=$HOME/mpcli/mpcli scripts/flash-macos-app.sh
+```
+
+这个 Mach-O 二进制不在仓库里（构建产物），从源码自建——源码在 `D:\RemotePrj\mpcli\`（自带 `scripts/build_mac.sh`），**PyInstaller 不能交叉编译，必须在 macOS 上跑**：
+
+```bash
+# 在 macOS 上，于 mpcli 源码目录执行
+bash scripts/build_mac.sh          # 产出 dist/mpcli-<ver>-macos-<arch>.tar.gz
+
+# 解包后放到工具目录，改名以区别于 Linux ELF
+tar -xzf dist/mpcli-*-macos-*.tar.gz -C /tmp
+cp /tmp/mpcli-*-macos-*/mpcli <repo>/applications/eBadge_8773g_8711f/scripts/tool/mpcli/mpcli-macos
+chmod +x <repo>/applications/eBadge_8773g_8711f/scripts/tool/mpcli/mpcli-macos
+```
+
+`build_mac.sh` 产出的是 host 架构单文件（Apple Silicon 上是 arm64，Intel 上是 x86_64），**没有 universal2**；要给两种 Mac 用就各自构建一份。
+
+**`fw/` / `config/` 不用另外准备。** mpcli 的 `--flash-runtime` 通过 `mp_utility.get_root_path()` 找固件，打包版里该函数返回 `sys._MEIPASS` —— 也就是**二进制内部的解包临时目录**。`mpcli_setup_mac.spec` 已经把 `./fw` 和 `./config` 打进去了，所以 `mpcli-macos` 单独放进 `tool/mpcli/` 就能烧 runtime，目录里那份共用的 `fw/` 不是必需的（留着给 Linux/Windows 用）。
+
+**log 目录必须可写。** `log.py` 把 log 写到**可执行文件同目录**的 `log/<date>/`，不可写就在启动时直接崩：
+
+```
+PermissionError: [Errno 13] Permission denied: '/usr/local/bin/log'
+```
+
+（已实测，仓库自带的 v4.0.0.7 同样如此。）`tool/mpcli/` 在仓库里，正常可写，所以放在默认位置不用管。只有你把 mpcli 挪到 `/usr/local/bin`、`/Applications` 这类只读位置时才需要处理 —— 三个脚本会自动兜底，把 `MPCLI_LOG_DIR` 指到 `scripts/log/`（该变量在源码 `log.py:105` 支持，v4.0.0.7 已含），也可以自己显式指定：
+
+```bash
+MPCLI_LOG_DIR=$HOME/.cache/mpcli scripts/flash-macos-app.sh
+```
+
+**串口设备名：用 `cu.*`，别用 `tty.*`。** macOS 上 `/dev/tty.usbserial-*` 的 `open()` 会等 DCD 载波，芯片没启动/没复位时会静默挂住（看起来像卡死）。脚本传进 `tty.*` 会自动换成对应的 `cu.*`；不传时按 `/dev/cu.usbserial*`、`/dev/cu.wchusbserial*`、`/dev/cu.SLAB_USBtoUART*`、`/dev/cu.usbmodem*` 探测——只有一个就用它，多个则报错让你显式指定（防烧错板子）。
+
+> ⚠️ **`reboot_type=1` 会去开「前一个」串口，macOS 上会失败。** mpcli 的 `registerM5For87x3G.__get_reboot_port()` 按 `tty.usbserial` 前缀做字符串分割取 `-N` 减一，得到的是 **`tty.usbserial-xxxx`（没有 `/dev/` 前缀）**——那是个相对路径，肯定打不开。默认配置 `config/chip_configs/RTL87X3G/custom_config.ini` 里是 `is_reboot = False`，所以默认**不走这条路**；但一旦你为了「烧录前自动复位」把 `is_reboot` 改成 `True`，macOS 上就会报 `fail tot get debug board port` / `open ... fail`。要在 macOS 上自动复位，用 `reboot_type = 0`（HCI reboot，走 `-c` 指定的同一个口）或 `2`（CLI bud reboot），别用 `1`。
+
+**macOS 常见问题**
+
+- **`Bad CPU type in executable`**：Apple Silicon 上跑 x86_64 版 mpcli，缺 Rosetta 2：
+  ```bash
+  softwareupdate --install-rosetta --agree-to-license
+  ```
+  脚本会先用 `lipo -archs` 检查并提前警告。
+- **`cannot be opened because the developer cannot be verified`** / Gatekeeper 拦截：给二进制去掉隔离属性
+  ```bash
+  xattr -d com.apple.quarantine scripts/tool/mpcli/mpcli-macos
+  ```
+  若报 `killed`：可能是签名问题，`codesign --force --sign - scripts/tool/mpcli/mpcli-macos` 做一次本地自签名。
+- **`Resource temporarily unavailable` / 端口忙**：别的串口工具（CoolTerm、minicom、`screen`、Arduino IDE 串口监视器）还占着口，先退出。`screen /dev/cu.usbserial-1420 2000000` 用完要 `Ctrl+A K` 正常退出，直接关终端窗口会留下占用。
+- **`没有那个文件或目录` 但设备在**：`ls /dev/cu.*` 确认名字，CH340/CP2102/FTDI 的命名不同（`cu.wchusbserial*` / `cu.SLAB_USBtoUART*` / `cu.usbserial-*`）。找不到先装对应驱动（CH34x 在 macOS 13+ 需要厂商最新驱动）。
+- **`PermissionError: ... log`**：mpcli 放在只读目录了，见上面「log 目录必须可写」。
+- **`固件不存在: .../bin/app.bin`**：先跑一次 `scripts/build.sh`（macOS 上编译需要相应工具链，本仓库默认流程仍以 Linux 为准）。
+
 ---
 
 ## 2.5 烧录 runtime
@@ -158,12 +240,19 @@ scripts\flash-runtime-win32.bat COM8                  :: Windows 原生 cmd，CO
 set CHIP=RTL8783G && scripts\flash-runtime-win32.bat COM8
 ```
 
+```bash
+scripts/flash-macos-runtime.sh                        # macOS，自动探测 /dev/cu.* 下载口
+scripts/flash-macos-runtime.sh --chip RTL8783G        # 换芯片（也可位置参数：<dev> <chip>）
+CHIP=RTL8783G scripts/flash-macos-runtime.sh          # 环境变量写法
+DRY=1 scripts/flash-macos-runtime.sh                  # 干跑，不接板子也能看命令
+```
+
 ### 默认配置
 
 | 项 | 值 | 覆盖方式 |
 |---|---|---|
 | 芯片 | `RTL8773G`（取 `tool/mpcli/fw/runtime_system_bin/` 下的目录名，可选 `RTL8773G` / `RTL8783G` / `RTL87X3EP`） | `CHIP=` |
-| 下载口 | `/dev/ttyUSB0`（linux）、`COM13`（wsl）、`COM4`（linux2win）、无默认（win32） | 位置参数 或 `PORT=` |
+| 下载口 | `/dev/ttyUSB0`（linux）、`COM13`（wsl）、`COM4`（linux2win）、无默认（win32）、自动探测 `/dev/cu.*`（macOS） | 位置参数 或 `PORT=` |
 | 波特率 | `2000000` | `BAUD=` |
 | 完整参数 | `--flash-runtime <CHIP> -c <port> -u -d -b 2000000` | — |
 
@@ -229,6 +318,17 @@ scripts/flash-linux2win-romfs.sh ../ui/build/app_romfs_0x704D1000.bin 0x704D1000
 WIN_HOST=my-win-pc DRY=1 scripts/flash-linux2win-romfs.sh
 ```
 
+### macOS
+
+```bash
+scripts/flash-macos-romfs.sh ../ui/build/app_romfs_0x70536000.bin              # 地址从文件名推导
+scripts/flash-macos-romfs.sh ../ui/build/app_romfs_0x70536000.bin 0x70536000 /dev/cu.usbserial-1420
+scripts/flash-macos-romfs.sh --fw ../ui/build/app_romfs_0x70536000.bin --port /dev/cu.usbserial-1420
+DRY=1 scripts/flash-macos-romfs.sh ../ui/build/app_romfs_0x70536000.bin
+```
+
+> 分区地址以本 App 的 `flash_map.h` 为准：`USER_DATA1_ADDR = 0x70536000`（其它 App 目录下的分区表不同，上面的 `0x704D1000` 是别的工程的旧值——**烧之前先 `grep USER_DATA1_ADDR flash_map.h` 确认**）。
+
 脚本会检查地址对齐、镜像内烘焙的基址和 romfs root dirent。资源镜像与 App、runtime 使用不同的 flash 偏移。
 
 ---
@@ -236,6 +336,14 @@ WIN_HOST=my-win-pc DRY=1 scripts/flash-linux2win-romfs.sh
 ## 3. 查看 LOG
 
 原生 Linux 下**不用** `serial_term.py`（它依赖 Windows 的 `msvcrt`，跑不了）。用系统现成命令即可：`stty` 配一次串口参数，`cat` 实时看、顺手 `tee` 存盘。
+
+> **macOS 上看 log**：没有 `stty -F`（BSD 是 `stty -f`），串口是 `/dev/cu.*`：
+> ```bash
+> PORT=/dev/cu.usbserial-1420; BAUD=2000000
+> stty -f "$PORT" "$BAUD" cs8 -cstopb -parenb -crtscts clocal -hupcl raw -echo
+> stdbuf -oL cat "$PORT" | tee scripts/log/$(date +%Y%m%d_%H%M%S).log   # stdbuf 需 brew install coreutils
+> ```
+> 没有 `stdbuf` 就用 `cat "$PORT" | tee -a file`（macOS 的 `cat` 写成管道时也是全缓冲，boot log 会卡住不落盘），或 `script -q /dev/null cat "$PORT"`、`picocom -b 2000000 /dev/cu.usbserial-1420`、`tio -b 2000000 /dev/cu.usbserial-1420`。
 
 > ⚠️ **RTS/DTR 与复位**：RTL87X3G 的 RTS 是**低有效复位线**。很多串口工具打开时会拉低 RTS/DTR 把芯片摁复位。下面用 `stty` 关掉硬件流控（`-crtscts`）并关 `hupcl`，避免打开/关闭串口时误复位。若你的 USB 转串口驱动在 open 时仍会拨动 DTR/RTS，看到芯片被复位是正常现象，重新连接即可。
 
