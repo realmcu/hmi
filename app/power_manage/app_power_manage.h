@@ -19,6 +19,7 @@
  *   - Cancel / wake : gui_port_reset_power_off_request()
  *   - Wake decision : main()                  -> app_power_on_gate()
  *   - Screen state  : app_screen_on_off_power_set() (panel on/off, not power-down)
+ *   - Touch rail    : app_touch_power_set()        (follows the screen)
  */
 
 #ifndef APP_POWER_MANAGE_H_
@@ -140,6 +141,22 @@ void app_power_down_enter(void);
  *       power-down; use gui_port_power_off() for that.
  */
 void app_screen_on_off_power_set(bool on);
+
+/**
+ * @brief Power the touch controller on or off with the screen.
+ *
+ * Cutting the rails (rather than a register low-power mode) means the
+ * controller loses its configuration; turning it back on replays the same
+ * power-up and reset sequence as its driver init, so this takes ~250 ms.
+ * The touch interrupt is disabled while off, so nothing queues work against an
+ * unpowered part.
+ *
+ * @param on true to power the controller, false to cut it.
+ *
+ * @note Idempotent.  Called from the display driver's screen on/off path, i.e.
+ *       the GUI thread, which is also the only thread that may touch this.
+ */
+void app_touch_power_set(bool on);
 
 #ifdef __cplusplus
 }

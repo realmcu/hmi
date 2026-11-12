@@ -135,11 +135,9 @@ void kb_get_data(void)
 
         home_timestamp_ms_press = key.press_timestamp;
         home_timestamp_ms_release = key.press_timestamp;
-        home_state = !app_power_power_off_requested();
+        home_state = true;
         power_key_press_accepted = true;
         (void)k_work_reschedule(&power_key_long_work, K_MSEC(APP_POWER_LONG_PRESS_MS));
-        // DBG_DIRECT("[power-key] %s press, long action armed\n",
-        //        app_power_power_off_requested() ? "wake" : "power-off");
     }
     else if (GPIO_KEY_RELEASED == key.current_state)
     {
@@ -167,7 +165,7 @@ void kb_get_data(void)
         power_key_press_accepted = false;
 
         home_timestamp_ms_press = key.press_timestamp;
-        if (app_power_power_off_requested() || duration >= APP_POWER_LONG_PRESS_MS)
+        if (duration >= APP_POWER_LONG_PRESS_MS)
         {
             home_timestamp_ms_release = key.press_timestamp;
             // DBG_DIRECT("[power-key] release %u ms, no action\n", duration);
@@ -193,8 +191,8 @@ static struct gui_indev indev =
 
     .touch_timeout_ms = DT_PROP(TOUCH_DEV_NODE, gesture_release_timeout_ms),
     .long_button_time_ms = 800,
-    .short_button_time_ms = 300,
-    .quick_slide_time_ms = 200,
+    .short_button_time_ms = 400,
+    .quick_slide_time_ms = 300,
 
     .kb_long_button_time_ms = 2000,
     .kb_short_button_time_ms = 60,

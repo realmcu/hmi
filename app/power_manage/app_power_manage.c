@@ -459,6 +459,62 @@ void app_screen_on_off_power_set(bool on)
         Pad_Config(MICBIAS1, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_DOWN,
                    PAD_OUT_ENABLE, PAD_OUT_LOW);  /* motor rail */
     }
+    app_touch_power_set(on);
+}
+
+#define TOUCH_PWR_EN_DELAY_MS   5U      /* board rail settle, before sensor rail */
+#define TOUCH_PWR_ON_DELAY_MS   10U     /* sensor rail settle, before reset      */
+#define TOUCH_RESET_HOLD_MS     50U    /* reset high, per CST820 datasheet      */
+#define TOUCH_RESET_LOW_MS      10U     /* reset pulse width                     */
+
+static bool touch_powered = true;
+
+static void touch_reset_pulse(void)
+{
+    (void)gpio_pin_configure_dt(&touch_rst, GPIO_OUTPUT_ACTIVE);
+
+    (void)gpio_pin_set_dt(&touch_rst, 1);
+    k_msleep(TOUCH_RESET_HOLD_MS);
+
+    (void)gpio_pin_set_dt(&touch_rst, 0);
+    k_msleep(TOUCH_RESET_LOW_MS);
+
+    (void)gpio_pin_set_dt(&touch_rst, 1);
+    k_msleep(TOUCH_RESET_HOLD_MS);
+}
+
+/* Power the touch controller on/off with the screen.  Idempotent. */
+void app_touch_power_set(bool on)
+{
+    if (on == touch_powered)
+    {
+        return;
+    }
+    touch_powered = on;
+
+    if (!on)
+    {
+        gpio_pin_interrupt_configure_dt(&touch_irq, GPIO_INT_DISABLE);
+        gpio_pin_configure_dt(&touch_irq, GPIO_OUTPUT_LOW);
+        gpio_pin_set_dt(&touch_irq, true);
+        gpio_pin_set_dt(&touch_pwr_en, false);
+        gpio_pin_set_dt(&touch_pwr, true);
+        gpio_pin_set_dt(&touch_rst, false);
+        return;
+    }
+
+    /* Power-up order from cst820_init(): board rail settles, then the sensor
+     * rail, then reset. */
+    (void)gpio_pin_configure_dt(&touch_pwr_en, GPIO_OUTPUT_ACTIVE);
+    k_msleep(TOUCH_PWR_EN_DELAY_MS);
+
+    (void)gpio_pin_configure_dt(&touch_pwr, GPIO_OUTPUT_ACTIVE);
+    k_msleep(TOUCH_PWR_ON_DELAY_MS);
+
+    touch_reset_pulse();
+
+    (void)gpio_pin_configure_dt(&touch_irq, GPIO_INPUT | GPIO_PULL_UP);
+    (void)gpio_pin_interrupt_configure_dt(&touch_irq, GPIO_INT_EDGE_FALLING);
 }
 
 /*----------------------------------------------------------------------------*
