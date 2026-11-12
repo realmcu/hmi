@@ -13,7 +13,13 @@
 #include "system_status_api.h"
 #include "fmc_api_ext.h"
 #include "section.h"
+#if defined(CONFIG_REALTEK_LCD_AUTO_360_360_QSPI)
+#include "lcd_auto_detect_360_360_qspi.h"
+#elif defined(CONFIG_REALTEK_LCD_ST77916_360_360_QSPI)
+#include "lcd_st77916_360_360_qspi.h"
+#else
 #include "lcd_sh8601z_410_502_qspi.h"
+#endif
 
 
 #define DRV_LCD_WIDTH   360

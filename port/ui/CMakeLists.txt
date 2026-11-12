@@ -3,6 +3,12 @@
 
 cmake_minimum_required(VERSION 3.10)
 
+if(CONFIG_REALTEK_LCD_AUTO_360_360_QSPI OR
+   CONFIG_REALTEK_LCD_ST77916_360_360_QSPI OR
+   CONFIG_REALTEK_LCD_JD9855_360_360_QSPI)
+    zephyr_include_directories("${ZEPHYR_BASE}/../modules/display/device/general/lcd/8773G")
+endif()
+
 
 # Define a variable for the library name
 if(1) #set to 1 to enable or variable to for depnedency
