@@ -9,6 +9,9 @@
 #include "gui_sysval_keys.h"
 #include "ui_sysval.h"
 
+#include "charger_api.h"
+#include "charger_utils.h"
+
 #include <zephyr/shell/shell.h>
 
 static int cmd_sysval_get(const struct shell *sh, size_t argc, char **argv)
@@ -18,6 +21,10 @@ static int cmd_sysval_get(const struct shell *sh, size_t argc, char **argv)
     uint8_t battery;
     bool charging;
     bool connected;
+    uint16_t battery_mv = 0;
+    int16_t battery_ma = 0;
+    T_CHARGER_UTILS_ERROR voltage_status;
+    T_CHARGER_UTILS_ERROR current_status;
     health_daily_rollup_t today;
     uint32_t now = app_time_now();
     struct tm calendar;
@@ -40,6 +47,15 @@ static int cmd_sysval_get(const struct shell *sh, size_t argc, char **argv)
     {
         shell_print(sh, "power/battery/charging = unavailable");
     }
+    voltage_status = charger_utils_get_batt_volt(&battery_mv);
+    current_status = charger_utils_get_batt_curr(&battery_ma);
+    shell_print(sh, "power/battery/voltage = %u mV (status=%d)",
+                (unsigned)battery_mv, (int)voltage_status);
+    shell_print(sh, "power/battery/current = %d mA (status=%d)",
+                (int)battery_ma, (int)current_status);
+    shell_print(sh, "power/charger/state = %d error = %d",
+                (int)charger_api_get_charger_state(),
+                (int)charger_api_get_error_code());
     if (app_ui_sysval_get_connected(&connected))
     {
         shell_print(sh, "connectivity/bluetooth/connected = %s",
