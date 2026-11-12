@@ -40,6 +40,7 @@
 
 #define CHSC6417_I2C_ADDR    0x2E
 #define CHSC6417_REG_POWER   0xA5   /* 0x00=normal, 0x03=sleep */
+#define CHSC6417_REG_CHIP_ID 0xA7
 
 /* ---------- 驱动私有数据 ---------- */
 typedef struct
@@ -89,6 +90,27 @@ static int chsc6417_read_raw(chsc6417_file_t *f, uint8_t out[CHSC6X_READ_LEN])
         return POSIX_ERR_IO;
     }
     return POSIX_OK;
+}
+
+static int chsc6417_read_chip_id(chsc6417_file_t *f, uint32_t *chip_id)
+{
+    uint8_t id[4] = {0};
+    posix_i2c_msg_t m =
+    {
+        .addr    = f->drv->i2c_addr,
+        .reg     = CHSC6417_REG_CHIP_ID,
+        .reg_len = 1,
+        .buf     = id,
+        .len     = sizeof(id),
+    };
+    int ret = posix_ioctl(f->i2c_fd, POSIX_I2C_IOCTL_READ_REG, &m);
+
+    if (ret == POSIX_OK)
+    {
+        *chip_id = ((uint32_t)id[0] << 24) | ((uint32_t)id[1] << 16) |
+                   ((uint32_t)id[2] << 8) | id[3];
+    }
+    return ret;
 }
 
 /* ---------- I2C 寄存器写（电源控制等） ---------- */
@@ -322,6 +344,10 @@ static int chsc6417_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
         if (!arg) { return POSIX_ERR_INVAL; }
         *(posix_touch_config_t *)arg = f->cfg;
         return POSIX_OK;
+
+    case POSIX_TOUCH_IOCTL_GET_CHIP_ID:
+        if (!arg) { return POSIX_ERR_INVAL; }
+        return chsc6417_read_chip_id(f, (uint32_t *)arg);
 
     case POSIX_TOUCH_IOCTL_CALIBRATE:
         return POSIX_OK;

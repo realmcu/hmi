@@ -25,6 +25,9 @@
 #include "posix.h"
 #include "posix_init.h"
 #include "ioctls/posix_ioctl_touch.h"
+#include <zephyr/sys/printk.h>
+
+#define TOUCH_CST816D_CHIP_ID   0xB6
 
 /* ---------- 带类型前缀的薄壳（转发到框架层通用 alias 机制） ---------- */
 
@@ -41,6 +44,33 @@ int posix_touch_unbind(const char *alias)
 
 static int board_touch_init(void)
 {
-    return posix_touch_bind("/dev/touch0", "/dev/cst816d");
+    posix_fd_t probe = posix_open("/dev/cst816d");
+    int ret;
+
+    if (probe == POSIX_FD_NULL)
+    {
+        printk("[TOUCH] open /dev/cst816d failed\n");
+        return POSIX_ERR_NODEV;
+    }
+
+    uint32_t chip_id = 0;
+    ret = posix_ioctl(probe, POSIX_TOUCH_IOCTL_GET_CHIP_ID, &chip_id);
+    posix_close(probe);
+
+    if (ret != POSIX_OK)
+    {
+        printk("[TOUCH] CST816D read id failed: %d\n", ret);
+        return ret;
+    }
+
+    printk("[TOUCH] CST816D id: 0x%08X\n", chip_id);
+
+    if (chip_id == TOUCH_CST816D_CHIP_ID)
+    {
+        return posix_touch_bind("/dev/touch0", "/dev/cst816d");
+    }
+
+    printk("[TOUCH] CST816D id mismatch\n");
+    return POSIX_ERR_NODEV;
 }
-POSIX_INIT_APP_EXPORT(board_touch_init);
+POSIX_INIT_POST_DEVICE_EXPORT(board_touch_init);

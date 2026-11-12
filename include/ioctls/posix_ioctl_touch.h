@@ -41,6 +41,7 @@ typedef struct
 #define POSIX_TOUCH_IOCTL_GET_CONFIG    POSIX_IOC(POSIX_DEVICE_MAGIC_TOUCH, 2)
 #define POSIX_TOUCH_IOCTL_CALIBRATE     POSIX_IOC(POSIX_DEVICE_MAGIC_TOUCH, 3)
 #define POSIX_TOUCH_IOCTL_SET_POWER     POSIX_IOC(POSIX_DEVICE_MAGIC_TOUCH, 4)
+#define POSIX_TOUCH_IOCTL_GET_CHIP_ID   POSIX_IOC(POSIX_DEVICE_MAGIC_TOUCH, 5) /* arg: uint32_t * */
 
 /* ================================================================
  * Touch 绑定 API —— 让"应用只 open /dev/touch0"成为可能

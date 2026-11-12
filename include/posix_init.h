@@ -10,6 +10,7 @@
  * 优先级：
  *   0 → 板级初始化（时钟、pinmux）
  *   1 → 设备驱动注册（UART/SPI/GPIO/...）
+ *   1_5 → 设备注册后初始化（跨设备绑定/选择）
  *   2 → 应用初始化
  *
  * 用法：在每个驱动 .c 文件尾部：
@@ -25,6 +26,7 @@
  *       KEEP(*(.posix$initS))     // 起始哨兵（由 posix_init.c 提供）
  *       KEEP(*(.posix$init0))     // 优先级 0：板级（时钟/pinmux）
  *       KEEP(*(.posix$init1))     // 优先级 1：设备驱动注册
+ *       KEEP(*(.posix$init1_5))   // 优先级 1_5：设备注册后初始化
  *       KEEP(*(.posix$init2))     // 优先级 2：应用
  *       KEEP(*(.posix$initE))     // 结束哨兵（由 posix_init.c 提供）
  *   } > FLASH
@@ -34,7 +36,7 @@
  *    (__posix_init_start[] / __posix_init_end[])，
  *    链接脚本【不要】再自行定义 __posix_init_start/end 链接器符号。
  *  - 段名带 '$' 仅是 MSVC/IAR 风格的普通字符，GNU ld 不会按 0/1/2
- *    自动排序，因此必须像上面那样【逐段显式列出】init0/init1/init2，
+ *    自动排序，因此必须像上面那样【逐段显式列出】init0/init1/init1_5/init2，
  *    不能用通配 KEEP(*(.posix$init*))（顺序不保证，优先级会失效）。
  *  - 参考实现：examples/port/posix_init_zephyr.ld。
  * ================================================================ */
@@ -54,6 +56,7 @@ typedef int (*posix_init_fn_t)(void);
 /* 优先级等级 */
 #define POSIX_INIT_BOARD_EXPORT(fn)     POSIX_INIT_EXPORT(fn, "0")
 #define POSIX_INIT_DEVICE_EXPORT(fn)    POSIX_INIT_EXPORT(fn, "1")
+#define POSIX_INIT_POST_DEVICE_EXPORT(fn) POSIX_INIT_EXPORT(fn, "1_5")
 #define POSIX_INIT_APP_EXPORT(fn)       POSIX_INIT_EXPORT(fn, "2")
 
 /* 遍历所有已注册的 init 函数并调用 */

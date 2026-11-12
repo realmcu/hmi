@@ -50,6 +50,7 @@
 
 #define CST816D_I2C_ADDR             0x15   /* 上游 dts 通用地址 */
 #define CST816D_REG_POWER            0xA5   /* 0x00=normal, 0x03=sleep */
+#define CST816D_REG_CHIP_ID          0xA7
 
 #define CST816D_DEFAULT_RELEASE_MS   30     /* 与 zephyr 驱动 CST816D_DEFAULT_TIMEOUT_MS 一致 */
 
@@ -80,20 +81,36 @@ typedef struct
 static cst816d_file_t s_cst816d_files[CST816D_MAX_FILES];
 
 /* ---------- I2C 读取：写 reg 0x00，再读 24 字节 ---------- */
-static int cst816d_read_raw(cst816d_file_t *f, uint8_t out[CST816D_READ_LEN])
+static int cst816d_read_reg(cst816d_file_t *f, uint8_t reg, uint8_t *out, size_t len)
 {
-    uint8_t reg = CST816D_REG_DATA;
     posix_i2c_msg_t m =
     {
         .addr    = f->drv->i2c_addr,   /* 从机地址属端口层数据 */
         .reg     = reg,
         .reg_len = 1,
         .buf     = out,
-        .len     = CST816D_READ_LEN,
+        .len     = len,
     };
     /* 优先使用 write_read 组合，避免 START 之间被打断；框架里对应
      * WRITE_REG 的读回路径（reg_len=1，len=CST816D_READ_LEN）。 */
     return posix_ioctl(f->i2c_fd, POSIX_I2C_IOCTL_READ_REG, &m);
+}
+
+static int cst816d_read_raw(cst816d_file_t *f, uint8_t out[CST816D_READ_LEN])
+{
+    return cst816d_read_reg(f, CST816D_REG_DATA, out, CST816D_READ_LEN);
+}
+
+static int cst816d_read_chip_id(cst816d_file_t *f, uint32_t *chip_id)
+{
+    uint8_t id = 0;
+    int ret = cst816d_read_reg(f, CST816D_REG_CHIP_ID, &id, sizeof(id));
+
+    if (ret == POSIX_OK)
+    {
+        *chip_id = id;
+    }
+    return ret;
 }
 
 /* ---------- I2C 寄存器写（电源控制等） ---------- */
@@ -333,6 +350,10 @@ static int cst816d_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
         if (!arg) { return POSIX_ERR_INVAL; }
         *(posix_touch_config_t *)arg = f->cfg;
         return POSIX_OK;
+
+    case POSIX_TOUCH_IOCTL_GET_CHIP_ID:
+        if (!arg) { return POSIX_ERR_INVAL; }
+        return cst816d_read_chip_id(f, (uint32_t *)arg);
 
     case POSIX_TOUCH_IOCTL_CALIBRATE:
         return POSIX_OK;
