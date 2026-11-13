@@ -23,6 +23,8 @@ WIN_HOST="${WIN_HOST:-main-win-pc}"
 PORT="${1:-${PORT:-COM4}}"
 CHIP="${CHIP:-RTL8773G}"
 BAUD="${BAUD:-2000000}"
+# Unset uses this default; an explicitly empty BT_MAC= disables -x.
+BT_MAC="${BT_MAC-03:87:73:87:73:13}"
 DRY="${DRY:-0}"
 # Runtime flashing must never reuse a previously extracted tool tree: tar does
 # not delete files that disappeared from the bundle, and stale .bin files can
@@ -107,9 +109,9 @@ else
 fi
 
 echo "[ssh-runtime] host = $WIN_HOST   port = $PORT"
-echo "[ssh-runtime] chip = $CHIP   baud = $BAUD"
+echo "[ssh-runtime] chip = $CHIP   baud = $BAUD   bt_mac = $BT_MAC"
 
-remote_cmd="set \"CHIP=${CHIP}\" && set \"BAUD=${BAUD}\" && set \"NOPAUSE=1\" && call \"${WIN_RUNTIME_FLASH}\" ${PORT}"
+remote_cmd="set \"CHIP=${CHIP}\" && set \"BAUD=${BAUD}\" && set \"BT_MAC=${BT_MAC}\" && set \"NOPAUSE=1\" && call \"${WIN_RUNTIME_FLASH}\" ${PORT}"
 set +e
 ssh "$WIN_HOST" "$remote_cmd"
 RC=$?

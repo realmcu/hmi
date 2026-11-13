@@ -23,6 +23,11 @@ rem CHIP is a directory name under tool\mpcli\fw\runtime_system_bin\
 rem (RTL8773G / RTL8783G / RTL87X3EP).
 if not defined CHIP set "CHIP=RTL8773G"
 if not defined BAUD set "BAUD=2000000"
+if defined BT_MAC (
+  set "MAC_ARG=-x %BT_MAC%"
+) else (
+  set "MAC_ARG="
+)
 
 if not defined PORT (
   echo [flash-runtime] Missing COM port. Usage: scripts\flash-runtime-win32.bat COMx 1>&2
@@ -40,7 +45,7 @@ if not exist "%~dp0tool\mpcli\fw\runtime_system_bin\%CHIP%\" (
 )
 
 echo [flash-runtime] exe  = %MPCLI_EXE%
-echo [flash-runtime] port = %PORT%   chip = %CHIP%   baud = %BAUD%
+echo [flash-runtime] port = %PORT%   chip = %CHIP%   baud = %BAUD%   bt_mac = %BT_MAC%
 
 pushd "%~dp0tool\mpcli" >nul || goto :fail
 
@@ -49,10 +54,10 @@ rem -M 5 -r -b 3000000, and SYSTEM_Config lands in the protected OEM_CFG
 rem region (0x70002000), which cannot be written without -u.
 rem -T is derived from CHIP (RTL8773G -> RTL87X3G), so it is not passed.
 if /I "%DRY%"=="1" (
-  echo [flash-runtime][dry-run] "%MPCLI_EXE%" --flash-runtime %CHIP% -c %PORT% -u -d -b %BAUD%
+  echo [flash-runtime][dry-run] "%MPCLI_EXE%" --flash-runtime %CHIP% -c %PORT% -u -d -b %BAUD% %MAC_ARG%
   set "RC=0"
 ) else (
-  "%MPCLI_EXE%" --flash-runtime %CHIP% -c %PORT% -u -d -b %BAUD%
+  "%MPCLI_EXE%" --flash-runtime %CHIP% -c %PORT% -u -d -b %BAUD% %MAC_ARG%
   set "RC=!ERRORLEVEL!"
 )
 
