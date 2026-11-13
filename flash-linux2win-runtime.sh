@@ -24,6 +24,10 @@ PORT="${1:-${PORT:-COM4}}"
 CHIP="${CHIP:-RTL8773G}"
 BAUD="${BAUD:-2000000}"
 DRY="${DRY:-0}"
+# Runtime flashing must never reuse a previously extracted tool tree: tar does
+# not delete files that disappeared from the bundle, and stale .bin files can
+# win address deduplication while still producing a valid JSON.
+REFRESH="${REFRESH:-1}"
 
 RUNTIME_ROOT="$SCRIPT_DIR/tool/mpcli/fw/runtime_system_bin"
 if [ ! -d "$RUNTIME_ROOT/$CHIP" ]; then
@@ -75,8 +79,8 @@ SIGNATURE="$(
 
 REMOTE_STATE="$(ssh -o BatchMode=yes "$WIN_HOST" "if exist \"$WIN_APP_FLASH\" (if exist \"$WIN_RUNTIME_FLASH\" (if exist \"$WIN_MPCLI\" (if exist \"$WIN_MARKER\" (type \"$WIN_MARKER\") else (echo MISSING)) else (echo MISSING)) else (echo MISSING)) else (echo MISSING)" | tr -d '\r' | head -n 1)"
 
-if [ "$REMOTE_STATE" != "$SIGNATURE" ]; then
-  echo "[ssh-runtime] provisioning Windows environment"
+if [ "$REMOTE_STATE" != "$SIGNATURE" ] || [ "$REFRESH" = "1" ]; then
+  echo "[ssh-runtime] provisioning clean Windows environment"
   WORK_DIR="$(mktemp -d)"
   trap 'rm -rf "$WORK_DIR"' EXIT
   STAGE_DIR="$WORK_DIR/bundle"
@@ -93,6 +97,7 @@ if [ "$REMOTE_STATE" != "$SIGNATURE" ]; then
 
   scp -O -q "$BUNDLE" "${WIN_HOST}:${REMOTE_BUNDLE_SCP}"
   ssh -o BatchMode=yes "$WIN_HOST" "if not exist \"$ENV_DIR\" mkdir \"$ENV_DIR\""
+  ssh -o BatchMode=yes "$WIN_HOST" "if exist \"$ENV_DIR\\tool\\mpcli\" rmdir /s /q \"$ENV_DIR\\tool\\mpcli\""
   ssh -o BatchMode=yes "$WIN_HOST" "tar -xzf \"$REMOTE_BUNDLE\" -C \"$ENV_DIR\""
   ssh -o BatchMode=yes "$WIN_HOST" "echo $SIGNATURE>\"$WIN_MARKER\""
   ssh -o BatchMode=yes "$WIN_HOST" "del /q \"$REMOTE_BUNDLE\" >nul 2>nul" || true
