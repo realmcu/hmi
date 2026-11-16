@@ -60,12 +60,22 @@ CONFIG_REALTEK_BUILD_EXAMPLE_IMAGE_WIDGET=y
 
 ```
 # 以 src_bank0 为例：bin/RTL8773E.hmi_dashboard_src_bank0/
-honeygui_src.elf              ELF 文件
-dashboard_bank0_MP-*.bin      含签名的烧录 BIN
-
-# bank1 mode 产物（bin/RTL8773E.hmi_dashboard_src_bank1/ 或 lib_bank1/）
-dashboard_bank1_MP-*.bin      含签名的烧录 BIN
+dashboard_src_bank0.elf                            ELF 文件
+dashboard_src_bank0.map                            链接 map
+dashboard_src_bank0.disasm                         反汇编
+dashboard_src_bank0_MP-v1.0.0.0-<gcid>-<md5>.bin   烧录用镜像
 ```
+
+`.hex` / `.bin` 中间产物仍是 `dashboard_<模式>` 名字；可烧录镜像由 `md5_generate.sh`
+加上 `_MP` 后缀和 `version.h` 里的版本号。bank1 模式（`src_bank1` / `lib_bank1`）
+对应 `dashboard_src_bank1_MP-v*.bin` / `dashboard_lib_bank1_MP-v*.bin`。
+
+## 版本号生成
+
+cmake configure 阶段会调用 `../tools/version_gen.sh`，由 `../version_cfg.txt` 重新生成
+`../version.h`，配置文件一改就会重新执行。脚本依赖 `bash`；找不到 `bash` 时只打印告警，
+产物沿用上一次的 `version.h`。字段含义、MP header 同步和当前编号规则见
+[版本号管控](../docs/version-control_CN.md)。
 
 ## 功能配置
 

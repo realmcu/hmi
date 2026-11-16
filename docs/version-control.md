@@ -10,8 +10,8 @@ build.
 
 | Carrier | Content | Produced by |
 | --- | --- | --- |
-| `version.h` | `VERSION_MAJOR/MINOR/REVISION/BUILDNUM`, `VERSION_GCID`, `COMMIT`, build time, builder | `tools/version_gen.sh` |
-| Output file name | `dashboard_bank0-v3.14.2.4-cee6624a-<md5>.bin` | `md5_generate.sh` in the after-build step, reading `version.h` |
+| `version.h` | `VERSION_MAJOR/MINOR/REVISION/BUILDNUM`, `VERSION_GCID`, `COMMIT`, `CUSTOMER_NAME` / `CN_1..CN_8`, build time, builder | `tools/version_gen.sh` |
+| Output file name | `dashboard_<mode>_MP-v<major>.<minor>.<revision>.<build>-<gcid>-<md5>.bin` (e.g. `dashboard_src_bank0_MP-v1.0.0.0-c2e4a1b7-<md5>.bin`) | `md5_generate.sh` in the after-build step, reading `version.h` |
 | `Version=` in `mdk/mp.ini` | Written into the 512-byte MP header, compared by the upgrade tool | Synced by the script when `SYNC_MP_INI = 1` (the default here) |
 
 Note that no source file includes `version.h`: it only affects output naming and build
@@ -30,7 +30,7 @@ Two consequences:
 - `mdk/mp.ini` is tracked, so it shows up in `git status` whenever the version changes.
   Commit it together with the release.
 - OTA typically requires the new version to be at least the running one. When switching
-  numbering schemes (device on 1.0.0.0, new image 3.14.2.4) make sure the new number is
+  numbering schemes (device on 3.14.2.4, new image 1.0.0.0) make sure the new number is
   larger, or the device will refuse the upgrade.
 
 ## Both build paths run the generator
@@ -44,24 +44,29 @@ Two consequences:
 re-configures and regenerates after it changes; uVision runs it on every build. Both read
 the same config file and therefore produce the same number.
 
+The cmake path calls the script through `bash` and pins its working directory to the
+project root. If no `bash` is found on the machine, the configure step only prints a
+warning and keeps the existing `version.h` — the build then carries the previous version,
+so install Git Bash (or run the build from a shell that has `bash`) on Windows.
+
 ## Fields
 
 | Field | Meaning |
 | --- | --- |
-| `VERSION_MAJOR` / `VERSION_MINOR` / `VERSION_REVISION` | Major / minor / revision. Leave empty to inherit from the git tag (`<prefix>-vX.Y.Z`) |
-| `VERSION_BUILDNUM` | Build counter. `auto` = commits since the last tag; a literal number; or the `BUILD_NUMBER` environment variable. Capped at 4095, exceeding it fails the build |
-| `CUSTOMER_NAME` | Up to 8 characters, encoded character by character into `CN_1..CN_8`, padded with `#` |
-| `SYNC_MP_INI` | When `1`, `mdk/mp.ini` gets the same version in its `Version=` field. On by default here, otherwise OTA never sees an upgrade |
-| `SDK_BASELINE` | Informational only: which SDK release this project was derived from |
+| `VERSION_MAJOR` / `VERSION_MINOR` / `VERSION_REVISION` | Major / minor / revision. Left empty, they are taken from the git tag (`<prefix>-vX.Y.Z`); with no tag they become `0`, so set them explicitly |
+| `VERSION_BUILDNUM` | Build counter. `auto` (or empty) = commits since the last tag, `0` when the repository has no tag; a literal number; or the `BUILD_NUMBER` environment variable, which always wins. Above 2048 the build fails; above 255 it only warns, because the MP header field is one byte |
+| `CUSTOMER_NAME` | Up to 8 characters, encoded character by character into `CN_1..CN_8`, padded with `#`. Defaults to `sdk-v1` when unset |
+| `SYNC_MP_INI` | When `1`, `mdk/mp.ini` gets the same version in its `Version=` field. On in this project, otherwise OTA never sees an upgrade |
+| `SDK_BASELINE` / `SDK_BASELINE_COMMIT` | Informational only: which SDK release and commit this project was derived from |
 
 ## Common tasks
 
-Bump the revision (3.14.2 → 3.14.3):
+Bump the revision (1.0.0.0 → 1.0.1.0):
 
 ```ini
-VERSION_MAJOR    = 3
-VERSION_MINOR    = 14
-VERSION_REVISION = 3
+VERSION_MAJOR    = 1
+VERSION_MINOR    = 0
+VERSION_REVISION = 1
 VERSION_BUILDNUM = auto
 ```
 
@@ -77,18 +82,16 @@ Set the customer name (goes into the MP header):
 CUSTOMER_NAME    = acme
 ```
 
-## Boot log
+## Identifying the running image
 
-`src/application/main.c` prints the build version at the top of `main()`, so the first
-lines of the UART log show which image is actually running:
+There is no UART version banner: no source file in this project includes `version.h`, so
+the number exists only in the image file name and in the MP header. To check what a device
+runs, read the `Version=` field with the upgrade tool, or compare the MP header of the
+image that was flashed.
 
-```
-APP version 3.14.2.4 commit cee6624ace78
-```
-
-The value is baked in at compile time and matches what the same build wrote into the MP
-header. `version.h` is included as `../version.h`, so no include path has to be configured
-in either build system.
+If you want a build banner, include the generated header explicitly in `main.c` — it sits
+in the project root, so `#include "../version.h"` needs no extra include path in either
+build system — and print `VERSION_BUILD_STR` / `COMMIT` during start-up.
 
 ## Behaviour
 
@@ -96,5 +99,7 @@ in either build system.
   so an unchanged version does not trigger a recompile.
 - In a source drop without git history, `VERSION_GCID` / `COMMIT` fall back to
   `0x00000000` / `000000000000`; the build proceeds and the version number is unaffected.
-- To keep driving the version from git tags instead, name them `<prefix>-v<major>.<minor>.<revision>`
-  (for example `dashboard-v3.14.2`); every commit after a tag increments `VERSION_BUILDNUM`.
+- The git tag is only a fallback for empty version fields. This project carries no release
+  tags, so an empty field silently becomes `0` — keep all three numbers in `version_cfg.txt`.
+- To drive the version from tags instead, name them `<prefix>-v<major>.<minor>.<revision>`
+  (for example `dashboard-v1.0.0`); every commit after a tag then becomes `VERSION_BUILDNUM`.

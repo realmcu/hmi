@@ -62,12 +62,24 @@ Build outputs are isolated per mode under `board/evb/hmi_dashboard/bin/RTL8773E.
 
 ```
 # Example: bin/RTL8773E.hmi_dashboard_src_bank0/
-honeygui_src.elf              # ELF file
-dashboard_bank0_MP-*.bin      # Signed binary for flashing
-
-# bank1 modes (src_bank1 / lib_bank1):
-dashboard_bank1_MP-*.bin      # Signed binary for flashing
+dashboard_src_bank0.elf                            # ELF file
+dashboard_src_bank0.map                            # linker map
+dashboard_src_bank0.disasm                         # disassembly
+dashboard_src_bank0_MP-v1.0.0.0-<gcid>-<md5>.bin   # image to flash
 ```
+
+The `.hex` / `.bin` intermediates keep the plain `dashboard_<mode>` name; the flashable
+image gets the `_MP` suffix and the version from `version.h` appended by
+`md5_generate.sh`. For bank1 modes (`src_bank1` / `lib_bank1`) the same files appear as
+`dashboard_src_bank1_MP-v*.bin` / `dashboard_lib_bank1_MP-v*.bin`.
+
+## Version Generation
+
+The cmake configure step regenerates `../version.h` from `../version_cfg.txt` through
+`../tools/version_gen.sh`, every time that config file changes. The script needs `bash`;
+without it the configure step only warns and the build keeps the previous `version.h`.
+Version fields, the MP header sync and the current numbering are described in
+[Version control](../docs/version-control.md).
 
 ## Feature Configuration
 
