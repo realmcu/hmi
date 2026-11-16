@@ -7,6 +7,29 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
+
+#define HMI_PHONE_IO_MSG_TYPE 0x7000u
+
+typedef enum
+{
+    HMI_PHONE_DISCONNECTED = 0,
+    HMI_PHONE_IDLE = 1,
+    HMI_PHONE_INCOMING = 2,
+    HMI_PHONE_DIALING = 3,
+    HMI_PHONE_ACTIVE = 4,
+} hmi_phone_state_t;
+
+bool hmi_phone_dial(const char *number);
+bool hmi_phone_answer(void);
+bool hmi_phone_hangup(void);
+bool hmi_phone_set_muted(bool muted);
+bool hmi_phone_set_watch_audio(bool on_watch);
+hmi_phone_state_t hmi_phone_get_state(void);
+void hmi_phone_get_number(char *out, size_t size);
+bool hmi_phone_get_muted(void);
+bool hmi_phone_get_watch_audio(void);
+void hmi_phone_handle_command(void *command); /* bt_task only; frees command. */
 
 void hmi_bt_hfp_init(void);
 

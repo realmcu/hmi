@@ -11,10 +11,14 @@
 #include "app_event_defs.h"
 #include "app_health.h"
 #include "app_log.h"
+#include "app_media.h"
+#include "app_phone.h"
 #include "app_power.h"
 #include "hmi_ble_ctrl.h"
 #include "gui_sysval.h"
+#include "gui_sysval_keys.h"
 
+#include <zephyr/sys/printk.h>
 #include <os_sched.h>
 #include <os_sync.h>
 
@@ -33,6 +37,77 @@ static void publish_bool(const char *key, bool value)
 {
     gui_sysval_value_t v = gui_sysval_value_bool(value);
     (void)gui_sysval_publish(key, &v);
+}
+
+static void publish_str(const char *key, const char *value)
+{
+    gui_sysval_value_t v = gui_sysval_value_str(value);
+    (void)gui_sysval_publish(key, &v);
+}
+
+static const char *media_state_name(void)
+{
+    if (!app_media_connected())
+    {
+        return GUI_SYSVAL_MEDIA_STATE_UNAVAILABLE;
+    }
+    switch (app_media_state())
+    {
+    case APP_MEDIA_STATE_PLAYING: return GUI_SYSVAL_MEDIA_STATE_PLAYING;
+    case APP_MEDIA_STATE_PAUSED:  return GUI_SYSVAL_MEDIA_STATE_PAUSED;
+    default:                      return GUI_SYSVAL_MEDIA_STATE_STOPPED;
+    }
+}
+
+static const char *phone_state_name(void)
+{
+    switch (app_phone_state())
+    {
+    case APP_PHONE_STATE_INCOMING: return GUI_SYSVAL_PHONE_STATE_INCOMING;
+    case APP_PHONE_STATE_OUTGOING: return GUI_SYSVAL_PHONE_STATE_OUTGOING;
+    case APP_PHONE_STATE_ACTIVE:   return GUI_SYSVAL_PHONE_STATE_ACTIVE;
+    case APP_PHONE_STATE_IDLE:     return GUI_SYSVAL_PHONE_STATE_IDLE;
+    default:                       return GUI_SYSVAL_PHONE_STATE_UNAVAILABLE;
+    }
+}
+
+static const char *phone_route_name(void)
+{
+    if (app_phone_state() == APP_PHONE_STATE_DISCONNECTED)
+    {
+        return GUI_SYSVAL_PHONE_ROUTE_UNAVAILABLE;
+    }
+    return app_phone_get_watch_audio() ? GUI_SYSVAL_PHONE_ROUTE_DEVICE :
+                                         GUI_SYSVAL_PHONE_ROUTE_PHONE;
+}
+
+static void publish_media_state(void)
+{
+    publish_str(GUI_SYSVAL_KEY_MEDIA_MUSIC_STATE, media_state_name());
+}
+
+static void publish_media_metadata(void)
+{
+    publish_str(GUI_SYSVAL_KEY_MEDIA_MUSIC_TITLE, app_media_track_title());
+    publish_str(GUI_SYSVAL_KEY_MEDIA_MUSIC_ARTIST, app_media_track_artist());
+}
+
+static void publish_phone_state(void)
+{
+    publish_str(GUI_SYSVAL_KEY_PHONE_STATE, phone_state_name());
+}
+
+static void publish_phone_number(void)
+{
+    char number[GUI_SYSVAL_STR_MAX];
+    app_phone_peer_number(number, sizeof(number));
+    publish_str(GUI_SYSVAL_KEY_PHONE_NUMBER, number);
+}
+
+static void publish_phone_flags(void)
+{
+    publish_bool(GUI_SYSVAL_KEY_AUDIO_MUTED, app_phone_get_muted());
+    publish_str(GUI_SYSVAL_KEY_PHONE_AUDIO_ROUTE, phone_route_name());
 }
 
 static void publish_health_today(void)
@@ -78,6 +153,73 @@ static void on_health_updated(app_event_id_t id, const void *payload,
 {
     (void)id; (void)payload; (void)len; (void)user;
     publish_health_today();
+}
+
+static void on_media_state(app_event_id_t id, const void *payload,
+                           size_t len, void *user)
+{
+    (void)id; (void)payload; (void)len; (void)user;
+    publish_media_state();
+    printk("[sysval] media=%s\n", media_state_name());
+}
+
+static void on_media_metadata(app_event_id_t id, const void *payload,
+                              size_t len, void *user)
+{
+    (void)id; (void)payload; (void)len; (void)user;
+    publish_media_metadata();
+}
+
+static void on_media_volume(app_event_id_t id, const void *payload,
+                            size_t len, void *user)
+{
+    (void)id; (void)user;
+    if (payload != NULL && len == sizeof(uint8_t))
+    {
+        uint8_t volume = *(const uint8_t *)payload;
+        publish_int(GUI_SYSVAL_KEY_MEDIA_MUSIC_VOLUME, volume);
+        printk("[sysval] media volume=%u%%\n", (unsigned)volume);
+    }
+}
+
+static void on_phone_state(app_event_id_t id, const void *payload,
+                           size_t len, void *user)
+{
+    (void)id; (void)payload; (void)len; (void)user;
+    publish_phone_state();
+    publish_phone_number();
+    publish_phone_flags();
+    printk("[sysval] phone=%s\n", phone_state_name());
+}
+
+static void on_phone_number(app_event_id_t id, const void *payload,
+                            size_t len, void *user)
+{
+    (void)id; (void)payload; (void)len; (void)user;
+    publish_phone_number();
+    char number[GUI_SYSVAL_STR_MAX];
+    app_phone_peer_number(number, sizeof(number));
+    printk("[sysval] number=%s\n", number);
+}
+
+static void on_phone_muted(app_event_id_t id, const void *payload,
+                           size_t len, void *user)
+{
+    (void)id; (void)user;
+    if (payload != NULL && len == sizeof(bool))
+    {
+        bool muted = *(const bool *)payload;
+        publish_bool(GUI_SYSVAL_KEY_AUDIO_MUTED, muted);
+        printk("[sysval] muted=%u\n", muted ? 1u : 0u);
+    }
+}
+
+static void on_phone_route(app_event_id_t id, const void *payload,
+                           size_t len, void *user)
+{
+    (void)id; (void)payload; (void)len; (void)user;
+    publish_str(GUI_SYSVAL_KEY_PHONE_AUDIO_ROUTE, phone_route_name());
+    printk("[sysval] route=%s\n", phone_route_name());
 }
 
 static void set_connected(bool connected)
@@ -143,6 +285,12 @@ void app_ui_sysval_publish_all(void)
         publish_bool(GUI_SYSVAL_KEY_CONNECTIVITY_BLUETOOTH_CONNECTED, connected);
     }
     publish_health_today();
+    publish_media_state();
+    publish_int(GUI_SYSVAL_KEY_MEDIA_MUSIC_VOLUME, app_media_volume_get());
+    publish_media_metadata();
+    publish_phone_state();
+    publish_phone_number();
+    publish_phone_flags();
 }
 
 static int app_ui_sysval_init(void)
@@ -151,7 +299,14 @@ static int app_ui_sysval_init(void)
         app_event_subscribe(EVT_POWER_CHARGING, on_power_charging, NULL) != 0 ||
         app_event_subscribe(EVT_HEALTH_STEPS_UPDATED, on_health_updated, NULL) != 0 ||
         app_event_subscribe(EVT_BLE_CONNECTED, on_ble_connected, NULL) != 0 ||
-        app_event_subscribe(EVT_BLE_DISCONNECTED, on_ble_disconnected, NULL) != 0)
+        app_event_subscribe(EVT_BLE_DISCONNECTED, on_ble_disconnected, NULL) != 0 ||
+        app_event_subscribe(EVT_MEDIA_STATE_CHANGED, on_media_state, NULL) != 0 ||
+        app_event_subscribe(EVT_MEDIA_METADATA, on_media_metadata, NULL) != 0 ||
+        app_event_subscribe(EVT_MEDIA_VOLUME_CHANGED, on_media_volume, NULL) != 0 ||
+        app_event_subscribe(EVT_PHONE_STATE_CHANGED, on_phone_state, NULL) != 0 ||
+        app_event_subscribe(EVT_PHONE_NUMBER_CHANGED, on_phone_number, NULL) != 0 ||
+        app_event_subscribe(EVT_PHONE_MUTED_CHANGED, on_phone_muted, NULL) != 0 ||
+        app_event_subscribe(EVT_PHONE_ROUTE_CHANGED, on_phone_route, NULL) != 0)
     {
         APP_LOGE("sysval bridge subscription failed");
         return -1;
@@ -168,6 +323,7 @@ static int app_ui_sysval_init(void)
     {
         publish_bool(GUI_SYSVAL_KEY_POWER_BATTERY_CHARGING, charging);
     }
+    app_ui_sysval_publish_all();
     APP_LOGI("sysval bridge ready");
     return 0;
 }

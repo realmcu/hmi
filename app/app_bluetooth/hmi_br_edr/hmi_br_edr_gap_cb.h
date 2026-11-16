@@ -16,6 +16,7 @@ extern "C" {
 
 void hmi_br_edr_gap_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t buf_len);
 void hmi_br_edr_gap_common_cb(uint8_t cb_type, void *p_cb_data);
+bool hmi_br_edr_reconnect(void);
 
 
 #ifdef __cplusplus

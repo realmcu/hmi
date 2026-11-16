@@ -127,9 +127,9 @@ A2DP / AVRCP 媒体控制。
 
 | 模块 | 发布事件 | 发布时机 |
 | --- | --- | --- |
-| app_media | `EVT_MEDIA_STATE_CHANGED` (`0x0600`) | （规划）播放状态变化时发布 |
-| app_media | `EVT_MEDIA_METADATA` (`0x0601`) | （规划）曲目信息变化时发布，无载荷 |
-| app_media | `EVT_MEDIA_VOLUME_CHANGED` (`0x0602`) | （规划）音量变化时发布 |
+| app_media | `EVT_MEDIA_STATE_CHANGED` (`0x0600`) | AVRCP 播放状态变化时发布，载荷为 `uint8_t` 状态 |
+| app_media | `EVT_MEDIA_METADATA` (`0x0601`) | AVRCP 曲目信息变化时发布，无载荷，消费方通过 getter 读取 |
+| app_media | `EVT_MEDIA_VOLUME_CHANGED` (`0x0602`) | AVRCP 绝对音量变化时发布，载荷为百分比 |
 
 ### 订阅
 
@@ -179,8 +179,11 @@ BLE DFU / OTA 服务。
 
 | 模块 | 发布事件 | 发布时机 |
 | --- | --- | --- |
-| app_phone | `EVT_PHONE_STATE_CHANGED` (`0x0700`) | （规划）来电、接通、挂断等状态变化时发布 |
-| app_phone | `EVT_PHONE_RING` (`0x0701`) | （规划）每通新来电发布一次，无载荷 |
+| app_phone | `EVT_PHONE_STATE_CHANGED` (`0x0700`) | HFP 来电、拨出、接通、挂断等状态变化时发布 |
+| app_phone | `EVT_PHONE_RING` (`0x0701`) | 每通新来电发布一次，无载荷 |
+| app_phone | `EVT_PHONE_NUMBER_CHANGED` (`0x0702`) | 来电号码或拨号号码变化时发布，无载荷 |
+| app_phone | `EVT_PHONE_MUTED_CHANGED` (`0x0703`) | 麦克风静音状态变化时发布，载荷为 `bool` |
+| app_phone | `EVT_PHONE_ROUTE_CHANGED` (`0x0704`) | 通话音频路由变化时发布，载荷为 `bool`，`true` 表示本地设备 |
 
 ### 订阅
 

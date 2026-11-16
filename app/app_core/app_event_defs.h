@@ -63,8 +63,11 @@ enum
     EVT_MEDIA_VOLUME_CHANGED = 0x0602, /* payload: uint8_t percent */
 
     /* Phone (0x700~) */
-    EVT_PHONE_STATE_CHANGED  = 0x0700, /* payload: uint8_t (app_phone_state_t) */
+    EVT_PHONE_STATE_CHANGED  = 0x0700, /* payload: uint8_t (hmi_phone_state_t) */
     EVT_PHONE_RING           = 0x0701, /* payload: none, emitted once per new incoming call */
+    EVT_PHONE_NUMBER_CHANGED = 0x0702, /* payload: none, read via app_phone_peer_number() */
+    EVT_PHONE_MUTED_CHANGED  = 0x0703, /* payload: bool */
+    EVT_PHONE_ROUTE_CHANGED  = 0x0704, /* payload: bool, true = watch audio */
 
     /* Notify (0x800~) */
     EVT_NOTIFY_NEW           = 0x0800, /* payload: uint32_t id, details via app_notify_get() */

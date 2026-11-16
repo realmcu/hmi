@@ -21,7 +21,7 @@ config RTK_BT_BREDR
 	  Activates BTM, SYSM, and Remote subsystems.
 
 config RTK_BR_PROFILE_A2DP
-	bool "Enable A2DP profile (Sink + Source)"
+	bool "Enable A2DP Sink profile"
 	depends on RTK_BT_BREDR
 	default n
 
@@ -31,7 +31,7 @@ config RTK_BR_PROFILE_AVRCP
 	default n
 
 config RTK_BR_PROFILE_HFP
-	bool "Enable HFP profile (HF + AG)"
+	bool "Enable HFP Hands-Free profile"
 	depends on RTK_BT_BREDR
 	default n
 

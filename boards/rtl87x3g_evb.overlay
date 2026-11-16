@@ -12,6 +12,7 @@
 		zephyr,shell-uart = &uart2;
 		zephyr,display = &display_lcd;
 	};
+
 };
 
 /* HealthAlgorithm adds about 3 KiB of static RAM. Move 4 KiB from the

@@ -489,4 +489,3 @@ static void update_conn_info(uint8_t conn_id)
 
 
 
-

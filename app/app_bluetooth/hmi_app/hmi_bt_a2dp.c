@@ -10,6 +10,9 @@
 #include "bt_a2dp.h"
 #include "hmi_br_edr_link.h"
 #include "hmi_bt_a2dp.h"
+#ifdef CONFIG_RTK_BR_PROFILE_AVRCP
+#include "hmi_bt_avrcp.h"
+#endif
 
 #define HMI_A2DP_SRC_MAX_CREDITS  8
 
@@ -27,6 +30,9 @@ static T_HMI_A2DP_LINK a2dp_link[MAX_BR_LINK_NUM];
 static void (*a2dp_config_cb)(uint8_t *bd_addr, uint8_t role, T_HMI_A2DP_CODEC_SBC *codec);
 static void (*a2dp_snk_data_cb)(uint8_t *bd_addr, uint8_t frame_num, uint8_t *payload,
                                 uint16_t len);
+static bool (*a2dp_sink_start_cb)(uint8_t *bd_addr, T_HMI_A2DP_CODEC_SBC *codec);
+static void (*a2dp_packet_cb)(uint8_t *bd_addr, uint32_t bt_clock, uint16_t seq_num,
+                              uint8_t frame_num, uint8_t *payload, uint16_t len);
 static void (*a2dp_stream_start_cb)(uint8_t *bd_addr, uint8_t role);
 static void (*a2dp_stream_stop_cb)(uint8_t *bd_addr);
 
@@ -42,68 +48,6 @@ static const uint8_t hmi_a2dp_sink_sdp_record[] =
     SDP_UUID16_HDR,
     (uint8_t)(UUID_AUDIO_SINK >> 8),
     (uint8_t)(UUID_AUDIO_SINK),
-    SDP_UNSIGNED_TWO_BYTE,
-    (uint8_t)(SDP_ATTR_PROTO_DESC_LIST >> 8),
-    (uint8_t)SDP_ATTR_PROTO_DESC_LIST,
-    SDP_DATA_ELEM_SEQ_HDR,
-    0x10,
-    SDP_DATA_ELEM_SEQ_HDR,
-    0x06,
-    SDP_UUID16_HDR,
-    (uint8_t)(UUID_L2CAP >> 8),
-    (uint8_t)(UUID_L2CAP),
-    SDP_UNSIGNED_TWO_BYTE,
-    (uint8_t)(PSM_AVDTP >> 8),
-    (uint8_t)(PSM_AVDTP),
-    SDP_DATA_ELEM_SEQ_HDR,
-    0x06,
-    SDP_UUID16_HDR,
-    (uint8_t)(UUID_AVDTP >> 8),
-    (uint8_t)(UUID_AVDTP),
-    SDP_UNSIGNED_TWO_BYTE,
-    0x01,
-    0x03,
-    SDP_UNSIGNED_TWO_BYTE,
-    (uint8_t)(SDP_ATTR_BROWSE_GROUP_LIST >> 8),
-    (uint8_t)SDP_ATTR_BROWSE_GROUP_LIST,
-    SDP_DATA_ELEM_SEQ_HDR,
-    0x03,
-    SDP_UUID16_HDR,
-    (uint8_t)(UUID_PUBLIC_BROWSE_GROUP >> 8),
-    (uint8_t)(UUID_PUBLIC_BROWSE_GROUP),
-    SDP_UNSIGNED_TWO_BYTE,
-    (uint8_t)(SDP_ATTR_PROFILE_DESC_LIST >> 8),
-    (uint8_t)SDP_ATTR_PROFILE_DESC_LIST,
-    SDP_DATA_ELEM_SEQ_HDR,
-    0x08,
-    SDP_DATA_ELEM_SEQ_HDR,
-    0x06,
-    SDP_UUID16_HDR,
-    (uint8_t)(UUID_ADVANCED_AUDIO_DISTRIBUTION >> 8),
-    (uint8_t)(UUID_ADVANCED_AUDIO_DISTRIBUTION),
-    SDP_UNSIGNED_TWO_BYTE,
-    0x01,
-    0x03,
-    SDP_UNSIGNED_TWO_BYTE,
-    (uint8_t)(SDP_ATTR_SUPPORTED_FEATURES >> 8),
-    (uint8_t)SDP_ATTR_SUPPORTED_FEATURES,
-    SDP_UNSIGNED_TWO_BYTE,
-    0x00,
-    0x03
-};
-
-static const uint8_t hmi_a2dp_src_sdp_record[] =
-{
-    SDP_DATA_ELEM_SEQ_HDR,
-    0x39,
-    SDP_UNSIGNED_TWO_BYTE,
-    (uint8_t)(SDP_ATTR_SRV_CLASS_ID_LIST >> 8),
-    (uint8_t)SDP_ATTR_SRV_CLASS_ID_LIST,
-    SDP_DATA_ELEM_SEQ_HDR,
-    0x03,
-    SDP_UUID16_HDR,
-    (uint8_t)(UUID_AUDIO_SOURCE >> 8),
-    (uint8_t)(UUID_AUDIO_SOURCE),
     SDP_UNSIGNED_TWO_BYTE,
     (uint8_t)(SDP_ATTR_PROTO_DESC_LIST >> 8),
     (uint8_t)SDP_ATTR_PROTO_DESC_LIST,
@@ -178,6 +122,12 @@ static void hmi_a2dp_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t b
             p_a2dp->connected   = true;
             p_a2dp->src_credits = HMI_A2DP_SRC_MAX_CREDITS;
             APP_PRINT_INFO0("hmi_a2dp: connected");
+#ifdef CONFIG_RTK_BR_PROFILE_AVRCP
+            if (!bt_avrcp_connect_req(p_link->bd_addr))
+            {
+                APP_PRINT_INFO0("hmi_a2dp: AVRCP connect request unavailable");
+            }
+#endif
         }
         break;
 
@@ -186,6 +136,9 @@ static void hmi_a2dp_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t b
         if (p_link != NULL)
         {
             memset(&a2dp_link[p_link->id], 0, sizeof(T_HMI_A2DP_LINK));
+#ifdef CONFIG_RTK_BR_PROFILE_AVRCP
+            hmi_bt_avrcp_play_status_update(param->a2dp_disconn_cmpl.bd_addr, false);
+#endif
             APP_PRINT_INFO0("hmi_a2dp: disconnected");
         }
         break;
@@ -195,6 +148,7 @@ static void hmi_a2dp_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t b
         if (p_link != NULL)
         {
             p_a2dp = &a2dp_link[p_link->id];
+            p_a2dp->role = param->a2dp_config_cmpl.role;
 
             if (param->a2dp_config_cmpl.role == BT_A2DP_ROLE_SNK)
             {
@@ -232,15 +186,27 @@ static void hmi_a2dp_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t b
         if (p_link != NULL)
         {
             p_a2dp = &a2dp_link[p_link->id];
+            bool accepted = true;
             if (p_a2dp->role == BT_A2DP_ROLE_SNK)
             {
-                bt_a2dp_stream_start_cfm(param->a2dp_stream_start_ind.bd_addr, true);
+                if (a2dp_sink_start_cb != NULL)
+                {
+                    accepted = a2dp_sink_start_cb(param->a2dp_stream_start_ind.bd_addr,
+                                                  &p_a2dp->codec);
+                }
+                bt_a2dp_stream_start_cfm(param->a2dp_stream_start_ind.bd_addr, accepted);
             }
-            p_a2dp->streaming = true;
-            if (a2dp_stream_start_cb != NULL)
+            p_a2dp->streaming = accepted;
+            if (accepted && a2dp_stream_start_cb != NULL)
             {
                 a2dp_stream_start_cb(param->a2dp_stream_start_ind.bd_addr, p_a2dp->role);
             }
+#ifdef CONFIG_RTK_BR_PROFILE_AVRCP
+            if (accepted && p_a2dp->role == BT_A2DP_ROLE_SNK)
+            {
+                hmi_bt_avrcp_play_status_update(param->a2dp_stream_start_ind.bd_addr, true);
+            }
+#endif
         }
         break;
 
@@ -262,12 +228,24 @@ static void hmi_a2dp_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t b
         if (p_link != NULL)
         {
             p_a2dp = &a2dp_link[p_link->id];
-            if (p_a2dp->role == BT_A2DP_ROLE_SNK && a2dp_snk_data_cb != NULL)
+            if (p_a2dp->role == BT_A2DP_ROLE_SNK)
             {
-                a2dp_snk_data_cb(param->a2dp_stream_data_ind.bd_addr,
-                                 param->a2dp_stream_data_ind.frame_num,
-                                 param->a2dp_stream_data_ind.payload,
-                                 param->a2dp_stream_data_ind.len);
+                if (a2dp_packet_cb != NULL)
+                {
+                    a2dp_packet_cb(param->a2dp_stream_data_ind.bd_addr,
+                                   param->a2dp_stream_data_ind.bt_clock,
+                                   param->a2dp_stream_data_ind.seq_num,
+                                   param->a2dp_stream_data_ind.frame_num,
+                                   param->a2dp_stream_data_ind.payload,
+                                   param->a2dp_stream_data_ind.len);
+                }
+                if (a2dp_snk_data_cb != NULL)
+                {
+                    a2dp_snk_data_cb(param->a2dp_stream_data_ind.bd_addr,
+                                     param->a2dp_stream_data_ind.frame_num,
+                                     param->a2dp_stream_data_ind.payload,
+                                     param->a2dp_stream_data_ind.len);
+                }
             }
         }
         break;
@@ -289,6 +267,9 @@ static void hmi_a2dp_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t b
         if (p_link != NULL)
         {
             a2dp_link[p_link->id].streaming = false;
+#ifdef CONFIG_RTK_BR_PROFILE_AVRCP
+            hmi_bt_avrcp_play_status_update(param->a2dp_stream_stop.bd_addr, false);
+#endif
             if (a2dp_stream_stop_cb != NULL)
             {
                 a2dp_stream_stop_cb(param->a2dp_stream_stop.bd_addr);
@@ -301,6 +282,9 @@ static void hmi_a2dp_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t b
         if (p_link != NULL)
         {
             a2dp_link[p_link->id].streaming = false;
+#ifdef CONFIG_RTK_BR_PROFILE_AVRCP
+            hmi_bt_avrcp_play_status_update(param->a2dp_stream_close.bd_addr, false);
+#endif
             if (a2dp_stream_stop_cb != NULL)
             {
                 a2dp_stream_stop_cb(param->a2dp_stream_close.bd_addr);
@@ -325,6 +309,19 @@ void hmi_bt_a2dp_set_snk_data_cb(
     a2dp_snk_data_cb = cb;
 }
 
+void hmi_bt_a2dp_set_sink_start_cb(
+    bool (*cb)(uint8_t *bd_addr, T_HMI_A2DP_CODEC_SBC *codec))
+{
+    a2dp_sink_start_cb = cb;
+}
+
+void hmi_bt_a2dp_set_packet_cb(
+    void (*cb)(uint8_t *bd_addr, uint32_t bt_clock, uint16_t seq_num,
+               uint8_t frame_num, uint8_t *payload, uint16_t len))
+{
+    a2dp_packet_cb = cb;
+}
+
 void hmi_bt_a2dp_set_stream_start_cb(void (*cb)(uint8_t *bd_addr, uint8_t role))
 {
     a2dp_stream_start_cb = cb;
@@ -335,32 +332,6 @@ void hmi_bt_a2dp_set_stream_stop_cb(void (*cb)(uint8_t *bd_addr))
     a2dp_stream_stop_cb = cb;
 }
 
-bool hmi_bt_a2dp_src_send(uint8_t *bd_addr, uint16_t seq_num, uint32_t timestamp,
-                          uint8_t frames_per_pkt, uint8_t *payload, uint16_t len)
-{
-    T_BR_EDR_LINK   *p_link = hmi_br_edr_find_link(bd_addr);
-    T_HMI_A2DP_LINK *p_a2dp;
-
-    if (p_link == NULL)
-    {
-        return false;
-    }
-
-    p_a2dp = &a2dp_link[p_link->id];
-    if (!p_a2dp->connected || !p_a2dp->streaming || p_a2dp->src_credits == 0)
-    {
-        return false;
-    }
-
-    if (bt_a2dp_stream_data_send(bd_addr, seq_num, timestamp, frames_per_pkt, payload, len, false))
-    {
-        p_a2dp->src_credits--;
-        return true;
-    }
-
-    return false;
-}
-
 void hmi_bt_a2dp_init(void)
 {
     T_BT_A2DP_STREAM_ENDPOINT sep;
@@ -368,7 +339,6 @@ void hmi_bt_a2dp_init(void)
     memset(a2dp_link, 0, sizeof(a2dp_link));
 
     bt_sdp_record_add((void *)hmi_a2dp_sink_sdp_record);
-    bt_sdp_record_add((void *)hmi_a2dp_src_sdp_record);
 
     bt_a2dp_init(BT_A2DP_CAPABILITY_MEDIA_TRANSPORT |
                  BT_A2DP_CAPABILITY_MEDIA_CODEC      |
@@ -391,18 +361,6 @@ void hmi_bt_a2dp_init(void)
                                               BT_A2DP_SBC_SUBBANDS_8;
     sep.u.codec_sbc.allocation_method_mask  = BT_A2DP_SBC_ALLOCATION_METHOD_SNR      |
                                               BT_A2DP_SBC_ALLOCATION_METHOD_LOUDNESS;
-    sep.u.codec_sbc.min_bitpool             = 0x02;
-    sep.u.codec_sbc.max_bitpool             = 0x23;
-    bt_a2dp_stream_endpoint_add(sep);
-
-    /* SRC SEP: 48KHz, Joint Stereo, Block16, Sub8, Loudness */
-    sep.role        = BT_A2DP_ROLE_SRC;
-    sep.codec_type  = BT_A2DP_CODEC_TYPE_SBC;
-    sep.u.codec_sbc.sampling_frequency_mask = BT_A2DP_SBC_SAMPLING_FREQUENCY_48KHZ;
-    sep.u.codec_sbc.channel_mode_mask       = BT_A2DP_SBC_CHANNEL_MODE_JOINT_STEREO;
-    sep.u.codec_sbc.block_length_mask       = BT_A2DP_SBC_BLOCK_LENGTH_16;
-    sep.u.codec_sbc.subbands_mask           = BT_A2DP_SBC_SUBBANDS_8;
-    sep.u.codec_sbc.allocation_method_mask  = BT_A2DP_SBC_ALLOCATION_METHOD_LOUDNESS;
     sep.u.codec_sbc.min_bitpool             = 0x02;
     sep.u.codec_sbc.max_bitpool             = 0x23;
     bt_a2dp_stream_endpoint_add(sep);

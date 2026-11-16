@@ -8,8 +8,51 @@
 #include "gap_br.h"
 #include "btm.h"
 #include "bt_bond.h"
+#include "bt_a2dp.h"
+#include "bt_hfp.h"
 #include "hmi_br_edr_gap_cb.h"
 #include "hmi_br_edr_link.h"
+
+typedef enum
+{
+    RECONNECT_IDLE,
+    RECONNECT_A2DP_SDP,
+    RECONNECT_WAIT_A2DP,
+    RECONNECT_HFP_SDP,
+    RECONNECT_WAIT_HFP,
+} T_RECONNECT_STATE;
+
+static T_RECONNECT_STATE reconnect_state;
+static uint8_t reconnect_addr[6];
+static uint16_t avdtp_version = 0x0103;
+static uint8_t hfp_server_channel = 1;
+
+static bool start_sdp(uint8_t *bd_addr, uint16_t uuid)
+{
+    T_GAP_UUID_DATA data = {0};
+    data.uuid_16 = uuid;
+    return gap_br_start_sdp_discov(bd_addr, GAP_UUID16, data) == GAP_CAUSE_SUCCESS;
+}
+
+bool hmi_br_edr_reconnect(void)
+{
+    if (reconnect_state != RECONNECT_IDLE)
+    {
+        return false;
+    }
+    if (!bt_bond_addr_get(1, reconnect_addr))
+    {
+        return false;
+    }
+    reconnect_state = RECONNECT_A2DP_SDP;
+    avdtp_version = 0x0103;
+    if (!start_sdp(reconnect_addr, UUID_AUDIO_SOURCE))
+    {
+        reconnect_state = RECONNECT_IDLE;
+        return false;
+    }
+    return true;
+}
 
 void hmi_br_edr_gap_common_cb(uint8_t cb_type, void *p_cb_data)
 {
@@ -55,6 +98,67 @@ void hmi_br_edr_gap_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t bu
         {
             APP_PRINT_INFO1("hmi_br_edr_gap_bt_cback: BT_EVENT_READY bd_addr %b",
                             TRACE_BDADDR(param->ready.bd_addr));
+            (void)hmi_br_edr_reconnect();
+        }
+        break;
+
+    case BT_EVENT_SDP_ATTR_INFO:
+        if (!memcmp(param->sdp_attr_info.bd_addr, reconnect_addr, 6))
+        {
+            if (reconnect_state == RECONNECT_A2DP_SDP &&
+                param->sdp_attr_info.info.srv_class_uuid_data.uuid_16 == UUID_AUDIO_SOURCE)
+            {
+                avdtp_version = param->sdp_attr_info.info.protocol_version;
+            }
+            else if (reconnect_state == RECONNECT_HFP_SDP &&
+                     param->sdp_attr_info.info.srv_class_uuid_data.uuid_16 ==
+                     UUID_HANDSFREE_AUDIO_GATEWAY)
+            {
+                hfp_server_channel = param->sdp_attr_info.info.server_channel;
+            }
+        }
+        break;
+
+    case BT_EVENT_SDP_DISCOV_CMPL:
+        if (!memcmp(param->sdp_discov_cmpl.bd_addr, reconnect_addr, 6))
+        {
+            if (reconnect_state == RECONNECT_A2DP_SDP)
+            {
+                reconnect_state = RECONNECT_WAIT_A2DP;
+                if (!bt_a2dp_connect_req(reconnect_addr, avdtp_version,
+                                         BT_A2DP_ROLE_SRC, 0))
+                {
+                    reconnect_state = RECONNECT_IDLE;
+                }
+            }
+            else if (reconnect_state == RECONNECT_HFP_SDP)
+            {
+                reconnect_state = RECONNECT_WAIT_HFP;
+                if (!bt_hfp_connect_req(reconnect_addr, hfp_server_channel, true))
+                {
+                    reconnect_state = RECONNECT_IDLE;
+                }
+            }
+        }
+        break;
+
+    case BT_EVENT_A2DP_CONN_CMPL:
+        if (reconnect_state == RECONNECT_WAIT_A2DP &&
+            !memcmp(param->a2dp_conn_cmpl.bd_addr, reconnect_addr, 6))
+        {
+            reconnect_state = RECONNECT_HFP_SDP;
+            if (!start_sdp(reconnect_addr, UUID_HANDSFREE_AUDIO_GATEWAY))
+            {
+                reconnect_state = RECONNECT_IDLE;
+            }
+        }
+        break;
+
+    case BT_EVENT_HFP_CONN_CMPL:
+        if (reconnect_state == RECONNECT_WAIT_HFP &&
+            !memcmp(param->hfp_conn_cmpl.bd_addr, reconnect_addr, 6))
+        {
+            reconnect_state = RECONNECT_IDLE;
         }
         break;
 
@@ -73,6 +177,15 @@ void hmi_br_edr_gap_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t bu
         }
         break;
 
+    case BT_EVENT_LINK_KEY_INFO:
+        if (!bt_bond_key_set(param->link_key_info.bd_addr,
+                             param->link_key_info.link_key,
+                             param->link_key_info.key_type))
+        {
+            APP_PRINT_ERROR0("hmi_br_edr: failed to save derived link key");
+        }
+        break;
+
     case BT_EVENT_LINK_KEY_REQ:
         {
             uint8_t link_key[16];
@@ -87,6 +200,19 @@ void hmi_br_edr_gap_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t bu
                 bt_link_key_cfm(param->link_key_req.bd_addr, false, type, link_key);
             }
         }
+        break;
+
+    case BT_EVENT_ACL_CONN_FAIL:
+        APP_PRINT_ERROR1("hmi_br_edr: ACL connection failed, cause 0x%04x",
+                         param->acl_conn_fail.cause);
+        bt_device_mode_set(BT_DEVICE_MODE_DISCOVERABLE_CONNECTABLE);
+        break;
+
+    case BT_EVENT_ACL_AUTHEN_FAIL:
+        APP_PRINT_ERROR1("hmi_br_edr: authentication failed, cause 0x%04x",
+                         param->acl_authen_fail.cause);
+        (void)bt_bond_delete(param->acl_authen_fail.bd_addr);
+        bt_device_mode_set(BT_DEVICE_MODE_DISCOVERABLE_CONNECTABLE);
         break;
 
     case BT_EVENT_LINK_PIN_CODE_REQ:
@@ -113,6 +239,11 @@ void hmi_br_edr_gap_bt_cback(T_BT_EVENT event_type, void *event_buf, uint16_t bu
 
     case BT_EVENT_ACL_CONN_DISCONN:
         {
+            if (reconnect_state != RECONNECT_IDLE &&
+                !memcmp(param->acl_conn_disconn.bd_addr, reconnect_addr, 6))
+            {
+                reconnect_state = RECONNECT_IDLE;
+            }
             p_link = hmi_br_edr_find_link(param->acl_conn_disconn.bd_addr);
             if (p_link != NULL)
             {

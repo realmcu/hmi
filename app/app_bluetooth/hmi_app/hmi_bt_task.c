@@ -22,7 +22,9 @@
 #include <gap_le.h>
 #include <gap_bond_le.h>
 #include <app_msg.h>
+#include <app_timer.h>
 #include "hmi_bt_task.h"
+#include "app_media.h"
 #include "trace.h"
 #include "hmi_ble_gap_init.h"
 #include "hmi_ble_gap_msg.h"
@@ -31,6 +33,11 @@
 
 #ifdef CONFIG_RTK_BT_BREDR
 #include "btm.h"
+#include "bt_bond.h"
+#include "bt_bond_api.h"
+#if defined(CONFIG_RTK_BR_PROFILE_HFP) || defined(CONFIG_RTK_BR_PROFILE_A2DP)
+#include "audio.h"
+#endif
 #include "sysm.h"
 #include "remote.h"
 #include "hmi_br_edr_gap_init.h"
@@ -78,6 +85,10 @@ void *evt_queue_handle;  //!< Event queue handle
 void *io_queue_handle;   //!< IO queue handle
 static bool ota_only_task;
 
+#if defined(CONFIG_RTK_BR_PROFILE_HFP) || defined(CONFIG_RTK_BR_PROFILE_A2DP)
+static bool audio_ready;
+#endif
+
 
 
 
@@ -95,8 +106,9 @@ bool hmi_send_msg_to_bt_task(T_IO_MSG *p_msg)
     if (os_msg_send(evt_queue_handle, &event, 0) == false)
     {
         APP_PRINT_ERROR0("send_evt_msg_to_app fail event queue");
-        return false;
     }
+    /* The IO queue owns the payload once it has been accepted, even if the
+     * wake-up event is coalesced because the event queue is temporarily full. */
     return true;
 }
 
@@ -137,6 +149,18 @@ static void framework_init(void)
         APP_PRINT_ERROR0("Bluetooth manager was failed to initialize!\n");
     }
 
+#if defined(CONFIG_RTK_BR_PROFILE_HFP) || defined(CONFIG_RTK_BR_PROFILE_A2DP)
+    audio_ready = audio_mgr_init(13 * 1024, 2 * 1024, 1024, 8 * 1024);
+    if (!audio_ready)
+    {
+        APP_PRINT_ERROR0("Audio manager initialization failed");
+    }
+    else
+    {
+        app_media_audio_ready();
+    }
+#endif
+
 }
 #endif
 
@@ -152,6 +176,7 @@ void bt_task_entry(void *p_param)
 
     os_msg_queue_create(&io_queue_handle, "ioQ", MAX_NUMBER_OF_IO_MESSAGE, sizeof(T_IO_MSG));
     os_msg_queue_create(&evt_queue_handle, "evtQ", MAX_NUMBER_OF_EVENT_MESSAGE, sizeof(uint8_t));
+    app_init_timer(evt_queue_handle, MAX_NUMBER_OF_APP_TIMER);
 
     le_gap_init(1);
 #ifndef CONFIG_RTK_BT_BREDR
@@ -169,6 +194,8 @@ void bt_task_entry(void *p_param)
     if (!ota_only_task)
     {
 #ifdef CONFIG_RTK_BT_BREDR
+        bt_bond_init();
+        bt_bond_key_init();
         framework_init();
         hmi_br_edr_gap_init();
         hmi_bt_spp_init();
@@ -198,15 +225,15 @@ void bt_task_entry(void *p_param)
         {
             if (event == EVENT_IO_TO_APP)
             {
-                T_IO_MSG io_msg;
-                if (os_msg_recv(io_queue_handle, &io_msg, 0) == true)
-                {
-                    hmi_handle_bt_io_msg(io_msg);
-                }
+                /* Drain below so a coalesced wake-up cannot leave messages. */
             }
             else if (EVENT_GROUP(event) == EVENT_GROUP_STACK)
             {
                 gap_handle_msg(event);
+            }
+            else if (EVENT_GROUP(event) == EVENT_GROUP_APP)
+            {
+                app_timer_handle_msg(event);
             }
 #ifdef CONFIG_RTK_BT_BREDR
             else if (EVENT_GROUP(event) == EVENT_GROUP_FRAMEWORK)
@@ -214,6 +241,32 @@ void bt_task_entry(void *p_param)
                 sys_mgr_event_handle(event);
             }
 #endif
+
+            T_IO_MSG io_msg;
+            while (os_msg_recv(io_queue_handle, &io_msg, 0) == true)
+            {
+#ifdef CONFIG_RTK_BR_PROFILE_HFP
+                if (io_msg.type == HMI_PHONE_IO_MSG_TYPE)
+                {
+                    hmi_phone_handle_command(io_msg.u.buf);
+                }
+                else
+#endif
+#ifdef CONFIG_RTK_BR_PROFILE_AVRCP
+                if (io_msg.type == HMI_MEDIA_IO_MSG_TYPE)
+                {
+                    hmi_media_handle_command(io_msg.u.buf);
+                }
+                else if (io_msg.type == HMI_MEDIA_VOLUME_IO_MSG_TYPE)
+                {
+                    hmi_media_handle_volume(io_msg.u.buf);
+                }
+                else
+#endif
+                {
+                    hmi_handle_bt_io_msg(io_msg);
+                }
+            }
         }
     }
 }

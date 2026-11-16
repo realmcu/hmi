@@ -47,14 +47,25 @@ void hmi_br_edr_gap_init(void)
     gap_lib_init();
 
     gap_br_set_param(GAP_BR_PARAM_NAME, GAP_DEVICE_NAME_LEN, "Watch");
-    //1: to be slave when accept the acl connect request by default.
-    gap_br_cfg_accept_role(0);
+    /* Match the SDK watch profile: classic audio is the controlling side. */
+    gap_br_cfg_accept_role(1);
 
 
+    /* Match the SDK watch setup but also use the BR/EDR-specific names so a
+     * later LE-only change cannot silently drop classic pairing settings. */
     gap_set_param(GAP_PARAM_BOND_PAIRING_MODE, sizeof(uint8_t), &pair_mode);
     gap_set_param(GAP_PARAM_BOND_AUTHEN_REQUIREMENTS_FLAGS, sizeof(uint16_t), &auth_flags);
     gap_set_param(GAP_PARAM_BOND_IO_CAPABILITIES, sizeof(uint8_t), &io_cap);
+    gap_set_param(GAP_PARAM_BOND_BR_PAIRING_MODE, sizeof(uint8_t), &pair_mode);
+    gap_set_param(GAP_PARAM_BOND_BR_AUTHEN_REQUIREMENTS_FLAGS, sizeof(uint16_t), &auth_flags);
+    gap_set_param(GAP_PARAM_BOND_BR_IO_CAPABILITIES, sizeof(uint8_t), &io_cap);
     gap_set_param(GAP_PARAM_BOND_OOB_ENABLED, sizeof(uint8_t), &oob_enable);
+
+    /* Keep one bond usable for both transports. The phone can bind over BLE,
+     * then use the derived BR/EDR link key for A2DP/HFP without pairing twice. */
+    uint8_t key_convert = GAP_SC_KEY_CONVERT_LE_TO_BREDR_FLAG |
+                          GAP_SC_KEY_CONVERT_BREDR_TO_LE_FLAG;
+    gap_set_param(GAP_PARAM_BOND_LINK_KEY_CONVERT, sizeof(key_convert), &key_convert);
 
     gap_br_set_param(GAP_BR_PARAM_BT_MODE, sizeof(uint8_t), &bt_mode);
     gap_br_set_param(GAP_BR_PARAM_COD, sizeof(uint32_t), &class_of_device);

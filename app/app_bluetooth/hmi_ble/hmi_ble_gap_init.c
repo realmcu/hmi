@@ -59,7 +59,12 @@ static uint8_t ota_adv_data[] =
 {
     0x02,
     GAP_ADTYPE_FLAGS,
+#ifdef CONFIG_RTK_BT_BREDR
+    GAP_ADTYPE_FLAGS_GENERAL | GAP_ADTYPE_FLAGS_SIMULTANEOUS_LE_BREDR_CONTROLLER |
+    GAP_ADTYPE_FLAGS_SIMULTANEOUS_LE_BREDR_HOST,
+#else
     GAP_ADTYPE_FLAGS_GENERAL | GAP_ADTYPE_FLAGS_BREDR_NOT_SUPPORTED,
+#endif
 
     0x11,
     GAP_ADTYPE_128BIT_COMPLETE,
@@ -88,7 +93,12 @@ uint8_t adv_data[] =
     /* Flags */
     0x02,            /* length     */
     GAP_ADTYPE_FLAGS,
+#ifdef CONFIG_RTK_BT_BREDR
+    GAP_ADTYPE_FLAGS_GENERAL | GAP_ADTYPE_FLAGS_SIMULTANEOUS_LE_BREDR_CONTROLLER |
+    GAP_ADTYPE_FLAGS_SIMULTANEOUS_LE_BREDR_HOST,
+#else
     GAP_ADTYPE_FLAGS_GENERAL | GAP_ADTYPE_FLAGS_BREDR_NOT_SUPPORTED,
+#endif
 
     /* Local name */
     0x06,           /* length     */
@@ -137,14 +147,14 @@ void hmi_ble_gap_init(void)
 
     /* GAP Bond Manager parameters */
     uint8_t  auth_pair_mode = GAP_PAIRING_MODE_PAIRABLE;
-    uint16_t auth_flags = GAP_AUTHEN_BIT_BONDING_FLAG;
+    uint16_t auth_flags = GAP_AUTHEN_BIT_BONDING_FLAG | GAP_AUTHEN_BIT_SC_FLAG;
     uint8_t  auth_io_cap = GAP_IO_CAP_NO_INPUT_NO_OUTPUT;
     uint8_t  auth_oob = false;
     uint8_t  auth_use_fix_passkey = false;
     uint32_t auth_fix_passkey = 0;
 
-    uint8_t  auth_sec_req_enable = false;
-    uint16_t auth_sec_req_flags = GAP_AUTHEN_BIT_BONDING_FLAG;
+    uint8_t  auth_sec_req_enable = true;
+    uint16_t auth_sec_req_flags = GAP_AUTHEN_BIT_BONDING_FLAG | GAP_AUTHEN_BIT_SC_FLAG;
 
     if (ota_mode)
     {

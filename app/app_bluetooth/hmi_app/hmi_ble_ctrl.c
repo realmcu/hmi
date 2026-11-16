@@ -3,9 +3,6 @@
 #include <os_task.h>
 #include <os_msg.h>
 #include <os_sync.h>
-#if defined(__ZEPHYR__) && defined(CONFIG_SHELL)
-#include <zephyr/shell/shell.h>
-#endif
 #include "hmi_ble_ctrl.h"
 #include "trace.h"
 #include "hmi_ble_gap_msg.h"
@@ -300,38 +297,3 @@ void hmi_ble_ctrl_init(void)
     os_task_create(&s_hmi_send_task_handle, "hmisend", hmi_ble_send_task,
                    NULL, HMI_CTRL_TASK_STACK_SIZE, HMI_CTRL_TASK_PRIORITY);
 }
-
-#if defined(__ZEPHYR__) && defined(CONFIG_SHELL)
-static int cmd_hmi_notify(const struct shell *sh, size_t argc, char **argv)
-{
-    if (hmi_conn_handle == HMI_CONN_HANDLE_INVALID)
-    {
-        shell_error(sh, "not connected");
-        return -ENODEV;
-    }
-    if (!hmi_event_cccd_enabled)
-    {
-        shell_error(sh, "notification not enabled by peer");
-        return -EAGAIN;
-    }
-
-    const uint8_t *data = (const uint8_t *)argv[1];
-    uint16_t       len  = (uint16_t)strlen(argv[1]);
-
-    int ret = hmi_ble_ctrl_send(data, len);
-    if (ret != 0)
-    {
-        shell_error(sh, "notify failed (err %d)", ret);
-        return -EIO;
-    }
-
-    shell_print(sh, "sent %u bytes ok", len);
-    return 0;
-}
-
-SHELL_STATIC_SUBCMD_SET_CREATE(hmi_sub,
-                               SHELL_CMD_ARG(notify, NULL, "Send BLE notification <text>", cmd_hmi_notify, 2, 0),
-                               SHELL_SUBCMD_SET_END
-                              );
-SHELL_CMD_REGISTER(hmi, &hmi_sub, "HMI BLE commands", NULL);
-#endif /* CONFIG_SHELL */
