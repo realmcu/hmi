@@ -68,9 +68,6 @@ void navi_projection_core_init(void);
 /** Bind / unbind the outbound L1 carrier. */
 void navi_projection_set_carrier(navi_carrier_tx_t tx);
 
-/** Feed raw bytes received from the carrier into the L1 reassembler. */
-void navi_projection_feed_l1(const uint8_t *data, uint16_t len);
-
 void navi_projection_set_gui_callbacks(navi_gui_frame_cb_t frame_cb,
                                        navi_gui_reset_cb_t reset_cb,
                                        navi_qr_ready_cb_t qr_ready_cb);

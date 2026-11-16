@@ -769,11 +769,6 @@
               <FileType>1</FileType>
               <FilePath>..\src\protocol\hmi_proto.c</FilePath>
             </File>
-            <File>
-              <FileName>hmi_protocal_task.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\src\protocol\hmi_protocal_task.c</FilePath>
-            </File>
           </Files>
         </Group>
         <Group>
@@ -1613,11 +1608,6 @@
               <FileName>hmi_proto.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\src\protocol\hmi_proto.c</FilePath>
-            </File>
-            <File>
-              <FileName>hmi_protocal_task.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\src\protocol\hmi_protocal_task.c</FilePath>
             </File>
           </Files>
         </Group>

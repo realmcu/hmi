@@ -9,8 +9,10 @@ applications with display and wireless connectivity.
 | --- | --- |
 | HoneyGUI display engine | ✅ Available |
 | Bluetooth (BLE + BR/EDR) | ✅ Available |
-| OTA firmware update | ✅ Available |
+| BLE navigation projection (HMIS private service) | ✅ Available |
+| OTA firmware update (BLE GATT + SPP) | ✅ Available |
 | 4-mode build matrix (src/lib × bank0/bank1) | ✅ Available |
+| Version control from `version_cfg.txt` | ✅ Available |
 | Dual toolchain support (GCC / Keil MDK) | ✅ Available |
 
 ## Prerequisites
@@ -187,23 +189,27 @@ repository. It is not fetched automatically by `west update` — download it sep
 hmi_dashboard/
 ├── src/
 │   ├── application/         # App entry point, feature flags, panel init
+│   │   └── designer/        # Designer UI project (separate repo, see ui-porting.md)
 │   ├── bsp/                 # Startup code, system-level initialization
 │   ├── gui_lib/             # HoneyGUI precompiled library and headers
 │   ├── ports/
 │   │   └── realgui_port/    # HoneyGUI platform adaptation layer
-│   ├── hmi_rtk_bt/          # Bluetooth stack integration (in dev)
-│   └── protocol/            # BLE private protocol implementation (in dev)
-├── docs/                    # Display, UI, and other focused guides
+│   ├── hmi_rtk_bt/          # Bluetooth integration: BLE services, BR/EDR profiles
+│   ├── protocol/            # BLE private protocol building blocks (L2 command set, framing)
+│   └── ota/                 # OTA state machine and SPP reporting
+├── docs/                    # Display, UI, BLE, and version-control guides
 ├── gcc/                     # Linker scripts, defconfigs, build output
 ├── mdk/                     # Keil MDK project files
 ├── cfg/                     # Hardware configuration (rtl87x3ep)
 ├── inc/                     # Chip memory config headers
 ├── download/                # Firmware download tools
+├── tools/                   # version_gen.sh: version_cfg.txt -> version.h
 ├── west_commands_extention/ # West custom command definitions
 ├── board.h                  # Pin mapping and peripheral configuration
 ├── mem_config.h             # Memory layout (DTCM1 / ITCM1)
-├── menu_config.h             # GUI menu configuration
-└── version.h                # Firmware version
+├── menu_config.h            # GUI menu configuration
+├── version_cfg.txt          # Firmware version (edit this, not version.h)
+└── version.h                # Generated at build time, not tracked
 ```
 
 ## Module Overview
@@ -229,17 +235,37 @@ compilation.
 Platform adaptation layer connecting HoneyGUI to the hardware: display controller,
 input device, filesystem, OS interface, and flash translation layer.
 
-### `src/hmi_rtk_bt/` *(In Development)*
+### `src/hmi_rtk_bt/`
 
-Bluetooth stack integration covering:
+Bluetooth integration, split by transport:
 
-- **BLE**: GAP, GATT profiles, and private GATT services
-- **BR/EDR**: A2DP, AVRCP, HFP, SPP, PAN
+- **BLE** (`hmi_ble/`): advertising and GAP setup (`HMI-Dashboard`, HMIS UUID in the
+  advertising data, 6-byte manufacturer payload), the HMIS private service
+  (`484D4953-…`, `0xFFC1`/`0xFFC2`/`0xFFC3`), a Nordic UART service kept for
+  compatibility, and the navigation projection engine (`private_service/navi_projection_service.c`).
+- **BR/EDR** (`hmi_app/`, `hmi_br_edr/`): A2DP (sink and source), AVRCP, HFP, SPP (used by
+  OTA) and PAN, plus the shared BT task and message plumbing.
 
-### `src/protocol/` *(In Development)*
+The full protocol and service description is in the [BLE service guide](docs/ble-service.md).
 
-BLE private communication protocol implementation (L0 / L1 / L2 three-layer
-architecture).
+### `src/protocol/`
+
+The single HoneyProtocol stack of the firmware, shared by every BLE command:
+
+- `hmi_proto.c` owns L1: byte-stream reassembly, CRC-16/ARC over the payload, ACK on
+  request, and the 8-byte header encoder. One static 256-byte buffer, no task, no heap —
+  complete frames are handed to the router as borrowed pointers.
+- `hmi_l2.c` owns L2 routing: it parses the 5-byte header, answers the `0x05 / 0x0B` device
+  information query itself, and hands `0x10` file transfer to the projection engine before
+  falling back to the built-in command table.
+
+The navigation projection no longer parses L1/L2 itself; it registers a handler and is
+now only responsible for the frame session, JPEG validation and the UI. See the
+[BLE service guide](docs/ble-service.md).
+
+### `src/ota/`
+
+OTA state machine, link handling, and the SPP responses used by the upgrade tool.
 
 ## Key Configuration Files
 
@@ -263,6 +289,10 @@ architecture).
   [UI Project Porting Guide](docs/ui-porting.md).
 - To control the firmware version yourself (version fields, build counter, customer name,
   MP header consistency), see [Version control](docs/version-control.md).
+- To talk to the device over BLE — advertising format, the HMIS service, HoneyProtocol
+  framing, and navigation projection — see the [BLE service guide](docs/ble-service.md).
+- The HoneyProtocol specification itself (L0/L1/L2 framing and every L2 command) is
+  published at <https://realmcu.github.io/HoneyProtocol/>.
 
 For official RTL8773E series datasheets, quick start guides, hardware notes, and SDK/GUI
 online documentation, see the [RTL8773E-Series documentation center](https://www.realmcu.com/zh/Resources/Documentation/RTL8773E-Series#pagetab).

@@ -8,8 +8,10 @@
 |---|---|
 | HoneyGUI 显示引擎 | ✅ 可用 |
 | 蓝牙（BLE + BR/EDR） | ✅ 可用 |
-| OTA 空中升级 | ✅ 可用 |
+| BLE 导航投屏（HMIS 私有服务） | ✅ 可用 |
+| OTA 空中升级（BLE GATT + SPP） | ✅ 可用 |
 | 4 种构建模式（src/lib × bank0/bank1） | ✅ 可用 |
+| 基于 `version_cfg.txt` 的版本号管控 | ✅ 可用 |
 | 双工具链支持（GCC / Keil MDK） | ✅ 可用 |
 
 ## 工具链依赖
@@ -169,23 +171,27 @@ west userdata -p COM5       # 指定烧录串口COM5
 hmi_dashboard/
 ├── src/
 │   ├── application/         # 应用入口、功能开关、面板初始化
+│   │   └── designer/        # Designer UI 工程（独立仓库，见 ui-porting_CN.md）
 │   ├── bsp/                 # 启动代码、系统级初始化
 │   ├── gui_lib/             # HoneyGUI 预编译库及头文件
 │   ├── ports/
 │   │   └── realgui_port/    # HoneyGUI 平台适配层
-│   ├── hmi_rtk_bt/          # 蓝牙协议栈集成（开发中）
-│   └── protocol/            # BLE 私有协议实现（开发中）
-├── docs/                    # 显示屏、UI 等专题指南
+│   ├── hmi_rtk_bt/          # 蓝牙集成：BLE 服务、BR/EDR profile
+│   ├── protocol/            # BLE 私有协议基础组件（L2 命令集、帧封装）
+│   └── ota/                 # OTA 状态机与 SPP 上报
+├── docs/                    # 显示屏、UI、BLE、版本号等专题指南
 ├── gcc/                     # 链接脚本、defconfig、构建输出
 ├── mdk/                     # Keil MDK 工程文件
 ├── cfg/                     # 硬件配置（rtl87x3ep）
 ├── inc/                     # 芯片 memory config 头文件
 ├── download/                # 固件下载工具
+├── tools/                   # version_gen.sh：version_cfg.txt -> version.h
 ├── west_commands_extention/ # West 自定义命令定义
 ├── board.h                  # 引脚映射与外设配置
 ├── mem_config.h             # 内存布局（DTCM1 / ITCM1）
-├── menu_config.h             # GUI 菜单配置
-└── version.h                # 固件版本号
+├── menu_config.h            # GUI 菜单配置
+├── version_cfg.txt          # 固件版本号（改这里，不要改 version.h）
+└── version.h                # 构建时生成，不入库
 ```
 
 ## 模块说明
@@ -209,15 +215,34 @@ HoneyGUI 预编译库（GCC 对应 `libgui.a`，Keil 对应 `gui.lib`）及配�
 HoneyGUI 与硬件之间的平台适配层，涵盖显示控制器、输入设备、文件系统、
 操作系统接口及 Flash 转换层。
 
-### `src/hmi_rtk_bt/` *（开发中）*
+### `src/hmi_rtk_bt/`
 
-蓝牙协议栈集成，覆盖：
-- **BLE**：GAP、GATT profile、私有 GATT 服务
-- **BR/EDR**：A2DP、AVRCP、HFP、SPP、PAN
+蓝牙集成，按传输方式拆分：
 
-### `src/protocol/` *（开发中）*
+- **BLE**（`hmi_ble/`）：广播与 GAP 配置（设备名 `HMI-Dashboard`、广播包里携带 HMIS UUID
+  和 6 字节厂商数据）、HMIS 私有服务（`484D4953-…`，`0xFFC1`/`0xFFC2`/`0xFFC3`）、
+  为兼容保留的 Nordic UART 服务，以及导航投屏引擎
+  （`private_service/navi_projection_service.c`）。
+- **BR/EDR**（`hmi_app/`、`hmi_br_edr/`）：A2DP（sink 与 source）、AVRCP、HFP、
+  SPP（OTA 使用）、PAN，以及共用的 BT 任务与消息转发。
 
-BLE 私有通信协议实现（L0 / L1 / L2 三层架构）。
+协议与服务的完整说明见 [BLE 服务与导航投屏](docs/ble-service_CN.md)。
+
+### `src/protocol/`
+
+全固件唯一的一套 HoneyProtocol 协议栈，所有 BLE 命令共用：
+
+- `hmi_proto.c` 负责 L1：字节流重组、只覆盖负载的 CRC-16/ARC、按请求回 ACK，以及 8 字节
+  头编码。只用一个 256 字节静态缓冲，无任务、无堆分配，完整帧以借用指针交给路由层。
+- `hmi_l2.c` 负责 L2 路由：解析 5 字节头，自己应答 `0x05 / 0x0B` 设备信息查询，把 `0x10`
+  文件传输交给投屏引擎，未命中的再走内置命令表。
+
+导航投屏不再自己解析 L1/L2，只注册一个处理函数，负责帧会话、JPEG 校验和界面逻辑。
+详见 [BLE 服务与导航投屏](docs/ble-service_CN.md)。
+
+### `src/ota/`
+
+OTA 状态机、链路处理，以及升级工具使用的 SPP 响应。
 
 ## 关键配置文件
 
@@ -241,6 +266,10 @@ BLE 私有通信协议实现（L0 / L1 / L2 三层架构）。
   [UI 工程移植指南](docs/ui-porting_CN.md)。
 - 如需自行管控固件版本号（版本字段、构建号、客户名、MP header 一致性），请参阅
   [版本号管控](docs/version-control_CN.md)。
+- 如需通过 BLE 与设备通信——广播格式、HMIS 服务、HoneyProtocol 帧封装、导航投屏——
+  请参阅 [BLE 服务与导航投屏](docs/ble-service_CN.md)。
+- HoneyProtocol 规范本身（L0/L1/L2 帧格式与各条 L2 命令）发布在
+  <https://realmcu.github.io/HoneyProtocol/>。
 
 RTL8773E 系列的数据手册、Quick Start、硬件说明、SDK/GUI 在线文档等官方资料，
 参见 [RTL8773E-Series 文档中心](https://www.realmcu.com/zh/Resources/Documentation/RTL8773E-Series#pagetab)。

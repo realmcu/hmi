@@ -18,6 +18,8 @@
 #include "gap_msg.h"
 #include "gap_conn_le.h"
 #include "hmi_ctrl_service.h"
+#include "hmi_l2.h"
+#include "hmi_proto.h"
 #include "navi_projection_service.h"
 #include "hmi_bt_log.h"
 
@@ -114,8 +116,8 @@ static T_APP_RESULT app_hmi_callback(T_SERVER_ID service_id, void *p_data)
             /* HoneyProtocol L1/L2 arrive as a raw byte stream on 0xFFC1. The
              * engine reassembles L1 frames, so a write may hold a partial
              * frame, a whole frame, or several frames back to back. */
-            navi_projection_feed_l1(p_hmi_cb->msg_data.write.p_value,
-                                    p_hmi_cb->msg_data.write.len);
+            proto_rx_feed(p_hmi_cb->msg_data.write.p_value,
+                          p_hmi_cb->msg_data.write.len);
             break;
 
         default:
@@ -281,7 +283,10 @@ void hmi_ble_ctrl_init(void)
     hmi_ctrl_service_add_service(app_hmi_callback, app_hmi_send_data_cb);
     hmi_le_msg_cback_register(gap_hmi_msg);
 
-    /* Bind HoneyProtocol L1 egress to the HMIS notify characteristic. */
+    /* One L1/L2 stack for the firmware: hmi_proto owns the framing, hmi_l2
+     * routes commands, and each outbound frame leaves through the HMIS notify
+     * characteristic. No extra task or queue is involved. */
+    proto_init(hmi_l1_carrier_tx, hmi_l2_handle);
     navi_projection_set_carrier(hmi_l1_carrier_tx);
 
     os_task_create(&s_hmi_send_task_handle, "hmisend", hmi_ble_send_task,

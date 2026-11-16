@@ -19,6 +19,8 @@
 #include "gui_message.h"
 #include "hmi_ble_gap_msg.h"
 #include "hmi_bt_log.h"
+#include "hmi_l2.h"
+#include "hmi_proto.h"
 #include "os_sync.h"
 #include "rtl876x.h"
 #include "stream_transport.h"
@@ -174,10 +176,6 @@ static uint16_t s_recent_seq[NAVI_RECENT_SEQ_COUNT];
 static uint8_t s_recent_seq_count;
 static uint8_t s_recent_seq_next;
 
-static uint8_t s_l1_rx_buf[NAVI_L1_HEADER_LEN + NAVI_L1_MAX_PAYLOAD];
-static uint16_t s_l1_rx_len;
-static uint16_t s_l1_expected;
-static uint16_t s_l1_tx_seq;
 static bool     s_link_info_logged;
 static uint16_t s_navi_file_frame_w;     /* geometry of the accepted stream */
 static uint16_t s_navi_file_frame_h;
@@ -266,17 +264,8 @@ static bool navi_seq_older(uint16_t lhs, uint16_t rhs)
 
 static uint16_t navi_crc16(const uint8_t *data, uint16_t len)
 {
-    uint16_t crc = 0;
-
-    while (len--)
-    {
-        crc ^= *data++;
-        for (uint8_t bit = 0; bit < 8; bit++)
-        {
-            crc = (crc & 1U) ? (uint16_t)((crc >> 1) ^ 0xA001U) : (uint16_t)(crc >> 1);
-        }
-    }
-    return crc;
+    /* One CRC implementation for the whole firmware; see hmi_proto.c. */
+    return proto_crc16(data, len);
 }
 
 static uint32_t navi_crc32(const uint8_t *data, uint32_t len)
@@ -431,77 +420,50 @@ static bool navi_tx_enqueue(uint16_t attrib_idx, const uint8_t *data, uint16_t l
 }
 
 
-static bool navi_send_l1_internal(uint8_t control, uint16_t seq, const uint8_t *payload,
-                                  uint16_t len, bool send_now)
+/* Outbound frames are encoded by the single L1/L2 encoder in hmi_proto.c; this
+ * file only decides between sending immediately and queueing behind the GATT
+ * send callback. */
+static bool navi_send_frame(uint8_t cmd, uint8_t key, const uint8_t *value, uint16_t len)
 {
-    uint8_t packet[NAVI_L1_HEADER_LEN + NAVI_L1_MAX_PAYLOAD];
-    uint16_t crc;
+    uint8_t  packet[PROTO_L1_MAX_FRAME];
+    uint16_t total = proto_l2_build(cmd, 0, key, value, len, packet, sizeof(packet));
 
-    (void)send_now;
-
-    if (len > NAVI_L1_MAX_PAYLOAD || (len > 0 && payload == NULL))
+    if (total == 0)
     {
         return false;
     }
-    /* HoneyProtocol L0 is the HMIS notify characteristic; without an installed
-     * carrier there is no way to put bytes on the air. */
     if (s_carrier_tx == NULL)
     {
         return false;
     }
-
-    crc = navi_crc16(payload, len);
-    packet[0] = NAVI_L1_SYNC;
-    packet[1] = control;
-    packet[2] = HI_16(len);
-    packet[3] = LO_16(len);
-    packet[4] = HI_16(crc);
-    packet[5] = LO_16(crc);
-    packet[6] = HI_16(seq);
-    packet[7] = LO_16(seq);
-    if (len > 0)
-    {
-        memcpy(packet + NAVI_L1_HEADER_LEN, payload, len);
-    }
-    s_carrier_tx(packet, (uint16_t)(NAVI_L1_HEADER_LEN + len));
+    s_carrier_tx(packet, total);
     return true;
-}
-
-static bool navi_send_l1(uint8_t control, uint16_t seq, const uint8_t *payload, uint16_t len)
-{
-    return navi_send_l1_internal(control, seq, payload, len, true);
 }
 
 static bool navi_send_l2_internal(uint8_t key, const uint8_t *value, uint16_t len, bool send_now)
 {
-    uint8_t packet[NAVI_L2_HEADER_LEN + 3U + 6U * NAVI_MAX_GAPS];
-    uint16_t total_len = NAVI_L2_HEADER_LEN + len;
+    uint8_t  packet[PROTO_L1_MAX_FRAME];
+    uint16_t total = proto_l2_build(NAVI_L2_CMD, 0, key, value, len, packet, sizeof(packet));
 
-    if (total_len > sizeof(packet) || (len > 0 && value == NULL))
+    if (total == 0)
     {
         return false;
     }
 
-    packet[0] = NAVI_L2_CMD;
-    packet[1] = 0;
-    packet[2] = key;
-    packet[3] = HI_16(len);
-    packet[4] = LO_16(len);
-    if (len > 0)
-    {
-        memcpy(packet + NAVI_L2_HEADER_LEN, value, len);
-    }
-
     if (key <= NAVI_KEY_ERROR)
     {
-        return navi_send_l1_internal(NAVI_L1_CTRL_DATA, ++s_l1_tx_seq,
-                                     packet, total_len, send_now);
+        if (s_carrier_tx == NULL)
+        {
+            return false;
+        }
+        s_carrier_tx(packet, total);
+        return true;
     }
     if (send_now)
     {
-        return navi_tx_enqueue(NAVI_ATTR_DATA_RX_VALUE, packet, total_len);
+        return navi_tx_enqueue(NAVI_ATTR_DATA_RX_VALUE, packet, total);
     }
-    return navi_tx_enqueue_deferred(NAVI_ATTR_DATA_RX_VALUE, packet, total_len);
+    return navi_tx_enqueue_deferred(NAVI_ATTR_DATA_RX_VALUE, packet, total);
 }
 
 static bool navi_send_l2(uint8_t key, const uint8_t *value, uint16_t len)
@@ -511,7 +473,9 @@ static bool navi_send_l2(uint8_t key, const uint8_t *value, uint16_t len)
 
 static bool navi_return_credit(navi_frame_slot_t *slot)
 {
-    uint8_t packet[NAVI_L2_HEADER_LEN + 2U];
+    uint8_t  value[2];
+    uint8_t  packet[PROTO_L1_MAX_FRAME];
+    uint16_t total;
     uint16_t returned = slot->credits_consumed;
 
     if (returned == 0)
@@ -521,14 +485,12 @@ static bool navi_return_credit(navi_frame_slot_t *slot)
     /* Credits already represented by queued notifications are not reflected in
      * s_credit until completion, so never clamp a newly-queued return here. */
 
-    packet[0] = NAVI_L2_CMD;
-    packet[1] = 0;
-    packet[2] = NAVI_KEY_CREDIT;
-    packet[3] = 0;
-    packet[4] = 2;
-    packet[5] = HI_16(returned);
-    packet[6] = LO_16(returned);
-    if (!navi_tx_enqueue_effect(NAVI_ATTR_DATA_RX_VALUE, packet, sizeof(packet),
+    value[0] = HI_16(returned);
+    value[1] = LO_16(returned);
+    total = proto_l2_build(NAVI_L2_CMD, 0, NAVI_KEY_CREDIT, value, sizeof(value),
+                           packet, sizeof(packet));
+    if (total == 0 ||
+        !navi_tx_enqueue_effect(NAVI_ATTR_DATA_RX_VALUE, packet, total,
                                 NAVI_TX_EFFECT_CREDIT, returned, false))
     {
         return false;
@@ -847,9 +809,6 @@ static void navi_reset_session(bool link_lost)
     s_credit = 0;
     s_credit_limit = 0;
     s_last_data_ms = 0;
-    s_l1_rx_len = 0;
-    s_l1_expected = 0;
-    s_l1_tx_seq = 0;
     s_recent_seq_count = 0;
     s_recent_seq_next = 0;
     s_session_epoch++;
@@ -1160,100 +1119,6 @@ static void navi_handle_frame_packet(const uint8_t *data, uint16_t len)
     }
 }
 
-static void navi_send_open_ack(uint8_t result, uint16_t max_packet, uint16_t credit)
-{
-    uint8_t value[5] =
-    {
-        result,
-        LO_16(max_packet), HI_16(max_packet),
-        LO_16(credit), HI_16(credit)
-    };
-    navi_send_l2(NAVI_KEY_ACK, value, sizeof(value));
-}
-
-static void navi_handle_open(const uint8_t *value, uint16_t len)
-{
-    navi_open_params_t params;
-    uint16_t mtu = 23;
-    uint16_t live_max_packet;
-    uint32_t frame_packets;
-    uint32_t total_credit;
-
-    if (len != 11 || !s_link_alive || s_conn_id == NAVI_INVALID_CONN_ID)
-    {
-        navi_send_open_ack(NAVI_RESULT_UNSUPPORTED, 0, 0);
-        return;
-    }
-    if (s_state == NAVI_STATE_ACTIVE)
-    {
-        navi_send_open_ack(NAVI_RESULT_BUSY, 0, 0);
-        return;
-    }
-
-    params.width = (uint16_t)value[0] | ((uint16_t)value[1] << 8);
-    params.height = (uint16_t)value[2] | ((uint16_t)value[3] << 8);
-    params.fps = value[4];
-    params.quality = value[5];
-    params.flow_ctrl_enable = value[6] & 1U;
-    params.protocol_version = value[7];
-    params.features = value[8];
-    params.max_packet = (uint16_t)value[9] | ((uint16_t)value[10] << 8);
-
-    if (le_get_conn_param(GAP_PARAM_CONN_MTU_SIZE, &mtu, s_conn_id) != GAP_CAUSE_SUCCESS || mtu < 23)
-    {
-        mtu = 23;
-    }
-    live_max_packet = (uint16_t)(mtu - 3U);
-    if (live_max_packet > NAVI_MAX_PACKET)
-    {
-        live_max_packet = NAVI_MAX_PACKET;
-    }
-
-    if (params.protocol_version != NAVI_PROTOCOL_VERSION ||
-        (params.features & NAVI_REQUIRED_FEATURES) != NAVI_REQUIRED_FEATURES ||
-        !params.flow_ctrl_enable || params.max_packet < NAVI_MIN_PACKET ||
-        params.max_packet > live_max_packet || params.width == 0 || params.height == 0 ||
-        params.width > 640 || params.height > 640 ||
-        (uint32_t)params.width * params.height > NAVI_MAX_DECODED_PIXELS ||
-        params.fps == 0 || params.fps > 30 || params.quality < 10 || params.quality > 100)
-    {
-        APP_PRINT_ERROR4("Navi OPEN rejected: %ux%u mtu=%u packet=%u",
-                         params.width, params.height, mtu, params.max_packet);
-        navi_send_open_ack(NAVI_RESULT_UNSUPPORTED, 0, 0);
-        return;
-    }
-
-    memcpy(&s_open, &params, sizeof(params));
-    frame_packets = 1U +
-                    (NAVI_MAX_JPEG_SIZE - (params.max_packet - NAVI_FRAME_FIRST_HEADER_LEN) +
-                     (params.max_packet - NAVI_FRAME_HEADER_LEN) - 1U) /
-                    (params.max_packet - NAVI_FRAME_HEADER_LEN);
-    total_credit = frame_packets * NAVI_FRAME_SLOTS;
-    if (total_credit == 0 || total_credit >= UINT16_MAX)
-    {
-        navi_send_open_ack(NAVI_RESULT_UNSUPPORTED, 0, 0);
-        return;
-    }
-
-    uint32_t lock = os_lock();
-    for (uint8_t i = 0; i < NAVI_FRAME_SLOTS; i++)
-    {
-        if (!s_slots[i].gui_claimed)
-        {
-            navi_slot_clear(&s_slots[i]);
-        }
-    }
-    s_ready_slot = -1;
-    s_recent_seq_count = 0;
-    s_recent_seq_next = 0;
-    os_unlock(lock);
-    s_credit = (uint16_t)total_credit;
-    s_credit_limit = (uint16_t)total_credit;
-    s_last_data_ms = navi_time_ms();
-    s_state = NAVI_STATE_ACTIVE;
-    navi_send_open_ack(NAVI_RESULT_OK, params.max_packet, s_credit);
-}
-
 /*============================================================================*
  *                     L2 0x10 file transfer (one JPEG per file)
  *
@@ -1310,23 +1175,7 @@ static uint32_t    s_navi_file_drop_log_ms;
 
 static void navi_file_send(uint8_t key, const uint8_t *value, uint16_t len)
 {
-    uint8_t packet[5U + 8U];
-
-    if (len > sizeof(packet) - 5U)
-    {
-        return;
-    }
-    packet[0] = NAVI_FILE_CMD;
-    packet[1] = 0;
-    packet[2] = key;
-    packet[3] = HI_16(len);
-    packet[4] = LO_16(len);
-    if (len > 0 && value != NULL)
-    {
-        memcpy(packet + 5, value, len);
-    }
-    (void)navi_send_l1_internal(NAVI_L1_CTRL_DATA, ++s_l1_tx_seq, packet,
-                                (uint16_t)(5U + len), true);
+    (void)navi_send_frame(NAVI_FILE_CMD, key, value, len);
 }
 
 static void navi_file_stop(void)
@@ -1741,119 +1590,69 @@ static void navi_file_dispatch(uint8_t key, const uint8_t *v, uint16_t len)
     }
 }
 
-static void navi_handle_l2(const uint8_t *data, uint16_t len)
+/* L2 entry point registered with hmi_l2_init(). The router has already parsed
+ * the 5-byte header; this function only acts on the commands the projection
+ * owns: 0x10 file transfer and 0x11 session control. */
+/** Stream area of the designer widget (DashboardMain_ui.c: gui_stream_create at
+ *  376,84 with 410 x 370). This is what the phone should encode for. */
+#define NAVI_STREAM_WIDTH   410u
+#define NAVI_STREAM_HEIGHT  370u
+
+/* Sampling rate the device asks the phone for. 410x370 JPEG at quality 60 costs
+ * roughly 20 KB per frame, and a single BLE link sustains about 90 KB/s here, so
+ * three frames per second leaves headroom for retransmission; raise it if the
+ * link improves. */
+#define NAVI_REQUEST_FPS    3u
+
+/* JPEG quality the phone should encode with. At 410x370 this keeps a frame
+ * around 20 KB, comfortably inside the 40 KB transport buffer, so the phone
+ * does not have to discover the ceiling by getting NO_SPACE back. */
+#define NAVI_RECOMMEND_QUALITY 60u
+
+/* Largest compressed frame the GUI stream pool can hold. Keep in sync with
+ * APP_STREAM_MAX_FRAME in DashboardMain_user.c; the live value is read from the
+ * transport whenever it exists, this is only the pre-init fallback. */
+#define NAVI_STREAM_FRAME_MAX (40u * 1024u)
+
+static bool navi_device_info(hmi_l2_device_info_t *out)
 {
-    if (len < NAVI_L2_HEADER_LEN)
+    if (out == NULL)
     {
-        return;
+        return false;
     }
-
-    uint16_t value_len = BIG16(data[3], data[4]);
-    if (value_len != len - NAVI_L2_HEADER_LEN)
+    out->stream_width   = NAVI_STREAM_WIDTH;
+    out->stream_height  = NAVI_STREAM_HEIGHT;
+    /* This is the compressed JPEG size that has to fit one transport buffer, not
+     * the decoded picture. NAVI_MAX_JPEG_SIZE (128 KB) is only the hard ceiling;
+     * the pool on this board is 5 x 40 KB, so report that instead. */
+    out->jpeg_max_bytes = NAVI_STREAM_FRAME_MAX;
+    if (s_transport != NULL)
     {
-        APP_PRINT_WARN3("navi: L2 length mismatch cmd=0x%02x declared=%u actual=%u",
-                        data[0], value_len, (unsigned)(len - NAVI_L2_HEADER_LEN));
-        return;
+        uint32_t frame = stp_max_frame_size(s_transport);
+        if (frame != 0U && frame < out->jpeg_max_bytes)
+        {
+            out->jpeg_max_bytes = frame;
+        }
     }
-
-    /* HoneyProtocol 3.12 file transfer (one JPEG frame per file). */
-    if (data[0] == NAVI_FILE_CMD)
-    {
-        navi_file_dispatch(data[2], data + NAVI_L2_HEADER_LEN, value_len);
-        return;
-    }
-
-    if (data[0] != NAVI_L2_CMD)
-    {
-        return;
-    }
-
-    switch (data[2])
-    {
-    case NAVI_KEY_OPEN:
-        navi_handle_open(data + NAVI_L2_HEADER_LEN, value_len);
-        break;
-    case NAVI_KEY_CLOSE:
-        navi_reset_session(false);
-        break;
-    default:
-        break;
-    }
+    out->quality        = NAVI_RECOMMEND_QUALITY;
+    out->features       = HMI_L2_FEAT_PROJECTION | HMI_L2_FEAT_QR_PAIRING |
+                          HMI_L2_FEAT_DEVICE_CHECK;
+    out->chunk_max      = HMI_L2_XFER_CHUNK_MAX;
+    out->requested_fps  = NAVI_REQUEST_FPS;
+    return true;
 }
 
-static void navi_l1_consume(const uint8_t *data, uint16_t len)
+static bool navi_l2_app(uint8_t cmd, uint8_t key, const uint8_t *value, uint16_t len)
 {
-    for (uint16_t i = 0; i < len; i++)
+    if (cmd == NAVI_FILE_CMD)
     {
-        uint8_t byte = data[i];
-
-        if (s_l1_rx_len == 0 && byte != NAVI_L1_SYNC)
-        {
-            continue;
-        }
-        if (s_l1_rx_len >= sizeof(s_l1_rx_buf))
-        {
-            s_l1_rx_len = 0;
-            s_l1_expected = 0;
-            continue;
-        }
-        s_l1_rx_buf[s_l1_rx_len++] = byte;
-
-        if (s_l1_rx_len == NAVI_L1_HEADER_LEN)
-        {
-            uint16_t payload_len = BIG16(s_l1_rx_buf[2], s_l1_rx_buf[3]);
-            if (payload_len > NAVI_L1_MAX_PAYLOAD)
-            {
-                s_l1_rx_len = 0;
-                s_l1_expected = 0;
-                continue;
-            }
-            s_l1_expected = (uint16_t)(NAVI_L1_HEADER_LEN + payload_len);
-        }
-
-        if (s_l1_expected != 0 && s_l1_rx_len == s_l1_expected)
-        {
-            uint8_t  control = s_l1_rx_buf[1];
-            uint16_t payload_len = (uint16_t)(s_l1_expected - NAVI_L1_HEADER_LEN);
-            uint16_t received_crc = BIG16(s_l1_rx_buf[4], s_l1_rx_buf[5]);
-            uint16_t seq = BIG16(s_l1_rx_buf[6], s_l1_rx_buf[7]);
-            const uint8_t *payload = s_l1_rx_buf + NAVI_L1_HEADER_LEN;
-            bool ack_requested = (control & NAVI_L1_ACK_REQ) != 0;
-
-            if (control & NAVI_L1_BIT_ACK)
-            {
-                /* Streaming mode: this endpoint never waits for ACKs, so an
-                 * inbound ACK carries no state we need. */
-            }
-            else if (received_crc != navi_crc16(payload, payload_len))
-            {
-                /* HoneyProtocol 2.3.1: the receiver answers per request. A
-                 * streaming sender that did not ask for an ACK learns about the
-                 * gap from the L2 sequence check instead. */
-                if (ack_requested)
-                {
-                    navi_send_l1(NAVI_L1_CTRL_ERROR, seq, NULL, 0);
-                }
-                else
-                {
-                    APP_PRINT_WARN1("navi: L1 CRC error seq=%u (streaming, no ACK)", seq);
-                }
-            }
-            else
-            {
-                if (ack_requested)
-                {
-                    navi_send_l1(NAVI_L1_CTRL_ACK, seq, NULL, 0);
-                }
-                if (!(control & NAVI_L1_BIT_ERR))
-                {
-                    navi_handle_l2(payload, payload_len);
-                }
-            }
-            s_l1_rx_len = 0;
-            s_l1_expected = 0;
-        }
+        navi_file_dispatch(key, value, len);
+        return true;
     }
+
+    /* 0x11 belongs to the spec's point test now; the projection session is
+     * negotiated through 0x05 / 0x0B and every frame brings its own geometry. */
+    return false;
 }
 
 
@@ -2046,15 +1845,6 @@ void navi_projection_set_carrier(navi_carrier_tx_t tx)
     s_carrier_tx = tx;
 }
 
-void navi_projection_feed_l1(const uint8_t *data, uint16_t len)
-{
-    if (data == NULL || len == 0)
-    {
-        return;
-    }
-    navi_l1_consume(data, len);
-}
-
 void navi_projection_core_init(void)
 {
     if (!navi_crc_self_test())
@@ -2067,6 +1857,7 @@ void navi_projection_core_init(void)
      * service (0xFFC1/0xFFC2) that hmi_ctrl_service owns. Only the session
      * engine, the stream transport hook-up and the QR helpers live here. */
     hmi_le_msg_cback_register(navi_projection_handle_gap_msg);
+    hmi_l2_init(navi_l2_app, navi_device_info);
     if (app_timer_reg_cb(navi_poll_timer_cb, &s_timer_module_id) == 0)
     {
         app_start_timer(&s_poll_timer_idx, "navi_poll", s_timer_module_id, 0, 0,
