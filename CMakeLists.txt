@@ -16,15 +16,12 @@ cmake_minimum_required(VERSION 3.20.0)
 # ============================================================
 set(REALTEK_APP_ROOT $ENV{ZEPHYR_BASE}/../realtek-app)
 
-#===========version generation===========
-include(${REALTEK_APP_ROOT}/cmake/version_generate.cmake)
-generate_version()
-#===========version generation===========
-#===========post build===========
-# post build should be called before find_package
-include(${REALTEK_APP_ROOT}/cmake/post_build.cmake)
-rtk_post_build()
-#===========post build===========
+#===========version generation / post build===========
+# 两者都由 SDK 的 cmake/modules/modules.cmake 在 find_package(Zephyr) 内部自动调用
+# （条件：应用目录下有 mp.ini）。此处不要提前调用：
+# version_generate 依赖 PYTHON_EXECUTABLE，而它要到 find_package(Zephyr)
+# 才被定义，提前调用会以空命令执行 version.py 并 FATAL_ERROR。
+#===========version generation / post build===========
 
 # FlashDB 以 West project 方式引入，其 module.yml 声明了 kconfig-ext: True，
 # Zephyr 会自动生成 osource "$(ZEPHYR_FLASHDB_KCONFIG)"。
