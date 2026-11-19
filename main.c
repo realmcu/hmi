@@ -23,14 +23,6 @@
 
 int main(void)
 {
-
-#ifndef CONFIG_UART_CONSOLE
-    DBG_DIRECT("!!!!! remap log pin!!!");
-    Pinmux_Config(P2_0, IDLE_MODE);
-    Pinmux_Config(P3_1, UART1_TX);
-    Pad_Config(P3_1, PAD_PINMUX_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_DISABLE, PAD_OUT_LOW);
-    DBG_DIRECT("!!!!! remap log pin!!!");
-#endif
     app_system_lower_init();
 
 #if CONFIG_DFU_NORMAL_OTA

@@ -43,17 +43,18 @@
 };
 
 &pinctrl {
-	/* Override board default (P4_1/P2_6): route console UART2 to P4_1(TX)/P2_6(RX) */
+	/* P2_0 is the default RTK log UART TX. UART2 pinctrl takes it over during
+	 * PRE_KERNEL_1, after the SOC early log-UART initialization. */
 	uart2_default: uart2_default {
 		group1 {
 			psels =
-				<RTL87X3G_PSEL(UART2_TX, P4_1, DIR_OUT, DRV_HIGH, PULL_UP)>,
+				<RTL87X3G_PSEL(UART2_TX, P2_0, DIR_OUT, DRV_HIGH, PULL_UP)>,
 				<RTL87X3G_PSEL(UART2_RX, P2_6, DIR_IN,  DRV_HIGH, PULL_UP)>;
 		};
 	};
 	uart2_sleep: uart2_sleep {
 		group1 {
-			psels = <RTL87X3G_PSEL(SW_MODE, P4_1, DIR_OUT, DRV_HIGH, PULL_UP)>;
+			psels = <RTL87X3G_PSEL(SW_MODE, P2_0, DIR_OUT, DRV_HIGH, PULL_UP)>;
 		};
 		group2 {
 			psels = <RTL87X3G_PSEL(SW_MODE, P2_6, DIR_IN, DRV_HIGH, PULL_UP)>;
