@@ -17,13 +17,37 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
+#include <zephyr/kernel.h>
 
 APP_LOG_MODULE_REGISTER(app_time);
 
 #define APP_TIME_TICK_STEP_SEC  (APP_TIME_TICK_MIN_STEP * 60u)
 #define APP_TIME_RTC_PATH       "/dev/rtc0"
+#define APP_TIME_DIAG_LOG_SEC   10u
 
 static posix_fd_t s_rtc_fd = POSIX_FD_NULL;
+
+static uint32_t civil_to_epoch(const posix_rtc_time_t *t);
+
+static void app_time_diag_cb(struct k_timer *timer)
+{
+    (void)timer;
+    uint32_t now = app_time_now();
+    if (now == 0u)
+    {
+        APP_LOGW("app_time diag: RTC unreadable");
+        return;
+    }
+
+    struct tm calendar;
+    app_time_to_calendar(now, &calendar);
+    APP_LOGI("app_time diag: sec=%u calendar=%04d-%02d-%02d %02d:%02d:%02d",
+             (unsigned)now, calendar.tm_year + 1900, calendar.tm_mon + 1,
+             calendar.tm_mday, calendar.tm_hour, calendar.tm_min,
+             calendar.tm_sec);
+}
+
+K_TIMER_DEFINE(app_time_diag_timer, app_time_diag_cb, NULL);
 
 static posix_fd_t rtc_fd_get(void)
 {
@@ -70,6 +94,24 @@ int app_time_set(uint32_t sec)
     {
         APP_LOGE("RTC SET_CALENDAR failed rc=%d", rc);
         return -1;
+    }
+
+    posix_rtc_time_t readback;
+    int read_rc = posix_ioctl(rtc, POSIX_RTC_IOCTL_GET_CALENDAR, &readback);
+    if (read_rc == POSIX_OK)
+    {
+        uint32_t read_sec = civil_to_epoch(&readback);
+        APP_LOGI("RTC set verify: requested=%u readback=%u delta=%d "
+                 "calendar=%04u-%02u-%02u %02u:%02u:%02u",
+                 (unsigned)sec, (unsigned)read_sec,
+                 (int)((int32_t)(read_sec - sec)),
+                 (unsigned)readback.year, (unsigned)readback.month,
+                 (unsigned)readback.mday, (unsigned)readback.hour,
+                 (unsigned)readback.minute, (unsigned)readback.second);
+    }
+    else
+    {
+        APP_LOGW("RTC set verify read failed rc=%d", read_rc);
     }
 
     APP_LOGI("wall clock set %04u-%02u-%02u %02u:%02u:%02u (sec=%u)",
@@ -170,8 +212,25 @@ static int time_init(void)
 {
     if (tick_start() != 0) { return 0; }   /* stay loaded without boundary events */
 
+    uint32_t now = app_time_now();
+    if (now != 0u)
+    {
+        struct tm calendar;
+        app_time_to_calendar(now, &calendar);
+        APP_LOGI("app_time init now=%u calendar=%04d-%02d-%02d %02d:%02d:%02d",
+                 (unsigned)now, calendar.tm_year + 1900, calendar.tm_mon + 1,
+                 calendar.tm_mday, calendar.tm_hour, calendar.tm_min,
+                 calendar.tm_sec);
+    }
+    else
+    {
+        APP_LOGW("app_time init read failed or RTC is unset");
+    }
+
     APP_LOGI("app_time init: wall clock seconds, %u-min boundary ticks off RTC 1Hz",
              (unsigned)APP_TIME_TICK_MIN_STEP);
+    k_timer_start(&app_time_diag_timer, K_SECONDS(APP_TIME_DIAG_LOG_SEC),
+                  K_SECONDS(APP_TIME_DIAG_LOG_SEC));
     return 0;
 }
 

@@ -64,6 +64,13 @@ static void on_cmd_settings(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
                        ((uint32_t)v[2] <<  8) |
                        (uint32_t)v[3];
 
+        struct tm calendar;
+        app_time_to_calendar(sec, &calendar);
+        PROTO_LOG("L2 SETTINGS set time sec=%u calendar=%04d-%02d-%02d %02d:%02d:%02d",
+                  (unsigned)sec, calendar.tm_year + 1900, calendar.tm_mon + 1,
+                  calendar.tm_mday, calendar.tm_hour, calendar.tm_min,
+                  calendar.tm_sec);
+
         if (app_time_set(sec) != 0)
         {
             PROTO_LOG("L2 SETTINGS failed to set RTC");

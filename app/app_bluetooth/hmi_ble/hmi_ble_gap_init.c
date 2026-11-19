@@ -153,7 +153,13 @@ void hmi_ble_gap_init(void)
     uint8_t  auth_use_fix_passkey = false;
     uint32_t auth_fix_passkey = 0;
 
-    uint8_t  auth_sec_req_enable = true;
+    /* HMIS uses application-level login/bind and its GATT attributes are
+     * plaintext read/write. Requesting LE security on every connection makes
+     * Android launch a system pairing flow that is unrelated to this protocol
+     * and can drop the GATT link when pairing is cancelled or rejected. Keep
+     * the device pairable, but let only a peer that explicitly needs bonding
+     * initiate it. */
+    uint8_t  auth_sec_req_enable = false;
     uint16_t auth_sec_req_flags = GAP_AUTHEN_BIT_BONDING_FLAG | GAP_AUTHEN_BIT_SC_FLAG;
 
     if (ota_mode)
