@@ -3,29 +3,29 @@
 cmake_minimum_required(VERSION 3.20.0)
 
 # ============================================================
-# HMI 应用位置无关锚点
-#   REALTEK_APP_ROOT — realtek-app SDK 根目录
+# HMI application location-independent anchor
+#   REALTEK_APP_ROOT — realtek-app SDK root directory
 #
-# REALTEK_APP_ROOT 必须在 find_package(Zephyr) 之前可用（version_generate /
-# post_build 依赖它），因此不能用 Zephyr module 系统的 ZEPHYR_<name>_MODULE_DIR
-# 变量（那些要 find_package 之后才注入）。此处用 $ENV{ZEPHYR_BASE} 派生 ——
-# west 在调用 CMake 前保证 ZEPHYR_BASE 已设置为 zephyrproject/zephyr，
-# realtek-app 作为 SDK 一部分固定在 zephyrproject/realtek-app，
-# 因此 $ENV{ZEPHYR_BASE}/../realtek-app 是稳定路径，与 hmi 检出深浅无关。
-# 禁止用 ../../ 相对路径跨 hmi 边界引用。
+# REALTEK_APP_ROOT must be available before find_package(Zephyr) (version_generate /
+# post_build depend on it), so the ZEPHYR_<name>_MODULE_DIR of the Zephyr module system
+# cannot be used (they are injected only after find_package). Here it is derived from $ENV{ZEPHYR_BASE} —
+# west guarantees ZEPHYR_BASE is already set to zephyrproject/zephyr before invoking CMake,
+# realtek-app is fixed at zephyrproject/realtek-app as part of the SDK,
+# so $ENV{ZEPHYR_BASE}/../realtek-app is a stable path regardless of the hmi checkout depth.
+# Do not use ../../ relative paths to reference across the hmi boundary.
 # ============================================================
 set(REALTEK_APP_ROOT $ENV{ZEPHYR_BASE}/../realtek-app)
 
 #===========version generation / post build===========
-# 两者都由 SDK 的 cmake/modules/modules.cmake 在 find_package(Zephyr) 内部自动调用
-# （条件：应用目录下有 mp.ini）。此处不要提前调用：
-# version_generate 依赖 PYTHON_EXECUTABLE，而它要到 find_package(Zephyr)
-# 才被定义，提前调用会以空命令执行 version.py 并 FATAL_ERROR。
+# Both are invoked automatically by the SDK's cmake/modules/modules.cmake inside find_package(Zephyr)
+# (condition: mp.ini exists in the application directory). Do not call them early here:
+# version_generate depends on PYTHON_EXECUTABLE, which is only defined at find_package(Zephyr),
+# so calling it early runs version.py as an empty command and hits FATAL_ERROR.
 #===========version generation / post build===========
 
-# FlashDB 以 West project 方式引入，其 module.yml 声明了 kconfig-ext: True，
-# Zephyr 会自动生成 osource "$(ZEPHYR_FLASHDB_KCONFIG)"。
-# 此处将该变量指向应用工程内的空 Kconfig，避免构建报错。
+# FlashDB is imported as a West project, and its module.yml declares kconfig-ext: True,
+# so Zephyr generates osource "$(ZEPHYR_FLASHDB_KCONFIG)" automatically.
+# Here the variable points to the empty Kconfig in the application project to avoid build errors.
 set(ZEPHYR_FLASHDB_KCONFIG ${CMAKE_CURRENT_SOURCE_DIR}/port/flashdb/Kconfig)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
