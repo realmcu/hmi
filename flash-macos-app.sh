@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
 #
-# flash-macos-app.sh —— 在 macOS 下用 mpcli 烧录 RTL87X3G 的 App 镜像。
+# flash-macos-app.sh -- flash the RTL87X3G App image with mpcli on macOS.
 #
-# 与 flash-linux-app.sh / flash-wsl-app.sh 的差别只在执行环境：
-#   - 工具用同一个目录下的 macOS 版 mpcli（Mach-O），即
-#     scripts/tool/mpcli/mpcli-macos，与 mpcli（Linux ELF）、mpcli.exe（Windows）
-#     并排。默认路径就指向它，不需要额外指定；要换位置用 MPCLI= 覆盖。
-#   - 串口是 /dev/cu.*（callout）。**不要用 /dev/tty.\***：它的 open() 会等 DCD
-#     载波，芯片没起来时脚本会静默挂住（看着像卡死）。传进 tty.* 会自动换成 cu.*。
-#   - 不传端口时自动探测：只有一个 USB 串口就选它，多个就报错让你指定（防烧错板子）。
-#   - macOS 没有 dialout 组，串口通常直接可读写；首次运行可能被 Gatekeeper 拦，
-#     见 README「macOS 烧录」一节的 xattr / Rosetta 说明。
+# The only difference from flash-linux-app.sh / flash-wsl-app.sh is the execution environment:
+#   - Uses the macOS mpcli (Mach-O) from the same directory, i.e.,
+#     scripts/tool/mpcli/mpcli-macos, alongside mpcli (Linux ELF) and mpcli.exe (Windows).
+#     The default path points to it, no extra flag needed; use MPCLI= to override.
+#   - The serial port is /dev/cu.* (callout). **Do not use /dev/tty.\***: its open() waits for the DCD
+#     carrier, so when the chip is not up the script hangs silently (looks like a freeze). Passing tty.* is auto-switched to cu.*.
+#   - Without a port it auto-detects: a single USB serial port is selected, multiple ports error out to avoid flashing the wrong board.
+#   - macOS has no dialout group, serial ports are usually directly readable/writable; the first run may be blocked by Gatekeeper,
+#     see the xattr / Rosetta notes in the "macOS flashing" section of the README.
 #
-# 烧录参数与其它平台逐字一致：
-#   - 固件：bin/app.bin（无 MP 头）
-#   - 烧录：-c <port> -T RTL87X3G -M 5 -p -A 0x7009E000 -F <fw> -b 2000000 -r -u -d
+# Flash parameters are identical to the other platforms:
+#   - Firmware: bin/app.bin (no MP header)
+#   - Flash: -c <port> -T RTL87X3G -M 5 -p -A 0x7009E000 -F <fw> -b 2000000 -r -u -d
 #
-# 用法：
-#   scripts/flash-macos-app.sh                              # 自动探测下载口
-#   scripts/flash-macos-app.sh /dev/cu.usbserial-1420       # 指定下载口
+# Usage:
+#   scripts/flash-macos-app.sh                              # auto-detect the download port
+#   scripts/flash-macos-app.sh /dev/cu.usbserial-1420       # specify the download port
 #   scripts/flash-macos-app.sh --fw /path/app.bin --addr 0x7000A000
 #   scripts/flash-macos-app.sh /path/app.bin 0x7000A000 /dev/cu.usbserial-1420
 #   PORT=/dev/cu.wchusbserial1420 BAUD=3000000 scripts/flash-macos-app.sh
-#   DRY=1 scripts/flash-macos-app.sh                        # 只打印将要执行的命令
+#   DRY=1 scripts/flash-macos-app.sh                        # only print the command to run
 #
 set -euo pipefail
 
@@ -32,16 +32,16 @@ TOOL_DIR="$SCRIPT_DIR/tool/mpcli"
 
 die() { echo "[flash] $*" >&2; exit 1; }
 
-# 打开失败时最容易踩的坑：mpcli 只认「可执行」，「不存在/不可执行」都报得含糊。
+# The most common pitfall when opening fails: mpcli only recognizes "executable" and reports both "missing" and "not executable" vaguely.
 [ "$(uname -s)" = "Darwin" ] || {
   echo "[flash] 警告: 本脚本是给 macOS 用的，当前是 $(uname -s)；Linux 请用 flash-linux-app.sh" >&2; }
 
-# ---- 参数解析 ----
-# 优先级：命令行 > 环境变量 > 默认值。
-# 支持两种写法：
-#   命名：--fw <path> / --addr <0x...> / --port <dev> / --baud <n>（也认 -f/-a/-c/-b）
-#   位置：按内容自动归类，顺序随意 —— 以 /dev/ 开头的是串口，0x... 是地址，
-#         其余当固件路径。老写法「第一个位置参数 = 串口」仍然可用。
+# ---- Argument parsing ----
+# Priority: command line > environment variables > defaults.
+# Two forms are supported:
+#   Named: --fw <path> / --addr <0x...> / --port <dev> / --baud <n> (also -f/-a/-c/-b)
+#   Positional: classified by content, any order -- a leading /dev/ is a serial port, 0x... is an address,
+#         anything else is a firmware path. The old form "first positional = serial port" still works.
 PORT="${PORT:-}"
 FW="${FW:-}"
 ADDR="${ADDR:-}"
@@ -66,7 +66,7 @@ while [ $# -gt 0 ]; do
     -h|--help)   sed -n '3,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --*)         _usage "$1" ;;
     *)
-      # 位置参数按内容归类，不依赖顺序
+      # Positional arguments are classified by content, independent of order
       case "$1" in
         /dev/*)        PORT="$1" ;;
         0x*|0X*)       ADDR="$1" ;;
@@ -79,13 +79,13 @@ done
 FW="${FW:-$REPO_ROOT/bin/app.bin}"
 ADDR="${ADDR:-0x7009E000}"
 
-# ---- 工具路径：和其它平台脚本一样，默认取仓库自带的 tool/mpcli/ ----
+# ---- Tool path: like the other platform scripts, defaults to the repo-bundled tool/mpcli/ ----
 MPCLI="${MPCLI:-$TOOL_DIR/mpcli-macos}"
 
 [ -f "$MPCLI" ] || die "mpcli 不存在: $MPCLI（macOS 版应放在 $TOOL_DIR/mpcli-macos，或用 MPCLI= 覆盖）"
 [ -x "$MPCLI" ] || die "mpcli 不可执行: $MPCLI（chmod +x \"$MPCLI\"）"
 
-# Apple Silicon 上跑 x86_64 的 mpcli 需要 Rosetta 2，缺了会报 "Bad CPU type in executable"
+# Running x86_64 mpcli on Apple Silicon needs Rosetta 2, or it reports "Bad CPU type in executable"
 if command -v lipo >/dev/null 2>&1 && [ "$(uname -m)" = "arm64" ]; then
   _archs="$(lipo -archs "$MPCLI" 2>/dev/null || true)"
   case "$_archs" in
@@ -95,13 +95,13 @@ if command -v lipo >/dev/null 2>&1 && [ "$(uname -m)" = "arm64" ]; then
   esac
 fi
 
-# ---- 串口解析：位置参数 / PORT 优先，否则自动探测 ----
+# ---- Serial port resolution: positional argument / PORT takes precedence, otherwise auto-detect ----
 usb_ports() {
   for _p in /dev/cu.usbserial* /dev/cu.wchusbserial* /dev/cu.SLAB_USBtoUART* \
             /dev/cu.usbmodem*; do
     [ -e "$_p" ] && printf '%s\n' "$_p"
   done | sort -u
-  return 0   # 一个都没匹配到时上面的 [ -e ] 会以 1 退出，配合 set -e 会静默杀脚本
+  return 0   # when nothing matches, the [ -e ] above exits 1 and, with set -e, silently kills the script
 }
 
 if [ -n "$PORT" ]; then
@@ -131,9 +131,9 @@ $(printf '       %s\n' $_ports)"
   fi
 fi
 
-# ---- 检查 ----
+# ---- Checks ----
 [ -f "$FW" ] || die "固件不存在: $FW（先 west build 生成 bin/app.bin）"
-# 转成绝对路径：脚本全程不切 CWD，但绝对路径能避免调用方在别处 cd 过的歧义。
+# Convert to an absolute path: the script never changes CWD, but an absolute path avoids ambiguity if the caller cd'd elsewhere.
 FW="$(cd "$(dirname "$FW")" && pwd)/$(basename "$FW")"
 
 if [ "${DRY:-0}" != "1" ]; then
@@ -145,9 +145,9 @@ echo "[flash] mpcli = $MPCLI"
 echo "[flash] port  = $PORT   addr = $ADDR   baud = $BAUD"
 echo "[flash] fw    = $FW"
 
-# mpcli 的 log 写在 **可执行文件同目录**（log.py 用 sys.executable 目录），
-# 那里不可写会在启动时直接 PermissionError 崩掉。放 /usr/local/bin 之类的常见坑，
-# 用 MPCLI_LOG_DIR 把它挪到可写位置（设了就不再按日期建子目录）。
+# mpcli writes its log **next to the executable** (log.py uses the sys.executable directory),
+# and if that location is not writable it crashes with PermissionError at startup. A common pitfall when placed in /usr/local/bin etc.,
+# use MPCLI_LOG_DIR to move it somewhere writable (when set, it no longer creates date subdirectories).
 if [ -z "${MPCLI_LOG_DIR:-}" ] && [ ! -w "$(dirname "$MPCLI")" ]; then
   MPCLI_LOG_DIR="$SCRIPT_DIR/log"
   mkdir -p "$MPCLI_LOG_DIR"

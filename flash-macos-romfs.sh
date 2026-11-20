@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 #
-# flash-macos-romfs.sh —— 在 macOS 下用 mpcli 烧录 HoneyGUI romfs 资源镜像到 USER_DATA 区。
+# flash-macos-romfs.sh -- flash the HoneyGUI romfs resource image to the USER_DATA area with mpcli on macOS.
 #
-# 与 flash-macos-app.sh 的区别：那个烧 App（bin/app.bin → 0x7009E000，写死），
-# 本脚本烧资源镜像，镜像和地址由调用方给（地址能从文件名里自动取）。
+# Difference from flash-macos-app.sh: that one flashes the App (bin/app.bin -> 0x7009E000, hard-coded),
+# this one flashes a resource image whose image and address are provided by the caller (the address can be derived from the file name).
 #
-# 地址取 flash_map.h 的分区地址（本 App 的 USER_DATA1_ADDR = 0x70536000；换 App 目录
-# 先 grep 一下，不同工程的 flash_map.h 不一样），必须与 ui/project.json 的
-# romfsBaseAddr、gui_vfs_mount_romfs() 调用一致 —— romfs 指针按基址烘焙成绝对
-# 地址，烧错地址不报错，只在运行时挂载失败。地址还须 4KB 扇区对齐，否则 mpcli
-# 擦除起点上调但长度不减，头部若干字节未擦除导致 flash verify 失败（status 52）。
-# 两点都会检查，外加 romfs root dirent 是否真在该地址解析。镜像是 mkromfs 的裸
-# 产物，不带 MP header，直接烧。
+# The address comes from the flash_map.h partition address (USER_DATA1_ADDR = 0x70536000 for this App; for another App directory
+# grep it first, flash_map.h differs between projects), and must match the
+# romfsBaseAddr in ui/project.json and the gui_vfs_mount_romfs() call -- romfs pointers are baked to absolute
+# addresses from the base, so a wrong address does not error, it only fails to mount at runtime. The address must also be 4KB sector aligned, otherwise mpcli
+# rounds the erase start up while keeping the full length, leaving the head bytes unerased and failing flash verify (status 52).
+# Both points are checked, plus whether the romfs root dirent actually resolves at that address. The image is the raw
+# mkromfs output, without an MP header, flashed directly.
 #
-# 用法：
+# Usage:
 #   scripts/flash-macos-romfs.sh <bin> [addr] [port]
 #
 #   scripts/flash-macos-romfs.sh ../ui/build/app_romfs_0x70536000.bin
@@ -21,7 +21,7 @@
 #   scripts/flash-macos-romfs.sh ../ui/build/app_romfs_0x70536000.bin 0x70536000 /dev/cu.usbserial-1420
 #   scripts/flash-macos-romfs.sh --fw <bin> --addr 0x70536000 --port /dev/cu.usbserial-1420
 #   PORT=/dev/cu.wchusbserial1420 BAUD=3000000 scripts/flash-macos-romfs.sh <bin>
-#   DRY=1 scripts/flash-macos-romfs.sh <bin>            # 只打印命令，不真正烧录
+#   DRY=1 scripts/flash-macos-romfs.sh <bin>            # only print the command, do not flash
 #
 set -euo pipefail
 
@@ -34,10 +34,10 @@ die() { echo "[flash-romfs] $*" >&2; exit 1; }
 [ "$(uname -s)" = "Darwin" ] || {
   echo "[flash-romfs] 警告: 本脚本是给 macOS 用的，当前是 $(uname -s)" >&2; }
 
-# ---- 参数解析 ----
-# 优先级：命令行 > 环境变量 > 默认值。FW 必填，ADDR 可从文件名里的 0x... 推导。
-#   命名：--fw <bin> / --addr <0x...> / --port <dev> / --baud <n>（也认 -f/-a/-c/-b）
-#   位置：按内容自动归类，顺序随意 —— /dev/... 是串口，0x... 是地址，其余当镜像路径。
+# ---- Argument parsing ----
+# Priority: command line > environment variables > defaults. FW is required, ADDR can be derived from the 0x... in the file name.
+#   Named: --fw <bin> / --addr <0x...> / --port <dev> / --baud <n> (also -f/-a/-c/-b)
+#   Positional: classified by content, any order -- /dev/... is a serial port, 0x... is an address, anything else is an image path.
 FW="${FW:-}"
 ADDR="${ADDR:-}"
 PORT="${PORT:-}"
@@ -71,13 +71,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# ---- 工具路径：和其它平台脚本一样，默认取仓库自带的 tool/mpcli/ ----
+# ---- Tool path: like the other platform scripts, defaults to the repo-bundled tool/mpcli/ ----
 MPCLI="${MPCLI:-$TOOL_DIR/mpcli-macos}"
 
 [ -f "$MPCLI" ] || die "mpcli 不存在: $MPCLI（macOS 版应放在 $TOOL_DIR/mpcli-macos，或用 MPCLI= 覆盖）"
 [ -x "$MPCLI" ] || die "mpcli 不可执行: $MPCLI（chmod +x \"$MPCLI\"）"
 
-# ---- 镜像与地址 ----
+# ---- Image and address ----
 if [ -z "$FW" ]; then
   me="$(basename "${BASH_SOURCE[0]}")"
   echo "[flash-romfs] 用法: $me <bin> [addr] [port]" >&2
@@ -85,7 +85,7 @@ if [ -z "$FW" ]; then
   exit 1
 fi
 [ -f "$FW" ] || die "镜像不存在: $FW"
-# 转成绝对路径：脚本全程不切 CWD，但绝对路径能避免调用方在别处 cd 过的歧义。
+# Convert to an absolute path: the script never changes CWD, but an absolute path avoids ambiguity if the caller cd'd elsewhere.
 FW="$(cd "$(dirname "$FW")" && pwd)/$(basename "$FW")"
 
 if [ -z "$ADDR" ]; then
@@ -98,15 +98,15 @@ fi
 [ $(( $((ADDR)) % SECTOR )) -eq 0 ] || {
   die "地址 $ADDR 不是 4KB 扇区对齐，烧录会 verify 失败；请用 flash_map.h 的分区地址"; }
 
-# Designer 把基址写进文件名，校验它与 <addr> 一致
+# The Designer writes the base address into the file name; verify it matches <addr>
 FW_BASE="$(basename "$FW" | grep -oiE '0x[0-9a-f]{6,8}' | head -1 || true)"
 [ -z "$FW_BASE" ] || [ "$((FW_BASE))" -eq "$((ADDR))" ] || {
   die "镜像名里的基址 $FW_BASE 与地址 $ADDR 不一致（会挂载失败）"; }
 
-# ---- 校验 romfs root dirent 是否真落在 ADDR ----
+# ---- Verify the romfs root dirent actually lands at ADDR ----
 # struct romfs_dirent { uint32_t type; const char *name; const uint8_t *data; size_t size; }
-# 镜像以 root dirent 开头，name 是绝对指针，故 (name - ADDR) 必须能索引回镜像里
-# 并解析出 "/"。这条能抓住「文件名改了但镜像是按别的基址编的」。
+# The image starts at the root dirent, and `name` is an absolute pointer, so (name - ADDR) must index into the image
+# and resolve to "/". This catches an image built for a different base even when the file name was renamed to match.
 if command -v python3 >/dev/null 2>&1; then
   python3 - "$FW" "$ADDR" <<'PY' || die "romfs root dirent 在 $ADDR 解析失败 —— 镜像或地址不对"
 import struct, sys
@@ -130,13 +130,13 @@ else
   echo "[flash-romfs] 没装 python3，跳过 romfs root dirent 校验（xcode-select --install 可装）" >&2
 fi
 
-# ---- 串口解析 ----
+# ---- Serial port resolution ----
 usb_ports() {
   for _p in /dev/cu.usbserial* /dev/cu.wchusbserial* /dev/cu.SLAB_USBtoUART* \
             /dev/cu.usbmodem*; do
     [ -e "$_p" ] && printf '%s\n' "$_p"
   done | sort -u
-  return 0   # 一个都没匹配到时上面的 [ -e ] 会以 1 退出，配合 set -e 会静默杀脚本
+  return 0   # when nothing matches, the [ -e ] above exits 1 and, with set -e, silently kills the script
 }
 
 if [ -z "$PORT" ]; then
@@ -159,14 +159,14 @@ $(printf '       %s\n' $_ports)"
   fi
 fi
 
-FW_SIZE="$(wc -c < "$FW" | tr -d ' ')"   # wc 比 stat 的可移植性好（BSD/GNU 参数不一样）
+FW_SIZE="$(wc -c < "$FW" | tr -d ' ')"   # wc is more portable than stat (BSD/GNU take different arguments)
 
 echo "[flash-romfs] mpcli = $MPCLI"
 echo "[flash-romfs] port  = $PORT   addr = $ADDR   baud = $BAUD"
 echo "[flash-romfs] fw    = $FW ($FW_SIZE bytes)"
 echo "[flash-romfs] note  = 会整片擦写 $ADDR 处的 romfs 分区"
 
-# mpcli 的 log 写在可执行文件同目录；不可写会启动即崩，用 MPCLI_LOG_DIR 兜底。
+# mpcli writes its log next to the executable; if that is not writable it crashes at startup, so fall back to MPCLI_LOG_DIR.
 if [ -z "${MPCLI_LOG_DIR:-}" ] && [ ! -w "$(dirname "$MPCLI")" ]; then
   MPCLI_LOG_DIR="$SCRIPT_DIR/log"
   mkdir -p "$MPCLI_LOG_DIR"

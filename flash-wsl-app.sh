@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
 #
-# flash.sh —— 在 WSL2 里驱动 Windows 版 mpcli.exe 烧录 RTL87X3G 的 App 镜像。
+# flash.sh -- drive the Windows mpcli.exe from WSL2 to flash the RTL87X3G App image.
 #
-# 原理：WSL 直接调用 Windows 的 mpcli.exe（原生进程，能访问 COM 口），
-#       用 wslpath -w 把 WSL 里的固件路径转成 Windows 形式喂给 -F。
+# How it works: WSL directly invokes the Windows mpcli.exe (a native process that can access the COM port),
+#       and uses wslpath -w to convert the WSL firmware path into Windows form for -F.
 #
-# 默认配置对齐 .vscode/tasks.json 里的 "West Flash"：
-#   - 工具：v4.0.0.7 Windows 版 mpcli.exe（scripts/tool/mpcli/mpcli.exe，仓库自带）
-#   - 固件：bin/app.bin（无 MP 头）
-#   - 烧录：-p -A 0x7009E000 -b 2000000 -M 5 -r -u -d -T RTL87X3G
+# Default configuration matches "West Flash" in .vscode/tasks.json:
+#   - Tool: v4.0.0.7 Windows mpcli.exe (scripts/tool/mpcli/mpcli.exe, bundled with the repo)
+#   - Firmware: bin/app.bin (no MP header)
+#   - Flash: -p -A 0x7009E000 -b 2000000 -M 5 -r -u -d -T RTL87X3G
 #
-# 用法：
-#   scripts/flash-wsl-app.sh                 # 默认 COM13
-#   scripts/flash-wsl-app.sh COM8            # 指定下载口
+# Usage:
+#   scripts/flash-wsl-app.sh                 # default COM13
+#   scripts/flash-wsl-app.sh COM8            # specify the download port
 #   PORT=COM8 BAUD=2000000 scripts/flash-wsl-app.sh
-#   DRY=1 scripts/flash-wsl-app.sh           # 只打印将要执行的命令，不真正烧录
+#   DRY=1 scripts/flash-wsl-app.sh           # only print the command to run, do not flash
 #
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ---- 可通过位置参数或环境变量覆盖 ----
+# ---- Can be overridden by positional arguments or environment variables ----
 PORT="${1:-${PORT:-COM13}}"
 MPCLI_EXE="${MPCLI_EXE:-$SCRIPT_DIR/tool/mpcli/mpcli.exe}"
 FW="${FW:-$REPO_ROOT/bin/app.bin}"
 ADDR="${ADDR:-0x7009E000}"
 BAUD="${BAUD:-2000000}"
 
-# ---- 检查 ----
+# ---- Checks ----
 [ -f "$MPCLI_EXE" ] || { echo "[flash] mpcli.exe 不存在: $MPCLI_EXE" >&2; exit 1; }
 [ -f "$FW" ]        || { echo "[flash] 固件不存在: $FW（先 west build 生成 bin/app.bin）" >&2; exit 1; }
 
@@ -39,8 +39,8 @@ echo "[flash] port = $PORT   addr = $ADDR   baud = $BAUD"
 echo "[flash] fw   = $FW"
 echo "[flash] fw(win) = $FW_WIN"
 
-# mpcli.exe(frozen) 用 sys.executable 目录定位 fw/、config/，与 CWD 无关；
-# 这里 cd 到 exe 目录纯粹是和 tasks.json 的 cwd 保持一致。
+# mpcli.exe(frozen) locates fw/ and config/ via the sys.executable directory, independent of CWD;
+# cd-ing to the exe directory here just keeps the cwd consistent with tasks.json.
 cd "$(dirname "$MPCLI_EXE")"
 
 set -- -c "$PORT" -T RTL87X3G -M 5 -p -A "$ADDR" -F "$FW_WIN" -b "$BAUD" -r -u -d

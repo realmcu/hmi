@@ -1,65 +1,63 @@
 # mpcli — MP Tool CLI for Realtek RTL87xx
 
-mpcli 是 Realtek RTL87xx 系列芯片的量产烧录 CLI 工具，支持通过 UART 烧录 flash 镜像。
+mpcli is the mass-production flashing CLI tool for Realtek RTL87xx series chips, supporting flash image programming over UART.
 
-## 版本 v4.0.0.7 新特性
+## New features in v4.0.0.7
 
-### 1. `--gen-json` — 基于 MP header 自动生成 flash_image.json
+### 1. `--gen-json` — auto-generate flash_image.json from MP headers
 
-新增 `--gen-json` 子模式，无需连接设备即可从 SDK 构建输出目录生成 `flash_image.json`：
+Adds the `--gen-json` sub-mode, which generates `flash_image.json` from an SDK build output directory without connecting a device:
 
 ```bash
-# 基本用法（不需要 -T）
+# basic usage (no -T needed)
 mpcli --gen-json --bin-dir <SDK_OUTPUT_DIR>
 ```
 
-工具扫描所有 `.bin` 文件，读取其 **MP header**（由 `prepend_header.exe` 写入），从中提取烧录地址和信息，无需硬编码的 slot 表或文件名模式匹配。
+The tool scans all `.bin` files, reads their **MP header** (written by `prepend_header.exe`), and extracts the flash address and info from it, with no hard-coded slot table or file-name pattern matching.
 
-生成的 `flash_image.json` 直接在 SDK 输出目录，随后可通过 `-a` 模式烧录。
+The generated `flash_image.json` is placed directly in the SDK output directory and can then be flashed via `-a` mode.
 
-### 2. MP header 驱动的工作原理
+### 2. How MP header driven operation works
 
-每个 SDK 输出的 `.bin` 文件开头有 **512 字节 MP header**（TLV 格式），包含：
+Every SDK output `.bin` file starts with a **512-byte MP header** (TLV format) containing:
 
-| ITEM ID | 字段 | 说明 |
-|---------|------|------|
-| `0x0001` | BIN_ID | 文件类型标识（APP=0x0300, OTA_HEADER=0x0800 等） |
-| `0x001C` | **下载地址** | 目标 flash 地址（已区分 BANK0/BANK1） |
-| `0x0004` | 数据长度 | 实际内容大小（不含头） |
+| ITEM ID | Field | Description |
+|---------|------|-------------|
+| `0x0001` | BIN_ID | file type identifier (APP=0x0300, OTA_HEADER=0x0800, etc.) |
+| `0x001C` | **Download address** | target flash address (BANK0/BANK1 already distinguished) |
+| `0x0004` | Data length | actual content size (excluding header) |
 
-地址解析顺序：
-1. **ITEM 0x001C**：MP header 中的下载地址（优先使用，已含 BANK 信息）
-2. **BIN_ID + flash_map.ini**：无 ITEM 0x001C 的文件通过 BIN_ID + 目录路径 + flash_map.ini 解析
+Address resolution order:
+1. **ITEM 0x001C**: the download address in the MP header (preferred, already contains BANK info)
+2. **BIN_ID + flash_map.ini**: files without ITEM 0x001C are resolved via BIN_ID + directory path + flash_map.ini
 
-### 3. 支持双 Bank（BANK0 + BANK1）
+### 3. Dual-Bank support (BANK0 + BANK1)
 
-双 Bank 设备的 BANK0 和 BANK1 镜像自动识别到同一份 JSON 中，单 Bank 设备不受影响。
+BANK0 and BANK1 images of dual-Bank devices are auto-recognized into a single JSON; single-Bank devices are unaffected.
 
-`APP_Config` 等共享文件自动生成两个地址条目（BANK0 + BANK1）。
+Shared files such as `APP_Config` automatically get two address entries (BANK0 + BANK1).
 
-### 4. JSON 中不再包含 port/baud
+### 4. No port/baud in the JSON
 
-`flash_image.json` 不再写入串口参数。端口和波特率在烧录时通过命令行指定：
+`flash_image.json` no longer stores serial parameters. The port and baud rate are given on the command line when flashing:
 
 ```bash
 mpcli -f flash_image.json -a -c COM3 -b 3000000 -M 5 -r -u -d -T RTL87X3EP
 ```
 
-兼容性：旧版（含 port/baud 的 JSON）仍可正常解析。
+Compatibility: older JSON (with port/baud) still parses correctly.
 
-## 完整工作流
+## Full workflow
 
-### 方式一：一条命令即生成又烧录（推荐）
+### Option 1: generate and flash with a single command (recommended)
 
-`--gen-json` 时若**同时**给出 `--bin-dir`、`-T`、`-c`，则生成 `flash_image.json`
-后**直接烧录**，一步到位（自动注入默认 `-M 5 -r -b 3000000`，`-b` 可显式覆盖，
-`-u`/`-d` 默认已开）：
+When `--gen-json` is combined with `--bin-dir`, `-T` and `-c`, it generates `flash_image.json` and then **flashes directly** in one step (auto-injects the defaults `-M 5 -r -b 3000000`; `-b` can override explicitly; `-u`/`-d` are on by default):
 
 ```bash
-# Linux（源码运行）
-python3 __main__.py --gen-json --bin-dir <固件目录> -T RTL87X3G -c /dev/ttyUSB0
+# Linux (running from source)
+python3 __main__.py --gen-json --bin-dir <firmware directory> -T RTL87X3G -c /dev/ttyUSB0
 
-# Linux（编译版，固件随包在 fw/runtime_system_bin/<芯片>/）
+# Linux (compiled build, firmware bundled under fw/runtime_system_bin/<chip>/)
 /home/wh/.local/mpcli/mpcli --gen-json \
     --bin-dir /home/wh/.local/mpcli/fw/runtime_system_bin/RTL8783G \
     -T RTL87X3G -c /dev/ttyUSB0
@@ -68,60 +66,60 @@ python3 __main__.py --gen-json --bin-dir <固件目录> -T RTL87X3G -c /dev/ttyU
 mpcli --gen-json --bin-dir "C:\SDK_Build\output" -T RTL87X3EP -c COM3
 ```
 
-> `-T` 对应关系：RTL8773G / RTL8783G → `RTL87X3G`；RTL87X3EP → `RTL87X3EP`。
-> **不给 `-c` 时**（缺 `-c` 或 `-T`）则仅生成 JSON 后退出，不烧录（见方式二第 1 步）。
+> `-T` mapping: RTL8773G / RTL8783G → `RTL87X3G`; RTL87X3EP → `RTL87X3EP`.
+> **When `-c` is not given** (missing `-c` or `-T`) it only generates the JSON and exits without flashing (see step 1 of Option 2).
 
-### 方式二：分两步（生成 / 烧录分离）
+### Option 2: two steps (separate generation / flashing)
 
 ```bash
-# 1. 生成 flash_image.json（无需接设备）
+# 1. generate flash_image.json (no device needed)
 mpcli --gen-json --bin-dir "C:\SDK_Build\output"
 
-# 2. 烧录全部镜像（需要接设备）
+# 2. flash all images (device required)
 mpcli -f "C:\SDK_Build\output\flash_image.json" -a -c COM3 -b 3000000 -M 5 -r -u -d -T RTL87X3EP
 
-# 3. 若 APP 未在 SDK 目录中，可单独烧录
+# 3. if the APP is not in the SDK directory, flash it separately
 mpcli -c COM3 -p -A 0x02098000 -F app.bin -b 3000000 -M 5 -r -u -d -T RTL87X3EP
 ```
 
-## 输出文件
+## Output files
 
-| 文件 | 说明 |
-|------|------|
-| `flash_image.json` | mpcli JSON 配置文件（-a 模式输入） |
-| `flash_image_report.txt` | 烧录报告（镜像列表、大小信息） |
+| File | Description |
+|------|-------------|
+| `flash_image.json` | mpcli JSON config file (input for -a mode) |
+| `flash_image_report.txt` | flash report (image list, size info) |
 
-## 命令行参数
+## Command-line parameters
 
-| 参数 | 说明 |
-|------|------|
-| `-T` | IC 类型：RTL87X3E / RTL87X3EP / RTL87X3D / RTL87X3G / RTL87X3J（--gen-json 时不需要） |
-| `-c` | COM 端口，如 COM3 |
-| `-b` | 修改波特率（烧录时速度） |
-| `-B` | 打开波特率（初始连接速度） |
-| `-M` | 烧录模式，5 = MP Loader 模式 |
-| `-a` | 烧录 JSON 中所有镜像 |
-| `-f` | JSON 配置文件路径 |
-| `-r` | 烧录完成后重启 |
-| `-u` | 解锁保护区域 |
-| `-d` | 禁用 OEM 配置合并 |
+| Parameter | Description |
+|-----------|-------------|
+| `-T` | IC type: RTL87X3E / RTL87X3EP / RTL87X3D / RTL87X3G / RTL87X3J (not needed with --gen-json) |
+| `-c` | COM port, e.g. COM3 |
+| `-b` | override baud rate (flashing speed) |
+| `-B` | open baud rate (initial connection speed) |
+| `-M` | flash mode, 5 = MP Loader mode |
+| `-a` | flash all images in the JSON |
+| `-f` | JSON config file path |
+| `-r` | reboot after flashing |
+| `-u` | unlock protected regions |
+| `-d` | disable OEM config merge |
 
-### --gen-json 专属参数
+### --gen-json specific parameters
 
-| 参数 | 说明 |
-|------|------|
-| `--gen-json` | 启用 JSON 生成模式；若同时给 `--bin-dir`+`-T`+`-c`，生成后直接烧录（一步到位） |
-| `--bin-dir` | SDK 构建输出目录（扫描所有 *.bin 文件的 MP header） |
-| `--gen-output-dir` | 输出目录（默认 = --bin-dir） |
-| `--gen-verbose` | 打印每个文件的 MP header 解析信息 |
+| Parameter | Description |
+|-----------|-------------|
+| `--gen-json` | enable JSON generation mode; if `--bin-dir`+`-T`+`-c` are also given, flash directly after generation (one step) |
+| `--bin-dir` | SDK build output directory (scans the MP header of all *.bin files) |
+| `--gen-output-dir` | output directory (default = --bin-dir) |
+| `--gen-verbose` | print the MP header parse info of each file |
 
-> APP 自动发现：若 SDK 目录中存在 `app_*.bin`（符合 MP header 格式），自动集成到 JSON；否则 SKIP，可通过 `-p -A -F` 单独烧录。
+> APP auto-discovery: if `app_*.bin` (in MP header format) exists in the SDK directory, it is integrated into the JSON automatically; otherwise it is SKIPped and can be flashed separately with `-p -A -F`.
 
-## 构建 mpcli.exe
+## Building mpcli.exe
 
 ```bash
 pip install pyinstaller
 pyinstaller mpcli_setup_win.spec
 ```
 
-生成文件在 `dist/mpcli.exe`。
+The generated file is at `dist/mpcli.exe`.

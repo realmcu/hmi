@@ -1,41 +1,41 @@
 #!/usr/bin/env bash
 #
-# flash-runtime-wsl.sh —— 在 WSL2 里驱动 Windows 版 mpcli.exe 烧录随包自带的 runtime 固件。
+# flash-runtime-wsl.sh -- drive the Windows mpcli.exe from WSL2 to flash the bundled runtime firmware.
 #
-# 与 flash-wsl-app.sh 的区别：
-#   - flash-wsl-app.sh 烧的是单个 App 镜像（-p -A 0x7009E000 -F bin/app.bin）。
-#   - 本脚本烧的是整套 runtime（boot patch / upperstack / OTA header /
-#     stack & sys patch / DSP sys+app+cfg / SYSTEM & APP Config，共 11 个镜像），
-#     由 mpcli 的 --flash-runtime 一条命令生成 flash_image.json 后 -a 全刷。
+# Differences from flash-wsl-app.sh:
+#   - flash-wsl-app.sh flashes a single App image (-p -A 0x7009E000 -F bin/app.bin).
+#   - This script flashes the whole runtime (boot patch / upperstack / OTA header /
+#     stack & sys patch / DSP sys+app+cfg / SYSTEM & APP Config, 11 images in total),
+#     using mpcli's --flash-runtime to generate flash_image.json in one command, then -a flash all.
 #
-# runtime 里【不含 APP】（地址表里没有 0x7009E000），完整刷机顺序：
-#   1. scripts/flash-runtime-wsl.sh COM13   # 先烧 runtime
-#   2. scripts/flash-wsl-app.sh COM13        # 再烧 bin/app.bin
+# The runtime does **not include the APP** (0x7009E000 is not in the address table); full flashing order:
+#   1. scripts/flash-runtime-wsl.sh COM13   # flash the runtime first
+#   2. scripts/flash-wsl-app.sh COM13        # then flash bin/app.bin
 #
-# 用法：
-#   scripts/flash-runtime-wsl.sh                  # 默认 COM13
-#   scripts/flash-runtime-wsl.sh COM8             # 指定 COM 口
+# Usage:
+#   scripts/flash-runtime-wsl.sh                  # default COM13
+#   scripts/flash-runtime-wsl.sh COM8             # specify the COM port
 #   PORT=COM8 BAUD=3000000 scripts/flash-runtime-wsl.sh
-#   CHIP=RTL8783G scripts/flash-runtime-wsl.sh    # 换芯片
-#   DRY=1 scripts/flash-runtime-wsl.sh COM8       # 只打印将要执行的命令
+#   CHIP=RTL8783G scripts/flash-runtime-wsl.sh    # switch chip
+#   DRY=1 scripts/flash-runtime-wsl.sh COM8       # only print the command to run
 #
-# 备注：固件目录不需要 wslpath 转换 —— mpcli.exe 用 sys.executable 自己定位 fw/，
-#       会自动解析成 \\wsl.localhost\... UNC 路径。代价是走 UNC 比原生 Linux 慢
-#       （扫描 11 个 bin 约 2.5s vs 0.03s）；嫌慢可把 fw/runtime_system_bin/<CHIP>
-#       拷到 Windows 盘，改用 mpcli.exe --gen-json --bin-dir <该目录> 两步烧。
+# Note: the firmware directory needs no wslpath conversion -- mpcli.exe locates fw/ itself via sys.executable,
+#       resolving it to a \\wsl.localhost\... UNC path. The cost is that UNC is slower than native Linux
+#       (scanning 11 bins takes ~2.5s vs 0.03s); if that is too slow, copy fw/runtime_system_bin/<CHIP>
+#       to a Windows drive and use the two-step flash via mpcli.exe --gen-json --bin-dir <that directory>.
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ---- 可通过位置参数或环境变量覆盖 ----
+# ---- Can be overridden by positional arguments or environment variables ----
 PORT="${1:-${PORT:-COM13}}"
 MPCLI_EXE="${MPCLI_EXE:-$SCRIPT_DIR/tool/mpcli/mpcli.exe}"
-# CHIP 取 tool/mpcli/fw/runtime_system_bin/ 下的目录名：RTL8773G / RTL8783G / RTL87X3EP
+# CHIP is the directory name under tool/mpcli/fw/runtime_system_bin/: RTL8773G / RTL8783G / RTL87X3EP
 CHIP="${CHIP:-RTL8773G}"
 BAUD="${BAUD:-2000000}"
 
-# ---- 检查 ----
+# ---- Checks ----
 [ -f "$MPCLI_EXE" ] || { echo "[flash-runtime] mpcli.exe 不存在: $MPCLI_EXE" >&2; exit 1; }
 [ -d "$(dirname "$MPCLI_EXE")/fw/runtime_system_bin/$CHIP" ] || {
   echo "[flash-runtime] 芯片目录不存在: fw/runtime_system_bin/$CHIP" >&2
@@ -46,13 +46,13 @@ BAUD="${BAUD:-2000000}"
 echo "[flash-runtime] exe  = $MPCLI_EXE"
 echo "[flash-runtime] port = $PORT   chip = $CHIP   baud = $BAUD"
 
-# mpcli.exe(frozen) 用 sys.executable 目录定位 fw/、config/，与 CWD 无关；
-# 这里 cd 到 exe 目录纯粹是和 flash-wsl-app.sh 的行为保持一致。
+# mpcli.exe(frozen) locates fw/ and config/ via the sys.executable directory, independent of CWD;
+# cd-ing to the exe directory here just keeps behavior consistent with flash-wsl-app.sh.
 cd "$(dirname "$MPCLI_EXE")"
 
-# -u -d 必须显式给：mpcli 的 --flash-runtime 只注入 -M 5 -r -b 3000000，
-# 而 SYSTEM_Config 落在受保护的 0x70002000（OEM_CFG 区），少了 -u 写不进去。
-# -T 由 CHIP 自动推导（RTL8773G -> RTL87X3G），不用传。
+# -u -d must be given explicitly: mpcli's --flash-runtime only injects -M 5 -r -b 3000000,
+# but SYSTEM_Config lands in the protected 0x70002000 (OEM_CFG region), and without -u it cannot be written.
+# -T is derived automatically from CHIP (RTL8773G -> RTL87X3G), no need to pass it.
 set -- --flash-runtime "$CHIP" -c "$PORT" -u -d -b "$BAUD"
 
 if [ "${DRY:-0}" = "1" ]; then
