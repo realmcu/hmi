@@ -2,7 +2,7 @@
  * Copyright (c) 2024, Realtek Semiconductor Corporation.
  * SPDX-License-Identifier: Apache-2.0
  *
- * FlashDB instance registry — 详见 flashdb_registry.h。
+ * FlashDB instance registry -- see flashdb_registry.h for details.
  */
 
 #include "flashdb_registry.h"
@@ -17,17 +17,17 @@
 #define PEDO_LAYOUT_VERSION     3u
 #define HEALTH_SYNCED_KEY       "health.synced"
 
-/* 各 db 的就绪标志——单独控制，方便某个 db init 失败时其它仍可用。 */
+/* Per-db ready flags, controlled individually so others remain usable if one db init fails. */
 static bool s_env_kvdb_ready  = false;
 static bool s_pedo_tsdb_ready = false;
 #ifdef FDB_USING_BF
 static bool s_asset_bf_ready  = false;
 #endif
 
-static struct fdb_kvdb s_env_kvdb;    /* "env"   @ kvdb      分区 */
-static struct fdb_tsdb s_pedo_tsdb;   /* "pedo"  @ fdb_tsdb1 分区 */
+static struct fdb_kvdb s_env_kvdb;    /* "env"   @ kvdb      partition */
+static struct fdb_tsdb s_pedo_tsdb;   /* "pedo"  @ fdb_tsdb1 partition */
 #ifdef FDB_USING_BF
-static struct fdb_bf   s_asset_bf;    /* dir 在 env kvdb，data @ bf_data 分区 */
+static struct fdb_bf   s_asset_bf;    /* dir in env kvdb, data @ bf_data partition */
 #endif
 
 /* The pedometer layout marker covers storage format and record timestamp
@@ -86,7 +86,7 @@ static int migrate_pedo_layout(void)
 
 int flashdb_registry_init(void)
 {
-    /* 幂等：全部就绪就直接返回。任一未就绪就走后面的补齐流程。 */
+    /* Idempotent: return directly when all are ready; otherwise run the completion flow below. */
     if (s_env_kvdb_ready && s_pedo_tsdb_ready
 #ifdef FDB_USING_BF
         && s_asset_bf_ready
@@ -96,8 +96,8 @@ int flashdb_registry_init(void)
         return 0;
     }
 
-    /* 1. FAL —— 分区表。fal_init 内部有 s_inited 幂等标志，安全反复调。
-     *    返回值是分区数量，负值表示错误。 */
+    /* 1. FAL -- partition table. fal_init has an internal s_inited idempotency flag, safe to call repeatedly.
+     *    Return value is the partition count; negative indicates an error. */
     int part_cnt = fal_init();
     if (part_cnt <= 0)
     {
@@ -105,7 +105,7 @@ int flashdb_registry_init(void)
         return -1;
     }
 
-    /* 2. KVDB —— "env" 数据库。也是后面 BF 的目录承载者。 */
+    /* 2. KVDB -- the "env" database. It also hosts the BF directory used later. */
     if (!s_env_kvdb_ready)
     {
         fdb_err_t ret = fdb_kvdb_init(&s_env_kvdb, "env", "kvdb", NULL, NULL);
@@ -117,7 +117,7 @@ int flashdb_registry_init(void)
         s_env_kvdb_ready = true;
     }
 
-    /* 3. TSDB —— "pedo" 数据库。每条记录 max 128 字节；get_time 挂 RTC。 */
+    /* 3. TSDB -- the "pedo" database. Each record is max 128 bytes; get_time is hooked to the RTC. */
     if (!s_pedo_tsdb_ready)
     {
         if (migrate_pedo_layout() != 0)
@@ -136,8 +136,8 @@ int flashdb_registry_init(void)
     }
 
 #ifdef FDB_USING_BF
-    /* 4. BF —— "asset" 大文件仓。目录写进 env kvdb（以 "bf/" 为前缀），
-     *    数据落在 bf_data 分区。 */
+    /* 4. BF -- the "asset" big-file store. The directory is written into env kvdb (prefixed with "bf/"),
+     *    and the data lands in the bf_data partition. */
     if (!s_asset_bf_ready)
     {
         fdb_err_t ret = fdb_bf_init(&s_asset_bf, &s_env_kvdb, "bf_data", NULL);

@@ -1,36 +1,36 @@
 /* ================================================================
- * FlashDB TSDB 时间源 —— 墙上时钟秒（1970 纪元）
+ * FlashDB TSDB time source -- wall-clock seconds (1970 epoch)
  *
- * 通过 posix RTC 设备 (/dev/rtc0) 读取当前 wall-clock，转 Unix epoch 秒
- * 返回给 FlashDB TSDB 作时间戳。业务侧的 tsdb 通过 fdb_tsdb_init 时把本
- * 函数指针传入即可 (参见 flashdb_registry.c)。设备不做时区换算。
+ * Reads the current wall-clock through the posix RTC device (/dev/rtc0), converts it to Unix epoch seconds
+ * and returns it to FlashDB TSDB as the timestamp. A business-side tsdb just passes this
+ * function pointer to fdb_tsdb_init (see flashdb_registry.c). The device does no timezone conversion.
  *
- * 设计取舍：
- *   - 只依赖 posix RTC 抽象 —— 不 include <time.h>、不 include zephyr。
- *     日历换算用 Hinnant days_from_civil 闭式公式（10 行代码 vs. mktime
- *     还得处理 TZ/newlib），代码更透明、依赖更少。
- *   - RTC 日历字段就是设备显示时间，按 UTC 日历规则折算为标量；这里的
- *     UTC 规则仅指无时区的日历算法，不表示数据流中存在 UTC 时间。
- *   - 单调补偿放在这里：秒级精度下，一秒内多次 append 会撞同一个 ts，
- *     FDB 内部 cur <= last 会直接拒收；这里做 last+1 让顺序追加成功，
- *     代价是时间戳在高频写入下会"膨胀"到未来（业务侧应控制写入频率）。
- *   - RTC 读失败时返回 s_last_time 让 FDB 稳稳拒收 —— 首上电场景 RTC
- *     已被 rtc_init 用编译时间兜底，正常不会走到这里。
- *   - fdb_cfg.h 启用 FDB_USING_TIMESTAMP_64BIT，避免 uint32_t 墙上时钟秒
- *     在 2038 年后被默认的有符号 32-bit fdb_time_t 解释为负数。
+ * Design trade-offs:
+ *   - Depends only on the posix RTC abstraction -- does not include <time.h> or zephyr.
+ *     Calendar conversion uses Hinnant's closed-form days_from_civil (10 lines vs. mktime,
+ *     which would also need TZ/newlib handling); more transparent, fewer dependencies.
+ *   - The RTC calendar fields are exactly the device display time and are converted to a scalar by
+ *     UTC calendar rules; "UTC rules" here only means a timezone-free calendar algorithm, not that the data stream carries UTC time.
+ *   - Monotonic compensation lives here: at second resolution, multiple appends within one second hit the same ts,
+ *     and FDB internally rejects cur <= last; here we do last+1 so sequential appends succeed at the cost that
+ *     timestamps "inflate" into the future under high write rates (business side should limit write frequency).
+ *   - On RTC read failure, return s_last_time so FDB reliably rejects -- on first power-on the RTC
+ *     has already been backed by rtc_init with build time, so this path is not normally reached.
+ *   - fdb_cfg.h enables FDB_USING_TIMESTAMP_64BIT, avoiding uint32_t wall-clock seconds
+ *     being interpreted as negative after 2038 by the default signed 32-bit fdb_time_t.
  * ================================================================ */
 
 #include "posix.h"
 #include "ioctls/posix_ioctl_rtc.h"
 #include <flashdb.h>
 
-/* /dev/rtc0 lazy-open；持有到进程结束。 */
+/* /dev/rtc0 lazy-open; held until process exit. */
 static posix_fd_t s_rtc_fd    = POSIX_FD_NULL;
 static fdb_time_t s_last_time = 0;
 
 /* posix_rtc_time_t → wall clock seconds (1970 epoch).
- * 使用 Howard Hinnant 的 days_from_civil 算法：把三月视为每年首月，闰日
- * 自然落在年末，公式变纯线性。适用于 year >= 1970。 */
+ * Uses Howard Hinnant's days_from_civil algorithm: March is treated as the first month of the year, so leap days
+ * fall naturally at year end and the formula becomes purely linear. Valid for year >= 1970. */
 static fdb_time_t rtc_time_to_epoch(const posix_rtc_time_t *t)
 {
     if (t->year < 1970 || t->month < 1 || t->month > 12 ||
@@ -62,7 +62,7 @@ fdb_time_t flashdb_get_time(void)
         s_rtc_fd = posix_open("/dev/rtc0");
         if (s_rtc_fd == POSIX_FD_NULL)
         {
-            return s_last_time;   /* 让 fdb_tsl_append 因 cur <= last 拒收 */
+            return s_last_time;   /* make fdb_tsl_append reject due to cur <= last */
         }
     }
 
@@ -80,7 +80,7 @@ fdb_time_t flashdb_get_time(void)
 
     if (now <= s_last_time)
     {
-        now = s_last_time + 1;   /* 秒内多次写入的单调补偿 */
+        now = s_last_time + 1;   /* monotonic compensation for multiple writes within a second */
     }
     s_last_time = now;
     return now;

@@ -32,13 +32,13 @@ int flashdb_test_init(void)
 
 void flashdb_test_boot_count(void)
 {
-    /* boot_count 只是 KV blob 测试里的一个小切片；这里直接转发。 */
+    /* boot_count is just a small slice of the KV blob test; forward it directly here. */
     flashdb_test_kv_blob_boot_count();
 }
 
-/* TSDB 聚合入口：先跑 auto-ts，再跑 with-ts。两者共用同一个 pedo tsdb
- * 实例，last_time 在两次之间单调向前——with-ts 里 base 会看到 auto-ts
- * 留下的值。这是刻意为之：合起来正好演示"回调 → 显式"的语义链。 */
+/* TSDB aggregate entry: run auto-ts first, then with-ts. Both share the same pedo tsdb
+ * instance, and last_time moves monotonically forward between the two -- the with-ts base
+ * sees the value left by auto-ts. This is deliberate: together they demonstrate the "callback -> explicit" semantic chain. */
 void flashdb_test_ts_run(void)
 {
     flashdb_test_ts_auto_run();

@@ -13,8 +13,8 @@
 #include "gui_message.h"
 #include "flashdb.h"
 #include "trace.h"
-/* TODO: app_get_bf() / ui_add_resource() 尚未实现，暂时桩化以便链接通过。
- *       等 app 侧 BF 实例 getter + UI 资源注入接口就绪后，恢复相关调用。 */
+/* TODO: app_get_bf() / ui_add_resource() are not implemented yet; stubbed out for now so linking passes.
+ *       Restore these calls once the app-side BF instance getter and UI resource injection interface are ready. */
 extern bool      fdb_bf_exists(fdb_bf_t db, const char *key);
 
 
@@ -192,8 +192,8 @@ static void on_cmd_xfer(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
                     }
                     else
                     {
-                        /* TODO: 恢复 app_get_bf() / ui_add_resource() 后重新启用
-                         *       资源地址查询与 UI 注入。 */
+                        /* TODO: re-enable resource address lookup and UI injection
+                         *       once app_get_bf() / ui_add_resource() are restored. */
                         res_info[0] = 0;
                         res_info[1] = 0;
                         PROTO_LOG("[bf] commit ok, addr lookup stubbed (name=%s)", name);

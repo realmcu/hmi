@@ -1,280 +1,280 @@
-# 蓝牙smartwatch app 层事件契约
+# Bluetooth smartwatch app-layer event contract
 
-> （规划）为已定义或建议的事件 ID，代码尚未实现。
+> (Planned) for defined or suggested event IDs; the code is not implemented yet.
 
 ## app_time
 
-时钟 / RTC / 校时。
+Clock / RTC / time calibration.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_time | `EVT_TIME_TICK_15MIN` (`0x0302`) | RTC 秒中断，墙钟 :00/:15/:30/:45 触发；payload 为边界时刻墙钟秒 |
-| app_time | `EVT_TIME_DAY_CHANGED` (`0x0303`) | RTC 秒中断，墙钟 00:00:00 触发；午夜先于 15MIN 发布 |
+| app_time | `EVT_TIME_TICK_15MIN` (`0x0302`) | On the RTC second interrupt when the wall clock reaches :00/:15/:30/:45; payload is the boundary wall-clock second |
+| app_time | `EVT_TIME_DAY_CHANGED` (`0x0303`) | On the RTC second interrupt at wall clock 00:00:00; midnight is published before the 15MIN tick |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
 | app_time | — | — | — |
 
 ## app_power
 
-电量与充电状态。
+Battery level and charging state.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_power | `EVT_POWER_LEVEL` (`0x0200`) | 电量百分比变化时发布 |
-| app_power | `EVT_POWER_LOW` (`0x0201`) | 跌破 20% 时发布，边沿触发 |
-| app_power | `EVT_POWER_CHARGING` (`0x0202`) | 充放电状态变化时发布 |
+| app_power | `EVT_POWER_LEVEL` (`0x0200`) | Published when the battery percentage changes |
+| app_power | `EVT_POWER_LOW` (`0x0201`) | Published when it drops below 20%, edge-triggered |
+| app_power | `EVT_POWER_CHARGING` (`0x0202`) | Published when the charging state changes |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
 | app_power | — | — | — |
 
 ## app_setting
 
-设置项的 KV 语义层。
+KV semantic layer for settings.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_setting | `EVT_SETTING_CHANGED` (`0x0400`) | （规划）设置项写入成功后发布，载荷是 key id |
+| app_setting | `EVT_SETTING_CHANGED` (`0x0400`) | (Planned) published after a setting is written successfully; payload is the key id |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
 | app_setting | — | — | — |
 
 ## app_bluetooth
 
-BLE 与 BR/EDR 接入。
+BLE and BR/EDR connectivity.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_bluetooth | `EVT_BLE_CONNECTED` (`0x0100`) | BLE 连接建立后由连接回调发布 |
-| app_bluetooth | `EVT_BLE_DISCONNECTED` (`0x0101`) | BLE 断开时由连接回调发布 |
-| app_bluetooth | `EVT_BLE_CONN_PARAM` (`0x0102`) | 每次连接参数更新都会发布，断开时不发布 |
-| app_bluetooth | `EVT_BLE_PAIRING_REQ` (`0x0103`) | （规划）配对请求时发布，UI 显示配对码 |
+| app_bluetooth | `EVT_BLE_CONNECTED` (`0x0100`) | Published by the connection callback after a BLE connection is established |
+| app_bluetooth | `EVT_BLE_DISCONNECTED` (`0x0101`) | Published by the connection callback when BLE disconnects |
+| app_bluetooth | `EVT_BLE_CONN_PARAM` (`0x0102`) | Published on every connection parameter update, not on disconnect |
+| app_bluetooth | `EVT_BLE_PAIRING_REQ` (`0x0103`) | (Planned) published on a pairing request; the UI shows the pairing code |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
 | app_bluetooth | — | — | — |
 
 ## app_protocol
 
-L2 协议命令处理（hmi_l2）。
+L2 protocol command handling (hmi_l2).
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_protocol | `EVT_TIME_SYNCED` (`0x0300`) | 手机下发 HMI_L2_SET_TIME，`app_time_set()` 写 RTC 成功后发布 |
-| app_protocol | `EVT_USER_BOUND` (`0x0A00`) | 绑定握手成功后发布，无载荷 |
-| app_protocol | `EVT_USER_UNBOUND` (`0x0A01`) | 收到 HMI_L2_UNBIND 后发布，无载荷 |
+| app_protocol | `EVT_TIME_SYNCED` (`0x0300`) | The phone sends HMI_L2_SET_TIME; published after `app_time_set()` writes the RTC successfully |
+| app_protocol | `EVT_USER_BOUND` (`0x0A00`) | Published after the binding handshake succeeds; no payload |
+| app_protocol | `EVT_USER_UNBOUND` (`0x0A01`) | Published after HMI_L2_UNBIND is received; no payload |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
-| app_protocol | `EVT_BLE_CONN_PARAM` (`0x0102`) | `on_ble_conn_param` | 缓存最新连接参数，供 L2 查询应答 |
-| app_protocol | `EVT_BLE_DISCONNECTED` (`0x0101`) | `on_ble_disconnected`（conn_param） | 清空缓存的连接参数 |
-| app_protocol | `EVT_BLE_DISCONNECTED` (`0x0101`) | `on_ble_disconnected`（sport） | 丢弃运动同步会话 |
-| app_protocol | `EVT_BLE_DISCONNECTED` (`0x0101`) | `on_ble_disconnected`（xfer） | 中止文件传输并复位 |
+| app_protocol | `EVT_BLE_CONN_PARAM` (`0x0102`) | `on_ble_conn_param` | Cache the latest connection parameters for L2 query responses |
+| app_protocol | `EVT_BLE_DISCONNECTED` (`0x0101`) | `on_ble_disconnected` (conn_param) | Clear the cached connection parameters |
+| app_protocol | `EVT_BLE_DISCONNECTED` (`0x0101`) | `on_ble_disconnected` (sport) | Discard the sport sync session |
+| app_protocol | `EVT_BLE_DISCONNECTED` (`0x0101`) | `on_ble_disconnected` (xfer) | Abort the file transfer and reset |
 
 ## app_health
 
-计步采集、落库与当日汇总。
+Step collection, persistence, and daily aggregation.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_health | `EVT_HEALTH_STEPS_UPDATED` (`0x0500`) | 当日健康汇总变化时发布，最多 1 Hz；启动、归零和 TSDB 落库时也会发布 |
-| app_health | `EVT_HEALTH_HR_UPDATED` (`0x0501`) | （规划）心率测量更新时发布 |
-| app_health | `EVT_HEALTH_SPO2_UPDATED` (`0x0502`) | （规划）血氧测量更新时发布 |
-| app_health | `EVT_HEALTH_SLEEP_UPDATED` (`0x0503`) | （规划）睡眠数据更新时发布 |
-| app_health | `EVT_HEALTH_BP_UPDATED` (`0x0504`) | （规划）血压测量更新时发布 |
-| app_health | `EVT_HEALTH_STRESS_UPDATED` (`0x0505`) | （规划）压力测量更新时发布 |
+| app_health | `EVT_HEALTH_STEPS_UPDATED` (`0x0500`) | Published when the daily health summary changes, at most 1 Hz; also published on start, reset, and TSDB persistence |
+| app_health | `EVT_HEALTH_HR_UPDATED` (`0x0501`) | (Planned) published on heart-rate measurement updates |
+| app_health | `EVT_HEALTH_SPO2_UPDATED` (`0x0502`) | (Planned) published on SpO2 measurement updates |
+| app_health | `EVT_HEALTH_SLEEP_UPDATED` (`0x0503`) | (Planned) published on sleep data updates |
+| app_health | `EVT_HEALTH_BP_UPDATED` (`0x0504`) | (Planned) published on blood-pressure measurement updates |
+| app_health | `EVT_HEALTH_STRESS_UPDATED` (`0x0505`) | (Planned) published on stress measurement updates |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
-| app_health | `EVT_TIME_SYNCED` (`0x0300`) | `on_evt_time_synced` | 记录校时完成，尝试启动 worker |
-| app_health | `EVT_USER_BOUND` (`0x0A00`) | `on_evt_user_bound` | 记录已绑定，尝试启动 worker |
-| app_health | `EVT_USER_UNBOUND` (`0x0A01`) | `on_evt_user_unbound` | 停止 worker，清空当日数据 |
-| app_health | `EVT_POWER_LOW` (`0x0201`) | `on_evt_power_low` | 先 flush 再停止 worker |
-| app_health | `EVT_TIME_TICK_15MIN` (`0x0302`) | `on_evt_time_tick_15min` | 按 payload 的边界时间推进 15 分钟桶 |
-| app_health | `EVT_TIME_DAY_CHANGED` (`0x0303`) | `on_evt_time_day_changed` | 清零当日累计 |
+| app_health | `EVT_TIME_SYNCED` (`0x0300`) | `on_evt_time_synced` | Record that time calibration completed and try to start the worker |
+| app_health | `EVT_USER_BOUND` (`0x0A00`) | `on_evt_user_bound` | Record that binding completed and try to start the worker |
+| app_health | `EVT_USER_UNBOUND` (`0x0A01`) | `on_evt_user_unbound` | Stop the worker and clear the day's data |
+| app_health | `EVT_POWER_LOW` (`0x0201`) | `on_evt_power_low` | Flush first, then stop the worker |
+| app_health | `EVT_TIME_TICK_15MIN` (`0x0302`) | `on_evt_time_tick_15min` | Advance the 15-minute bucket using the boundary time in the payload |
+| app_health | `EVT_TIME_DAY_CHANGED` (`0x0303`) | `on_evt_time_day_changed` | Zero the day's cumulative total |
 
 ## app_media
 
-A2DP / AVRCP 媒体控制。
+A2DP / AVRCP media control.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_media | `EVT_MEDIA_STATE_CHANGED` (`0x0600`) | AVRCP 播放状态变化时发布，载荷为 `uint8_t` 状态 |
-| app_media | `EVT_MEDIA_METADATA` (`0x0601`) | AVRCP 曲目信息变化时发布，无载荷，消费方通过 getter 读取 |
-| app_media | `EVT_MEDIA_VOLUME_CHANGED` (`0x0602`) | AVRCP 绝对音量变化时发布，载荷为百分比 |
+| app_media | `EVT_MEDIA_STATE_CHANGED` (`0x0600`) | Published when the AVRCP playback state changes; payload is the `uint8_t` state |
+| app_media | `EVT_MEDIA_METADATA` (`0x0601`) | Published when AVRCP track info changes; no payload, consumers read it through the getter |
+| app_media | `EVT_MEDIA_VOLUME_CHANGED` (`0x0602`) | Published when the AVRCP absolute volume changes; payload is a percentage |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
 | app_media | — | — | — |
 
 ## app_notify
 
-通知缓存与分发。
+Notification caching and dispatch.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_notify | `EVT_NOTIFY_NEW` (`0x0800`) | （规划）收到新通知时发布，载荷为通知 id |
-| app_notify | `EVT_NOTIFY_REMOVED` (`0x0801`) | （规划）单条通知被撤销时发布 |
-| app_notify | `EVT_NOTIFY_CLEARED` (`0x0802`) | （规划）清空全部通知时发布 |
+| app_notify | `EVT_NOTIFY_NEW` (`0x0800`) | (Planned) published when a new notification arrives; payload is the notification id |
+| app_notify | `EVT_NOTIFY_REMOVED` (`0x0801`) | (Planned) published when a single notification is withdrawn |
+| app_notify | `EVT_NOTIFY_CLEARED` (`0x0802`) | (Planned) published when all notifications are cleared |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
 | app_notify | — | — | — |
 
 ## app_ota
 
-BLE DFU / OTA 服务。
+BLE DFU / OTA service.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
 | app_ota | — | — |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
 | app_ota | — | — | — |
 
 ## app_phone
 
-通话状态。
+Call state.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_phone | `EVT_PHONE_STATE_CHANGED` (`0x0700`) | HFP 来电、拨出、接通、挂断等状态变化时发布 |
-| app_phone | `EVT_PHONE_RING` (`0x0701`) | 每通新来电发布一次，无载荷 |
-| app_phone | `EVT_PHONE_NUMBER_CHANGED` (`0x0702`) | 来电号码或拨号号码变化时发布，无载荷 |
-| app_phone | `EVT_PHONE_MUTED_CHANGED` (`0x0703`) | 麦克风静音状态变化时发布，载荷为 `bool` |
-| app_phone | `EVT_PHONE_ROUTE_CHANGED` (`0x0704`) | 通话音频路由变化时发布，载荷为 `bool`，`true` 表示本地设备 |
+| app_phone | `EVT_PHONE_STATE_CHANGED` (`0x0700`) | Published when HFP state changes such as incoming, outgoing, answered, or hung up |
+| app_phone | `EVT_PHONE_RING` (`0x0701`) | Published once per new incoming call; no payload |
+| app_phone | `EVT_PHONE_NUMBER_CHANGED` (`0x0702`) | Published when the incoming or dialed number changes; no payload |
+| app_phone | `EVT_PHONE_MUTED_CHANGED` (`0x0703`) | Published when the microphone mute state changes; payload is a `bool` |
+| app_phone | `EVT_PHONE_ROUTE_CHANGED` (`0x0704`) | Published when the call audio route changes; payload is a `bool`, `true` meaning the local device |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
 | app_phone | — | — | — |
 
 ## app_display
 
-屏幕亮灭、AOD 与亮度。
+Display on/off, AOD, and brightness.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_display | `EVT_DISPLAY_SLEEP` (`0x0B00`) | （规划）超时或手动息屏时发布 |
-| app_display | `EVT_DISPLAY_WAKE` (`0x0B01`) | （规划）按键、触摸或抬腕亮屏时发布 |
-| app_display | `EVT_DISPLAY_AOD` (`0x0B02`) | （规划）进入或退出 AOD 时发布 |
-| app_display | `EVT_DISPLAY_BRIGHTNESS` (`0x0B03`) | （规划）亮度调整后发布，载荷为百分比 |
+| app_display | `EVT_DISPLAY_SLEEP` (`0x0B00`) | (Planned) published on timeout or manual screen-off |
+| app_display | `EVT_DISPLAY_WAKE` (`0x0B01`) | (Planned) published when the screen wakes on a key press, touch, or wrist raise |
+| app_display | `EVT_DISPLAY_AOD` (`0x0B02`) | (Planned) published when entering or leaving AOD |
+| app_display | `EVT_DISPLAY_BRIGHTNESS` (`0x0B03`) | (Planned) published after a brightness adjustment; payload is a percentage |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
 | app_display | — | — | — |
 
 ## app_alarm
 
-闹钟、倒计时与整点报时。
+Alarms, countdown timers, and hourly chimes.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_alarm | `EVT_ALARM_FIRED` (`0x0C00`) | （规划）闹钟到点时发布 |
-| app_alarm | `EVT_TIMER_DONE` (`0x0C01`) | （规划）倒计时结束时发布 |
-| app_alarm | `EVT_CHIME` (`0x0C02`) | （规划）整点报时触发时发布 |
+| app_alarm | `EVT_ALARM_FIRED` (`0x0C00`) | (Planned) published when an alarm fires |
+| app_alarm | `EVT_TIMER_DONE` (`0x0C01`) | (Planned) published when a countdown ends |
+| app_alarm | `EVT_CHIME` (`0x0C02`) | (Planned) published when the hourly chime triggers |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
 | app_alarm | — | — | — |
 
 ## app_motion
 
-手势与抬腕识别。
+Gesture and wrist-raise detection.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_motion | `EVT_MOTION_GESTURE` (`0x0D00`) | （规划）识别到翻转、摇动等手势时发布 |
-| app_motion | `EVT_MOTION_WRIST_RAISE` (`0x0D01`) | （规划）抬腕唤醒时发布 |
+| app_motion | `EVT_MOTION_GESTURE` (`0x0D00`) | (Planned) published when gestures such as flip or shake are detected |
+| app_motion | `EVT_MOTION_WRIST_RAISE` (`0x0D01`) | (Planned) published on wrist-raise wake-up |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
 | app_motion | — | — | — |
 
 ## app_workout
 
-运动记录与实时数据。
+Workout records and real-time data.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_workout | `EVT_WORKOUT_STATE_CHANGED` (`0x0E00`) | （规划）运动开始、暂停、继续、结束时发布 |
-| app_workout | `EVT_WORKOUT_DATA_UPDATED` (`0x0E01`) | （规划）运动中的实时数据更新时发布 |
-| app_workout | `EVT_WORKOUT_GOAL_REACHED` (`0x0E02`) | （规划）达到目标时发布 |
+| app_workout | `EVT_WORKOUT_STATE_CHANGED` (`0x0E00`) | (Planned) published when a workout starts, pauses, resumes, or ends |
+| app_workout | `EVT_WORKOUT_DATA_UPDATED` (`0x0E01`) | (Planned) published when real-time workout data updates |
+| app_workout | `EVT_WORKOUT_GOAL_REACHED` (`0x0E02`) | (Planned) published when a goal is reached |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
 | app_workout | — | — | — |
 
 ## app_weather
 
-天气信息。
+Weather information.
 
-### 发布
+### Publish
 
-| 模块 | 发布事件 | 发布时机 |
+| Module | Published event | Publish timing |
 | --- | --- | --- |
-| app_weather | `EVT_WEATHER_UPDATED` (`0x0F00`) | （规划）手机推送天气后发布 |
+| app_weather | `EVT_WEATHER_UPDATED` (`0x0F00`) | (Planned) published after the phone pushes weather data |
 
-### 订阅
+### Subscribe
 
-| 模块 | 订阅事件 | 回调 | 作用 |
+| Module | Subscribed event | Callback | Purpose |
 | --- | --- | --- | --- |
 | app_weather | — | — | — |

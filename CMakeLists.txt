@@ -3,20 +3,20 @@
 cmake_minimum_required(VERSION 3.20.0)
 
 # ============================================================
-# HMI 应用位置无关锚点
-#   HMI_APP_ROOT       — 本应用根目录（hmi repo checkout 位置）
-#   HMI_COMPONENT_ROOT — 应用组件挂载点：posix / FlashDB / protocol / gsensor-algorithm
-#                        这些 west project 直接挂在 west topdir（仓库根），与应用根目录
-#                        applications/ 平级，因此等于 HMI_APP_ROOT 的上一级。
-#   REALTEK_APP_ROOT   — realtek-app SDK 根目录
+# Location-independent anchors for the HMI application
+#   HMI_APP_ROOT       -- this application's root directory (hmi repo checkout location)
+#   HMI_COMPONENT_ROOT -- application component mount point: posix / FlashDB / protocol / gsensor-algorithm
+#                        these west projects are mounted directly at the west topdir (repo root), alongside the application root's
+#                        applications/, so this equals the parent of HMI_APP_ROOT.
+#   REALTEK_APP_ROOT   -- realtek-app SDK root directory
 #
-# REALTEK_APP_ROOT 必须在 find_package(Zephyr) 之前可用（version_generate /
-# post_build 依赖它），因此不能用 Zephyr module 系统的 ZEPHYR_<name>_MODULE_DIR
-# 变量（那些要 find_package 之后才注入）。此处用 $ENV{ZEPHYR_BASE} 派生 ——
-# west 在调用 CMake 前保证 ZEPHYR_BASE 已设置为 zephyrproject/zephyr，
-# realtek-app 作为 SDK 一部分固定在 zephyrproject/realtek-app，
-# 因此 $ENV{ZEPHYR_BASE}/../realtek-app 是稳定路径。
-# 所有跨 hmi 边界的引用都必须通过这三个变量，禁止 ../../ 相对路径。
+# REALTEK_APP_ROOT must be available before find_package(Zephyr) (version_generate /
+# post_build depend on it), so the Zephyr module system's ZEPHYR_<name>_MODULE_DIR
+# variables cannot be used (those are only injected after find_package). Here we derive it from $ENV{ZEPHYR_BASE} --
+# west guarantees ZEPHYR_BASE is set to zephyrproject/zephyr before invoking CMake, and
+# realtek-app is fixed at zephyrproject/realtek-app as part of the SDK,
+# so $ENV{ZEPHYR_BASE}/../realtek-app is a stable path.
+# All references across the hmi boundary must go through these three variables; ../../ relative paths are forbidden.
 # ============================================================
 set(HMI_APP_ROOT       ${CMAKE_CURRENT_SOURCE_DIR})
 get_filename_component(HMI_COMPONENT_ROOT ${HMI_APP_ROOT} DIRECTORY)
@@ -32,9 +32,9 @@ include(${REALTEK_APP_ROOT}/cmake/post_build.cmake)
 rtk_post_build()
 #===========post build===========
 
-# FlashDB 以 West project 方式引入，其 module.yml 声明了 kconfig-ext: True，
-# Zephyr 会自动生成 osource "$(ZEPHYR_FLASHDB_KCONFIG)"。
-# 此处将该变量指向应用工程内的空 Kconfig，避免构建报错。
+# FlashDB is pulled in as a West project, and its module.yml declares kconfig-ext: True,
+# so Zephyr automatically generates osource "$(ZEPHYR_FLASHDB_KCONFIG)".
+# Here that variable points at an empty Kconfig inside the application project to avoid a build error.
 set(ZEPHYR_FLASHDB_KCONFIG ${CMAKE_CURRENT_SOURCE_DIR}/port/flashdb/Kconfig)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
@@ -62,9 +62,9 @@ zephyr_compile_options(
 
 set(APP_TARGET_NAME app)
 
-# 组件已从 applications/ 移到 west topdir，不再被下面的 SUBDIRS glob 扫到，
-# 这里显式挂载自带 CMakeLists.txt 的组件。
-# FlashDB / posix 无需在此处理 —— 它们由 port/flashdb、port/posix 显式引用源码。
+# Components moved from applications/ to the west topdir and are no longer picked up by the SUBDIRS glob below,
+# so components that ship their own CMakeLists.txt are mounted explicitly here.
+# FlashDB / posix need no handling here -- port/flashdb and port/posix reference their sources explicitly.
 add_subdirectory(${HMI_COMPONENT_ROOT}/protocol   ${CMAKE_CURRENT_BINARY_DIR}/component/protocol)
 set(GSENSOR_ALGORITHM_ROOT ${HMI_COMPONENT_ROOT}/gsensor-algorithm)
 file(GLOB GSENSOR_ALGORITHM_SOURCES ${GSENSOR_ALGORITHM_ROOT}/src/*.c)
@@ -87,8 +87,8 @@ if(EXISTS ${GSENSOR_SD001_SAMPLE_DIR}/sample_25hz_sd001.c)
         ${GSENSOR_SD001_SAMPLE_DIR})
 endif()
 
-# HoneyGUI Designer 导出的产品 UI（west project watch_ui，同样挂在 topdir）。
-# 不拷贝生成产物进固件树，直接以 ui/ 为源目录编译，避免几百个生成文件的副本。
+# Product UI exported by HoneyGUI Designer (west project watch_ui, also mounted at the topdir).
+# Generated artifacts are not copied into the firmware tree; ui/ is used directly as the source dir to avoid hundreds of generated copies.
 add_subdirectory(${HMI_COMPONENT_ROOT}/ui ${CMAKE_CURRENT_BINARY_DIR}/watch_ui)
 
 if(1) #set to 1 to enable or variable to for depnedency

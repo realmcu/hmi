@@ -4,12 +4,12 @@
  *
  * FlashDB KVDB — string API test (fdb_kv_set / fdb_kv_get).
  *
- * "string" 场景演示：NUL 结尾字符串。写入时 FDB 用 strlen+1 计长，读出
- * 返回内部指针，caller 直接 printf 即可。适合 device_name / wifi_ssid /
- * language 这种"配置文本"。
+ * "string" scenario demo: NUL-terminated strings. On write, FDB measures with strlen+1; reads
+ * return an internal pointer the caller can printf directly. Suitable for "config text"
+ * such as device_name / wifi_ssid / language.
  *
- * 注意 fdb_kv_get 返回的是内部指针，指向 flash 或缓存——不要 free，也
- * 不保证跨 db 操作后仍然有效。要长期保留请自己拷贝。
+ * Note fdb_kv_get returns an internal pointer into flash or cache -- do not free it, and it is
+ * not guaranteed to stay valid across db operations. Copy it yourself if you need to keep it.
  */
 
 #include <string.h>
@@ -21,7 +21,7 @@
 #define LOGI(fmt, ...)  FDB_PRINT(LOG_TAG " " fmt "\n", ##__VA_ARGS__)
 #define LOGE(fmt, ...)  FDB_PRINT(LOG_TAG " [ERR] " fmt "\n", ##__VA_ARGS__)
 
-/* 一组"配置文本"式 key，覆盖典型使用面。 */
+/* A set of "config text" style keys covering typical usage. */
 static const struct
 {
     const char *key;

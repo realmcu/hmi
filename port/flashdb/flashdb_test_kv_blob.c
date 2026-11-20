@@ -4,8 +4,8 @@
  *
  * FlashDB KVDB — blob API test (fdb_kv_set_blob / fdb_kv_get_blob).
  *
- * "blob" 场景演示：任意二进制 value（整数、结构体），长度由 caller 显式给。
- * 与 kv_string 的区别：不假设 NUL 结尾、value 可含任意字节。
+ * "blob" scenario demo: arbitrary binary value (int, struct), length given explicitly by the caller.
+ * Difference from kv_string: no NUL terminator assumed, and the value may contain any bytes.
  */
 
 #include <string.h>
@@ -17,15 +17,15 @@
 #define LOGI(fmt, ...)  FDB_PRINT(LOG_TAG " " fmt "\n", ##__VA_ARGS__)
 #define LOGE(fmt, ...)  FDB_PRINT(LOG_TAG " [ERR] " fmt "\n", ##__VA_ARGS__)
 
-/* 演示用的业务结构体（含两个 int）。18/24 字节都行，关键是"非字符串"。 */
+/* Business struct used for the demo (two ints). 18/24 bytes both work; the point is "not a string". */
 typedef struct
 {
-    int temperature;  /* 0.1°C 单位；253 = 25.3°C */
-    int humidity;     /* 0.1%  单位；601 = 60.1% */
+    int temperature;  /* unit 0.1 degree C; 253 = 25.3 C */
+    int humidity;     /* unit 0.1%; 601 = 60.1% */
 } sensor_data_t;
 
 /* ------------------------------------------------------------------ */
-/* Subtest 1: integer KV (boot_count) — 每次调用递增 1 并写回          */
+/* Subtest 1: integer KV (boot_count) -- increment by 1 and write back per call */
 /* ------------------------------------------------------------------ */
 static void run_boot_count(fdb_kvdb_t kvdb)
 {
