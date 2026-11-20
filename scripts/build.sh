@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# build.sh —— 调用 west build 编译 RTL87X3G 应用。
+# build.sh -- invoke west build to build the RTL87X3G application.
 #
-# 对齐 .vscode/tasks.json：
-#   - 普通增量编译：west build -b rtl87x3g_evb
-#   - 强制全量重编：west build -b rtl87x3g_evb -p
+# Mirrors .vscode/tasks.json:
+#   - Normal incremental build: west build -b rtl87x3g_evb
+#   - Forced full rebuild: west build -b rtl87x3g_evb -p
 #
-# 用法：
-#   scripts/build.sh           # 增量编译（默认）
-#   scripts/build.sh -p        # 全量重编（pristine）
+# Usage:
+#   scripts/build.sh           # incremental build (default)
+#   scripts/build.sh -p        # full rebuild (pristine)
 #   BOARD=rtl87x3g_evb scripts/build.sh
-#   DRY=1 scripts/build.sh     # 只打印将要执行的命令，不真正编译
+#   DRY=1 scripts/build.sh     # only print the commands to run, without building
 #
 set -euo pipefail
 
@@ -19,7 +19,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BOARD="${BOARD:-rtl87x3g_evb}"
 PRISTINE=""
 
-# 解析参数：-p 或 --pristine 触发全量重编
+# Parse args: -p or --pristine triggers a full rebuild
 for arg in "$@"; do
   case "$arg" in
     -p|--pristine) PRISTINE="-p" ;;
