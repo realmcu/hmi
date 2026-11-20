@@ -1,9 +1,9 @@
 /* ================================================================
- * UART 驱动 — 基于 Zephyr UART API 的 posix-device 适配层
+ * UART driver — a posix-device adaptation layer on top of the Zephyr UART API
  *
- * 路径格式: /dev/uart0  → uart0 节点
+ * Path format: /dev/uart0  → uart0 node
  *
- * 依赖：DTS 中 uart0 节点已 enabled，且 CONFIG_UART_INTERRUPT_DRIVEN=y。
+ * Dependency: the uart0 node is enabled in the DTS, and CONFIG_UART_INTERRUPT_DRIVEN=y.
  * ================================================================ */
 
 #include "posix.h"
@@ -14,13 +14,13 @@
 #include <zephyr/drivers/uart.h>
 #include <string.h>
 
-/* ---------- 驱动私有数据（每个 posix 设备一份） ---------- */
+/* ---------- Driver private data (one per posix device) ---------- */
 typedef struct
 {
     const struct device *dev;   /* Zephyr UART device */
 } uart_drv_data_t;
 
-/* ---------- per-open 文件私有数据 ---------- */
+/* ---------- per-open file private data ---------- */
 typedef struct
 {
     bool                in_use;
@@ -30,7 +30,7 @@ typedef struct
     posix_uart_rx_cb_t  rx_cb;
 } uart_file_t;
 
-/* ---------- 静态文件池 ---------- */
+/* ---------- Static file pool ---------- */
 #define MAX_UART_FILES  4
 static uart_file_t s_uart_files[MAX_UART_FILES];
 
@@ -73,7 +73,7 @@ static void *uart_open(void *drv_data, const char *path)
     if (!f) { return POSIX_OPEN_ERR; }
 
     f->drv              = d;
-    f->fd               = POSIX_FD_NULL;   /* 由 posix 层在 open 返回后填入 */
+    f->fd               = POSIX_FD_NULL;   /* filled in by the posix layer after open returns */
     f->cfg.baudrate     = 115200;
     f->cfg.data_bits    = 8;
     f->cfg.parity       = 0;
@@ -90,7 +90,7 @@ static int uart_close(void *drv_data, void *file_priv)
     uart_file_t *f = (uart_file_t *)file_priv;
     if (!f || !f->in_use) { return POSIX_OK; }
 
-    /* 如果注册了 RX 中断回调，先禁用 */
+    /* If an RX interrupt callback was registered, disable it first */
     if (f->rx_cb.callback)
     {
         uart_irq_rx_disable(f->drv->dev);
@@ -99,7 +99,7 @@ static int uart_close(void *drv_data, void *file_priv)
     return POSIX_OK;
 }
 
-/* ---------- read：非阻塞轮询读 ---------- */
+/* ---------- read: non-blocking polled read ---------- */
 static posix_ssize_t uart_read(void *drv_data, void *file_priv,
                                void *buf, size_t count)
 {
@@ -115,7 +115,7 @@ static posix_ssize_t uart_read(void *drv_data, void *file_priv,
         int ret = uart_poll_in(f->drv->dev, &ch);
         if (ret < 0)
         {
-            break;   /* 无数据 */
+            break;   /* no data */
         }
         dst[got++] = ch;
     }
@@ -124,7 +124,7 @@ static posix_ssize_t uart_read(void *drv_data, void *file_priv,
     return (posix_ssize_t)got;
 }
 
-/* ---------- write：轮询发送 ---------- */
+/* ---------- write: polled transmit ---------- */
 static posix_ssize_t uart_write(void *drv_data, void *file_priv,
                                 const void *buf, size_t count)
 {
@@ -164,7 +164,7 @@ static int uart_ioctl(void *drv_data, void *file_priv,
 
             const posix_uart_config_t *cfg = (const posix_uart_config_t *)arg;
 
-            /* 映射到 Zephyr uart_config */
+            /* Map to Zephyr uart_config */
             struct uart_config zcfg;
             zcfg.baudrate = cfg->baudrate;
 
@@ -198,7 +198,7 @@ static int uart_ioctl(void *drv_data, void *file_priv,
             int ret = uart_configure(f->drv->dev, &zcfg);
             if (ret < 0)
             {
-                /* 驱动不支持运行时配置时，仅保存软件副本 */
+                /* If the driver does not support runtime config, just keep a software copy */
                 f->cfg = *cfg;
                 return POSIX_OK;
             }
@@ -210,7 +210,7 @@ static int uart_ioctl(void *drv_data, void *file_priv,
         {
             if (posix_port_in_isr()) { return POSIX_ERR_ISR; }
 
-            /* 先禁用旧回调 */
+            /* Disable the old callback first */
             if (f->rx_cb.callback)
             {
                 uart_irq_rx_disable(f->drv->dev);
@@ -235,13 +235,13 @@ static int uart_ioctl(void *drv_data, void *file_priv,
         }
 
     case POSIX_UART_IOCTL_TX_FLUSH:
-        /* Zephyr 无专用 TX flush API，直接返回 */
+        /* Zephyr has no dedicated TX flush API; return directly */
         return POSIX_OK;
 
     case POSIX_UART_IOCTL_RX_FLUSH:
         {
             unsigned char ch;
-            while (uart_poll_in(f->drv->dev, &ch) == 0) { /* 排空 */ }
+            while (uart_poll_in(f->drv->dev, &ch) == 0) { /* drain */ }
             return POSIX_OK;
         }
 
@@ -250,7 +250,7 @@ static int uart_ioctl(void *drv_data, void *file_priv,
     }
 }
 
-/* ---------- 驱动函数表 ---------- */
+/* ---------- Driver ops table ---------- */
 static const posix_driver_ops_t g_uart_ops =
 {
     .open  = uart_open,
@@ -260,15 +260,15 @@ static const posix_driver_ops_t g_uart_ops =
     .ioctl = uart_ioctl,
 };
 
-/* ---------- 设备实例 ----------
- * uart2 = console/shell uart，已在 overlay enabled。
- * uart0 disabled，不注册。
- * posix 路径 /dev/uart0 映射到硬件 uart2（应用无感知）。
+/* ---------- Device instance ----------
+ * uart2 = console/shell uart, already enabled in the overlay.
+ * uart0 is disabled and not registered.
+ * The posix path /dev/uart0 maps to hardware uart2 (transparent to the app).
  * ---------------------------------------------------- */
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(uart2), okay)
 static uart_drv_data_t s_uart0 = { .dev = DEVICE_DT_GET(DT_NODELABEL(uart2)) };
 
-/* ---------- 自动注册 ---------- */
+/* ---------- Auto-registration ---------- */
 static int uart_init(void)
 {
     return posix_device_register("/dev/uart0", &g_uart_ops, &s_uart0);

@@ -5,41 +5,41 @@
 #include "posix_ioctl.h"
 
 /* ================================================================
- * 核心驱动接口 + 设备注册/查找
+ * Core driver interface + device registration/lookup
  *
- * 这是整个抽象层的核心，由三部分组成：
+ * This is the core of the whole abstraction layer, made of three parts:
  *
- * 1. posix_driver_ops_t — 驱动虚函数表（5 个方法）
- *    open 回调返回此 fd 的私有数据，存入 fd->file_priv
- *    后续 read/write/ioctl/close 通过 file_priv 访问
+ * 1. posix_driver_ops_t - driver vtable (5 methods)
+ *    the open callback returns this fd's private data, stored in fd->file_priv
+ *    later read/write/ioctl/close access it through file_priv
  *
- * 2. posix_device_register() — 驱动注册到框架
+ * 2. posix_device_register() - register a driver with the framework
  *
- * 3. posix_open/close/read/write/ioctl — 用户看到的 API
- *    5 个函数通吃所有外设
+ * 3. posix_open/close/read/write/ioctl - the API users see
+ *    5 functions cover all peripherals
  *
- * === 线程安全策略 ===
- *   - posix_open/close/read/write/ioctl 在框架锁内完成
- *     “句柄校验 + 设备查找 + 取 ops/file_priv 快照”，
- *     随后【释放锁】再执行驱动 ops 回调。
- *     因此驱动 ops 可以安全阻塞/睡眠，不会因持有全局锁而
- *     串行化其它设备或导致全系统假死。
- *   - 一个已 open 的 fd 会令对应设备的 ref_count > 0，
- *     从而阻止该设备被 unregister，保证锁外执行 ops 期间
- *     设备表项不会被销毁。
- *   - posix_*_isr 版本跳过框架锁（互斥量在 ISR 不可用），
- *     专用于中断上下文；只做句柄有效性校验后直调 ops。
- *   - 默认锁为空操作（单线程/裸机），
- *     多线程 RTOS 需实现 posix_lock/unlock。
+ * === Thread-safety strategy ===
+ *   - posix_open/close/read/write/ioctl complete inside the framework lock:
+ *     "handle validation + device lookup + snapshot of ops/file_priv",
+ *     then [release the lock] and invoke the driver ops callbacks.
+ *     So driver ops may safely block/sleep and will not serialize other
+ *     devices or stall the whole system by holding a global lock.
+ *   - An open fd makes the device's ref_count > 0,
+ *     which prevents the device from being unregistered and guarantees
+ *     the device table entry is not destroyed while ops run outside the lock.
+ *   - The posix_*_isr variants skip the framework lock (mutexes are unusable in ISRs),
+ *     are for interrupt context only, and call ops directly after a handle validity check.
+ *   - The default lock is a no-op (single-threaded/bare-metal);
+ *     multi-threaded RTOSes must implement posix_lock/unlock.
  *
- * 添加新设备类型 = 4 步：
- *   1. 定义 magic（底部区域）
- *   2. 写 ioctl cmd 头文件
- *   3. 实现 posix_driver_ops_t 的 5 个函数
- *   4. 调 posix_device_register() 注册
+ * Adding a new device type = 4 steps:
+ *   1. Define the magic (bottom section)
+ *   2. Write the ioctl cmd header
+ *   3. Implement the 5 posix_driver_ops_t functions
+ *   4. Call posix_device_register() to register
  * ================================================================ */
 
-/* ---------- 设备类型 magic（每个设备类型唯一） ---------- */
+/* ---------- Device type magic (unique per device type) ---------- */
 #define POSIX_DEVICE_MAGIC_UART    0x01
 #define POSIX_DEVICE_MAGIC_SPI     0x02
 #define POSIX_DEVICE_MAGIC_GPIO    0x03
@@ -54,26 +54,26 @@
 #define POSIX_DEVICE_MAGIC_RTC     0x0C
 #define POSIX_DEVICE_MAGIC_MOTOR   0x0D
 #define POSIX_DEVICE_MAGIC_HRM     0x0E
-/* 0x0D~0xEF 保留给将来设备类型 */
-/* 0xF0~0xFF 保留给用户自定义设备 */
+/* 0x0D~0xEF reserved for future device types */
+/* 0xF0~0xFF reserved for user-defined devices */
 
-/* ---------- 驱动虚函数表 ---------- */
+/* ---------- Driver vtable ---------- */
 /*
- * open 回调：
- *   入参 drv_data = posix_device_register 传入的 priv
- *   入参 path     = posix_open 的完整路径（支持挂载点子路径，
- *                   例如注册 "/dev/gpio0" 时 open "/dev/gpio0/p12"
- *                   会把完整 path 传进来，由驱动解析剩余部分）
- *   返回值 file_priv 会保存在 fd 中，后续所有回调都能拿到。
- *   - 无 per-open 状态时可返回 drv_data 本身，或返回 NULL
- *   - 失败时必须返回 POSIX_OPEN_ERR（见 posix_types.h），
- *     框架会据此回滚并让 posix_open 返回 POSIX_FD_NULL
+ * open callback:
+ *   in drv_data = the priv passed to posix_device_register
+ *   in path     = full path from posix_open (supports mount-point subpaths,
+ *                 e.g. registering "/dev/gpio0" then open "/dev/gpio0/p12"
+ *                 passes the full path in, and the driver parses the remainder)
+ *   return file_priv is saved in the fd and passed to all later callbacks.
+ *   - with no per-open state it may return drv_data itself, or return NULL
+ *   - on failure it must return POSIX_OPEN_ERR (see posix_types.h),
+ *     and the framework rolls back and makes posix_open return POSIX_FD_NULL
  *
- * close/read/write/ioctl：
- *   入参 drv_data = posix_device_register 传入的 priv
- *   入参 file_priv = open 回调的返回值
+ * close/read/write/ioctl:
+ *   in drv_data = the priv passed to posix_device_register
+ *   in file_priv = the return value of the open callback
  *
- * read/write 返回 posix_ssize_t：>=0 为传输字节数，<0 为错误码。
+ * read/write return posix_ssize_t: >=0 is bytes transferred, <0 is an error code.
  */
 typedef struct posix_driver_ops
 {
@@ -87,7 +87,7 @@ typedef struct posix_driver_ops
                  unsigned long cmd, void *arg);
 } posix_driver_ops_t;
 
-/* ---------- 驱动注册 API ---------- */
+/* ---------- Driver registration API ---------- */
 int posix_device_register(const char *path,
                           const posix_driver_ops_t *ops,
                           void *priv);
@@ -98,35 +98,35 @@ int posix_device_register_group(const char *fmt, int count,
 
 int posix_device_unregister(const char *path);
 
-/* 查询已注册设备的 ops / drv_data；用于按路径起“别名”注册。
- * 返回 POSIX_OK 并填 *ops_out / *drv_out；未找到返回 POSIX_ERR_NODEV。
- * 注意：调用后就地 posix_device_register(alias, ops, drv) 会得到一个
- * 与源路径共享 ops+drv_data 的别名 entry。ref_count 按 entry 独立计，
- * 使用别名与源路径同时 open 时，unregister 需要各自 close 后进行。
+/* Look up ops / drv_data of a registered device; used to register an "alias" by path.
+ * Returns POSIX_OK and fills *ops_out / *drv_out; returns POSIX_ERR_NODEV if not found.
+ * Note: a subsequent posix_device_register(alias, ops, drv) creates an alias entry
+ * sharing ops+drv_data with the source path. ref_count is tracked per entry,
+ * so unregistering after opening both alias and source requires closing each first.
  */
 int posix_device_lookup(const char *path,
                         const posix_driver_ops_t **ops_out,
                         void **drv_out);
 
-/* 别名注册：把已注册的 src_path 以 alias 名字再挂一份到设备表；
- * 两条路径共享同一份 ops+drv_data，open 任一路径进入同一设备。
- * 这是"多型号外设+当前板选型"的通用机制（touch/gsensor/...）：
+/* Alias registration: mount an already-registered src_path again under the alias name;
+ * both paths share the same ops+drv_data, and opening either enters the same device.
+ * This is the generic mechanism for "multiple peripheral models + current board selection" (touch/gsensor/...):
  *   posix_device_bind_alias("/dev/touch0",   "/dev/cst816d");
  *   posix_device_bind_alias("/dev/gsensor0", "/dev/sc7a20");
- * 返回值：
- *   POSIX_OK        成功
- *   POSIX_ERR_NODEV src_path 未注册
- *   POSIX_ERR_BUSY  alias 已存在（想覆盖需先 unbind）
- *   POSIX_ERR_INVAL 空参数或 alias 过长
+ * Return values:
+ *   POSIX_OK        success
+ *   POSIX_ERR_NODEV src_path not registered
+ *   POSIX_ERR_BUSY  alias already exists (unbind first to override)
+ *   POSIX_ERR_INVAL null argument or alias too long
  */
 int posix_device_bind_alias(const char *alias, const char *src_path);
 
-/* 解绑：等价于 posix_device_unregister(alias)，仅用别名 entry。
- * alias 上仍有未 close 的 fd 时返回 POSIX_ERR_BUSY。
+/* Unbind: equivalent to posix_device_unregister(alias), only for the alias entry.
+ * Returns POSIX_ERR_BUSY if the alias still has an unclosed fd.
  */
 int posix_device_unbind_alias(const char *alias);
 
-/* ---------- POSIX 用户 API ---------- */
+/* ---------- POSIX user API ---------- */
 posix_fd_t posix_open(const char *path);
 int        posix_close(posix_fd_t fd);
 
@@ -134,23 +134,23 @@ posix_ssize_t posix_read(posix_fd_t fd, void *buf, size_t count);
 posix_ssize_t posix_write(posix_fd_t fd, const void *buf, size_t count);
 int           posix_ioctl(posix_fd_t fd, unsigned long cmd, void *arg);
 
-/* ISR 安全版（跳过框架锁，直接调驱动 ops） */
+/* ISR-safe variants (skip the framework lock, call driver ops directly) */
 posix_ssize_t posix_read_isr(posix_fd_t fd, void *buf, size_t count);
 posix_ssize_t posix_write_isr(posix_fd_t fd, const void *buf, size_t count);
 int           posix_ioctl_isr(posix_fd_t fd, unsigned long cmd, void *arg);
 
-/* ---------- 移植层接口（由 port/ 实现，框架与 port 共用此原型） ----------
- * 单线程/裸机下 posix_lock/unlock 可留空；
- * 多线程 RTOS 需实现互斥锁。posix_port_in_isr 返回非 0 表示中断上下文。
- * 框架提供 weak 默认实现（空锁 / 恒返回 0），port 强符号覆盖。
+/* ---------- Porting layer interface (implemented by port/, shared prototype) ----------
+ * On single-threaded/bare-metal, posix_lock/unlock may be left empty;
+ * multi-threaded RTOSes must implement a mutex. posix_port_in_isr returns non-0 for interrupt context.
+ * The framework provides weak default implementations (empty lock / always 0); port overrides with strong symbols.
  */
 void posix_lock(void);
 void posix_unlock(void);
 int  posix_port_in_isr(void);
 
-/* 信号量 --- 供中断驱动型驱动使用（ISR-safe give）
- * timeout_ms: 等待毫秒数，0xFFFFFFFF 表示永久阻塞，0 表示非阻塞
- * 返回值: 0 成功，-1 失败/超时
+/* Semaphore --- for interrupt-driven drivers (ISR-safe give)
+ * timeout_ms: milliseconds to wait, 0xFFFFFFFF means block forever, 0 means non-blocking
+ * return: 0 success, -1 failure/timeout
  */
 void *posix_sem_create(const char *name, uint32_t init_count, uint32_t max_count);
 void  posix_sem_delete(void *sem);

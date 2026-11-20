@@ -4,17 +4,17 @@
 #include "../posix_ioctl.h"
 #include "../posix_device.h"
 
-/* GPIO 方向 */
+/* GPIO direction */
 #define POSIX_GPIO_DIR_INPUT        0
 #define POSIX_GPIO_DIR_OUTPUT       1
 #define POSIX_GPIO_DIR_OPEN_DRAIN   2
 
-/* 上下拉 */
+/* Pull-up/pull-down */
 #define POSIX_GPIO_PULL_NONE  0
 #define POSIX_GPIO_PULL_UP    1
 #define POSIX_GPIO_PULL_DOWN  2
 
-/* 中断触发 */
+/* Interrupt trigger */
 #define POSIX_GPIO_INT_DISABLE      0
 #define POSIX_GPIO_INT_RISING       1
 #define POSIX_GPIO_INT_FALLING      2
@@ -22,29 +22,29 @@
 #define POSIX_GPIO_INT_LOW_LEVEL    4
 #define POSIX_GPIO_INT_HIGH_LEVEL   5
 
-/* 引脚级 fd → 配置方向
+/* Pin-level fd → configure direction
  *
- * pin 字段语义（跨平台）：
- *   0  = fd 已绑定 pin_index，仅在软件层配置方向/上拉/初值，不动 pinmux/pad
- *   >0 = 芯片全局 pin 号（如 rtl87x3g 上 P3_5=27），端口层据此做完整
- *        Pinmux/Pad 配置。同 pin_index 对应的全局 pin 号由板级布线决定，
- *        因此需要应用告知一次。 */
+ * pin field semantics (cross-platform):
+ *   0  = fd already bound to pin_index; only software-level direction/pull/initial value, no pinmux/pad
+ *   >0 = chip global pin number (e.g. P3_5=27 on rtl87x3g); the port layer uses it for full
+ *        Pinmux/Pad configuration. The global pin number for a given pin_index is decided by board wiring,
+ *        so the application must supply it once. */
 typedef struct
 {
-    int     pin;         /* 0 或芯片全局 pin 号 */
+    int     pin;         /* 0 or chip global pin number */
     uint8_t direction;
     uint8_t pull;
-    int     initial_value;   /* output 时有效 */
+    int     initial_value;   /* valid for output */
 } posix_gpio_config_t;
 
-/* 引脚值 */
+/* Pin value */
 typedef struct
 {
     int pin;
     int value;
 } posix_gpio_value_t;
 
-/* 中断配置 */
+/* Interrupt config */
 typedef struct
 {
     int     pin;
@@ -53,14 +53,14 @@ typedef struct
     void   *arg;
 } posix_gpio_irq_t;
 
-/* 批量操作 */
+/* Bulk operations */
 typedef struct
 {
     uint32_t pin_mask;
     uint32_t values;
 } posix_gpio_multi_t;
 
-/* ioctl 命令 */
+/* ioctl commands */
 #define POSIX_GPIO_IOCTL_SET_DIR        POSIX_IOC(POSIX_DEVICE_MAGIC_GPIO, 1)
 #define POSIX_GPIO_IOCTL_SET_PULL       POSIX_IOC(POSIX_DEVICE_MAGIC_GPIO, 2)
 #define POSIX_GPIO_IOCTL_SET_VALUE      POSIX_IOC(POSIX_DEVICE_MAGIC_GPIO, 3)

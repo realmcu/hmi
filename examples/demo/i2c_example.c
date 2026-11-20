@@ -147,8 +147,8 @@ static int do_i2c_scan(const struct shell *sh, const char *bus_path)
                 n += snprintf(line + n, sizeof(line) - n, "   ");
                 continue;
             }
-            /* RTL87x3G I2C 驱动不支持 0 字节写（返回 -EINVAL），
-             * 改用读 1 字节探测 ACK，有设备响应则返回 POSIX_OK */
+            /* The RTL87x3G I2C driver does not support 0-byte writes (returns -EINVAL),
+             * so probe the ACK by reading 1 byte instead; POSIX_OK means a device responded */
             uint8_t dummy = 0;
             posix_i2c_msg_t m = { .addr = (uint16_t)addr, .buf = &dummy, .len = 1 };
             int r = posix_ioctl(bus, POSIX_I2C_IOCTL_RAW_READ, &m);

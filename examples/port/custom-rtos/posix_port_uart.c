@@ -1,7 +1,7 @@
 /* ================================================================
- * UART 驱动示例 — 基于自研 RTOS 的移植模板
+ * UART driver example — a porting template for a custom RTOS
  *
- * 移植时替换 "hw_uart_" 为实际 HAL 的 API
+ * When porting, replace "hw_uart_" with the actual HAL API
  * ================================================================ */
 
 #include "posix.h"
@@ -10,23 +10,23 @@
 #include <stdbool.h>
 #include <string.h>
 
-/* ---------- 设备私有数据（每个 UART 控制器一个）---------- */
+/* ---------- Device private data (one per UART controller) ---------- */
 typedef struct
 {
     int              unit;            /* 0/1/2 */
-    uintptr_t        reg_base;        /* 寄存器基址 */
+    uintptr_t        reg_base;        /* register base address */
 } uart_drv_data_t;
 
-/* ---------- per-open 私有数据 ---------- */
+/* ---------- per-open private data ---------- */
 typedef struct
 {
-    bool                in_use;       /* 池占用标记 */
-    uart_drv_data_t    *drv;          /* 指向 drv_data */
-    posix_uart_config_t cfg;          /* 当前配置 */
-    posix_uart_rx_cb_t  rx_cb;        /* 接收回调 */
+    bool                in_use;       /* pool occupancy flag */
+    uart_drv_data_t    *drv;          /* points to drv_data */
+    posix_uart_config_t cfg;          /* current config */
+    posix_uart_rx_cb_t  rx_cb;        /* receive callback */
 } uart_file_t;
 
-/* ---------- 静态文件池 ---------- */
+/* ---------- Static file pool ---------- */
 #define MAX_UART_FILES   4
 static uart_file_t s_uart_files[MAX_UART_FILES];
 
@@ -73,13 +73,13 @@ static posix_ssize_t uart_read(void *drv_data, void *file_priv,
 
     if (posix_port_in_isr())
     {
-        /* ISR 中非阻塞读，有数据就读一个字节 */
+        /* Non-blocking read in ISR: read one byte if data is available */
         /* int c = hw_uart_read_char(d->reg_base);
          * if (c >= 0) { *(uint8_t *)buf = (uint8_t)c; return 1; } */
         return POSIX_ERR_AGAIN;
     }
 
-    /* 任务上下文阻塞读 */
+    /* Blocking read in task context */
     /* return hw_uart_read(d->reg_base, buf, count); */
     (void)f; (void)d; (void)buf; (void)count;
     return POSIX_ERR_NOSUPP;
@@ -94,13 +94,13 @@ static posix_ssize_t uart_write(void *drv_data, void *file_priv,
 
     if (posix_port_in_isr())
     {
-        /* ISR 中：逐字节写入 TX FIFO，不能阻塞 */
+        /* In ISR: write to the TX FIFO byte by byte, no blocking */
         /* for (size_t i = 0; i < count; i++)
          *     hw_uart_write_char(d->reg_base, ((const uint8_t *)buf)[i]); */
         return (posix_ssize_t)count;
     }
 
-    /* 任务上下文：阻塞发送 */
+    /* Task context: blocking transmit */
     /* return hw_uart_write(d->reg_base, buf, count); */
     (void)d; (void)buf; (void)count;
     return POSIX_ERR_NOSUPP;
@@ -133,7 +133,7 @@ static int uart_ioctl(void *drv_data, void *file_priv,
         {
             const posix_uart_rx_cb_t *cb = (const posix_uart_rx_cb_t *)arg;
             f->rx_cb = *cb;
-            /* 使能 RX 中断；在 ISR 中调用：
+            /* Enable the RX interrupt; call in the ISR:
              *   if (f->rx_cb.callback)
              *       f->rx_cb.callback(fd, byte, f->rx_cb.arg); */
             return POSIX_OK;
@@ -151,7 +151,7 @@ static int uart_ioctl(void *drv_data, void *file_priv,
     }
 }
 
-/* ---------- 驱动函数表 ---------- */
+/* ---------- Driver ops table ---------- */
 const posix_driver_ops_t g_uart_ops =
 {
     .open  = uart_open,
@@ -161,7 +161,7 @@ const posix_driver_ops_t g_uart_ops =
     .ioctl = uart_ioctl,
 };
 
-/* ---------- 设备实例 + 自动注册 ---------- */
+/* ---------- Device instances + auto-registration ---------- */
 static uart_drv_data_t s_uart0 = { .unit = 0, .reg_base = 0x40001000 };
 static uart_drv_data_t s_uart1 = { .unit = 1, .reg_base = 0x40002000 };
 

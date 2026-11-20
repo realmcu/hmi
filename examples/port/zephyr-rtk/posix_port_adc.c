@@ -1,9 +1,9 @@
 /* ================================================================
- * ADC 驱动 — 基于 Zephyr ADC API 的 posix-device 适配层
+ * ADC driver — a posix-device adaptation layer on top of the Zephyr ADC API
  *
- * 路径格式: /dev/adc0
+ * Path format: /dev/adc0
  *
- * 依赖：DTS 中 adc 节点已 enabled，且 CONFIG_ADC=y。
+ * Dependency: the adc node is enabled in the DTS, and CONFIG_ADC=y.
  * ================================================================ */
 
 #include "posix.h"
@@ -14,36 +14,36 @@
 #include <zephyr/drivers/adc.h>
 #include <string.h>
 
-/* 内部参考电压（mV） */
+/* Internal reference voltage (mV) */
 #define ADC_REF_INTERNAL_MV  3300
 
-/* ---------- 控制器私有数据（每个 posix 设备一份） ---------- */
+/* ---------- Controller private data (one per posix device) ---------- */
 typedef struct
 {
     const struct device *dev;   /* Zephyr ADC device */
 } adc_drv_data_t;
 
-/* ---------- per-open 文件私有数据 ---------- */
+/* ---------- per-open file private data ---------- */
 typedef struct
 {
     bool              in_use;
     adc_drv_data_t   *drv;
     posix_adc_config_t cfg;
-    uint32_t          ch_setup_mask;   /* 已 setup 的 channel 掩码 */
+    uint32_t          ch_setup_mask;   /* mask of already set-up channels */
 } adc_file_t;
 
 #define MAX_ADC_FILES  4
 static adc_file_t s_adc_files[MAX_ADC_FILES];
 
-/* ---------- 内部：按需 setup 一个 channel ---------- */
+/* ---------- Internal: set up a channel on demand ---------- */
 static int adc_ensure_channel(adc_file_t *f, uint8_t ch_id)
 {
     if (f->ch_setup_mask & BIT(ch_id))
     {
-        return 0;   /* 已 setup，跳过 */
+        return 0;   /* already set up, skip */
     }
 
-    /* 映射参考电压 */
+    /* Map the reference voltage */
     uint8_t zephyr_ref;
     switch (f->cfg.reference)
     {
@@ -75,7 +75,7 @@ static int adc_ensure_channel(adc_file_t *f, uint8_t ch_id)
     return 0;
 }
 
-/* ---------- 内部：采样一个 channel，返回 raw 值 ---------- */
+/* ---------- Internal: sample a channel, returning the raw value ---------- */
 static int adc_sample_raw(adc_file_t *f, uint8_t ch_id, int16_t *out_raw)
 {
     int ret = adc_ensure_channel(f, ch_id);
@@ -124,7 +124,7 @@ static void *adc_open(void *drv_data, const char *path)
 
     f->drv = d;
 
-    /* 默认配置 */
+    /* Default config */
     f->cfg.resolution    = POSIX_ADC_RES_12BIT;
     f->cfg.reference     = POSIX_ADC_REF_INTERNAL;
     f->cfg.sample_rate_hz = 0;
@@ -142,7 +142,7 @@ static int adc_close(void *drv_data, void *file_priv)
     return POSIX_OK;
 }
 
-/* ---------- read：读 channel 0 的 raw 值 ---------- */
+/* ---------- read: read the raw value of channel 0 ---------- */
 static posix_ssize_t adc_read_fn(void *drv_data, void *file_priv,
                                  void *buf, size_t count)
 {
@@ -159,7 +159,7 @@ static posix_ssize_t adc_read_fn(void *drv_data, void *file_priv,
     return (posix_ssize_t)sizeof(uint32_t);
 }
 
-/* ---------- write：不支持 ---------- */
+/* ---------- write: not supported ---------- */
 static posix_ssize_t adc_write(void *drv_data, void *file_priv,
                                const void *buf, size_t count)
 {
@@ -184,7 +184,7 @@ static int adc_ioctl(void *drv_data, void *file_priv,
             if (!arg) { return POSIX_ERR_INVAL; }
             posix_adc_config_t *cfg = (posix_adc_config_t *)arg;
 
-            /* 验证分辨率 */
+            /* Validate the resolution */
             switch (cfg->resolution)
             {
             case POSIX_ADC_RES_8BIT:
@@ -197,7 +197,7 @@ static int adc_ioctl(void *drv_data, void *file_priv,
                 return POSIX_ERR_INVAL;
             }
 
-            /* 配置变更时重置 channel setup 状态 */
+            /* Reset channel setup state when the config changes */
             f->ch_setup_mask = 0;
             f->cfg = *cfg;
             return POSIX_OK;
@@ -213,14 +213,14 @@ static int adc_ioctl(void *drv_data, void *file_priv,
     case POSIX_ADC_IOCTL_READ_CHANNEL:
         {
             if (!arg) { return POSIX_ERR_INVAL; }
-            /* *(int*)arg 作为入参：channel 号 */
+            /* *(int*)arg is the input: channel number */
             uint8_t ch_id = (uint8_t)(*(int *)arg);
             int16_t raw   = 0;
 
             int ret = adc_sample_raw(f, ch_id, &raw);
             if (ret < 0) { return POSIX_ERR_IO; }
 
-            /* raw 采样值写回同一个 arg */
+            /* write the raw sample value back to the same arg */
             *(uint32_t *)arg = (uint32_t)(uint16_t)raw;
             return POSIX_OK;
         }
@@ -255,7 +255,7 @@ static int adc_ioctl(void *drv_data, void *file_priv,
     }
 }
 
-/* ---------- 驱动函数表 ---------- */
+/* ---------- Driver ops table ---------- */
 static const posix_driver_ops_t g_adc_ops =
 {
     .open  = adc_open,
@@ -265,11 +265,11 @@ static const posix_driver_ops_t g_adc_ops =
     .ioctl = adc_ioctl,
 };
 
-/* ---------- 设备实例 ---------- */
+/* ---------- Device instance ---------- */
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(adc), okay)
 static adc_drv_data_t s_adc0 = { .dev = DEVICE_DT_GET(DT_NODELABEL(adc)) };
 
-/* ---------- 自动注册 ---------- */
+/* ---------- Auto-registration ---------- */
 static int adc_init(void)
 {
     return posix_device_register("/dev/adc0", &g_adc_ops, &s_adc0);

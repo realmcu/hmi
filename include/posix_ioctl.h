@@ -4,24 +4,24 @@
 #include "posix_types.h"
 
 /* ================================================================
- * ioctl cmd 编码方案
+ * ioctl cmd encoding scheme
  *
- * 编码规则（类似 Linux，但精简以适应嵌入式环境）：
+ * Encoding rules (similar to Linux, but simplified for embedded environments):
  *
- *   高位                          低位
+ *   high bits                      low bits
  *   +----------------+-----------+
  *   |  magic (8 bit) | nr (8 bit) |
  *   +----------------+-----------+
  *
- * magic: 设备类型标识，每个设备类型分配一个
- * nr:    命令序号，同类型设备内唯一
+ * magic: device type identifier, one per device type
+ * nr:    command sequence number, unique within a device type
  *
- * 宏：
- *   POSIX_IOC(magic, nr)        — 构造 cmd
- *   POSIX_IOC_MAGIC(cmd)        — 提取设备类型
- *   POSIX_IOC_NR(cmd)           — 提取命令序号
+ * Macros:
+ *   POSIX_IOC(magic, nr)        - build cmd
+ *   POSIX_IOC_MAGIC(cmd)        - extract device type
+ *   POSIX_IOC_NR(cmd)           - extract command number
  *
- * magic 值由 posix_device.h 中的 POSIX_DEVICE_MAGIC_XXX 定义
+ * magic values are defined by POSIX_DEVICE_MAGIC_XXX in posix_device.h
  * ================================================================ */
 
 #define POSIX_IOC(magic, nr)     ((int)((((magic) & 0xFF) << 8) | ((nr) & 0xFF)))

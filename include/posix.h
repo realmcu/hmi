@@ -2,30 +2,30 @@
 #define POSIX_H
 
 /* ================================================================
- * POSIX 设备抽象层 — 统一入口
+ * POSIX device abstraction layer — unified entry point
  *
- * 用法：
+ * Usage:
  *   #include "posix.h"
  *
- *   所有需要的外设 ioctl 头文件按需包含：
+ *   Include the ioctl headers for the peripherals you need:
  *   #include "ioctls/posix_ioctl_uart.h"
  *
- * 换芯片/换 OS 时，不需要修改此文件
- * 只需要替换 port/ 目录下的后端实现
+ * Switching chip or OS requires no change to this file,
+ * only replacing the backend implementation under port/
  * ================================================================ */
 
 #include "posix_types.h"
 #include "posix_device.h"
 
-/* ioctl 头文件按需 include，不在 posix.h 统一 include
- * 因为不是所有项目都会用到全部 6 种外设
+/* ioctl headers are included on demand, not pulled in by posix.h,
+ * because not every project uses all 6 peripheral types
  *
- * 推荐在项目自己的 device_cfg.h 中按需包含：
+ * Recommended: include what you need in your project's device_cfg.h:
  *
  *   #include "posix.h"
  *   #include "ioctls/posix_ioctl_uart.h"
  *   #include "ioctls/posix_ioctl_spi.h"
- *   // ... 其他需要的外设
+ *   // ... other peripherals you need
  */
 
 #endif /* POSIX_H */

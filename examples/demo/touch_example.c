@@ -1,21 +1,21 @@
 /* ================================================================
- * Touch 使用示例
+ * Touch usage example
  *
- * 应用只 open /dev/touch0，不关心底下是哪颗芯片——板级
- * posix_port_touch.c 已在启动阶段完成绑定。
+ * The app only opens /dev/touch0 and does not care which chip is underneath -- the board-level
+ * posix_port_touch.c already performed the binding at startup.
  *
- * posix_read(/dev/touch0) 语义（面向 posix touch 抽象层，与具体芯片无关）：
- *   ret > 0，point_count > 0             → 有触摸帧，data.points[0] 有效
- *   ret > 0，point_count = 0             → 松手帧（端口层可能靠软定时器合成）
- *   ret == POSIX_ERR_TIMEOUT             → 一段时间内没等到 INT，也视作稳态松手
- *   ret < 0 且不是 TIMEOUT               → I²C / 框架错误
+ * posix_read(/dev/touch0) semantics (facing the posix touch abstraction, chip-independent):
+ *   ret > 0, point_count > 0             → touch frame, data.points[0] valid
+ *   ret > 0, point_count = 0             → release frame (port may synthesize it with a soft timer)
+ *   ret == POSIX_ERR_TIMEOUT             → no INT within the window; also treated as steady release
+ *   ret < 0 and not TIMEOUT              → I²C / framework error
  *
- * 消费模型（对齐 Linux input subsystem）：
- *   Linux 上触摸屏驱动通用做法是 request_threaded_irq，INT 唤醒 kthread
- *   走 I²C，把数据 input_report 到 /dev/input/eventN；应用只 read/poll
- *   一条 fd，语义就是"中断驱动的自动读取"。这里 posix_read(/dev/touch0)
- *   完全对齐——阻塞在 INT 上，来了就返回一帧。想持续接触摸事件，起一个
- *   线程死循环 posix_read 即可（见下面的 monitor shell 命令）。
+ * Consumption model (aligned with the Linux input subsystem):
+ *   The common Linux touchscreen driver approach is request_threaded_irq, where INT wakes a kthread
+ *   that does I²C and input_report to /dev/input/eventN; the app only read/poll
+ *   one fd, whose semantics are "interrupt-driven automatic reads". Here posix_read(/dev/touch0)
+ *   aligns fully -- it blocks on INT and returns a frame when one arrives. To consume touch events continuously,
+ *   start a thread looping on posix_read (see the monitor shell command below).
  * ================================================================ */
 
 #include "posix.h"
@@ -25,20 +25,20 @@
 
 void example_touch(void)
 {
-    /* === 1. 打开 === */
+    /* === 1. Open === */
     posix_fd_t tp = posix_open("/dev/touch0");
     if (!tp) { return; }
 
-    /* === 2. 配置（面板分辨率 / swap_xy；I²C 从机地址不在上层配置里） === */
+    /* === 2. Configure (panel resolution / swap_xy; I²C slave address is not in the upper-layer config) === */
     posix_touch_config_t cfg =
     {
-        .width    = 360,     /* 按当前面板改 */
+        .width    = 360,     /* change for the current panel */
         .height   = 360,
         .swap_xy  = 0,
     };
     posix_ioctl(tp, POSIX_TOUCH_IOCTL_SET_CONFIG, &cfg);
 
-    /* === 3. 读触摸数据（阻塞等 INT，超时行为随芯片而异） === */
+    /* === 3. Read touch data (blocks waiting for INT; timeout behavior varies by chip) === */
     posix_touch_data_t tdata;
     int ret = posix_read(tp, &tdata, sizeof(tdata));
 
@@ -47,7 +47,7 @@ void example_touch(void)
         /* tdata.points[0].x, .y, .status */
     }
 
-    /* === 4. 关闭 === */
+    /* === 4. Close === */
     posix_close(tp);
 }
 
@@ -61,14 +61,14 @@ void example_touch(void)
 LOG_MODULE_REGISTER(touch_demo, LOG_LEVEL_INF);
 
 /* ================================================================
- * 唯一的 shell 命令：posix_touch monitor
+ * The only shell command: posix_touch monitor
  *
- * 敲一次：lazy 打开 /dev/touch0，起一个后台线程死循环 posix_read，
- * 触摸事件由 printk 直接打出。整个过程无轮询，中断由端口层 ISR
- * 消化，形态对齐 Linux 上的 evtest。
+ * Run once: lazily open /dev/touch0, start a background thread looping on posix_read,
+ * and print touch events directly with printk. There is no polling; interrupts are
+ * absorbed by the port ISR, shaped like evtest on Linux.
  *
- * 不提供 off——这本来就是 demo，需要停就复位板子。真要产品化，把
- * 消费方换成正经的 input 事件队列，不要在这里叠停/开状态机。
+ * No off switch -- this is a demo; reset the board to stop. For real products, replace the
+ * consumer with a proper input event queue; do not pile stop/start state machines on here.
  * ================================================================ */
 #define TOUCH_MON_STACK   1024
 #define TOUCH_MON_PRIO    10
@@ -81,7 +81,7 @@ static void touch_monitor_task(void *p1, void *p2, void *p3)
 {
     (void)p1; (void)p2; (void)p3;
 
-    /* 一次性 lazy init + open，坏了就退线程；不做重试。 */
+    /* One-shot lazy init + open; exit the thread on failure, no retry. */
     posix_port_init_all();
 
     posix_fd_t fd = posix_open("/dev/touch0");
@@ -94,7 +94,7 @@ static void touch_monitor_task(void *p1, void *p2, void *p3)
     posix_touch_config_t cfg = { .width = 360, .height = 360, .swap_xy = 0 };
     posix_ioctl(fd, POSIX_TOUCH_IOCTL_SET_CONFIG, &cfg);
 
-    /* 只在 press↔release 沿变化时打印，稳态释放不刷屏。 */
+    /* Print only on press↔release edge changes; steady release does not flood the console. */
     bool prev_pressed = false;
 
     for (;;)
@@ -104,13 +104,13 @@ static void touch_monitor_task(void *p1, void *p2, void *p3)
 
         if (ret == POSIX_ERR_TIMEOUT)
         {
-            /* 一段时间内没等到 INT；视作稳态松手，不打印。 */
+            /* no INT within the window; treated as steady release, do not print. */
             continue;
         }
         if (ret < 0)
         {
             printk("[touch mon] read failed: %d\n", ret);
-            k_msleep(20);           /* 避免抱死循环 */
+            k_msleep(20);           /* avoid a tight busy loop */
             continue;
         }
 
@@ -124,7 +124,7 @@ static void touch_monitor_task(void *p1, void *p2, void *p3)
         }
         else if (prev_pressed)
         {
-            /* 只在从按压回到释放时打一次，避免稳态 release 循环刷屏。 */
+            /* Print once when going from pressed back to released, avoiding steady-release flood. */
             printk("[touch mon] release\n");
         }
         prev_pressed = pressed;

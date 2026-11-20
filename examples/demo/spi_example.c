@@ -1,12 +1,12 @@
 /* ================================================================
- * SPI 使用示例
+ * SPI usage example
  *
- * 功能：打开 SPI0 → 配置 10MHz mode 0 → 读写 Flash → 关闭
+ * Function: open SPI0 → configure 10MHz mode 0 → read/write Flash → close
  *
- * Flash W25Q 系列读 ID 为例：
- *   指令 0x90 + 3 字节地址(0x00) + 1 byte dummy → 返回 2 字节 ID
+ * Reading the ID of a W25Q-series Flash as an example:
+ *   command 0x90 + 3 address bytes (0x00) + 1 dummy byte → returns a 2-byte ID
  *
- * 编译要求：需要 posix.h + posix_ioctl_spi.h
+ * Build requirements: posix.h + posix_ioctl_spi.h
  * ================================================================ */
 
 #include "posix.h"
@@ -14,28 +14,28 @@
 
 void example_spi(void)
 {
-    /* === 1. 打开设备 === */
+    /* === 1. Open the device === */
     posix_fd_t spi = posix_open("/dev/spi0");
     if (!spi)
     {
         return;
     }
 
-    /* === 2. 配置参数 === */
+    /* === 2. Configure parameters === */
     posix_spi_config_t cfg =
     {
         .freq_hz       = 10000000,   /* 10MHz */
         .mode          = POSIX_SPI_MODE_0,   /* CPOL=0, CPHA=0 */
         .bits_per_word = 8,
-        .cs_pin        = -1,          /* -1 = 程序自己控制 CS */
+        .cs_pin        = -1,          /* -1 = program controls CS itself */
     };
     posix_ioctl(spi, POSIX_SPI_IOCTL_SET_CONFIG, &cfg);
 
-    /* === 3. 全双工传输：读 Flash ID === */
+    /* === 3. Full-duplex transfer: read Flash ID === */
     uint8_t tx_buf[] = { 0x90, 0x00, 0x00, 0x00, 0x00 };
     uint8_t rx_buf[5] = {0};
 
-    posix_ioctl(spi, POSIX_SPI_IOCTL_CS_TAKE, NULL);   /* CS 拉低 */
+    posix_ioctl(spi, POSIX_SPI_IOCTL_CS_TAKE, NULL);   /* CS low */
 
     posix_spi_transfer_t xfer =
     {
@@ -45,21 +45,21 @@ void example_spi(void)
     };
     posix_ioctl(spi, POSIX_SPI_IOCTL_TRANSFER, &xfer);
 
-    posix_ioctl(spi, POSIX_SPI_IOCTL_CS_RELEASE, NULL); /* CS 拉高 */
+    posix_ioctl(spi, POSIX_SPI_IOCTL_CS_RELEASE, NULL); /* CS high */
 
     /* uint16_t flash_id = (rx_buf[3] << 8) | rx_buf[4]; */
 
-    /* === 4. 只发不收（半双工） === */
+    /* === 4. Send only, no receive (half duplex) === */
     uint8_t cmd[] = { 0x06 };   /* W25Q Write Enable */
     posix_ioctl(spi, POSIX_SPI_IOCTL_CS_TAKE, NULL);
     posix_write(spi, cmd, sizeof(cmd));
     posix_ioctl(spi, POSIX_SPI_IOCTL_CS_RELEASE, NULL);
 
-    /* === 5. 只收不发（半双工） === */
+    /* === 5. Receive only, no send (half duplex) === */
     uint8_t status[2] = {0};
     uint8_t read_status[] = { 0x05, 0x00 };
     posix_ioctl(spi, POSIX_SPI_IOCTL_CS_TAKE, NULL);
-    /* 发 0x05 的同时收 0x00 */
+    /* send 0x05 while receiving 0x00 */
     posix_spi_transfer_t xfer2 =
     {
         .tx_buf = read_status,
@@ -69,7 +69,7 @@ void example_spi(void)
     posix_ioctl(spi, POSIX_SPI_IOCTL_TRANSFER, &xfer2);
     posix_ioctl(spi, POSIX_SPI_IOCTL_CS_RELEASE, NULL);
 
-    /* === 6. 关闭 === */
+    /* === 6. Close === */
     posix_close(spi);
 }
 

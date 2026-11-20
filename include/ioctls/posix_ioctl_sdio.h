@@ -11,14 +11,14 @@
 #define POSIX_SDIO_SPEED_DEFAULT  0
 #define POSIX_SDIO_SPEED_HIGH     1
 
-/* 配置结构体 */
+/* Config struct */
 typedef struct {
     uint8_t  bus_width;
     uint8_t  speed_mode;
     uint32_t max_freq_hz;
 } posix_sdio_config_t;
 
-/* SD 卡信息 */
+/* SD card info */
 typedef struct {
     uint32_t block_count;
     uint32_t block_size;        /* usually 512 */
@@ -26,14 +26,14 @@ typedef struct {
     uint8_t  is_mmc;
 } posix_sdio_info_t;
 
-/* 块读写参数 */
+/* Block read/write parameters */
 typedef struct {
     uint32_t block_addr;
     uint32_t block_count;
     void    *data;
 } posix_sdio_block_t;
 
-/* SDIO 功能号命令 (CMD52/CMD53) */
+/* SDIO function number commands (CMD52/CMD53) */
 typedef struct {
     uint8_t  func_num;          /* 0~7 */
     uint32_t addr;
@@ -43,7 +43,7 @@ typedef struct {
     uint8_t  use_block;         /* 0=byte(CMD52), 1=block(CMD53) */
 } posix_sdio_func_t;
 
-/* ioctl 命令 */
+/* ioctl commands */
 #define POSIX_SDIO_IOCTL_SET_CONFIG     POSIX_IOC(POSIX_DEVICE_MAGIC_SDIO, 1)
 #define POSIX_SDIO_IOCTL_GET_INFO       POSIX_IOC(POSIX_DEVICE_MAGIC_SDIO, 2)
 #define POSIX_SDIO_IOCTL_READ_BLOCKS    POSIX_IOC(POSIX_DEVICE_MAGIC_SDIO, 3)

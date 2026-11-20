@@ -32,7 +32,7 @@ static int spi_close(void *d, void *fv)
 static posix_ssize_t spi_read(void *d, void *f, void *buf, size_t len)
 {
     (void)f;
-    /* 发 0xFF 收数据 */
+    /* send 0xFF to receive data */
     /* hw_spi_transfer(((spi_drv_t*)d)->reg_base, NULL, buf, len); */
     (void)d; (void)buf; (void)len;
     return POSIX_ERR_NOSUPP;

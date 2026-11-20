@@ -1,10 +1,10 @@
 /* ================================================================
- * 自动注册实现
+ * Auto-registration implementation
  *
- * 段首尾标记由编译器放在 .posix$initS 和 .posix$initE 段。
- * 所有 POSIX_INIT_*_EXPORT(fn) 注册的 init 函数指针
- * 被链接器收集在 .posix$init0 ~ .posix$init2 段中，
- * 位于首尾标记之间。posix_auto_init() 遍历并调用。
+ * The compiler places start/end markers in the .posix$initS and .posix$initE sections.
+ * All init function pointers registered by POSIX_INIT_*_EXPORT(fn)
+ * are collected by the linker in sections .posix$init0 ~ .posix$init2,
+ * located between the two markers. posix_auto_init() walks and calls them.
  * ================================================================ */
 
 #include "posix_init.h"

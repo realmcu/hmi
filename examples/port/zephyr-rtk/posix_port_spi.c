@@ -1,11 +1,11 @@
 /* ================================================================
- * SPI 驱动 — 基于 Zephyr SPI API 的 posix-device 适配层
+ * SPI driver — a posix-device adaptation layer on top of the Zephyr SPI API
  *
- * 路径格式: /dev/spi0, /dev/spi1
- *   /dev/spi0  → spi0 节点
- *   /dev/spi1  → spi1 节点
+ * Path format: /dev/spi0, /dev/spi1
+ *   /dev/spi0  → spi0 node
+ *   /dev/spi1  → spi1 node
  *
- * 依赖：DTS 中 spi0 / spi1 节点已 enabled，且 CONFIG_SPI=y。
+ * Dependency: the spi0 / spi1 nodes are enabled in the DTS, and CONFIG_SPI=y.
  * ================================================================ */
 
 #include "posix.h"
@@ -16,13 +16,13 @@
 #include <zephyr/drivers/spi.h>
 #include <string.h>
 
-/* ---------- 控制器私有数据（每个 posix 设备一份） ---------- */
+/* ---------- Controller private data (one per posix device) ---------- */
 typedef struct
 {
     const struct device *dev;   /* Zephyr SPI device */
 } spi_drv_data_t;
 
-/* ---------- per-open 文件私有数据 ---------- */
+/* ---------- per-open file private data ---------- */
 typedef struct
 {
     bool              in_use;
@@ -34,7 +34,7 @@ typedef struct
 #define MAX_SPI_FILES  4
 static spi_file_t s_spi_files[MAX_SPI_FILES];
 
-/* ---------- 将 posix_spi_config_t 转换为 spi_config ---------- */
+/* ---------- Convert posix_spi_config_t to spi_config ---------- */
 static void spi_build_zephyr_cfg(const posix_spi_config_t *cfg,
                                  struct spi_config *zcfg)
 {
@@ -92,7 +92,7 @@ static int spi_close(void *drv_data, void *file_priv)
     return POSIX_OK;
 }
 
-/* ---------- read：发 dummy 字节，接收 MISO ---------- */
+/* ---------- read: send dummy bytes, receive MISO ---------- */
 static posix_ssize_t spi_read_fn(void *drv_data, void *file_priv,
                                  void *buf, size_t len)
 {
@@ -107,7 +107,7 @@ static posix_ssize_t spi_read_fn(void *drv_data, void *file_priv,
     return (posix_ssize_t)len;
 }
 
-/* ---------- write：发送 TX 字节，丢弃 MISO ---------- */
+/* ---------- write: send TX bytes, discard MISO ---------- */
 static posix_ssize_t spi_write_fn(void *drv_data, void *file_priv,
                                   const void *buf, size_t len)
 {
@@ -176,11 +176,11 @@ static int spi_ioctl(void *drv_data, void *file_priv,
         }
 
     case POSIX_SPI_IOCTL_CS_TAKE:
-        /* CS 由应用层控制（cs_pin = -1），直接返回成功 */
+        /* CS is controlled by the app layer (cs_pin = -1); return success directly */
         return POSIX_OK;
 
     case POSIX_SPI_IOCTL_CS_RELEASE:
-        /* CS 由应用层控制（cs_pin = -1），直接返回成功 */
+        /* CS is controlled by the app layer (cs_pin = -1); return success directly */
         return POSIX_OK;
 
     default:
@@ -188,7 +188,7 @@ static int spi_ioctl(void *drv_data, void *file_priv,
     }
 }
 
-/* ---------- 驱动函数表 ---------- */
+/* ---------- Driver ops table ---------- */
 static const posix_driver_ops_t g_spi_ops =
 {
     .open  = spi_open,
@@ -198,7 +198,7 @@ static const posix_driver_ops_t g_spi_ops =
     .ioctl = spi_ioctl,
 };
 
-/* ---------- 设备实例 ---------- */
+/* ---------- Device instance ---------- */
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(spi0), okay)
 static spi_drv_data_t s_spi0 = { .dev = DEVICE_DT_GET(DT_NODELABEL(spi0)) };
 #endif
@@ -206,7 +206,7 @@ static spi_drv_data_t s_spi0 = { .dev = DEVICE_DT_GET(DT_NODELABEL(spi0)) };
 static spi_drv_data_t s_spi1 = { .dev = DEVICE_DT_GET(DT_NODELABEL(spi1)) };
 #endif
 
-/* ---------- 自动注册 ---------- */
+/* ---------- Auto-registration ---------- */
 static int spi_init(void)
 {
     int ret = POSIX_OK;

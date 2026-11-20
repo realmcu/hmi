@@ -1,14 +1,14 @@
 /* ================================================================
- * RTC 使用示例
+ * RTC usage example
  *
- * 功能：打开 /dev/rtc0 → 读能力 → 设时间 → 读回 → 装 5 秒后闹钟
- *       + 秒进位回调（打印每秒时间）
+ * Function: open /dev/rtc0 → read caps → set time → read back → arm an alarm 5s later
+ *       + second tick callback (print the time every second)
  *
- * 依赖：
- *   - DTS overlay 里 &rtc { status = "okay"; };
- *   - prj.conf 打开 CONFIG_RTC=y
- *   - 需要闹钟：CONFIG_RTC_ALARM=y
- *   - 需要每秒回调：CONFIG_RTC_UPDATE=y
+ * Dependencies:
+ *   - &rtc { status = "okay"; }; in the DTS overlay
+ *   - CONFIG_RTC=y enabled in prj.conf
+ *   - for alarms: CONFIG_RTC_ALARM=y
+ *   - for the per-second callback: CONFIG_RTC_UPDATE=y
  * ================================================================ */
 
 #include "posix.h"
@@ -17,7 +17,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-/* 让上层能在回调里辨识是哪个 rtc；本 demo 只开一个，用一个静态指针传下去 */
+/* Let the upper layer identify which rtc in the callback; this demo opens only one and passes a static pointer */
 struct rtc_ctx
 {
     posix_fd_t fd;
@@ -27,17 +27,17 @@ static void on_alarm(posix_fd_t fd_unused, uint16_t id, void *arg)
 {
     (void)fd_unused;
     struct rtc_ctx *ctx = (struct rtc_ctx *)arg;
-    /* ISR / 工作队列上下文——不能阻塞。这里只做示意。 */
+    /* ISR / workqueue context -- no blocking. This is illustrative only. */
     posix_rtc_alarm_pending_t p = { .id = id };
     posix_ioctl(ctx->fd, POSIX_RTC_IOCTL_IS_ALARM_PENDING, &p);
-    /* 业务侧一般 give 一个 semaphore 让任务去处理 */
+    /* Business logic usually gives a semaphore to let a task handle it */
 }
 
 static void on_second(posix_fd_t fd_unused, void *arg)
 {
     (void)fd_unused;
     (void)arg;
-    /* 每秒一次。中断上下文——不能阻塞。 */
+    /* Once per second. Interrupt context -- no blocking. */
 }
 
 void example_rtc(void)
@@ -45,13 +45,13 @@ void example_rtc(void)
     posix_fd_t rtc = posix_open("/dev/rtc0");
     if (rtc == POSIX_FD_NULL) { return; }
 
-    /* === 1. 读能力 === */
+    /* === 1. Read capabilities === */
     posix_rtc_caps_t caps;
     memset(&caps, 0, sizeof(caps));
     posix_ioctl(rtc, POSIX_RTC_IOCTL_GET_CAPS, &caps);
     /* caps.alarm_count / caps.has_update_irq / caps.has_calibration */
 
-    /* === 2. 设时间：2026-07-20 12:34:56 === */
+    /* === 2. Set the time: 2026-07-20 12:34:56 === */
     posix_rtc_time_t now =
     {
         .year   = 2026,
@@ -60,18 +60,18 @@ void example_rtc(void)
         .hour   = 12,
         .minute = 34,
         .second = 56,
-        .wday   = 0xFF,     /* 让驱动/软件自算 */
+        .wday   = 0xFF,     /* let the driver/software compute it */
         .yday   = 0xFFFF,
         .nsec   = 0,
     };
     posix_ioctl(rtc, POSIX_RTC_IOCTL_SET_CALENDAR, &now);
 
-    /* === 3. 读回时间 === */
+    /* === 3. Read the time back === */
     posix_rtc_time_t rd;
     posix_ioctl(rtc, POSIX_RTC_IOCTL_GET_CALENDAR, &rd);
     /* rd.year=2026, rd.month=7, ... */
 
-    /* === 4. 装闹钟：5 秒后触发（只匹配 second 字段） === */
+    /* === 4. Arm the alarm: fires 5s later (matches only the second field) === */
     static struct rtc_ctx s_ctx;
     s_ctx.fd = rtc;
 
@@ -88,15 +88,15 @@ void example_rtc(void)
         posix_ioctl(rtc, POSIX_RTC_IOCTL_SET_ALARM, &al);
     }
 
-    /* === 5. 秒进位回调 === */
+    /* === 5. Second tick callback === */
     if (caps.has_update_irq)
     {
         posix_rtc_update_t upd = { .callback = on_second, .arg = &s_ctx };
         posix_ioctl(rtc, POSIX_RTC_IOCTL_SET_UPDATE_CB, &upd);
     }
 
-    /* === 6. 关闭：会自动摘除闹钟/回调 ===
-     * 实际使用中一般不 close，让 rtc 常驻。这里演示 API 完整用法。 */
+    /* === 6. Close: automatically removes alarms/callbacks ===
+     * In practice you usually do not close, letting the rtc stay resident. This demonstrates the full API. */
     /* posix_close(rtc); */
 }
 
@@ -125,7 +125,7 @@ static void shell_on_second(posix_fd_t fd_unused, void *arg)
 {
     (void)fd_unused; (void)arg;
     s_tick_seconds++;
-    /* LOG_INF 在 deferred 模式下 ISR 安全，此处只在打印节流后触发 */
+    /* LOG_INF is ISR-safe in deferred mode; here it only fires after print throttling */
     if ((s_tick_seconds % 5) == 0)
     {
         LOG_INF("rtc second tick=%u", s_tick_seconds);
@@ -146,13 +146,13 @@ static int open_once(const struct shell *sh)
     return 0;
 }
 
-/* posix_rtc caps           — 打印能力
- * posix_rtc get            — 读当前时间
- * posix_rtc set YYYY MM DD hh mm ss   — 设时间
- * posix_rtc alarm SEC      — SEC 秒后触发一次闹钟
- * posix_rtc tick on/off    — 秒进位回调开/关
- * posix_rtc stat           — 打印统计（tick / alarm 次数）
- * posix_rtc close          — 关闭 fd（也顺带清所有回调）
+/* posix_rtc caps           — print capabilities
+ * posix_rtc get            — read the current time
+ * posix_rtc set YYYY MM DD hh mm ss   — set the time
+ * posix_rtc alarm SEC      — fire an alarm once after SEC seconds
+ * posix_rtc tick on/off    — enable/disable the second tick callback
+ * posix_rtc stat           — print stats (tick / alarm counts)
+ * posix_rtc close          — close the fd (also clears all callbacks)
  */
 static int cmd_rtc(const struct shell *sh, size_t argc, char **argv)
 {

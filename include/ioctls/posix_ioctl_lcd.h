@@ -5,51 +5,51 @@
 #include "../posix_device.h"
 
 /* ================================================================
- * LCD 抽象接口
+ * LCD abstraction interface
  *
- * === write 语义（重要） ===
- *   posix_write(fd, buf, count) 的 count 单位是【字节】，与
- *   UART/SPI/I2C 等其它设备保持一致，屏蔽 bpp 差异。
- *   port 层根据当前 cfg.bpp 折算成硬件传输单位（如 RGB565 → /2）。
+ * === write semantics (important) ===
+ *   posix_write(fd, buf, count)'s count unit is [bytes], consistent with
+ *   other devices such as UART/SPI/I2C, hiding bpp differences.
+ *   The port layer converts it by the current cfg.bpp into the hardware transfer unit (e.g. RGB565 → /2).
  *
- *   典型用法：
+ *   Typical usage:
  *     uint16_t fb[W * H];
- *     posix_write(fd, fb, sizeof(fb));         // 或 W * H * 2
+ *     posix_write(fd, fb, sizeof(fb));         // or W * H * 2
  *
- *   逐行写：
+ *   Row-by-row write:
  *     posix_ioctl(fd, POSIX_LCD_IOCTL_SET_WINDOW, &row_rect);
  *     posix_write(fd, line_buf, line_w * sizeof(uint16_t));
  *
- *   count 必须能被 (cfg.bpp / 8) 整除，否则返回 POSIX_ERR_INVAL。
+ *   count must be divisible by (cfg.bpp / 8), otherwise POSIX_ERR_INVAL is returned.
  *
- * === window 语义 ===
- *   posix_write 内部使用【上一次 SET_WINDOW 记录的】rect 作为目标
- *   矩形，不会自动重置到 (0,0)。逐行写时每行都要 SET_WINDOW。
+ * === window semantics ===
+ *   posix_write internally uses the rect [recorded by the last SET_WINDOW] as the target
+ *   rectangle and does not automatically reset to (0,0). Row-by-row writes must SET_WINDOW every row.
  * ================================================================ */
 
-/* LCD 接口类型 */
-#define POSIX_LCD_IF_SPI     0   /* SPI 串行 */
-#define POSIX_LCD_IF_8080    1   /* 8080 并口 */
-#define POSIX_LCD_IF_RGB     2   /* RGB 接口 */
+/* LCD interface types */
+#define POSIX_LCD_IF_SPI     0   /* SPI serial */
+#define POSIX_LCD_IF_8080    1   /* 8080 parallel */
+#define POSIX_LCD_IF_RGB     2   /* RGB interface */
 #define POSIX_LCD_IF_MIPI    3   /* MIPI DSI */
 
-/* 配置结构体 */
+/* Config struct */
 typedef struct
 {
-    uint16_t width;             /* 分辨率宽 */
-    uint16_t height;            /* 分辨率高 */
+    uint16_t width;             /* resolution width */
+    uint16_t height;            /* resolution height */
     uint8_t  bpp;               /* 16/18/24 */
     uint8_t  interface;         /* SPI/8080/RGB/MIPI */
 } posix_lcd_config_t;
 
-/* 窗口裁剪 */
+/* Window clipping */
 typedef struct
 {
     uint16_t x, y;
     uint16_t w, h;
 } posix_lcd_rect_t;
 
-/* ioctl 命令 */
+/* ioctl commands */
 #define POSIX_LCD_IOCTL_SET_CONFIG     POSIX_IOC(POSIX_DEVICE_MAGIC_LCD, 1)
 #define POSIX_LCD_IOCTL_GET_CONFIG     POSIX_IOC(POSIX_DEVICE_MAGIC_LCD, 2)
 #define POSIX_LCD_IOCTL_SET_WINDOW     POSIX_IOC(POSIX_DEVICE_MAGIC_LCD, 3)

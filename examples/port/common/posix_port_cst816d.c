@@ -1,35 +1,35 @@
 /* ================================================================
- * Touch 驱动 POSIX 端口 —— CST816D（Hynitron）
+ * Touch driver POSIX port —— CST816D (Hynitron)
  *
- * 与 posix_port_chsc6417.c 并列存在；两份文件都会被 CMake glob 编入，
- * 分别注册 /dev/chsc6417 与 /dev/cst816d，上层按需 open 其中之一。
+ * Coexists with posix_port_chsc6417.c; both files are compiled in by the CMake glob,
+ * registering /dev/chsc6417 and /dev/cst816d respectively, so the upper layer opens whichever it needs.
  *
- * 参考实现：
- *   Zephyr 上游驱动：
+ * Reference implementations:
+ *   Zephyr upstream driver:
  *     modules/display/device/zephyr/touch/8773G/touch_cst816d_zephyr.c
- *   Zephyr binding：
+ *   Zephyr binding:
  *     modules/display/device/zephyr/dts/bindings/hynitron,cst816d.yaml
  *
- * 完全通过 posix 框架上游设备操作硬件：
- *   /dev/i2cN       — I2C 总线（posix_ioctl_i2c.h）
- *   /dev/gpioX/pYY  — INT 中断引脚（posix_ioctl_gpio.h，可选）
- *   /dev/gpioX/pZZ  — RST 复位引脚（posix_ioctl_gpio.h，可选）
+ * All hardware access goes through upstream posix framework devices:
+ *   /dev/i2cN       — I2C bus (posix_ioctl_i2c.h)
+ *   /dev/gpioX/pYY  — INT interrupt pin (posix_ioctl_gpio.h, optional)
+ *   /dev/gpioX/pZZ  — RST reset pin (posix_ioctl_gpio.h, optional)
  *
- * 读取协议（来自 Zephyr cst816d 驱动）：
- *   写 1 字节 reg 0x00，再读 24 字节：
- *     data[3] 高 2 位 == 2  -> 按下
+ * Read protocol (from the Zephyr cst816d driver):
+ *   write 1 byte reg 0x00, then read 24 bytes:
+ *     data[3] high 2 bits == 2  -> pressed
  *     x = ((data[3] & 0x0F) << 8) | data[4]
  *     y = ((data[5] & 0x0F) << 8) | data[6]
  *
- * 中断模式（int_pin_path != NULL）：
- *   INT 下降沿 -> ISR posix_sem_give -> posix_read 等信号量后读 I2C
- * 轮询模式（int_pin_path == NULL）：
- *   posix_read 直接发 I2C 读
+ * Interrupt mode (int_pin_path != NULL):
+ *   INT falling edge -> ISR posix_sem_give -> posix_read waits on the semaphore then reads I2C
+ * Polling mode (int_pin_path == NULL):
+ *   posix_read issues the I2C read directly
  *
- * 手势释放超时：
- *   CST816D 在整个按压过程只会触发一次 INT，因此依赖软件超时
- *   （对齐 zephyr 上游 touch_gesture_release_timer）在 release_ms
- *   后把状态置为释放。这里用 posix_sem_take(release_ms) 直接表达。
+ * Gesture release timeout:
+ *   CST816D triggers only one INT across a whole press, so it relies on a software timeout
+ *   (matching the zephyr upstream touch_gesture_release_timer) to set the state to released
+ *   after release_ms. Here this is expressed directly with posix_sem_take(release_ms).
  * ================================================================ */
 
 #include "posix.h"
@@ -41,31 +41,31 @@
 #include <stdbool.h>
 #include <string.h>
 
-/* ---------- CST816D I2C 读取协议常量 ---------- */
+/* ---------- CST816D I2C read protocol constants ---------- */
 #define CST816D_REG_DATA             0x00
 #define CST816D_READ_LEN             24
-#define CST816D_EVENT_MASK           0xC0   /* data[3] 高 2 位 */
+#define CST816D_EVENT_MASK           0xC0   /* data[3] high 2 bits */
 #define CST816D_EVENT_PRESS_SHIFT    6
-#define CST816D_EVENT_PRESS          2      /* pressing 时 (data[3] >> 6) == 2 */
+#define CST816D_EVENT_PRESS          2      /* when pressing (data[3] >> 6) == 2 */
 
-#define CST816D_I2C_ADDR             0x15   /* 上游 dts 通用地址 */
+#define CST816D_I2C_ADDR             0x15   /* upstream dts common address */
 #define CST816D_REG_POWER            0xA5   /* 0x00=normal, 0x03=sleep */
 #define CST816D_REG_CHIP_ID          0xA7
 
-#define CST816D_DEFAULT_RELEASE_MS   30     /* 与 zephyr 驱动 CST816D_DEFAULT_TIMEOUT_MS 一致 */
+#define CST816D_DEFAULT_RELEASE_MS   30     /* matches the zephyr driver's CST816D_DEFAULT_TIMEOUT_MS */
 
-/* ---------- 驱动私有数据 ---------- */
+/* ---------- Driver private data ---------- */
 typedef struct
 {
     int         unit;
     uint8_t     i2c_addr;
     const char *i2c_path;
-    const char *int_pin_path;   /* NULL = 轮询模式 */
-    const char *rst_pin_path;   /* NULL = 不控制复位 */
-    uint32_t    release_ms;     /* 手势释放超时 */
+    const char *int_pin_path;   /* NULL = polling mode */
+    const char *rst_pin_path;   /* NULL = reset not controlled */
+    uint32_t    release_ms;     /* gesture release timeout */
 } cst816d_drv_t;
 
-/* ---------- per-open 文件私有数据 ---------- */
+/* ---------- per-open file private data ---------- */
 typedef struct
 {
     bool                  in_use;
@@ -80,19 +80,19 @@ typedef struct
 #define CST816D_MAX_FILES  2
 static cst816d_file_t s_cst816d_files[CST816D_MAX_FILES];
 
-/* ---------- I2C 读取：写 reg 0x00，再读 24 字节 ---------- */
+/* ---------- I2C read: write reg 0x00, then read 24 bytes ---------- */
 static int cst816d_read_reg(cst816d_file_t *f, uint8_t reg, uint8_t *out, size_t len)
 {
     posix_i2c_msg_t m =
     {
-        .addr    = f->drv->i2c_addr,   /* 从机地址属端口层数据 */
+        .addr    = f->drv->i2c_addr,   /* slave address is port-layer data */
         .reg     = reg,
         .reg_len = 1,
         .buf     = out,
         .len     = len,
     };
-    /* 优先使用 write_read 组合，避免 START 之间被打断；框架里对应
-     * WRITE_REG 的读回路径（reg_len=1，len=CST816D_READ_LEN）。 */
+    /* Prefer the combined write_read to avoid being interrupted between STARTs; this maps to
+     * the WRITE_REG read-back path in the framework (reg_len=1, len=CST816D_READ_LEN). */
     return posix_ioctl(f->i2c_fd, POSIX_I2C_IOCTL_READ_REG, &m);
 }
 
@@ -113,12 +113,12 @@ static int cst816d_read_chip_id(cst816d_file_t *f, uint32_t *chip_id)
     return ret;
 }
 
-/* ---------- I2C 寄存器写（电源控制等） ---------- */
+/* ---------- I2C register write (power control, etc.) ---------- */
 static int cst816d_write_reg(cst816d_file_t *f, uint8_t reg, uint8_t val)
 {
     posix_i2c_msg_t m =
     {
-        .addr    = f->drv->i2c_addr,   /* 同 read_raw：从机地址属端口层 */
+        .addr    = f->drv->i2c_addr,   /* same as read_raw: slave address is port-layer */
         .reg     = reg,
         .reg_len = 1,
         .buf     = &val,
@@ -127,14 +127,14 @@ static int cst816d_write_reg(cst816d_file_t *f, uint8_t reg, uint8_t val)
     return posix_ioctl(f->i2c_fd, POSIX_I2C_IOCTL_WRITE_REG, &m);
 }
 
-/* ---------- INT 引脚 ISR ---------- */
+/* ---------- INT pin ISR ---------- */
 static void cst816d_int_isr(void *arg)
 {
     cst816d_file_t *f = (cst816d_file_t *)arg;
     if (f && f->int_sem) { (void)posix_sem_give(f->int_sem); }
 }
 
-/* ---------- 复位芯片（时序对齐 zephyr cst816d_init） ---------- */
+/* ---------- Reset the chip (timing matches zephyr cst816d_init) ---------- */
 static void cst816d_hw_reset(cst816d_file_t *f)
 {
     if (f->rst_fd == POSIX_FD_NULL) { return; }
@@ -147,10 +147,10 @@ static void cst816d_hw_reset(cst816d_file_t *f)
     posix_port_delay_ms(10);
     v.value = 1;
     posix_ioctl(f->rst_fd, POSIX_GPIO_IOCTL_SET_VALUE, &v);
-    posix_port_delay_ms(100);          /* zephyr 用 100ms，比 CHSC6417 稍长 */
+    posix_port_delay_ms(100);          /* zephyr uses 100ms, a bit longer than CHSC6417 */
 }
 
-/* ---------- 建立 / 拆除 INT 中断 ---------- */
+/* ---------- Set up / tear down the INT interrupt ---------- */
 static int cst816d_setup_irq(cst816d_file_t *f)
 {
     if (f->int_fd != POSIX_FD_NULL) { return POSIX_OK; }
@@ -231,7 +231,7 @@ static void *cst816d_open(void *d, const char *p)
 
     posix_i2c_config_t bus_cfg =
     {
-        .speed_hz  = POSIX_I2C_SPEED_FAST,   /* 400kHz，对齐 overlay */
+        .speed_hz  = POSIX_I2C_SPEED_FAST,   /* 400kHz, matching the overlay */
         .addr_bits = POSIX_I2C_ADDR_7BIT,
     };
     posix_ioctl(f->i2c_fd, POSIX_I2C_IOCTL_SET_CONFIG, &bus_cfg);
@@ -270,14 +270,14 @@ static int cst816d_close(void *d, void *fv)
     return POSIX_OK;
 }
 
-/* ---------- read：读一次触摸快照 ----------
+/* ---------- read: read one touch snapshot ----------
  *
- * CST816D 特性：一次按压只产生 1 次 INT。语义参照 zephyr 上游驱动的
- * touch_gesture_release_timer——中断后若在 release_ms 内没有下一次中断，
- * 就视作释放。这里直接用 posix_sem_take(release_ms) 表达该超时：
- *   - 拿到信号量 -> 读 I2C，按数据返回 press/release
- *   - 超时      -> 返回 release
- * 轮询模式（无 INT）：不带超时地立即读一次。
+ * CST816D peculiarity: a single press produces only 1 INT. Semantics follow the zephyr upstream
+ * touch_gesture_release_timer: if no next interrupt arrives within release_ms after an interrupt,
+ * it is treated as released. Here this timeout is expressed directly with posix_sem_take(release_ms):
+ *   - semaphore obtained -> read I2C and return press/release based on the data
+ *   - timeout            -> return release
+ * Polling mode (no INT): read once immediately without a timeout.
  */
 static posix_ssize_t cst816d_read(void *d, void *fv, void *buf, size_t count)
 {
@@ -293,7 +293,7 @@ static posix_ssize_t cst816d_read(void *d, void *fv, void *buf, size_t count)
     {
         if (posix_sem_take(f->int_sem, f->drv->release_ms) != 0)
         {
-            /* 超过 release_ms 没有新的 INT —— 视为释放 */
+            /* no new INT within release_ms -- treated as released */
             data->point_count      = 0;
             data->points[0].status = POSIX_TOUCH_RELEASE;
             return (posix_ssize_t)sizeof(posix_touch_data_t);
@@ -368,7 +368,7 @@ static int cst816d_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
     }
 }
 
-/* ---------- 驱动函数表 ---------- */
+/* ---------- Driver ops table ---------- */
 static const posix_driver_ops_t g_cst816d_ops =
 {
     .open  = cst816d_open,
@@ -378,8 +378,8 @@ static const posix_driver_ops_t g_cst816d_ops =
     .ioctl = cst816d_ioctl,
 };
 
-/* ---------- 设备实例
- * i2c1  已在 overlay enabled（SCL=P4_4, SDA=P4_3, 400kHz）
+/* ---------- Device instance
+ * i2c1 is enabled in the overlay (SCL=P4_4, SDA=P4_3, 400kHz)
  * TP_INT -> P0_0 -> /dev/gpio0/p0
  * TP_RST -> P0_3 -> /dev/gpio0/p3
  * ---------------------------------------------------------------- */

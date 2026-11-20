@@ -1,11 +1,11 @@
 /* ================================================================
- * I2C 驱动 — 基于 Zephyr I2C API 的 posix-device 适配层
+ * I2C driver — a posix-device adaptation layer on top of the Zephyr I2C API
  *
- * 路径格式: /dev/i2c0, /dev/i2c1
- *   /dev/i2c0  → i2c0（DT_NODELABEL(i2c0)）
- *   /dev/i2c1  → i2c1（DT_NODELABEL(i2c1)）
+ * Path format: /dev/i2c0, /dev/i2c1
+ *   /dev/i2c0  → i2c0 (DT_NODELABEL(i2c0))
+ *   /dev/i2c1  → i2c1 (DT_NODELABEL(i2c1))
  *
- * 所有 I2C 事务统一走 ioctl，read/write 返回 POSIX_ERR_NOSUPP。
+ * All I2C transactions go through ioctl; read/write return POSIX_ERR_NOSUPP.
  * ================================================================ */
 
 #include "posix.h"
@@ -16,13 +16,13 @@
 #include <zephyr/drivers/i2c.h>
 #include <string.h>
 
-/* ---------- 控制器私有数据（每个 posix 设备一份） ---------- */
+/* ---------- Controller private data (one per posix device) ---------- */
 typedef struct
 {
     const struct device *dev;   /* Zephyr I2C device */
 } i2c_drv_data_t;
 
-/* ---------- per-open 文件私有数据 ---------- */
+/* ---------- per-open file private data ---------- */
 typedef struct
 {
     bool               in_use;
@@ -59,7 +59,7 @@ static void *i2c_open(void *drv_data, const char *path)
             memset(f, 0, sizeof(*f));
             f->in_use       = true;
             f->drv          = d;
-            /* 默认配置：400 kHz，7-bit 地址 */
+            /* Default config: 400 kHz, 7-bit address */
             f->cfg.speed_hz  = POSIX_I2C_SPEED_FAST;
             f->cfg.addr_bits = POSIX_I2C_ADDR_7BIT;
             break;
@@ -81,7 +81,7 @@ static int i2c_close(void *drv_data, void *file_priv)
     return POSIX_OK;
 }
 
-/* ---------- read：I2C 无流式语义 ---------- */
+/* ---------- read: I2C has no streaming semantics ---------- */
 static posix_ssize_t i2c_read_fn(void *drv_data, void *file_priv,
                                  void *buf, size_t count)
 {
@@ -92,7 +92,7 @@ static posix_ssize_t i2c_read_fn(void *drv_data, void *file_priv,
     return POSIX_ERR_NOSUPP;
 }
 
-/* ---------- write：I2C 无流式语义 ---------- */
+/* ---------- write: I2C has no streaming semantics ---------- */
 static posix_ssize_t i2c_write_fn(void *drv_data, void *file_priv,
                                   const void *buf, size_t count)
 {
@@ -141,13 +141,13 @@ static int i2c_ioctl(void *drv_data, void *file_priv,
 
             if (m->reg_len == 0)
             {
-                /* reg_len=0：等同 RAW_WRITE */
+                /* reg_len=0: equivalent to RAW_WRITE */
                 int ret = i2c_write(f->drv->dev, m->buf, (uint32_t)m->len,
                                     m->addr);
                 return (ret < 0) ? POSIX_ERR_IO : POSIX_OK;
             }
 
-            /* 把 reg bytes + data 合并到一次传输（两段，无 STOP 间隔） */
+            /* Merge reg bytes + data into one transfer (two segments, no STOP in between) */
             uint8_t reg_buf[2];
             if (m->reg_len == 1)
             {
@@ -155,7 +155,7 @@ static int i2c_ioctl(void *drv_data, void *file_priv,
             }
             else
             {
-                /* reg_len == 2：大端字节序 */
+                /* reg_len == 2: big-endian byte order */
                 reg_buf[0] = (uint8_t)((m->reg >> 8) & 0xFF);
                 reg_buf[1] = (uint8_t)(m->reg & 0xFF);
             }
@@ -186,13 +186,13 @@ static int i2c_ioctl(void *drv_data, void *file_priv,
 
             if (m->reg_len == 0)
             {
-                /* reg_len=0：等同 RAW_READ */
+                /* reg_len=0: equivalent to RAW_READ */
                 int ret = i2c_read(f->drv->dev, m->buf, (uint32_t)m->len,
                                    m->addr);
                 return (ret < 0) ? POSIX_ERR_IO : POSIX_OK;
             }
 
-            /* repeated-start：先写 reg bytes，再读 data */
+            /* repeated-start: write reg bytes first, then read data */
             uint8_t reg_buf[2];
             if (m->reg_len == 1)
             {
@@ -279,7 +279,7 @@ static int i2c_ioctl(void *drv_data, void *file_priv,
     }
 }
 
-/* ---------- 驱动函数表 ---------- */
+/* ---------- Driver ops table ---------- */
 static const posix_driver_ops_t g_i2c_ops =
 {
     .open  = i2c_open,
@@ -289,7 +289,7 @@ static const posix_driver_ops_t g_i2c_ops =
     .ioctl = i2c_ioctl,
 };
 
-/* ---------- 设备实例 ---------- */
+/* ---------- Device instance ---------- */
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(i2c0), okay)
 static i2c_drv_data_t s_i2c0 = { .dev = DEVICE_DT_GET(DT_NODELABEL(i2c0)) };
 #endif
@@ -297,7 +297,7 @@ static i2c_drv_data_t s_i2c0 = { .dev = DEVICE_DT_GET(DT_NODELABEL(i2c0)) };
 static i2c_drv_data_t s_i2c1 = { .dev = DEVICE_DT_GET(DT_NODELABEL(i2c1)) };
 #endif
 
-/* ---------- 自动注册 ---------- */
+/* ---------- Auto-registration ---------- */
 static int i2c_init(void)
 {
     int ret = POSIX_OK;

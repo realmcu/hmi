@@ -1,43 +1,43 @@
 /* ================================================================
- * 平台初始化 — 移植到你的 RTOS 时只需修改此文件
+ * Platform init — when porting to your RTOS you only need to modify this file
  *
- * 步骤（详见 PORTING.md 第一步）：
- *   1. 包含你的 RTOS 同步原语头文件
- *   2. 实现 posix_lock / posix_unlock（全局互斥锁，保护框架元数据）
- *   3. 实现 posix_port_in_isr（ISR 上下文判断，返回非 0 = 在 ISR 中）
- *   4. 在 posix_port_lock_init 中创建互斥锁
+ * Steps (see step one in PORTING.md):
+ *   1. Include your RTOS synchronization primitive headers
+ *   2. Implement posix_lock / posix_unlock (global mutex protecting framework metadata)
+ *   3. Implement posix_port_in_isr (ISR context check, non-0 = inside an ISR)
+ *   4. Create the mutex in posix_port_lock_init
  *
- * 单线程/裸机场景：posix_lock/unlock 留空即可，posix_port_in_isr 恒返回 0。
+ * Single-threaded/bare-metal: leave posix_lock/unlock empty and have posix_port_in_isr always return 0.
  * ================================================================ */
 
 #include "posix_port.h"
 
-/* --- 包含你的 RTOS 同步原语头文件 ---
+/* --- Include your RTOS synchronization primitive headers ---
  * #include "your_rtos.h"
  */
 
-/* --- 互斥锁句柄（由 posix_port_lock_init 创建）---
+/* --- Mutex handle (created by posix_port_lock_init) ---
  * static your_mutex_t s_posix_mutex;
  */
 
 void posix_lock(void)
 {
-    /* 多线程 RTOS：
+    /* Multi-threaded RTOS:
      * your_rtos_mutex_lock(&s_posix_mutex); */
 }
 
 void posix_unlock(void)
 {
-    /* 多线程 RTOS：
+    /* Multi-threaded RTOS:
      * your_rtos_mutex_unlock(&s_posix_mutex); */
 }
 
 int posix_port_in_isr(void)
 {
-    /* 大多数 RTOS 有现成接口：
+    /* Most RTOSes have a ready-made interface:
      * return your_rtos_in_isr();
      *
-     * 如果没有，可在进入/退出 ISR 时维护全局标志：
+     * If not, maintain a global flag on ISR entry/exit:
      * extern volatile int g_in_isr;
      * return g_in_isr; */
     return 0;
@@ -45,13 +45,13 @@ int posix_port_in_isr(void)
 
 void posix_port_lock_init(void)
 {
-    /* 多线程 RTOS：
+    /* Multi-threaded RTOS:
      * your_rtos_mutex_create(&s_posix_mutex); */
 }
 
 void *posix_sem_create(const char *name, uint32_t init_count, uint32_t max_count)
 {
-    /* 替换为你的 RTOS 实现，例如：
+    /* Replace with your RTOS implementation, e.g.:
      * your_sem_t *sem = your_rtos_sem_create(init_count, max_count);
      * return sem;
      */

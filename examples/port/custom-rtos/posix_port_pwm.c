@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-/* PWM 没有流式数据，read/write 返回 NOSUPP，全部通过 ioctl 控制 */
+/* PWM has no streaming data; read/write return NOSUPP and everything is controlled via ioctl */
 
 typedef struct
 {
@@ -24,8 +24,8 @@ static int s_pwm_file_used[MAX_PWM_FILES];
 
 static void *pwm_open(void *d, const char *path)
 {
-    /* 解析 channel: /dev/pwm0 的默认 channel=0
-     * 或 /dev/pwm0/ch1 指定 channel */
+    /* Parse the channel: /dev/pwm0 defaults to channel=0
+     * or /dev/pwm0/ch1 selects a channel */
     pwm_file_t *f = NULL;
     for (int i = 0; i < MAX_PWM_FILES; i++)
     {
@@ -33,8 +33,8 @@ static void *pwm_open(void *d, const char *path)
     }
     if (!f) { return POSIX_OPEN_ERR; }
     f->drv = (pwm_drv_t *)d;
-    f->channel = 0; /* 默认 channel 0 */
-    /* 如果路径中有 /chN 则解析 channel 号 */
+    f->channel = 0; /* default channel 0 */
+    /* If the path contains /chN, parse the channel number */
     const char *ch = strstr(path, "/ch");
     if (ch)
     {
@@ -103,7 +103,7 @@ const posix_driver_ops_t g_pwm_ops =
 
 static pwm_drv_t s_pwm0 = { .unit = 0, .reg_base = 0x40030000 };
 
-/* ---------- 自动注册 ---------- */
+/* ---------- Auto-registration ---------- */
 static int pwm_init(void)
 {
     return posix_device_register("/dev/pwm0", &g_pwm_ops, &s_pwm0);

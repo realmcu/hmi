@@ -159,7 +159,7 @@ static int lcd_ioctl(void *drv_data, void *file_priv,
 
     case POSIX_LCD_IOCTL_SET_BRIGHTNESS:
     case POSIX_LCD_IOCTL_SET_BACKLIGHT:
-        /* 背光由 PWM 驱动负责，此处不处理 */
+        /* backlight is handled by the PWM driver, nothing to do here */
         return POSIX_OK;
 
     case POSIX_LCD_IOCTL_FLUSH_WAIT:
@@ -167,7 +167,7 @@ static int lcd_ioctl(void *drv_data, void *file_priv,
         return POSIX_OK;
 
     case POSIX_LCD_IOCTL_ROTATE:
-        /* TODO: 通过 QSPI 发 MADCTL 命令 */
+        /* TODO: send the MADCTL command over QSPI */
         return POSIX_OK;
 
     default:

@@ -1,11 +1,11 @@
 /* ================================================================
- * GPIO 驱动 — 基于 Zephyr GPIO API 的 posix-device 适配层
+ * GPIO driver — a posix-device adaptation layer on top of the Zephyr GPIO API
  *
- * 路径格式: /dev/gpio<N>/p<Pin>
- *   /dev/gpio0/pXX  → gpioa，pin XX
- *   /dev/gpio1/pXX  → gpiob，pin XX
+ * Path format: /dev/gpio<N>/p<Pin>
+ *   /dev/gpio0/pXX  → gpioa, pin XX
+ *   /dev/gpio1/pXX  → gpiob, pin XX
  *
- * 依赖：DTS 中 gpioa / gpiob 节点已 enabled，且 CONFIG_GPIO=y。
+ * Dependency: the gpioa / gpiob nodes are enabled in the DTS, and CONFIG_GPIO=y.
  * ================================================================ */
 
 #include "posix.h"
@@ -18,13 +18,13 @@
 #include <string.h>
 #include <stdlib.h>
 
-/* ---------- 控制器私有数据（每个 posix 设备一份） ---------- */
+/* ---------- Controller private data (one per posix device) ---------- */
 typedef struct
 {
     const struct device *dev;   /* Zephyr GPIO device */
 } gpio_drv_data_t;
 
-/* ---------- per-open 文件私有数据 ---------- */
+/* ---------- per-open file private data ---------- */
 typedef struct
 {
     bool              in_use;
@@ -33,17 +33,17 @@ typedef struct
     uint8_t           direction;
     uint8_t           pull;
 
-    /* 中断相关 */
-    struct gpio_callback zephyr_cb;          /* Zephyr callback 节点 */
+    /* Interrupt-related */
+    struct gpio_callback zephyr_cb;          /* Zephyr callback node */
     void (*user_cb)(void *arg);
     void             *user_arg;
-    gpio_flags_t      int_flags;             /* SET_IRQ 时存的触发模式 */
+    gpio_flags_t      int_flags;             /* trigger mode stored on SET_IRQ */
 } gpio_file_t;
 
 #define MAX_GPIO_FILES  16
 static gpio_file_t s_gpio_files[MAX_GPIO_FILES];
 
-/* ---------- Zephyr 中断 dispatcher ---------- */
+/* ---------- Zephyr interrupt dispatcher ---------- */
 static void gpio_zephyr_isr(const struct device *port,
                             struct gpio_callback *cb,
                             gpio_port_pins_t pins)
@@ -57,16 +57,16 @@ static void gpio_zephyr_isr(const struct device *port,
     }
 }
 
-/* ---------- open：解析路径，绑定 pin ---------- */
+/* ---------- open: parse the path, bind the pin ---------- */
 static void *gpio_open(void *drv_data, const char *path)
 {
     gpio_drv_data_t *d = (gpio_drv_data_t *)drv_data;
 
-    /* 解析 pin 号：找 "/p" 后面的数字，兼容 /pN 和 /pinN */
+    /* Parse the pin number: find the digits after "/p", accepting both /pN and /pinN */
     const char *p = strstr(path, "/p");
     if (!p) { return POSIX_OPEN_ERR; }
-    p += 2;                             /* 跳过 "/p" */
-    if (p[0] == 'i' && p[1] == 'n') { p += 2; }  /* 跳过 "in" */
+    p += 2;                             /* skip "/p" */
+    if (p[0] == 'i' && p[1] == 'n') { p += 2; }  /* skip "in" */
 
     char *end;
     long pin = strtol(p, &end, 10);
@@ -104,7 +104,7 @@ static int gpio_close(void *drv_data, void *file_priv)
     gpio_file_t *f = (gpio_file_t *)file_priv;
     if (!f || !f->in_use) { return POSIX_OK; }
 
-    /* 摘除中断回调（如果注册过） */
+    /* Remove the interrupt callback (if registered) */
     if (f->user_cb)
     {
         gpio_pin_interrupt_configure(f->drv->dev, f->pin, GPIO_INT_DISABLE);
@@ -114,7 +114,7 @@ static int gpio_close(void *drv_data, void *file_priv)
     return POSIX_OK;
 }
 
-/* ---------- read：读引脚电平 ---------- */
+/* ---------- read: read the pin level ---------- */
 static posix_ssize_t gpio_read(void *drv_data, void *file_priv,
                                void *buf, size_t count)
 {
@@ -128,7 +128,7 @@ static posix_ssize_t gpio_read(void *drv_data, void *file_priv,
     return (posix_ssize_t)sizeof(int);
 }
 
-/* ---------- write：写引脚电平 ---------- */
+/* ---------- write: write the pin level ---------- */
 static posix_ssize_t gpio_write(void *drv_data, void *file_priv,
                                 const void *buf, size_t count)
 {
@@ -158,7 +158,7 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
 
             gpio_flags_t flags = 0;
 
-            /* 方向 */
+            /* Direction */
             if (cfg->direction == POSIX_GPIO_DIR_OUTPUT)
             {
                 flags |= cfg->initial_value ? GPIO_OUTPUT_HIGH : GPIO_OUTPUT_LOW;
@@ -173,7 +173,7 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
                 flags |= GPIO_INPUT;
             }
 
-            /* 上下拉 */
+            /* Pull-up/pull-down */
             if (cfg->pull == POSIX_GPIO_PULL_UP)        { flags |= GPIO_PULL_UP; }
             else if (cfg->pull == POSIX_GPIO_PULL_DOWN) { flags |= GPIO_PULL_DOWN; }
 
@@ -209,7 +209,7 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
             if (!arg) { return POSIX_ERR_INVAL; }
             posix_gpio_irq_t *irq = (posix_gpio_irq_t *)arg;
 
-            /* 触发模式映射 */
+            /* Trigger mode mapping */
             gpio_flags_t int_flags;
             switch (irq->trigger)
             {
@@ -228,7 +228,7 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
                 return POSIX_ERR_INVAL;
             }
 
-            /* 摘除旧回调（如果有） */
+            /* Remove the old callback (if any) */
             if (f->user_cb)
             {
                 gpio_remove_callback(f->drv->dev, &f->zephyr_cb);
@@ -241,7 +241,7 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
             gpio_init_callback(&f->zephyr_cb, gpio_zephyr_isr, BIT(f->pin));
             gpio_add_callback(f->drv->dev, &f->zephyr_cb);
 
-            /* 先不使能，等 ENABLE_IRQ 时才打开 */
+            /* Leave disabled for now; enabled only on ENABLE_IRQ */
             gpio_pin_interrupt_configure(f->drv->dev, f->pin, GPIO_INT_DISABLE);
             return POSIX_OK;
         }
@@ -265,7 +265,7 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
     }
 }
 
-/* ---------- 驱动函数表 ---------- */
+/* ---------- Driver ops table ---------- */
 static const posix_driver_ops_t g_gpio_ops =
 {
     .open  = gpio_open,
@@ -275,11 +275,11 @@ static const posix_driver_ops_t g_gpio_ops =
     .ioctl = gpio_ioctl,
 };
 
-/* ---------- 设备实例 ---------- */
+/* ---------- Device instance ---------- */
 static gpio_drv_data_t s_gpio0 = { .dev = DEVICE_DT_GET(DT_NODELABEL(gpioa)) };
 static gpio_drv_data_t s_gpio1 = { .dev = DEVICE_DT_GET(DT_NODELABEL(gpiob)) };
 
-/* ---------- 自动注册 ---------- */
+/* ---------- Auto-registration ---------- */
 static int gpio_init(void)
 {
     int ret;

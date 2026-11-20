@@ -132,15 +132,15 @@ static int lcd_close(void *drv_data, void *file_priv)
 /**
  * @brief Write pixel data to the LCD.
  *
- * count 语义（对齐 posix_ioctl_lcd.h 顶部约定）：
- *   len 是【字节数】，与 UART/SPI/I2C 等其它设备保持一致。
- *   port 层按 file->cfg.bpp 折算成 RTK HAL 期望的像素数：
+ * count semantics (following the convention at the top of posix_ioctl_lcd.h):
+ *   len is [bytes], consistent with other devices such as UART/SPI/I2C.
+ *   The port layer converts it by file->cfg.bpp into the pixel count RTK HAL expects:
  *     RGB565 (bpp=16): pixels = len / 2
  *     RGB888 (bpp=24): pixels = len / 3
- *   len 必须能被 (bpp/8) 整除，否则返回 POSIX_ERR_INVAL。
+ *   len must be divisible by (bpp/8), otherwise POSIX_ERR_INVAL is returned.
  *
- * 目标窗口取自 file->window（上一次 SET_WINDOW 记录的 rect），
- * write 不会自动重置窗口起点。
+ * The target window comes from file->window (the rect recorded by the last SET_WINDOW);
+ * write does not automatically reset the window origin.
  */
 static posix_ssize_t lcd_write(void *drv_data, void *file_priv,
                                const void *buf, size_t len)
@@ -153,9 +153,9 @@ static posix_ssize_t lcd_write(void *drv_data, void *file_priv,
         return 0;
     }
 
-    /* 字节数 → 像素数：RTK HAL 的 rtk_lcd_hal_start_transfer 期望像素数
-     * （内部 GDMA burst 用 Word=4B/2 像素，len>>1 得到 word 数），
-     * 因此这里必须做单位换算，不能把字节数原样透传。 */
+    /* Bytes → pixels: RTK HAL's rtk_lcd_hal_start_transfer expects a pixel count
+     * (the internal GDMA burst uses Word=4B/2 pixels, and len>>1 gives the word count),
+     * so a unit conversion is required here; the byte count must not be passed through as-is. */
     uint8_t bytes_per_pixel = file->cfg.bpp / 8;
     if (bytes_per_pixel == 0 || (len % bytes_per_pixel) != 0)
     {
@@ -171,7 +171,7 @@ static posix_ssize_t lcd_write(void *drv_data, void *file_priv,
     rtk_lcd_hal_start_transfer((void *)buf, pixels);
     rtk_lcd_hal_transfer_done();
 
-    return (posix_ssize_t)len;   /* 与 count 对称，返回字节数 */
+    return (posix_ssize_t)len;   /* symmetric with count: return the byte count */
 }
 
 static posix_ssize_t lcd_read(void *drv_data, void *file_priv, void *buf, size_t count)
@@ -197,8 +197,8 @@ static int lcd_ioctl(void *drv_data, void *file_priv,
         {
             if (!arg) { return POSIX_ERR_INVAL; }
             file->cfg = *(posix_lcd_config_t *)arg;
-            /* drv->w/h/bpp 是共享驱动数据，不能在 per-open 的 ioctl 中修改；
-             * 窗口和像素格式只更新此 fd 自己的 cfg 和 window。 */
+            /* drv->w/h/bpp are shared driver data and must not be modified in a per-open ioctl;
+             * the window and pixel format only update this fd's own cfg and window. */
             file->window.x = 0;
             file->window.y = 0;
             file->window.w = file->cfg.width;
@@ -214,9 +214,9 @@ static int lcd_ioctl(void *drv_data, void *file_priv,
         }
 
     /* ---- window ----
-     * 只记录到 file->window，实际写硬件窗口寄存器统一在 lcd_write 里
-     * 完成。避免"SET_WINDOW 时写一次、write 前再写一次"的重复调用，
-     * 也让"多次 SET_WINDOW 后只做一次刷屏"这种用法零开销。 */
+     * Only record into file->window; the actual hardware window register write is done
+     * centrally in lcd_write. This avoids the redundant "write once on SET_WINDOW, write again before write",
+     * and makes "several SET_WINDOW calls then one screen flush" zero-cost. */
     case POSIX_LCD_IOCTL_SET_WINDOW:
         {
             if (!arg) { return POSIX_ERR_INVAL; }

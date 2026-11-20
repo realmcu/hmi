@@ -1,13 +1,13 @@
 /* ================================================================
- * PWM 驱动 — 基于 Zephyr PWM API 的 posix-device 适配层
+ * PWM driver — a posix-device adaptation layer on top of the Zephyr PWM API
  *
- * 路径格式: /dev/pwm<N>/ch<Channel>
- *   /dev/pwm0/chX  → pwm4，channel X
+ * Path format: /dev/pwm<N>/ch<Channel>
+ *   /dev/pwm0/chX  → pwm4, channel X
  *
- * DTS 节点映射：
+ * DTS node mapping:
  *   /dev/pwm0  → DT_NODELABEL(pwm4)
  *
- * 依赖：DTS 中 pwm4 节点已 enabled，且 CONFIG_PWM=y。
+ * Dependency: the pwm4 node is enabled in the DTS, and CONFIG_PWM=y.
  * ================================================================ */
 
 #include "posix.h"
@@ -19,13 +19,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* ---------- 控制器私有数据（每个 posix 设备一份） ---------- */
+/* ---------- Controller private data (one per posix device) ---------- */
 typedef struct
 {
     const struct device *dev;   /* Zephyr PWM device */
 } pwm_drv_data_t;
 
-/* ---------- per-open 文件私有数据 ---------- */
+/* ---------- per-open file private data ---------- */
 typedef struct
 {
     bool             in_use;
@@ -39,17 +39,17 @@ typedef struct
 #define MAX_PWM_FILES  8
 static pwm_file_t s_pwm_files[MAX_PWM_FILES];
 
-/* ---------- open：解析路径，绑定 channel ---------- */
+/* ---------- open: parse the path, bind the channel ---------- */
 static void *pwm_open(void *drv_data, const char *path)
 {
     pwm_drv_data_t *d = (pwm_drv_data_t *)drv_data;
 
-    /* 解析 channel 号：找 "/ch" 后面的数字 */
+    /* Parse the channel number: find the digits after "/ch" */
     uint32_t channel = 0;
     const char *p = strstr(path, "/ch");
     if (p)
     {
-        p += 3;   /* 跳过 "/ch" */
+        p += 3;   /* skip "/ch" */
         char *end;
         long ch = strtol(p, &end, 10);
         if (end != p && ch >= 0)
@@ -75,7 +75,7 @@ static void *pwm_open(void *drv_data, const char *path)
 
     f->drv       = d;
     f->channel   = channel;
-    f->period_ns = 1000000UL;   /* 默认 1 ms 周期（1 kHz） */
+    f->period_ns = 1000000UL;   /* default 1 ms period (1 kHz) */
     f->pulse_ns  = 0;
     f->flags     = PWM_POLARITY_NORMAL;
     return f;
@@ -88,13 +88,13 @@ static int pwm_close(void *drv_data, void *file_priv)
     pwm_file_t *f = (pwm_file_t *)file_priv;
     if (!f || !f->in_use) { return POSIX_OK; }
 
-    /* 停止输出 */
+    /* Stop output */
     pwm_set(f->drv->dev, f->channel, f->period_ns, 0, f->flags);
     f->in_use = false;
     return POSIX_OK;
 }
 
-/* ---------- read：不支持 ---------- */
+/* ---------- read: not supported ---------- */
 static posix_ssize_t pwm_read(void *drv_data, void *file_priv,
                               void *buf, size_t count)
 {
@@ -105,7 +105,7 @@ static posix_ssize_t pwm_read(void *drv_data, void *file_priv,
     return POSIX_ERR_NOSUPP;
 }
 
-/* ---------- write：不支持 ---------- */
+/* ---------- write: not supported ---------- */
 static posix_ssize_t pwm_write(void *drv_data, void *file_priv,
                                const void *buf, size_t count)
 {
@@ -130,7 +130,7 @@ static int pwm_ioctl(void *drv_data, void *file_priv,
             if (!arg) { return POSIX_ERR_INVAL; }
             posix_pwm_config_t *cfg = (posix_pwm_config_t *)arg;
 
-            /* 计算 period_ns */
+            /* Compute period_ns */
             uint32_t period_ns;
             if (cfg->period_us > 0)
             {
@@ -145,7 +145,7 @@ static int pwm_ioctl(void *drv_data, void *file_priv,
                 return POSIX_ERR_INVAL;
             }
 
-            /* 计算 pulse_ns */
+            /* Compute pulse_ns */
             uint32_t pulse_ns;
             if (cfg->pulse_us > 0)
             {
@@ -159,7 +159,7 @@ static int pwm_ioctl(void *drv_data, void *file_priv,
                 pulse_ns = (uint32_t)((float)period_ns * duty);
             }
 
-            /* 极性 */
+            /* Polarity */
             pwm_flags_t flags = (cfg->polarity == POSIX_PWM_POLARITY_INVERTED)
                                 ? PWM_POLARITY_INVERTED
                                 : PWM_POLARITY_NORMAL;
@@ -230,7 +230,7 @@ static int pwm_ioctl(void *drv_data, void *file_priv,
     }
 }
 
-/* ---------- 驱动函数表 ---------- */
+/* ---------- Driver ops table ---------- */
 static const posix_driver_ops_t g_pwm_ops =
 {
     .open  = pwm_open,
@@ -240,11 +240,11 @@ static const posix_driver_ops_t g_pwm_ops =
     .ioctl = pwm_ioctl,
 };
 
-/* ---------- 设备实例 ---------- */
+/* ---------- Device instance ---------- */
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(pwm4), okay)
 static pwm_drv_data_t s_pwm0 = { .dev = DEVICE_DT_GET(DT_NODELABEL(pwm4)) };
 
-/* ---------- 自动注册 ---------- */
+/* ---------- Auto-registration ---------- */
 static int pwm_init(void)
 {
     return posix_device_register("/dev/pwm0", &g_pwm_ops, &s_pwm0);

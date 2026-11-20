@@ -5,29 +5,29 @@
 #include <stddef.h>
 
 /* ================================================================
- * 基础类型定义
+ * Basic type definitions
  *
- * 设计原则：
- * - 对外只暴露不透明指针 (posix_fd_t)，隐藏实现细节
- * - 不依赖任何 libc 函数（只用 stdint/stddef 的类型定义）
- * - 错误码用负值，沿用 Linux 内核内部风格（直接返回 -errno），
- *   注意：这与 Linux 用户态 POSIX(返回 -1 并设 errno) 不同，
- *   本层不提供全局 errno，错误信息全部承载在返回值里。
+ * Design principles:
+ * - Expose only an opaque pointer (posix_fd_t), hiding implementation details
+ * - Depend on no libc functions (only stdint/stddef type definitions)
+ * - Use negative error codes, following the Linux kernel internal style (return -errno directly),
+ *   Note: this differs from userspace POSIX (return -1 and set errno);
+ *   this layer provides no global errno, all error info is carried in the return value.
  * ================================================================ */
 
-/* ---------- 设备句柄 ---------- */
+/* ---------- Device handle ---------- */
 typedef struct posix_device *posix_fd_t;
 
 #define POSIX_FD_NULL  ((posix_fd_t)0)
 
-/* ---------- 有符号大小类型 ----------
- * read/write 的返回值类型：>=0 表示传输字节数，<0 表示错误码。
- * 用 ptrdiff_t 保证与 size_t 等宽的有符号范围（即 SSIZE_MAX 量级），
- * 避免把 size_t 的字节数截断进 int 而与负错误码混淆。
+/* ---------- Signed size type ----------
+ * Return type of read/write: >=0 means bytes transferred, <0 means error code.
+ * ptrdiff_t gives a signed range as wide as size_t (i.e. SSIZE_MAX scale),
+ * avoiding truncating size_t byte counts into int and confusing them with negative errors.
  */
 typedef ptrdiff_t posix_ssize_t;
 
-/* ---------- 统一错误码（负值） ---------- */
+/* ---------- Unified error codes (negative) ---------- */
 #define POSIX_OK            0
 #define POSIX_ERR          -1
 #define POSIX_ERR_IO       -2
@@ -38,21 +38,21 @@ typedef ptrdiff_t posix_ssize_t;
 #define POSIX_ERR_NOMEM    -7
 #define POSIX_ERR_AGAIN    -8
 #define POSIX_ERR_NOSUPP   -9
-#define POSIX_ERR_ISR      -10   /* 禁止在 ISR 中调用此 API */
+#define POSIX_ERR_ISR      -10   /* This API must not be called from an ISR */
 
-/* ---------- ops->open 失败哨兵 ----------
- * open 回调返回 file_priv（可为 NULL，表示该 fd 无 per-open 私有数据）。
- * 若驱动 open 失败（如资源耗尽），必须返回 POSIX_OPEN_ERR，
- * 框架据此回滚 fd 分配并让 posix_open 返回 POSIX_FD_NULL。
- * 这样 NULL（合法的空私有数据）与失败可以明确区分。
+/* ---------- ops->open failure sentinel ----------
+ * The open callback returns file_priv (may be NULL, meaning this fd has no per-open private data).
+ * If driver open fails (e.g. out of resources), it must return POSIX_OPEN_ERR;
+ * the framework then rolls back the fd allocation and makes posix_open return POSIX_FD_NULL.
+ * This lets NULL (valid empty private data) be clearly distinguished from failure.
  */
 #define POSIX_OPEN_ERR      ((void *)-1)
 
-/* ---------- ISR 上下文标记（已废弃） ----------
- * 历史上 posix_ioctl_isr() 会把此位 OR 进 cmd 来传递 ISR 上下文，
- * 这会污染 cmd 命名空间、要求每个驱动手动屏蔽，极易出错。
- * 现已改为：所有上下文判断统一通过 posix_port_in_isr()，
- * 框架不再修改 cmd。保留此宏仅为向后兼容，新代码请勿使用。
+/* ---------- ISR context flag (deprecated) ----------
+ * Historically posix_ioctl_isr() ORed this bit into cmd to pass ISR context,
+ * which polluted the cmd namespace, required every driver to mask it manually, and was error-prone.
+ * Now all context checks go through posix_port_in_isr() and the framework no longer
+ * modifies cmd. This macro is kept only for backward compatibility; do not use it in new code.
  */
 #define POSIX_FLAG_ISR      (1UL << 31)
 

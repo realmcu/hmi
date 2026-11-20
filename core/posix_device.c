@@ -1,25 +1,25 @@
 /* ================================================================
- * POSIX 设备抽象层 — 核心实现
+ * POSIX device abstraction layer — core implementation
  *
- * 负责：
- * 1. 设备表管理（注册/注销/查找，支持挂载点前缀匹配）
- * 2. posix_open → 查找设备表 → 占用引用 → 调 ops->open → 存 file_priv
- * 3. posix_read/write/ioctl/close → 校验 fd → 取快照 → 锁外调 ops
- * 4. ISR 版跳过锁，仅做句柄有效性校验后直调 ops
+ * Responsibilities:
+ * 1. Device table management (register/unregister/lookup, with mount-point prefix matching)
+ * 2. posix_open → look up device table → take a reference → call ops->open → store file_priv
+ * 3. posix_read/write/ioctl/close → validate fd → take a snapshot → call ops outside the lock
+ * 4. ISR variants skip the lock and call ops directly after only a handle validity check
  *
- * === 线程安全策略（重要） ===
- *   框架锁只保护“设备表 / fd 池 / 引用计数”这类框架元数据。
- *   每个 API 在锁内完成：句柄有效性校验 + 设备查找 + 取出
- *   (ops 指针, drv_data, file_priv) 快照，然后【释放锁】再调用
- *   驱动 ops 回调。因此：
- *     - 驱动 ops 可以安全阻塞/睡眠，不会串行化其它设备或卡死系统。
- *     - 一个已 open 的 fd 令对应设备 ref_count > 0，阻止其被 unregister，
- *       保证锁外执行 ops 期间设备表项与 drv_data 不会被销毁。
- *   posix_*_isr 不能加锁（互斥量在 ISR 不可用），只做有效性校验后直调 ops；
- *   调用方需保证 ISR 访问的设备不会被并发 unregister。
+ * === Thread-safety strategy (important) ===
+ *   The framework lock protects only framework metadata like "device table / fd pool / ref counts".
+ *   Each API, under the lock, does: handle validity check + device lookup + take an
+ *   (ops pointer, drv_data, file_priv) snapshot, then [releases the lock] before calling
+ *   the driver ops callback. Therefore:
+ *     - driver ops may safely block/sleep and will not serialize other devices or hang the system.
+ *     - an open fd makes the device's ref_count > 0, preventing it from being unregistered
+ *       and guaranteeing the device entry and drv_data survive while ops run outside the lock.
+ *   posix_*_isr cannot lock (mutexes are unusable in ISRs); they validate then call ops directly;
+ *   the caller must ensure devices accessed from the ISR are not unregistered concurrently.
  *
- * 移植到新平台不需要修改此文件，
- * 只需要实现 posix_lock/posix_unlock/posix_port_in_isr（默认 weak 实现）。
+ * Porting to a new platform requires no change to this file,
+ * only implementing posix_lock/posix_unlock/posix_port_in_isr (weak default implementations).
  * ================================================================ */
 
 #include "posix_device.h"
@@ -27,7 +27,7 @@
 #include <string.h>
 
 /* ================================================================
- * 内部数据结构
+ * Internal data structures
  * ================================================================ */
 
 #ifndef POSIX_DEVICE_TABLE_SIZE
@@ -35,52 +35,52 @@
 #endif
 
 #ifndef POSIX_FD_POOL_SIZE
-#define POSIX_FD_POOL_SIZE       16   /* 最大同时打开的文件数 */
+#define POSIX_FD_POOL_SIZE       16   /* max number of simultaneously open files */
 #endif
 
-/* fd 有效性魔数 ('pxfd')，用于检测野指针/已 close 的陈旧句柄 */
+/* fd validity magic ('pxfd'), used to detect wild pointers/stale handles from a closed fd */
 #define POSIX_FD_MAGIC  0x70786664u
 
-/* 设备表条目 */
+/* Device table entry */
 typedef struct
 {
     char                     path[32];
     const posix_driver_ops_t *ops;
-    void                     *drv_data;       /* 驱动私有数据 */
+    void                     *drv_data;       /* driver private data */
     int                      ref_count;
     int                      in_use;
 } posix_device_entry_t;
 
-/* fd 结构体 — open 时从池中分配 */
+/* fd struct — allocated from the pool on open */
 struct posix_device
 {
-    uint32_t              magic;      /* == POSIX_FD_MAGIC 表示有效 */
-    posix_device_entry_t *entry;      /* 指向设备表 */
-    void                 *file_priv;  /* per-open 私有数据（ops->open 返回值）*/
-    int                   in_use;     /* 此 fd 是否在使用中 */
+    uint32_t              magic;      /* == POSIX_FD_MAGIC means valid */
+    posix_device_entry_t *entry;      /* points into the device table */
+    void                 *file_priv;  /* per-open private data (ops->open return value) */
+    int                   in_use;     /* whether this fd is in use */
 };
 
-/* ---------- 静态资源 ---------- */
+/* ---------- Static resources ---------- */
 static posix_device_entry_t s_dev_table[POSIX_DEVICE_TABLE_SIZE];
 static struct posix_device s_fd_pool[POSIX_FD_POOL_SIZE];
 
 /* ================================================================
- * 移植层弱符号默认实现（port 层用强符号覆盖）
+ * Porting layer weak-symbol default implementations (port overrides with strong symbols)
  * ================================================================ */
 
 void posix_lock(void)   __attribute__((weak));
 void posix_unlock(void) __attribute__((weak));
-void posix_lock(void)   { /* 默认空，用户覆盖 */ }
-void posix_unlock(void) { /* 默认空，用户覆盖 */ }
+void posix_lock(void)   { /* empty by default, user overrides */ }
+void posix_unlock(void) { /* empty by default, user overrides */ }
 
 int posix_port_in_isr(void) __attribute__((weak));
 int posix_port_in_isr(void) { return 0; }
 
 /* ================================================================
- * 内部辅助函数
+ * Internal helper functions
  * ================================================================ */
 
-/* ---- 设备表操作 ---- */
+/* ---- Device table operations ---- */
 static posix_device_entry_t *entry_by_path(const char *path)
 {
     for (int i = 0; i < POSIX_DEVICE_TABLE_SIZE; i++)
@@ -94,10 +94,10 @@ static posix_device_entry_t *entry_by_path(const char *path)
     return NULL;
 }
 
-/* open 专用查找：先精确匹配；失败则做挂载点前缀匹配——
- * 注册路径是 query 的前缀且其后紧跟 '/'（取最长匹配）。
- * 这让注册的 "/dev/gpio0" 能服务 "/dev/gpio0/p12" 这类引脚级路径，
- * 完整 path 会传给 ops->open 由驱动解析剩余子路径。 */
+/* Lookup for open: exact match first; on failure do mount-point prefix matching —
+ * the registered path is a prefix of query and is immediately followed by '/' (longest match wins).
+ * This lets a registered "/dev/gpio0" serve pin-level paths like "/dev/gpio0/p12";
+ * the full path is passed to ops->open and the driver parses the remaining subpath. */
 static posix_device_entry_t *entry_for_open(const char *path)
 {
     posix_device_entry_t *exact = entry_by_path(path);
@@ -129,7 +129,7 @@ static posix_device_entry_t *free_entry(void)
     return NULL;
 }
 
-/* ---- fd 池操作 ---- */
+/* ---- fd pool operations ---- */
 static struct posix_device *alloc_fd(void)
 {
     for (int i = 0; i < POSIX_FD_POOL_SIZE; i++)
@@ -154,9 +154,9 @@ static void free_fd(struct posix_device *fd)
     fd->file_priv = NULL;
 }
 
-/* 校验 fd 句柄：必须落在 fd 池区间内、对齐、魔数正确、在用。
- * 用于拦截野指针、栈地址、以及 close 后被复用的陈旧句柄。
- * 调用者需自行决定是否在持锁状态下调用。 */
+/* Validate an fd handle: must fall inside the fd pool, be aligned, have the right magic, and be in use.
+ * Catches wild pointers, stack addresses, and stale handles reused after close.
+ * The caller decides whether to call this while holding the lock. */
 static int fd_is_valid(const struct posix_device *f)
 {
     if (f < &s_fd_pool[0] || f >= &s_fd_pool[POSIX_FD_POOL_SIZE])
@@ -176,7 +176,7 @@ static int fd_is_valid(const struct posix_device *f)
 }
 
 /* ================================================================
- * 设备注册 API
+ * Device registration API
  * ================================================================ */
 
 int posix_device_register(const char *path,
@@ -213,7 +213,7 @@ int posix_device_register_group(const char *fmt, int count,
                                 const posix_driver_ops_t *ops,
                                 void **privs)
 {
-    int done = 0;   /* 已成功注册的项数，回滚时只撤销这些 */
+    int done = 0;   /* number of successfully registered items; rollback undoes only these */
     int err  = POSIX_ERR_NOMEM;
 
     for (int i = 0; i < count; i++)
@@ -251,10 +251,10 @@ int posix_device_unregister(const char *path)
     return POSIX_OK;
 }
 
-/* 只读查找：把已注册 entry 的 ops+drv_data 拷给调用者。
- * 用于按已注册路径起别名（例如 touch 层把 /dev/cst816d 再挂成 /dev/touch0）。
- * 不动 ref_count；调用者拿到指针后应立即用 posix_device_register 建立别名，
- * 别名的 ref_count 独立计。 */
+/* Read-only lookup: copy a registered entry's ops+drv_data to the caller.
+ * Used to alias by registered path (e.g. the touch layer mounting /dev/cst816d again as /dev/touch0).
+ * Does not touch ref_count; the caller should immediately create the alias with posix_device_register,
+ * and the alias's ref_count is tracked independently. */
 int posix_device_lookup(const char *path,
                         const posix_driver_ops_t **ops_out,
                         void **drv_out)
@@ -271,13 +271,13 @@ int posix_device_lookup(const char *path,
     return POSIX_OK;
 }
 
-/* 别名注册：把 src_path 已注册的 ops+drv_data 用同一份再挂到 alias 名下。
- * 通用于 touch/gsensor 等"多型号+当前板选型"场景，取代各子系统各自实现一份
- * bind API 的复制粘贴。
+/* Alias registration: mount src_path's registered ops+drv_data again under the alias name.
+ * Generic for touch/gsensor "multiple models + current board selection" scenarios, replacing
+ * copy-pasted per-subsystem bind APIs.
  *
- * 注意：alias 与 src_path 是两个独立 entry，ref_count 各自计。两条路径都
- * open 时会占两个 fd 槽（以及各芯片自己的 per-open 池两个槽）。绝大多数
- * 场景应用只 open alias 或 src_path 其中之一。 */
+ * Note: alias and src_path are two independent entries, each with its own ref_count. Opening
+ * both paths takes two fd slots (and two slots in each chip's own per-open pool). In the vast majority
+ * of scenarios the app opens only one of alias or src_path. */
 int posix_device_bind_alias(const char *alias, const char *src_path)
 {
     if (!alias || !src_path) { return POSIX_ERR_INVAL; }
@@ -298,9 +298,9 @@ int posix_device_unbind_alias(const char *alias)
 }
 
 /* ================================================================
- * POSIX 用户 API
+ * POSIX user API
  *
- * 统一模式：锁内校验 + 取快照，锁外调 ops。
+ * Uniform pattern: validate + take snapshot under the lock, call ops outside it.
  * ================================================================ */
 
 posix_fd_t posix_open(const char *path)
@@ -316,13 +316,13 @@ posix_fd_t posix_open(const char *path)
     if (!fd) { posix_unlock(); return POSIX_FD_NULL; }
 
     fd->entry = e;
-    e->ref_count++;     /* 先占引用，保证锁外执行 open 期间设备不被注销 */
+    e->ref_count++;     /* take the reference first so the device is not unregistered while open runs outside the lock */
 
     const posix_driver_ops_t *ops = e->ops;
     void                     *drv = e->drv_data;
     posix_unlock();
 
-    /* 锁外调用驱动 open（可阻塞） */
+    /* call driver open outside the lock (may block) */
     void *fp;
     if (ops && ops->open)
     {
@@ -330,12 +330,12 @@ posix_fd_t posix_open(const char *path)
     }
     else
     {
-        fp = drv;   /* 没 open 回调时复用 drv_data */
+        fp = drv;   /* reuse drv_data when there is no open callback */
     }
 
     if (fp == POSIX_OPEN_ERR)
     {
-        /* 驱动 open 失败：回滚引用与 fd */
+        /* driver open failed: roll back the reference and fd */
         posix_lock();
         if (e->ref_count > 0) { e->ref_count--; }
         free_fd(fd);
@@ -362,12 +362,12 @@ int posix_close(posix_fd_t fd)
     void                     *drv = e ? e->drv_data : NULL;
     void                     *fp  = f->file_priv;
 
-    /* 立即让 fd 失效，杜绝并发/重复 close 命中同一句柄 */
+    /* invalidate the fd immediately so a concurrent/repeated close cannot hit the same handle */
     free_fd(f);
     if (e && e->ref_count > 0) { e->ref_count--; }
     posix_unlock();
 
-    /* 锁外调用驱动 close（可阻塞）；ops 指向静态表、drv/fp 为快照，均安全 */
+    /* call driver close outside the lock (may block); ops points to a static table and drv/fp are snapshots, both safe */
     int ret = POSIX_OK;
     if (ops && ops->close)
     {
@@ -440,12 +440,12 @@ int posix_ioctl(posix_fd_t fd, unsigned long cmd, void *arg)
 }
 
 /* ================================================================
- * ISR 安全版本（跳过锁，直接调驱动 ops）
+ * ISR-safe variants (skip the lock, call driver ops directly)
  *
- * 不加锁（RTOS 互斥量在 ISR 上下文不可用），只做句柄有效性校验。
- * 不再修改 cmd —— 驱动统一通过 posix_port_in_isr() 判断上下文，
- * 避免污染 cmd 命名空间。
- * 调用方需保证 ISR 访问的设备不会被并发 unregister。
+ * No locking (RTOS mutexes are unusable in ISR context), only a handle validity check.
+ * No longer modifies cmd — drivers uniformly use posix_port_in_isr() to determine context,
+ * avoiding polluting the cmd namespace.
+ * The caller must ensure devices accessed from the ISR are not unregistered concurrently.
  * ================================================================ */
 
 posix_ssize_t posix_read_isr(posix_fd_t fd, void *buf, size_t count)

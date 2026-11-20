@@ -4,7 +4,7 @@
 #include "../posix_ioctl.h"
 #include "../posix_device.h"
 
-/* UART 配置结构体 */
+/* UART config struct */
 typedef struct {
     uint32_t baudrate;
     uint8_t  data_bits;
@@ -13,13 +13,13 @@ typedef struct {
     uint8_t  flow_control;
 } posix_uart_config_t;
 
-/* 接收中断回调 */
+/* RX interrupt callback */
 typedef struct {
     void (*callback)(posix_fd_t fd, uint8_t byte, void *arg);
     void *arg;
 } posix_uart_rx_cb_t;
 
-/* ioctl 命令 */
+/* ioctl commands */
 #define POSIX_UART_IOCTL_GET_CONFIG     POSIX_IOC(POSIX_DEVICE_MAGIC_UART, 1)
 #define POSIX_UART_IOCTL_SET_CONFIG     POSIX_IOC(POSIX_DEVICE_MAGIC_UART, 2)
 #define POSIX_UART_IOCTL_SET_RX_CB      POSIX_IOC(POSIX_DEVICE_MAGIC_UART, 3)

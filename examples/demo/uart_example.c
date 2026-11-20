@@ -1,36 +1,36 @@
 /* ================================================================
- * UART 使用示例
+ * UART usage example
  *
- * 功能：打开 UART0 → 配置 115200-8N1 → 发送数据 → 接收数据
- *       → 注册中断接收回调 → 关闭
+ * Function: open UART0 → configure 115200-8N1 → send data → receive data
+ *       → register RX interrupt callback → close
  *
- * 编译要求：需要 posix.h + posix_ioctl_uart.h
+ * Build requirements: posix.h + posix_ioctl_uart.h
  * ================================================================ */
 
 #include "posix.h"
 #include "ioctls/posix_ioctl_uart.h"
 #include <string.h>
 
-/* 接收中断回调函数 */
+/* RX interrupt callback function */
 static void on_uart_rx(posix_fd_t fd, uint8_t byte, void *arg)
 {
-    /* ISR 上下文！不能调阻塞函数 */
-    /* 通常把数据放入环形缓冲区 */
+    /* ISR context! No blocking calls allowed */
+    /* Usually put the data into a ring buffer */
     (void)fd;
     (void)arg;
 }
 
 void example_uart(void)
 {
-    /* === 1. 打开设备 === */
+    /* === 1. Open the device === */
     posix_fd_t uart = posix_open("/dev/uart0");
     if (!uart)
     {
-        /* 设备不存在或注册失败 */
+        /* device does not exist or registration failed */
         return;
     }
 
-    /* === 2. 配置参数 === */
+    /* === 2. Configure parameters === */
     posix_uart_config_t cfg =
     {
         .baudrate     = 115200,
@@ -47,28 +47,28 @@ void example_uart(void)
         return;
     }
 
-    /* === 3. 发送（阻塞） === */
+    /* === 3. Send (blocking) === */
     const char *msg = "Hello UART!\r\n";
     posix_write(uart, msg, strlen(msg));
 
-    /* === 4. 接收（非阻塞轮询：FIFO 为空时立即返回 0） === */
+    /* === 4. Receive (non-blocking poll: returns 0 immediately when FIFO is empty) === */
     uint8_t buf[64];
     int n = posix_read(uart, buf, sizeof(buf));
-    /* n = 实际读取的字节数，< 0 表示错误 */
+    /* n = actual bytes read, < 0 means error */
 
-    /* === 5. 注册中断回调（可选） === */
+    /* === 5. Register interrupt callback (optional) === */
     posix_uart_rx_cb_t cb =
     {
         .callback = on_uart_rx,
         .arg      = NULL,
     };
     posix_ioctl(uart, POSIX_UART_IOCTL_SET_RX_CB, &cb);
-    /* 之后每收到一个字节，on_uart_rx 在 ISR 中被调用 */
+    /* after this, on_uart_rx is called from the ISR for every byte received */
 
-    /* === 6. 等待发送完成（DMA 场景） === */
+    /* === 6. Wait for transmit to complete (DMA case) === */
     posix_ioctl(uart, POSIX_UART_IOCTL_TX_FLUSH, NULL);
 
-    /* === 7. 关闭 === */
+    /* === 7. Close === */
     posix_close(uart);
 }
 

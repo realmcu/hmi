@@ -2,43 +2,43 @@
 #define POSIX_INIT_H
 
 /* ================================================================
- * 自动注册机制
+ * Auto-registration mechanism
  *
- * 利用 GCC __attribute__((section)) 将初始化函数指针
- * 放入特定的 ELF 段。启动时遍历该段，逐个调用。
+ * Uses GCC __attribute__((section)) to place init function pointers
+ * into dedicated ELF sections; startup walks it and calls each one.
  *
- * 优先级：
- *   0 → 板级初始化（时钟、pinmux）
- *   1 → 设备驱动注册（UART/SPI/GPIO/...）
- *   1_5 → 设备注册后初始化（跨设备绑定/选择）
- *   2 → 应用初始化
+ * Priority levels:
+ *   0 → board init (clock, pinmux)
+ *   1 → device driver registration (UART/SPI/GPIO/...)
+ *   1_5 → post-registration init (cross-device binding/selection)
+ *   2 → application init
  *
- * 用法：在每个驱动 .c 文件尾部：
+ * Usage: at the end of each driver .c file:
  *
  *   static int uart_init(void) {
  *       return posix_device_register("/dev/uart0", &ops, &priv);
  *   }
  *   POSIX_INIT_DEVICE_EXPORT(uart_init);
  *
- * 链接脚本需要把以下段【按顺序】收集到一起（哨兵在两端）：
+ * The linker script must collect these sections in order (sentinels at both ends):
  *
  *   .posix_init : {
- *       KEEP(*(.posix$initS))     // 起始哨兵（由 posix_init.c 提供）
- *       KEEP(*(.posix$init0))     // 优先级 0：板级（时钟/pinmux）
- *       KEEP(*(.posix$init1))     // 优先级 1：设备驱动注册
- *       KEEP(*(.posix$init1_5))   // 优先级 1_5：设备注册后初始化
- *       KEEP(*(.posix$init2))     // 优先级 2：应用
- *       KEEP(*(.posix$initE))     // 结束哨兵（由 posix_init.c 提供）
+ *       KEEP(*(.posix$initS))     // start sentinel (provided by posix_init.c)
+ *       KEEP(*(.posix$init0))     // priority 0: board (clock/pinmux)
+ *       KEEP(*(.posix$init1))     // priority 1: device driver registration
+ *       KEEP(*(.posix$init1_5))   // priority 1_5: post-registration init
+ *       KEEP(*(.posix$init2))     // priority 2: application
+ *       KEEP(*(.posix$initE))     // end sentinel (provided by posix_init.c)
  *   } > FLASH
  *
- * 重要：
- *  - 遍历边界来自 posix_init.c 中的 C 数组哨兵
- *    (__posix_init_start[] / __posix_init_end[])，
- *    链接脚本【不要】再自行定义 __posix_init_start/end 链接器符号。
- *  - 段名带 '$' 仅是 MSVC/IAR 风格的普通字符，GNU ld 不会按 0/1/2
- *    自动排序，因此必须像上面那样【逐段显式列出】init0/init1/init1_5/init2，
- *    不能用通配 KEEP(*(.posix$init*))（顺序不保证，优先级会失效）。
- *  - 参考实现：examples/port/posix_init_zephyr.ld。
+ * Important:
+ *  - Iteration bounds come from the C array sentinels in posix_init.c
+ *    (__posix_init_start[] / __posix_init_end[]);
+ *    do NOT define __posix_init_start/end linker symbols in the script.
+ *  - The '$' in section names is a plain MSVC/IAR-style char; GNU ld does not
+ *    sort by 0/1/2 automatically, so init0/init1/init1_5/init2 must be listed
+ *    explicitly as above; wildcard KEEP(*(.posix$init*)) loses priority (order not guaranteed).
+ *  - Reference implementation: examples/port/posix_init_zephyr.ld.
  * ================================================================ */
 
 #include <stdint.h>
@@ -53,13 +53,13 @@ typedef int (*posix_init_fn_t)(void);
     POSIX_USED const posix_init_fn_t __posix_init_##fn                         \
     POSIX_SECTION(".posix$init" level) POSIX_ALIGN = fn
 
-/* 优先级等级 */
+/* Priority levels */
 #define POSIX_INIT_BOARD_EXPORT(fn)     POSIX_INIT_EXPORT(fn, "0")
 #define POSIX_INIT_DEVICE_EXPORT(fn)    POSIX_INIT_EXPORT(fn, "1")
 #define POSIX_INIT_POST_DEVICE_EXPORT(fn) POSIX_INIT_EXPORT(fn, "1_5")
 #define POSIX_INIT_APP_EXPORT(fn)       POSIX_INIT_EXPORT(fn, "2")
 
-/* 遍历所有已注册的 init 函数并调用 */
+/* Walk all registered init functions and call them */
 int posix_auto_init(void);
 
 #endif /* POSIX_INIT_H */

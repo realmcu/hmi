@@ -29,7 +29,7 @@ static int adc_close(void *d, void *fv)
     return 0;
 }
 
-/* posix_read = 单次采样（默认 channel 0） */
+/* posix_read = single sample (default channel 0) */
 static posix_ssize_t adc_read(void *d, void *f, void *buf, size_t count)
 {
     (void)d; adc_file_t *file = (adc_file_t *)f;
@@ -71,7 +71,7 @@ const posix_driver_ops_t g_adc_ops =
 };
 static adc_drv_t s_adc0 = { .unit = 0, .reg_base = 0x40040000 };
 
-/* ---------- 自动注册 ---------- */
+/* ---------- Auto-registration ---------- */
 static int adc_init(void)
 {
     return posix_device_register("/dev/adc0", &g_adc_ops, &s_adc0);

@@ -1,31 +1,31 @@
-# POSIX 设备抽象层 — 移植指南
+# POSIX Device Abstraction Layer — Porting Guide
 
-## 概述
+## Overview
 
-将本抽象层移植到新的 RTOS/芯片平台，你需要做 3 件事情：
+To port this abstraction layer to a new RTOS/chip platform, you need to do 3 things:
 
 ```
-1. 实现锁和 ISR 检测（3 行代码）
-2. 在每个驱动文件尾部加一行 POSIX_INIT_DEVICE_EXPORT(fn)
-3. 在链接脚本中保留 .posix$init* 段
-4. 在系统初始化时调用 posix_port_init_all()
+1. Implement the lock and ISR detection (3 lines of code)
+2. Add one POSIX_INIT_DEVICE_EXPORT(fn) line at the end of each driver file
+3. Keep the .posix$init* section in the linker script
+4. Call posix_port_init_all() during system initialization
 ```
 
-移植完成后，**所有应用层代码零修改**。
+After porting, **all application-layer code stays unchanged**.
 
 ---
 
-## 移植步骤
+## Porting Steps
 
-### 第一步：实现锁和 ISR 检测
+### Step 1: Implement the lock and ISR detection
 
-在 `port/你的RTOS/posix_port_init.c` 中：
+In `port/your_rtos/posix_port_init.c`:
 
 ```c
 #include "posix_port.h"
 
-/* --- 1. 多线程锁 --- */
-/* 如果你的 RTOS 是多线程的，实现互斥锁 */
+/* --- 1. Multi-threaded lock --- */
+/* If your RTOS is multi-threaded, implement a mutex */
 
 static YOUR_MUTEX_T s_posix_mutex;
 
@@ -44,37 +44,37 @@ void posix_port_lock_init(void)
     your_rtos_mutex_create(&s_posix_mutex);
 }
 
-/* --- 2. ISR 上下文检测 --- */
+/* --- 2. ISR context detection --- */
 int posix_port_in_isr(void)
 {
-    /* 大部分 RTOS 有现成的接口 */
+    /* Most RTOSes provide a ready-made interface */
     return your_rtos_in_isr();
 
-    /* 如果没有，可以关中断时设一个全局标志：
+    /* If not, you can set a global flag with interrupts disabled:
      *
      * volatile int g_posix_in_isr = 0;
-     * // 进入 ISR 时：g_posix_in_isr = 1;
-     * // 退出 ISR 时：g_posix_in_isr = 0;
+     * // on ISR entry: g_posix_in_isr = 1;
+     * // on ISR exit: g_posix_in_isr = 0;
      * return g_posix_in_isr;
      */
 }
 ```
 
-**单线程/裸机场景**：`posix_lock/unlock` 留空即可。
+**Single-threaded / bare-metal scenario**: leave `posix_lock/unlock` empty.
 
-> 🔒 **锁的作用范围**：框架锁只保护设备表 / fd 池等框架元数据。
-> 每个 API 在锁内完成“句柄校验 + 查表 + 取 ops/file_priv 快照”，**释放锁后**再执行驱动 ops 回调。
-> 因此驱动 ops 可以安全阻塞/睡眠，**不会**因持有全局锁而串行化其它设备或导致全系统假死；
-> 同一 fd 打开期间对应设备 ref_count > 0，保证锁外执行 ops 时设备不会被并发注销。
+> 🔒 **Scope of the lock**: the framework lock only protects framework metadata such as the device table / fd pool.
+> Each API performs "handle validation + table lookup + ops/file_priv snapshot" while holding the lock, and only invokes the driver ops callback **after releasing the lock**.
+> Therefore driver ops can safely block/sleep and will **not** serialize other devices or stall the whole system by holding a global lock;
+> While an fd is open, the corresponding device's ref_count > 0, ensuring the device cannot be unregistered concurrently when ops run outside the lock.
 
-### 第二步：实现各外设驱动程序
+### Step 2: Implement each peripheral driver
 
-每个外设需要实现 5 个函数（open/close/read/write/ioctl），构成一个 `posix_driver_ops_t`。
-（read/write 返回 `posix_ssize_t`；open 失败须返回 `POSIX_OPEN_ERR`。）
+Each peripheral needs to implement 5 functions (open/close/read/write/ioctl) that form a `posix_driver_ops_t`.
+(read/write return `posix_ssize_t`; a failing open must return `POSIX_OPEN_ERR`.)
 
-最小移植工作量估算：
+Estimated minimum porting effort:
 
-| 外设 | open | close | read | write | ioctl | 总行数 |
+| Peripheral | open | close | read | write | ioctl | Total lines |
 |------|------|-------|------|-------|-------|--------|
 | UART | 5 | 3 | 15 | 15 | 40 | ~80 |
 | GPIO | 15 | 3 | 5 | 5 | 50 | ~80 |
@@ -86,16 +86,16 @@ int posix_port_in_isr(void)
 | Touch | 5 | 3 | 10 | — | 20 | ~40 |
 | GSensor | 5 | 3 | 10 | — | 20 | ~40 |
 
-**总计：约 490 行 C 代码。**
+**Total: about 490 lines of C code.**
 
-具体实现模板见 `examples/port/custom-rtos/posix_port_*.c`。
+See `examples/port/custom-rtos/posix_port_*.c` for concrete implementation templates.
 
-### 第三步：驱动注册（自动）
+### Step 3: Driver registration (automatic)
 
-每个驱动通过 `POSIX_INIT_DEVICE_EXPORT` 自动注册，无需在 port 层手动调用：
+Each driver registers itself automatically via `POSIX_INIT_DEVICE_EXPORT`; no manual call is needed in the port layer:
 
 ```c
-// examples/port/custom-rtos/posix_port_uart.c 末尾
+// end of examples/port/custom-rtos/posix_port_uart.c
 static int uart_init(void)
 {
     return posix_device_register_group("/dev/uart%d", 2, &g_uart_ops, privs);
@@ -103,93 +103,93 @@ static int uart_init(void)
 POSIX_INIT_DEVICE_EXPORT(uart_init);
 ```
 
-启动时 `posix_auto_init()` 遍历链接段，自动调用所有驱动注册函数。
+At startup, `posix_auto_init()` walks the linker section and calls every driver registration function automatically.
 
-### 第四步：链接脚本
+### Step 4: Linker script
 
-在链接脚本中**按优先级顺序逐段列出**（不能用通配符 `*`，否则优先级顺序不保证）：
+In the linker script, **list each section explicitly in priority order** (you cannot use the wildcard `*`, otherwise the priority order is not guaranteed):
 
 ```ld
 .posix_init : {
-    KEEP(*(.posix$initS))   /* 起始哨兵（由 posix_init.c 提供，勿在此定义符号） */
-    KEEP(*(.posix$init0))   /* 优先级 0：板级初始化（时钟/pinmux） */
-    KEEP(*(.posix$init1))   /* 优先级 1：设备驱动注册 */
-    KEEP(*(.posix$init2))   /* 优先级 2：应用初始化 */
-    KEEP(*(.posix$initE))   /* 结束哨兵（由 posix_init.c 提供，勿在此定义符号） */
+    KEEP(*(.posix$initS))   /* start sentinel (provided by posix_init.c; do not define the symbol here) */
+    KEEP(*(.posix$init0))   /* priority 0: board init (clock/pinmux) */
+    KEEP(*(.posix$init1))   /* priority 1: device driver registration */
+    KEEP(*(.posix$init2))   /* priority 2: application init */
+    KEEP(*(.posix$initE))   /* end sentinel (provided by posix_init.c; do not define the symbol here) */
 } > FLASH
 ```
 
-> ⚠️ 链接脚本中**不要**自行定义 `__posix_init_start` / `__posix_init_end` 符号；
-> 它们由 `posix_init.c` 中的 C 数组哨兵提供。重复定义会导致遍历边界错误。
+> ⚠️ **Do not** define the `__posix_init_start` / `__posix_init_end` symbols yourself in the linker script;
+> they are provided by the C array sentinels in `posix_init.c`. Duplicate definitions will corrupt the iteration bounds.
 
 ---
 
-## 移植检查清单
+## Porting Checklist
 
 ### UART
-- [ ] `open`: 分配 file 结构体，设默认波特率 115200
-- [ ] `read`: 任务上下文阻塞读，ISR 上下文非阻塞读
-- [ ] `write`: 任务上下文阻塞写，ISR 上下文逐字节写 TX FIFO
-- [ ] `ioctl SET_CONFIG`: 设置波特率/数据位/校验/停止位/流控
-- [ ] `ioctl SET_RX_CB`: 注册接收中断回调
-- [ ] DMA 传输是否需要 `cache_flush` / `cache_invalidate`？
+- [ ] `open`: allocate the file struct, set the default baud rate to 115200
+- [ ] `read`: blocking read in task context, non-blocking read in ISR context
+- [ ] `write`: blocking write in task context, byte-by-byte write to the TX FIFO in ISR context
+- [ ] `ioctl SET_CONFIG`: set baud rate / data bits / parity / stop bits / flow control
+- [ ] `ioctl SET_RX_CB`: register the RX interrupt callback
+- [ ] Does DMA transfer require `cache_flush` / `cache_invalidate`?
 
-### GPIO（引脚级 fd）
-- [ ] `open`: 解析路径 `/dev/gpio0/p12`，绑定 GPIO 控制器和 pin 号
-- [ ] `read`: 读引脚电平
-- [ ] `write`: 写引脚电平
-- [ ] `ioctl SET_DIR`: 配置方向 + 上下拉
-- [ ] `ioctl SET_IRQ`: 配置中断触发方式
-- [ ] `ioctl ENABLE/DISABLE_IRQ`: 中断使能/禁能
-- [ ] 中断回调中调用 `posix_write_isr` 是否安全？
+### GPIO (pin-level fd)
+- [ ] `open`: parse the path `/dev/gpio0/p12`, bind the GPIO controller and pin number
+- [ ] `read`: read the pin level
+- [ ] `write`: write the pin level
+- [ ] `ioctl SET_DIR`: configure direction + pull-up/pull-down
+- [ ] `ioctl SET_IRQ`: configure the interrupt trigger mode
+- [ ] `ioctl ENABLE/DISABLE_IRQ`: enable/disable the interrupt
+- [ ] Is it safe to call `posix_write_isr` from an interrupt callback?
 
 ### SPI
-- [ ] `ioctl SET_CONFIG`: 配置模式/频率/字长
-- [ ] `ioctl TRANSFER`: 全双工传输
-- [ ] `ioctl CS_TAKE/RELEASE`: 片选控制
-- [ ] DMA 传输 alignment 要求
+- [ ] `ioctl SET_CONFIG`: configure mode / frequency / word size
+- [ ] `ioctl TRANSFER`: full-duplex transfer
+- [ ] `ioctl CS_TAKE/RELEASE`: chip-select control
+- [ ] DMA transfer alignment requirements
 
 ### PWM
-- [ ] `ioctl SET_CONFIG`: 频率 + 占空比
-- [ ] `ioctl START/STOP`: 启停控制
+- [ ] `ioctl SET_CONFIG`: frequency + duty cycle
+- [ ] `ioctl START/STOP`: start/stop control
 
 ### ADC
-- [ ] `ioctl SET_CONFIG`: 分辨率/采样率
-- [ ] `read`: 单通道采样
-- [ ] `ioctl READ_CHANNEL`: 指定通道采样
-- [ ] `ioctl START_CONTINUOUS`: 连续模式（可选）
+- [ ] `ioctl SET_CONFIG`: resolution / sample rate
+- [ ] `read`: single-channel sampling
+- [ ] `ioctl READ_CHANNEL`: sample a specified channel
+- [ ] `ioctl START_CONTINUOUS`: continuous mode (optional)
 
 ### SDIO
-- [ ] `ioctl SET_CONFIG`: 总线宽度/速度模式
-- [ ] `ioctl READ/WRITE_BLOCKS`: 块读写（注意对齐）
-- [ ] `ioctl GET_INFO`: 获取卡容量信息
-- [ ] 是否需要 4bit/8bit 总线切换？
+- [ ] `ioctl SET_CONFIG`: bus width / speed mode
+- [ ] `ioctl READ/WRITE_BLOCKS`: block read/write (mind the alignment)
+- [ ] `ioctl GET_INFO`: get card capacity information
+- [ ] Is 4-bit/8-bit bus switching required?
 
 ### LCD
-- [ ] `ioctl SET_CONFIG`: 分辨率/色深/接口类型
-- [ ] `ioctl SET_WINDOW`: 窗口裁剪区域
-- [ ] `write`: 像素数据刷屏
-- [ ] `ioctl DISPLAY_ON/OFF`: 显示开关
-- [ ] `ioctl SET_BRIGHTNESS`: 亮度调节
+- [ ] `ioctl SET_CONFIG`: resolution / color depth / interface type
+- [ ] `ioctl SET_WINDOW`: window clipping region
+- [ ] `write`: flush pixel data to the screen
+- [ ] `ioctl DISPLAY_ON/OFF`: display on/off
+- [ ] `ioctl SET_BRIGHTNESS`: brightness adjustment
 
 ### Touch
-- [ ] `ioctl SET_CONFIG`: I2C 地址/分辨率
-- [ ] `read`: 读取触摸点坐标
-- [ ] `ioctl CALIBRATE`: 触摸校准
-- [ ] `ioctl SET_POWER`: 休眠/唤醒控制
+- [ ] `ioctl SET_CONFIG`: I2C address / resolution
+- [ ] `read`: read touch point coordinates
+- [ ] `ioctl CALIBRATE`: touch calibration
+- [ ] `ioctl SET_POWER`: sleep/wake control
 
 ### G-sensor
-- [ ] `ioctl SET_CONFIG`: 量程/输出数据率
-- [ ] `read`: 读取三轴加速度
-- [ ] `ioctl READ_TEMP`: 芯片温度
-- [ ] `ioctl SELF_TEST`: 自检功能
+- [ ] `ioctl SET_CONFIG`: range / output data rate
+- [ ] `read`: read three-axis acceleration
+- [ ] `ioctl READ_TEMP`: chip temperature
+- [ ] `ioctl SELF_TEST`: self-test
 
 ---
 
-## 常见问题
+## FAQ
 
-### Q: 我的 RTOS 不支持动态内存分配，怎么办？
-每个 open 需要分配一个 `file_priv` 结构。可以预分配静态池：
+### Q: My RTOS does not support dynamic memory allocation. What should I do?
+Each open needs to allocate a `file_priv` structure. You can pre-allocate a static pool:
 
 ```c
 #define MAX_UART_FILES  4
@@ -208,45 +208,45 @@ static void *uart_open(void *drv_data, const char *path)
 }
 ```
 
-### Q: ISR 中不能加锁，怎么保证线程安全？
-框架层为 `posix_open/close/read/write/ioctl` 提供了设备表/fd 池的加锁保护，
-但**驱动 ops 在锁外执行**；ISR 版本 `posix_*_isr()` 则完全跳过框架锁。
+### Q: I cannot take a lock inside an ISR. How can thread safety be guaranteed?
+The framework layer provides lock protection for the device table/fd pool for `posix_open/close/read/write/ioctl`,
+but **driver ops run outside the lock**; the ISR variants `posix_*_isr()` skip the framework lock entirely.
 
-驱动 ops 中通过 `posix_port_in_isr()` 判断上下文：
-- 任务上下文（通过 `posix_read/write/ioctl` 调用时）：**框架锁已在调 ops 前释放**，可阻塞、可睡眠
-- ISR 上下文（通过 `posix_*_isr` 调用时）：**无框架锁**，非阻塞、只操作 FIFO
+Inside driver ops, use `posix_port_in_isr()` to determine the context:
+- Task context (when called via `posix_read/write/ioctl`): **the framework lock is already released before the ops are called**, so blocking and sleeping are allowed
+- ISR context (when called via `posix_*_isr`): **no framework lock**, so only non-blocking access to the FIFO is allowed
 
-> ⚠️ 如果 ISR 和任务上下文通过同一驱动访问硬件寄存器，
-> 驱动自身需要用**原子操作**或**关中断**保护关键区。框架锁在 ISR 中不可用。
+> ⚠️ If the ISR and task context access hardware registers through the same driver,
+> the driver itself must protect the critical region with **atomic operations** or by **disabling interrupts**. The framework lock is not available in an ISR.
 
-### Q: 我的芯片只有一个 UART，也要用路径吗？
-可以。`posix_device_register("/dev/uart0", ...)` 只是一个字符串，不影响功能。你也可以简化为 `posix_device_register("uart", ...)` 用任意字符串。
+### Q: My chip has only one UART. Do I still need to use a path?
+Yes. `posix_device_register("/dev/uart0", ...)` is just a string and does not affect functionality. You can also simplify it to `posix_device_register("uart", ...)` and use any string you like.
 
-### Q: 添加一种新的外设类型（如 LCD）需要几步？
+### Q: How many steps does it take to add a new peripheral type (e.g. LCD)?
 
 ```
-1. 在 include/ioctls/ 下写头文件:
-   定义外设所需的 struct 和 ioctl cmd
+1. Write a header under include/ioctls/:
+   define the struct and ioctl cmd needed by the peripheral
 
-2. 实现 posix_driver_ops_t 的 5 个函数
+2. Implement the 5 functions of posix_driver_ops_t
 
-3. 尾部加 init + 自动注册宏:
+3. Add init at the end + the auto-registration macro:
    static int lcd_init(void) {
        return posix_device_register("/dev/lcd0", &lcd_ops, &lcd_priv);
    }
    POSIX_INIT_DEVICE_EXPORT(lcd_init);
 ```
 
-📝 参考模板: `examples/port/custom-rtos/` 下任意驱动文件（如 `posix_port_uart.c`）
-核心框架一行不改，port 初始化一行不改，链接器自动收集。
+📝 Reference template: any driver file under `examples/port/custom-rtos/` (e.g. `posix_port_uart.c`)
+No line of the core framework changes, no line of the port init changes, and the linker collects it automatically.
 
-### Q: 未来换到真正的 Linux 怎么办？
-**不能**简单 `sed 's/posix_//g'`。本层是 POSIX *风格*，接口形似但语义并不等价：
-- `posix_open(path)` 只有 1 个参数、返回不透明指针、失败返回 `POSIX_FD_NULL`；
-  而 Linux `open(path, flags[, mode])` 返回 int fd、失败 `-1`+`errno`。
-- `posix_read/write` 返回 `posix_ssize_t`（`>=0` 字节数 / `<0` 负错误码）；
-  Linux 返回 `ssize_t`，错误是 `-1` 且错误码在全局 `errno`。
-- `posix_ioctl` 的 cmd 是 `magic<<8 | nr`，不是 Linux 的 `_IOC` 编码。
+### Q: What if I later switch to real Linux?
+You **cannot** simply run `sed 's/posix_//g'`. This layer is POSIX-*style*: the interfaces look similar, but the semantics are not equivalent:
+- `posix_open(path)` takes only 1 argument, returns an opaque pointer, and returns `POSIX_FD_NULL` on failure;
+  whereas Linux `open(path, flags[, mode])` returns an int fd and `-1`+`errno` on failure.
+- `posix_read/write` return `posix_ssize_t` (`>=0` byte count / `<0` negative error code);
+  Linux returns `ssize_t`, where an error is `-1` and the error code is in the global `errno`.
+- The cmd of `posix_ioctl` is `magic<<8 | nr`, not the Linux `_IOC` encoding.
 
-迁移到 Linux 需要写一层适配 shim（封装 open flags、把负返回值转成 `-1`+`errno` 等），
-而非纯文本替换。前缀的价值在于避免符号冲突与自文档化，不在于“可 sed 成 Linux API”。
+Migrating to Linux requires writing an adaptation shim (wrapping open flags, converting negative return values to `-1`+`errno`, etc.),
+not a pure text substitution. The value of the prefix lies in avoiding symbol collisions and being self-documenting, not in "being sed-able into a Linux API".

@@ -454,10 +454,10 @@ static gsensor_drv_t s_gsensor0 =
 
 /* ---------- auto-registration ----------
  *
- * 注册路径是芯片型号 /dev/sc7a20，方便调试直连；应用层看到的
- * "当前板 gsensor" 由 posix_port_gsensor.c 用 posix_gsensor_bind()
- * 挂成 /dev/gsensor0。未来加 BMA/LIS3DH 时各自注册自己的型号路径，
- * board 选型换一颗即可。
+ * The registered path is the chip model /dev/sc7a20, convenient for direct debugging; what the app sees as the
+ * "current board gsensor" is mounted as /dev/gsensor0 by posix_port_gsensor.c via posix_gsensor_bind().
+ * Future BMA/LIS3DH drivers each register their own model path, and the
+ * board selection just switches to one of them.
  */
 static int gsensor_init(void)
 {

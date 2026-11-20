@@ -4,16 +4,16 @@
  */
 
 #include "posix_port.h"
-#include "os_sync.h"          /* os_mutex_create/take/give 原型 */
+#include "os_sync.h"          /* os_mutex_create/take/give prototypes */
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
-/* RTK OS mutex handle（底层是 Zephyr k_mutex，owner 递归） */
+/* RTK OS mutex handle (underneath it is a Zephyr k_mutex, owner-recursive) */
 static void *s_posix_mutex = NULL;
 static bool  s_posix_init_attempted = false;
 static int   s_posix_init_result = POSIX_ERR;
 
-/* os_mutex_take 的“永久等待”哨兵值（osif_zephyr 映射为 K_FOREVER） */
+/* os_mutex_take's "wait forever" sentinel (mapped to K_FOREVER by osif_zephyr) */
 #define OS_WAIT_FOREVER 0xFFFFFFFFU
 
 void posix_lock(void)
@@ -32,7 +32,7 @@ void posix_unlock(void)
     }
 }
 
-/* 框架原型为 int posix_port_in_isr(void)，统一返回 0/1 */
+/* The framework prototype is int posix_port_in_isr(void), uniformly returning 0/1 */
 int posix_port_in_isr(void)
 {
     return k_is_in_isr() ? 1 : 0;
@@ -94,8 +94,8 @@ int posix_port_init_all(void)
         s_posix_init_result = posix_auto_init();
         if (s_posix_init_result != POSIX_OK)
         {
-            /* 初始化函数可能已经注册了部分设备，禁止自动重试，避免重复初始化
-             * FlashDB 或重复注册设备。重试应由显式的恢复流程完成。 */
+            /* Init functions may already have registered some devices; do not retry automatically
+             * to avoid double-initializing FlashDB or re-registering devices. Retry should be an explicit recovery flow. */
             printk("[posix] auto_init failed: some device init returned error (ret=%d)\n",
                    s_posix_init_result);
         }

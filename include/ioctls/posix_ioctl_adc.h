@@ -14,14 +14,14 @@
 #define POSIX_ADC_REF_EXTERNAL  1
 #define POSIX_ADC_REF_VDDA      2
 
-/* 配置结构体 */
+/* Config struct */
 typedef struct {
     uint32_t resolution;       /* 8/10/12/14/16 */
     uint8_t  reference;
     uint32_t sample_rate_hz;
 } posix_adc_config_t;
 
-/* 连续模式 */
+/* Continuous mode */
 typedef struct {
     int     channel;
     void  (*callback)(posix_fd_t fd, const uint32_t *data,
@@ -29,7 +29,7 @@ typedef struct {
     void   *arg;
 } posix_adc_continuous_t;
 
-/* ioctl 命令 */
+/* ioctl commands */
 #define POSIX_ADC_IOCTL_SET_CONFIG          POSIX_IOC(POSIX_DEVICE_MAGIC_ADC, 1)
 #define POSIX_ADC_IOCTL_GET_CONFIG          POSIX_IOC(POSIX_DEVICE_MAGIC_ADC, 2)
 #define POSIX_ADC_IOCTL_READ_CHANNEL        POSIX_IOC(POSIX_DEVICE_MAGIC_ADC, 3)

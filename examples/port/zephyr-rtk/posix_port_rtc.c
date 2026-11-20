@@ -1,19 +1,19 @@
 /* ================================================================
- * RTC 驱动 — 基于 Zephyr RTC API 的 posix-device 适配层
+ * RTC driver — a posix-device adaptation layer on top of the Zephyr RTC API
  *
- * 路径格式: /dev/rtc<N>
- *   /dev/rtc0 → DTS 中 label 为 "rtc" 的片上 RTC 节点
+ * Path format: /dev/rtc<N>
+ *   /dev/rtc0 → the on-chip RTC node labeled "rtc" in the DTS
  *
- * 依赖：
- *   1. DTS 中 &rtc { status = "okay"; }; （overlay 里打开）
+ * Dependencies:
+ *   1. &rtc { status = "okay"; }; in the DTS (enabled in the overlay)
  *   2. CONFIG_RTC=y
- *   3. 闹钟需 CONFIG_RTC_ALARM=y；秒回调需 CONFIG_RTC_UPDATE=y；
- *      校准需 CONFIG_RTC_CALIBRATION=y。缺失能力通过 GET_CAPS 上报。
+ *   3. alarms need CONFIG_RTC_ALARM=y; the second callback needs CONFIG_RTC_UPDATE=y;
+ *      calibration needs CONFIG_RTC_CALIBRATION=y. Missing capabilities are reported via GET_CAPS.
  *
- * 时间表示转换：
- *   POSIX 层用 year=完整年 / month=1..12；
- *   Zephyr struct rtc_time 用 tm_year=year-1900 / tm_mon=0..11。
- *   仅在 <-> Zephyr 边界处做一次加减，业务层看到的都是自然值。
+ * Time representation conversion:
+ *   the POSIX layer uses year=full year / month=1..12;
+ *   Zephyr struct rtc_time uses tm_year=year-1900 / tm_mon=0..11.
+ *   The adjustment is done only at the <-> Zephyr boundary, so the business layer always sees natural values.
  * ================================================================ */
 
 #include "posix.h"
@@ -25,32 +25,32 @@
 #include <zephyr/kernel.h>
 #include <string.h>
 
-/* ---------- 控制器私有数据 ---------- */
+/* ---------- Controller private data ---------- */
 typedef struct
 {
     const struct device *dev;
 } rtc_drv_data_t;
 
-/* ---------- per-open 文件私有数据 ---------- */
+/* ---------- per-open file private data ---------- */
 typedef struct rtc_file_s
 {
     bool           in_use;
     rtc_drv_data_t *drv;
 
-    /* 每个 fd 独立记录 alarm 回调，避免多 fd 相互覆盖；
-     * 但 Zephyr 侧 alarm/update 是"每设备一份回调"，为简化：
-     *   本端口对一个 rtc device 仅允许一份 file 注册回调，
-     *   后开的 fd 想再注册回调会返回 POSIX_ERR_BUSY。
+    /* Each fd records alarm callbacks independently to avoid multiple fds overwriting each other;
+     * but on the Zephyr side alarm/update is "one callback per device", so to simplify:
+     *   this port allows only one file per rtc device to register callbacks,
+     *   and a later fd trying to register will get POSIX_ERR_BUSY.
      *
-     * 关于回调里的 posix_fd_t 形参：
-     *   posix 框架不会把 fd 回递给驱动，因此本端口一律把 fd 参数
-     *   置为 POSIX_FD_NULL。业务层需要区分多个 rtc 时，请通过 arg
-     *   传递上下文（arg 里可放 fd、指针、通道号等）。 */
+     * About the posix_fd_t parameter in callbacks:
+     *   the posix framework does not pass the fd back to the driver, so this port always sets
+     *   the fd argument to POSIX_FD_NULL. When the business layer needs to distinguish multiple rtcs, pass
+     *   context through arg (arg can hold the fd, a pointer, channel number, etc.). */
     struct
     {
         void (*cb)(posix_fd_t fd, uint16_t id, void *arg);
         void *arg;
-    } alarm_cbs[8];   /* 上限 8 通道，足够覆盖 RTL87x3g 的 4 通道 */
+    } alarm_cbs[8];   /* max 8 channels, enough to cover RTL87x3g's 4 channels */
 
     void (*update_cb)(posix_fd_t fd, void *arg);
     void  *update_arg;
@@ -60,8 +60,8 @@ typedef struct rtc_file_s
 #define MAX_RTC_FILES 4
 static rtc_file_t s_rtc_files[MAX_RTC_FILES];
 
-/* 反查表：Zephyr 回调只带 (dev, id)，需据此找回 rtc_file_t
- * —— 一个 device 最多只允许一个 fd 挂回调，因此一一映射就够。 */
+/* Reverse lookup table: Zephyr callbacks carry only (dev, id), so we must recover the rtc_file_t from them
+ * -- a device allows at most one fd to have callbacks, so a one-to-one mapping suffices. */
 static rtc_file_t *s_dev_owner[MAX_RTC_FILES];
 static const struct device *s_dev_owner_key[MAX_RTC_FILES];
 
@@ -84,7 +84,7 @@ static int claim_owner(const struct device *dev, rtc_file_t *f)
     {
         if (s_dev_owner_key[i] == dev)
         {
-            /* 已有 owner：若是自己则复用，否则冲突 */
+            /* Existing owner: reuse if it is ourselves, otherwise conflict */
             return (s_dev_owner[i] == f) ? POSIX_OK : POSIX_ERR_BUSY;
         }
         if (s_dev_owner_key[i] == NULL && free_slot < 0)
@@ -111,7 +111,7 @@ static void release_owner(const struct device *dev, rtc_file_t *f)
     }
 }
 
-/* ---------- 时间格式转换 ---------- */
+/* ---------- Time format conversion ---------- */
 static void rtc_time_from_zephyr(const struct rtc_time *z, posix_rtc_time_t *p)
 {
     p->year   = (uint16_t)(z->tm_year + 1900);
@@ -140,15 +140,15 @@ static void rtc_time_to_zephyr(const posix_rtc_time_t *p, struct rtc_time *z)
     z->tm_nsec  = (int)p->nsec;
 }
 
-/* ---------- 编译时间兜底 ----------
- * 首次上电或掉电后 RTC 无有效数据时（rtc_get_time == -ENODATA），
- * 用 __DATE__/__TIME__ 作为默认时间。仅"比 2000-01-01 强"的兜底：
- *   - 烧录 → 上电之间的时间差没有校准
- *   - 增量编译时，只有本 .c 重编 __DATE__/__TIME__ 才会更新
- * 精确墙钟仍需上层用 NTP / 用户设定 SET_CALENDAR 覆盖。
+/* ---------- Build-time fallback ----------
+ * When the RTC has no valid data on first power-on or after power loss (rtc_get_time == -ENODATA),
+ * use __DATE__/__TIME__ as the default time. It is only a "better than 2000-01-01" fallback:
+ *   - the time gap between flashing → power-on is not calibrated
+ *   - on incremental builds, __DATE__/__TIME__ only updates when this .c is rebuilt
+ * The precise wall clock still needs to be overridden by upper layers via NTP / user SET_CALENDAR.
  *
- * __DATE__ 格式："Jul 16 2026"（日 1-9 前有空格）
- * __TIME__ 格式："12:34:56"
+ * __DATE__ format: "Jul 16 2026" (days 1-9 have a leading space)
+ * __TIME__ format: "12:34:56"
  */
 static int parse_month_abbr(const char *s)
 {
@@ -159,7 +159,7 @@ static int parse_month_abbr(const char *s)
             s[1] == months[i * 3 + 1] &&
             s[2] == months[i * 3 + 2])
         {
-            return i + 1;   /* 返回 1..12 */
+            return i + 1;   /* return 1..12 */
         }
     }
     return -1;
@@ -167,7 +167,7 @@ static int parse_month_abbr(const char *s)
 
 static void fill_build_time(struct rtc_time *z)
 {
-    const char *d = __DATE__;   /* "MMM DD YYYY"，DD 可能是 " D" */
+    const char *d = __DATE__;   /* "MMM DD YYYY", DD may be " D" */
     const char *t = __TIME__;   /* "HH:MM:SS" */
 
     memset(z, 0, sizeof(*z));
@@ -179,13 +179,13 @@ static void fill_build_time(struct rtc_time *z)
     if (mon < 0) { mon = 1; }
     z->tm_mon  = mon - 1;
 
-    /* 日：位置 4-5，可能是 " 5" 或 "15" */
+    /* Day: positions 4-5, may be " 5" or "15" */
     int day = 0;
     if (d[4] >= '0' && d[4] <= '9') { day = day * 10 + (d[4] - '0'); }
     if (d[5] >= '0' && d[5] <= '9') { day = day * 10 + (d[5] - '0'); }
     z->tm_mday = day > 0 ? day : 1;
 
-    /* 年：位置 7-10 */
+    /* Year: positions 7-10 */
     int year = (d[7] - '0') * 1000 + (d[8] - '0') * 100
                + (d[9] - '0') * 10   + (d[10] - '0');
     z->tm_year = year - 1900;
@@ -195,7 +195,7 @@ static void fill_build_time(struct rtc_time *z)
     z->tm_sec  = (t[6] - '0') * 10 + (t[7] - '0');
 }
 
-/* ---------- Zephyr 回调 dispatcher ---------- */
+/* ---------- Zephyr callback dispatcher ---------- */
 #if defined(CONFIG_RTC_ALARM)
 static void rtc_zephyr_alarm_cb(const struct device *dev, uint16_t id, void *user_data)
 {
@@ -247,7 +247,7 @@ static int rtc_close(void *drv_data, void *file_priv)
     rtc_file_t *f = (rtc_file_t *)file_priv;
     if (!f || !f->in_use) { return POSIX_OK; }
 
-    /* 若此 fd 曾持有回调，卸掉 */
+    /* If this fd once held callbacks, remove them */
     if (find_owner(f->drv->dev) == f)
     {
 #if defined(CONFIG_RTC_ALARM)
@@ -273,7 +273,7 @@ static int rtc_close(void *drv_data, void *file_priv)
     return POSIX_OK;
 }
 
-/* ---------- read/write：RTC 不是流设备，一律拒绝 ---------- */
+/* ---------- read/write: RTC is not a stream device, always reject ---------- */
 static posix_ssize_t rtc_read(void *drv_data, void *file_priv,
                               void *buf, size_t count)
 {
@@ -328,7 +328,7 @@ static int rtc_ioctl(void *drv_data, void *file_priv,
             memset(caps, 0, sizeof(*caps));
 
 #if defined(CONFIG_RTC_ALARM)
-            /* 探测：从 id=0 起问 supported_fields，遇 -EINVAL 说明超出范围 */
+            /* Probe: query supported_fields from id=0; -EINVAL means out of range */
             uint16_t id = 0;
             uint16_t mask_union = 0;
             for (; id < 8; id++)
@@ -359,11 +359,11 @@ static int rtc_ioctl(void *drv_data, void *file_priv,
             posix_rtc_alarm_t *al = (posix_rtc_alarm_t *)arg;
             if (al->id >= ARRAY_SIZE(f->alarm_cbs)) { return POSIX_ERR_INVAL; }
 
-            /* 独占持有：此 fd 独占该 device 的回调注册权 */
+            /* Exclusive hold: this fd exclusively owns the device's callback registration */
             int cr = claim_owner(dev, f);
             if (cr != POSIX_OK) { return cr; }
 
-            /* 先注册回调（Zephyr 允许在 set_time 之前注册） */
+            /* Register the callback first (Zephyr allows registering before set_time) */
             int ret = rtc_alarm_set_callback(dev,
                                              al->id,
                                              al->callback ? rtc_zephyr_alarm_cb : NULL,
@@ -375,7 +375,7 @@ static int rtc_ioctl(void *drv_data, void *file_priv,
             f->alarm_cbs[al->id].cb  = al->callback;
             f->alarm_cbs[al->id].arg = al->arg;
 
-            /* 再设时间；mask=0 相当于禁用 */
+            /* Then set the time; mask=0 is equivalent to disabling */
             struct rtc_time z;
             const struct rtc_time *zp = NULL;
             if (al->mask)
@@ -388,7 +388,7 @@ static int rtc_ioctl(void *drv_data, void *file_priv,
             if (ret == -ENOSYS) { return POSIX_ERR_NOSUPP; }
             if (ret < 0)        { return POSIX_ERR_IO; }
 
-            /* mask=0 且没别的通道在用 → 释放独占 */
+            /* mask=0 and no other channel in use → release exclusive hold */
             if (al->mask == 0 && al->callback == NULL)
             {
                 f->alarm_cbs[al->id].cb  = NULL;
@@ -410,7 +410,7 @@ static int rtc_ioctl(void *drv_data, void *file_priv,
             if (ret < 0)        { return POSIX_ERR_IO; }
             al->mask = mask;
             rtc_time_from_zephyr(&z, &al->time);
-            /* callback 字段不覆盖：来自本 fd 的注册值更权威 */
+            /* Do not overwrite the callback field: the value registered by this fd is authoritative */
             return POSIX_OK;
         }
 
@@ -488,7 +488,7 @@ static int rtc_ioctl(void *drv_data, void *file_priv,
     }
 }
 
-/* ---------- 驱动函数表 ---------- */
+/* ---------- Driver ops table ---------- */
 static const posix_driver_ops_t g_rtc_ops =
 {
     .open  = rtc_open,
@@ -498,24 +498,24 @@ static const posix_driver_ops_t g_rtc_ops =
     .ioctl = rtc_ioctl,
 };
 
-/* ---------- 设备实例 ----------
- * DTS 节点 label 见 zephyr/dts/arm/realtek/rtl87x3g.dtsi 的 "rtc: rtc@40000100"。
- * 该节点默认 status = "disabled"，应用侧需要在 board overlay 中开启：
+/* ---------- Device instance ----------
+ * The DTS node label is "rtc: rtc@40000100" in zephyr/dts/arm/realtek/rtl87x3g.dtsi.
+ * That node defaults to status = "disabled"; the app must enable it in the board overlay:
  *   &rtc { status = "okay"; };
- * 并在 prj.conf 打开 CONFIG_RTC=y（可选 CONFIG_RTC_ALARM/_UPDATE/_CALIBRATION）。
+ * and enable CONFIG_RTC=y in prj.conf (optionally CONFIG_RTC_ALARM/_UPDATE/_CALIBRATION).
  */
 static rtc_drv_data_t s_rtc0 = { .dev = DEVICE_DT_GET(DT_NODELABEL(rtc)) };
 
-/* ---------- 自动注册 ---------- */
+/* ---------- Auto-registration ---------- */
 static int rtc_init(void)
 {
     int ret = posix_device_register("/dev/rtc0", &g_rtc_ops, &s_rtc0);
     if (ret != POSIX_OK) { return ret; }
 
-    /* 若 RTC 尚未有有效时间（首次上电 / 掉电无 backup），用编译时间兜底。
-     * Zephyr rtl87x3g 驱动 get_time 从不返 -ENODATA，重启后从 1970-01-01
-     * 计秒起走；因此改用"年份是否明显早于 __DATE__"来判定"没设过"。
-     * 有电池/掉电保持的方案里 rtc 会返回真实时间，此路径不触发。 */
+    /* If the RTC has no valid time yet (first power-on / power loss with no backup), fall back to the build time.
+     * The Zephyr rtl87x3g driver's get_time never returns -ENODATA and counts seconds from 1970-01-01 after reset;
+     * so instead we use "is the year clearly earlier than __DATE__" to decide "never set".
+     * In designs with a battery / power-loss retention the rtc returns the real time, and this path does not trigger. */
     if (device_is_ready(s_rtc0.dev))
     {
         struct rtc_time bt;

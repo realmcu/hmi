@@ -5,32 +5,32 @@
 #include "../posix_device.h"
 
 /* ================================================================
- * RTC (Real-Time Clock) — 片上/外挂实时时钟设备抽象
+ * RTC (Real-Time Clock) — on-chip/external real-time clock device abstraction
  *
- * 语义定位：
- *   /dev/rtc<N> 表示一颗独立的 RTC 硬件（片上 RTC / 外挂 PCF8563 / …）。
- *   read/write 不承载业务，全部功能走 ioctl。
- *   若上层需要"系统 wall clock"（time_t / gettimeofday 语义），
- *   请在应用层基于本设备再包一层软时钟；本层只暴露硬件能力。
+ * Semantics:
+ *   /dev/rtc<N> represents an independent RTC device (on-chip RTC / external PCF8563 / ...).
+ *   read/write carry no business logic; all functionality goes through ioctl.
+ *   If the upper layer needs a "system wall clock" (time_t / gettimeofday semantics),
+ *   wrap a software clock in the application on top of this device; this layer exposes only hardware capabilities.
  *
- * 时间表示：
- *   本层结构体采用 "自然值" 语义（year = 完整年份，month = 1..12），
- *   与 <time.h> 的 struct tm（year - 1900, month 0..11）不同，
- *   目的是让驱动/上层看到最不易出错的形式；具体端口负责与硬件寄存器
- *   或 Zephyr struct rtc_time 之间做转换。
+ * Time representation:
+ *   Structs here use "natural value" semantics (year = full year, month = 1..12),
+ *   different from <time.h>'s struct tm (year - 1900, month 0..11);
+ *   the goal is the least error-prone form for drivers/upper layers; the port handles conversion
+ *   to/from hardware registers or Zephyr struct rtc_time.
  *
- * 闹钟（alarm）：
- *   闹钟以 (id, mask, time) 三元组配置。mask 指示哪些字段参与比较，
- *   例如 mask = MONTHDAY|HOUR|MINUTE 表示"每月 X 号 HH:MM 触发"；
- *   mask = 0 表示禁用该 id。回调可能在中断/工作队列上下文触发，取决
- *   于端口实现——上层回调应做到快速、非阻塞、不再持有本设备 fd。
+ * Alarm:
+ *   Alarms are configured as an (id, mask, time) triple. mask indicates which fields take part in comparison,
+ *   e.g. mask = MONTHDAY|HOUR|MINUTE means "trigger on day X of each month at HH:MM";
+ *   mask = 0 disables that id. The callback may fire in interrupt/workqueue context, depending
+ *   on the port implementation -- upper-layer callbacks should be fast, non-blocking, and not hold this device's fd.
  *
- * 端口能力探测：
- *   不同芯片支持的字段/闹钟数/校准范围不同。
- *   POSIX_RTC_IOCTL_GET_CAPS 返回本 RTC 的能力清单，上层据此裁剪逻辑。
+ * Port capability discovery:
+ *   Different chips support different fields/alarm counts/calibration ranges.
+ *   POSIX_RTC_IOCTL_GET_CAPS returns this RTC's capability list; the upper layer trims its logic accordingly.
  * ================================================================ */
 
-/* -------- alarm 字段掩码（与 Zephyr RTC_ALARM_TIME_MASK_* 对齐） -------- */
+/* -------- alarm field masks (aligned with Zephyr RTC_ALARM_TIME_MASK_*) -------- */
 #define POSIX_RTC_ALARM_MASK_SECOND    (1u << 0)
 #define POSIX_RTC_ALARM_MASK_MINUTE    (1u << 1)
 #define POSIX_RTC_ALARM_MASK_HOUR      (1u << 2)
@@ -41,15 +41,15 @@
 #define POSIX_RTC_ALARM_MASK_YEARDAY   (1u << 7)
 #define POSIX_RTC_ALARM_MASK_NSEC      (1u << 8)
 
-/* -------- 时间结构 --------
- * year   : 完整年份 (例如 2026)
+/* -------- Time structure --------
+ * year   : full year (e.g. 2026)
  * month  : 1..12
  * mday   : 1..31
  * hour   : 0..23
  * minute : 0..59
- * second : 0..60  (60 保留给闰秒；一般驱动只用到 59)
- * wday   : 0..6   (0 = Sunday；驱动填不了时置 0xFF)
- * yday   : 0..365 (驱动填不了时置 0xFFFF)
+ * second : 0..60  (60 reserved for leap seconds; most drivers only use 59)
+ * wday   : 0..6   (0 = Sunday; set to 0xFF when the driver cannot fill it)
+ * yday   : 0..365 (set to 0xFFFF when the driver cannot fill it)
  * nsec   : 0..999_999_999
  */
 typedef struct
@@ -65,20 +65,20 @@ typedef struct
     uint32_t nsec;
 } posix_rtc_time_t;
 
-/* -------- alarm 配置 -------- */
+/* -------- Alarm config -------- */
 typedef struct
 {
-    uint16_t         id;         /* 闹钟通道号，0..caps.alarm_count-1 */
-    uint16_t         mask;       /* POSIX_RTC_ALARM_MASK_*，0 表示禁用 */
-    posix_rtc_time_t time;       /* 触发条件；mask=0 时忽略 */
-    /* 回调可能在 ISR / 工作队列上下文触发，视端口而定。 */
+    uint16_t         id;         /* alarm channel number, 0..caps.alarm_count-1 */
+    uint16_t         mask;       /* POSIX_RTC_ALARM_MASK_*, 0 means disabled */
+    posix_rtc_time_t time;       /* trigger condition; ignored when mask=0 */
+    /* callback may fire in ISR / workqueue context, depending on the port. */
     void (*callback)(posix_fd_t fd, uint16_t id, void *arg);
     void  *arg;
 } posix_rtc_alarm_t;
 
-/* -------- 秒进位（update）回调 --------
- * 用于秒中断计数、软 wall clock 校准等场景。
- * 回调上下文与 alarm 相同（端口相关）。
+/* -------- Second tick (update) callback --------
+ * For second-interrupt counting, software wall clock calibration, etc.
+ * Callback context is the same as for alarm (port-dependent).
  */
 typedef struct
 {
@@ -86,11 +86,11 @@ typedef struct
     void  *arg;
 } posix_rtc_update_t;
 
-/* -------- 能力描述 --------
- * alarm_count       : 硬件闹钟通道数量，0 表示不支持闹钟
- * alarm_mask        : 每通道支持的字段掩码 (POSIX_RTC_ALARM_MASK_*)
- * has_update_irq    : 是否支持秒进位回调
- * has_calibration   : 是否支持晶振校准
+/* -------- Capability description --------
+ * alarm_count       : number of hardware alarm channels, 0 means alarms unsupported
+ * alarm_mask        : field mask supported per channel (POSIX_RTC_ALARM_MASK_*)
+ * has_update_irq    : whether second tick callback is supported
+ * has_calibration   : whether crystal calibration is supported
  */
 typedef struct
 {
@@ -101,19 +101,19 @@ typedef struct
     uint8_t  _rsv[2];
 } posix_rtc_caps_t;
 
-/* -------- ioctl 命令 -------- */
+/* -------- ioctl commands -------- */
 #define POSIX_RTC_IOCTL_GET_CALENDAR     POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 1)
 #define POSIX_RTC_IOCTL_SET_CALENDAR     POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 2)
 #define POSIX_RTC_IOCTL_GET_CAPS         POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 3)
 
-/* 闹钟：SET_ALARM 用 posix_rtc_alarm_t（含 callback），
- * GET_ALARM 返回当前配置（callback 字段不填），
- * IS_PENDING arg = uint32_t*，通道 id 编码在 cmd 低位无关处，改由 arg->id 传入。
- * 为简化，我们把 id 编在 arg 结构里，命令本身不带 id。 */
+/* Alarm: SET_ALARM uses posix_rtc_alarm_t (with callback),
+ * GET_ALARM returns the current config (callback field not filled),
+ * IS_PENDING arg = uint32_t*; the channel id is now passed via arg->id, not encoded in the cmd low bits.
+ * For simplicity we encode the id in the arg struct; the command itself carries no id. */
 #define POSIX_RTC_IOCTL_SET_ALARM        POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 4)
 #define POSIX_RTC_IOCTL_GET_ALARM        POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 5)
 
-/* IS_PENDING: arg = posix_rtc_alarm_pending_t*，驱动读走并清除 pending 标志 */
+/* IS_PENDING: arg = posix_rtc_alarm_pending_t*, the driver reads and clears the pending flag */
 typedef struct
 {
     uint16_t id;
@@ -122,11 +122,11 @@ typedef struct
 } posix_rtc_alarm_pending_t;
 #define POSIX_RTC_IOCTL_IS_ALARM_PENDING POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 6)
 
-/* 秒进位回调：arg = posix_rtc_update_t*，callback = NULL 表示注销 */
+/* Second tick callback: arg = posix_rtc_update_t*, callback = NULL means unregister */
 #define POSIX_RTC_IOCTL_SET_UPDATE_CB    POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 7)
 
-/* 校准：arg = int32_t*，单位由端口决定（一般 ppb / 半 ppm）。
- * 若硬件不支持返回 POSIX_ERR_NOSUPP。 */
+/* Calibration: arg = int32_t*, unit is port-defined (usually ppb / half ppm).
+ * Returns POSIX_ERR_NOSUPP if the hardware does not support it. */
 #define POSIX_RTC_IOCTL_SET_CALIBRATION  POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 8)
 #define POSIX_RTC_IOCTL_GET_CALIBRATION  POSIX_IOC(POSIX_DEVICE_MAGIC_RTC, 9)
 

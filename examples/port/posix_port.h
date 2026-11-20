@@ -2,36 +2,36 @@
 #define POSIX_PORT_H
 
 /* ================================================================
- * 平台移植接口
+ * Platform porting interface
  *
- * 移植到新 RTOS 时需要实现的函数：
- *   1. posix_lock() / posix_unlock()  — 多线程保护
- *   2. posix_port_in_isr()            — ISR 上下文检测
+ * Functions to implement when porting to a new RTOS:
+ *   1. posix_lock() / posix_unlock()  — multi-thread protection
+ *   2. posix_port_in_isr()            — ISR context detection
  *
- * 每个驱动通过 POSIX_INIT_DEVICE_EXPORT(fn) 自动注册
- * 无需在 port 层显式调用注册函数
+ * Each driver auto-registers via POSIX_INIT_DEVICE_EXPORT(fn)
+ * No need to explicitly call a registration function in the port layer
  * ================================================================ */
 
 #include "posix.h"
 #include "posix_init.h"
 
-/* 一次性初始化：锁 + 自动注册所有设备 */
+/* One-time init: locks + auto-register all devices */
 int posix_port_init_all(void);
 
-/* 内部锁初始化 */
+/* Internal lock init */
 void posix_port_lock_init(void);
 
-/* 毫秒延时（可在任务上下文调用，不可在 ISR 里调用） */
+/* Millisecond delay (callable from task context, not from an ISR) */
 void posix_port_delay_ms(uint32_t ms);
 
 /* Free-running cycle counter for short relative timing measurements. */
 uint32_t posix_port_cycle_get_32(void);
 
 /* ================================================================
- * 静态内存池模式（推荐用于无堆嵌入式环境）
+ * Static memory pool pattern (recommended for heap-less embedded environments)
  *
- * 每个驱动需要为 open 分配 file_priv 结构体。
- * 在无堆环境中，建议使用静态池代替 malloc：
+ * Each driver must allocate a file_priv struct for open.
+ * In a heap-less environment, prefer a static pool instead of malloc:
  *
  *   #define MAX_FILES  4
  *   static my_file_t s_pool[MAX_FILES];
@@ -41,17 +41,17 @@ uint32_t posix_port_cycle_get_32(void);
  *       for (int i = 0; i < MAX_FILES; i++) {
  *           if (!s_used[i]) { s_used[i] = 1; return &s_pool[i]; }
  *       }
- *       return NULL;  // 池满
+ *       return NULL;  // pool full
  *   }
  *
  *   static int my_close(void *drv_data, void *file_priv) {
  *       my_file_t *f = (my_file_t *)file_priv;
- *       int idx = f - s_pool;  // 指针减法得索引
+ *       int idx = f - s_pool;  // pointer subtraction yields the index
  *       if (idx >= 0 && idx < MAX_FILES) s_used[idx] = 0;
  *       return POSIX_OK;
  *   }
  *
- * 各驱动具体池大小可参考 PORTING.md 中最大同时打开数。
+ * For each driver's pool size, see the max concurrently-open count in PORTING.md.
  * ================================================================ */
 
 #endif /* POSIX_PORT_H */

@@ -1,26 +1,26 @@
 /* ================================================================
- * Touch 驱动 POSIX 端口 —— CHSC6417（Chipsemi）
+ * Touch driver POSIX port —— CHSC6417 (Chipsemi)
  *
- * 与 posix_port_cst816d.c 并列存在；两份文件都会被 CMake glob 编入，
- * 分别注册 /dev/chsc6417 与 /dev/cst816d，上层按需 open 其中之一。
+ * Coexists with posix_port_cst816d.c; both files are compiled in by the CMake glob,
+ * registering /dev/chsc6417 and /dev/cst816d respectively, so the upper layer opens whichever it needs.
  *
- * 完全通过 posix 框架上游设备操作硬件：
- *   /dev/i2cN       — I2C 总线（posix_ioctl_i2c.h）
- *   /dev/gpioX/pYY  — INT 中断引脚（posix_ioctl_gpio.h，可选）
- *   /dev/gpioX/pZZ  — RST 复位引脚（posix_ioctl_gpio.h，可选）
+ * All hardware access goes through upstream posix framework devices:
+ *   /dev/i2cN       — I2C bus (posix_ioctl_i2c.h)
+ *   /dev/gpioX/pYY  — INT interrupt pin (posix_ioctl_gpio.h, optional)
+ *   /dev/gpioX/pZZ  — RST reset pin (posix_ioctl_gpio.h, optional)
  *
- * 读取协议（来自 Zephyr chsc6417 驱动）：
- *   先写 4 字节地址 0x2c000020，再读 8 字节：
- *     output[1]   = 触摸点数
- *     output[2..] = 点数据，每点 5 字节
+ * Read protocol (from the Zephyr chsc6417 driver):
+ *   first write the 4-byte address 0x2c000020, then read 8 bytes:
+ *     output[1]   = touch point count
+ *     output[2..] = point data, 5 bytes per point
  *       x = (x_h4 << 8) | x_l8
  *       y = (y_h4 << 8) | y_l8
- *       event == 0 = pressing（CHSC6417 按下时 event=0，抬起时 event=1）
+ *       event == 0 = pressing (on CHSC6417 event=0 when pressed, event=1 when released)
  *
- * 中断模式（int_pin_path != NULL）：
- *   INT 下降沿 -> ISR posix_sem_give -> posix_read 等信号量后读 I2C
- * 轮询模式（int_pin_path == NULL）：
- *   posix_read 直接发 I2C 读
+ * Interrupt mode (int_pin_path != NULL):
+ *   INT falling edge -> ISR posix_sem_give -> posix_read waits on the semaphore then reads I2C
+ * Polling mode (int_pin_path == NULL):
+ *   posix_read issues the I2C read directly
  * ================================================================ */
 
 #include "posix.h"
@@ -32,27 +32,27 @@
 #include <stdbool.h>
 #include <string.h>
 
-/* ---------- CHSC6417 I2C 读取协议常量 ---------- */
+/* ---------- CHSC6417 I2C read protocol constants ---------- */
 #define CHSC6X_WRITE_ADDR    0x2c000020u
 #define CHSC6X_WRITE_LEN     4
 #define CHSC6X_READ_LEN      8
-#define CHSC6X_EVENT_PRESS   0    /* CHSC6417 按下时 event=0，抬起时 event=1 */
+#define CHSC6X_EVENT_PRESS   0    /* on CHSC6417 event=0 when pressed, event=1 when released */
 
 #define CHSC6417_I2C_ADDR    0x2E
 #define CHSC6417_REG_POWER   0xA5   /* 0x00=normal, 0x03=sleep */
 #define CHSC6417_REG_CHIP_ID 0xA7
 
-/* ---------- 驱动私有数据 ---------- */
+/* ---------- Driver private data ---------- */
 typedef struct
 {
     int         unit;
     uint8_t     i2c_addr;
     const char *i2c_path;
-    const char *int_pin_path;   /* NULL = 轮询模式 */
-    const char *rst_pin_path;   /* NULL = 不控制复位 */
+    const char *int_pin_path;   /* NULL = polling mode */
+    const char *rst_pin_path;   /* NULL = reset not controlled */
 } chsc6417_drv_t;
 
-/* ---------- per-open 文件私有数据 ---------- */
+/* ---------- per-open file private data ---------- */
 typedef struct
 {
     bool                  in_use;
@@ -67,13 +67,13 @@ typedef struct
 #define CHSC6417_MAX_FILES  2
 static chsc6417_file_t s_chsc6417_files[CHSC6417_MAX_FILES];
 
-/* ---------- I2C 读取：先写 4 字节地址，再读 8 字节 ---------- */
+/* ---------- I2C read: write the 4-byte address first, then read 8 bytes ---------- */
 static int chsc6417_read_raw(chsc6417_file_t *f, uint8_t out[CHSC6X_READ_LEN])
 {
     uint32_t addr = CHSC6X_WRITE_ADDR;
     posix_i2c_msg_t m =
     {
-        .addr    = f->drv->i2c_addr,   /* 从机地址属端口层数据 */
+        .addr    = f->drv->i2c_addr,   /* slave address is port-layer data */
         .reg     = 0,
         .reg_len = 0,
         .buf     = (uint8_t *) &addr,
@@ -113,12 +113,12 @@ static int chsc6417_read_chip_id(chsc6417_file_t *f, uint32_t *chip_id)
     return ret;
 }
 
-/* ---------- I2C 寄存器写（电源控制等） ---------- */
+/* ---------- I2C register write (power control, etc.) ---------- */
 static int chsc6417_write_reg(chsc6417_file_t *f, uint8_t reg, uint8_t val)
 {
     posix_i2c_msg_t m =
     {
-        .addr    = f->drv->i2c_addr,   /* 同 read_raw：从机地址属端口层 */
+        .addr    = f->drv->i2c_addr,   /* same as read_raw: slave address is port-layer */
         .reg     = reg,
         .reg_len = 1,
         .buf     = &val,
@@ -127,14 +127,14 @@ static int chsc6417_write_reg(chsc6417_file_t *f, uint8_t reg, uint8_t val)
     return posix_ioctl(f->i2c_fd, POSIX_I2C_IOCTL_WRITE_REG, &m);
 }
 
-/* ---------- INT 引脚 ISR ---------- */
+/* ---------- INT pin ISR ---------- */
 static void chsc6417_int_isr(void *arg)
 {
     chsc6417_file_t *f = (chsc6417_file_t *)arg;
     if (f && f->int_sem) { (void)posix_sem_give(f->int_sem); }
 }
 
-/* ---------- 复位芯片（参考 Zephyr 驱动时序） ---------- */
+/* ---------- Reset the chip (timing from the Zephyr driver) ---------- */
 static void chsc6417_hw_reset(chsc6417_file_t *f)
 {
     if (f->rst_fd == POSIX_FD_NULL) { return; }
@@ -150,7 +150,7 @@ static void chsc6417_hw_reset(chsc6417_file_t *f)
     posix_port_delay_ms(50);
 }
 
-/* ---------- 建立 / 拆除 INT 中断 ---------- */
+/* ---------- Set up / tear down the INT interrupt ---------- */
 static int chsc6417_setup_irq(chsc6417_file_t *f)
 {
     if (f->int_fd != POSIX_FD_NULL) { return POSIX_OK; }
@@ -270,7 +270,7 @@ static int chsc6417_close(void *d, void *fv)
     return POSIX_OK;
 }
 
-/* ---------- read：读一次触摸快照 ---------- */
+/* ---------- read: read one touch snapshot ---------- */
 static posix_ssize_t chsc6417_read(void *d, void *fv, void *buf, size_t count)
 {
     (void)d;
@@ -278,7 +278,7 @@ static posix_ssize_t chsc6417_read(void *d, void *fv, void *buf, size_t count)
 
     if (count < sizeof(posix_touch_data_t)) { return POSIX_ERR_INVAL; }
 
-    /* 中断模式：等信号量（100ms 超时） */
+    /* Interrupt mode: wait on the semaphore (100ms timeout) */
     if (f->int_sem)
     {
         if (posix_sem_take(f->int_sem, 100) != 0) { return POSIX_ERR_TIMEOUT; }
@@ -290,14 +290,14 @@ static posix_ssize_t chsc6417_read(void *d, void *fv, void *buf, size_t count)
     posix_touch_data_t *data = (posix_touch_data_t *)buf;
     memset(data, 0, sizeof(*data));
 
-    /* 有效帧的 header 应为 0xff；否则视为无数据（可能是总线竞争污染） */
+    /* A valid frame should have header 0xff; otherwise treat it as no data (possibly bus contention) */
     if (raw[0] != 0xff) { return (posix_ssize_t)sizeof(posix_touch_data_t); }
 
     uint8_t point_num = raw[1];
     if (point_num == 0) { return (posix_ssize_t)sizeof(posix_touch_data_t); }
-    if (point_num > 1)  { point_num = 1; }   /* CHSC6417 单点 */
+    if (point_num > 1)  { point_num = 1; }   /* CHSC6417 is single-point */
 
-    /* 解析点数据（从 output[2] 开始，每点 5 字节） */
+    /* Parse point data (starting at output[2], 5 bytes per point) */
     uint8_t *p    = &raw[2];
     uint8_t  x_l8 = p[0];
     uint8_t  y_l8 = p[1];
@@ -362,7 +362,7 @@ static int chsc6417_ioctl(void *d, void *fv, unsigned long cmd, void *arg)
     }
 }
 
-/* ---------- 驱动函数表 ---------- */
+/* ---------- Driver ops table ---------- */
 static const posix_driver_ops_t g_chsc6417_ops =
 {
     .open  = chsc6417_open,
@@ -372,8 +372,8 @@ static const posix_driver_ops_t g_chsc6417_ops =
     .ioctl = chsc6417_ioctl,
 };
 
-/* ---------- 设备实例
- * i2c1  已在 overlay enabled（SCL=P4_4, SDA=P4_3）
+/* ---------- Device instance
+ * i2c1 is enabled in the overlay (SCL=P4_4, SDA=P4_3)
  * TP_INT -> P0_0 -> /dev/gpio0/p0
  * TP_RST -> P0_3 -> /dev/gpio0/p3
  * ---------------------------------------------------------------- */

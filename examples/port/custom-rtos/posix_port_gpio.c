@@ -1,26 +1,26 @@
 /* ================================================================
- * GPIO 驱动 POSIX 端口（RTL87x3G / RTL876x 原生驱动直调）
+ * GPIO driver POSIX port (RTL87x3G / RTL876x native driver direct calls)
  *
- * 路径格式: /dev/gpio<N>/p<Pin> 或 /dev/gpio<N>/pin<Pin>
- *   /dev/gpio0/pXX  → GPIOA 组，pin_index = XX (0~31)
- *   /dev/gpio1/pXX  → GPIOB 组，pin_index = XX (0~31)
+ * Path format: /dev/gpio<N>/p<Pin> or /dev/gpio<N>/pin<Pin>
+ *   /dev/gpio0/pXX  → GPIOA group, pin_index = XX (0~31)
+ *   /dev/gpio1/pXX  → GPIOB group, pin_index = XX (0~31)
  *
- * 注意：这里的 pin_index 是"组内引脚号"（GPIOA0~GPIOA31 对应 0~31），
- * 与芯片全局 pin 号（P0_0~P4_x）通过 rtl876x GPIO_GetNum() 映射相关。
- * 应用层用哪个约定？为了跟 Zephyr GPIO subsystem 概念对齐，本文件采用
- * "port + pin_index"（组内 0~31）。若需要用芯片 pin 号 P3_5 打开，
- * 请先用 GPIO_GetNum(P3_5) 换算成 pin_index 再拼路径。
+ * Note: pin_index here is the "in-group pin number" (GPIOA0~GPIOA31 map to 0~31),
+ * related to the chip global pin number (P0_0~P4_x) via the rtl876x GPIO_GetNum() mapping.
+ * Which convention does the app layer use? To align with the Zephyr GPIO subsystem concept, this file uses
+ * "port + pin_index" (in-group 0~31). To open by chip pin number such as P3_5,
+ * first convert with GPIO_GetNum(P3_5) to pin_index, then build the path.
  *
- * 中断分派模型（参考 Zephyr gpio_rtl87x3g.c）：
- *   - 芯片 GPIO 中断按组共享：A0/A1 独立，A2-7 / A8-15 / A16-23 / A24-31
- *     四组共享一个物理 IRQn；GPIOB 同理。
- *   - 一次 SET_IRQ 时用 irq_connect_dynamic() 把对应 IRQn 挂到
- *     gpio_port_isr()。同一 port 32 个 pin 共用一个 dispatcher。
- *   - dispatcher 读 GPIO_TypeDef->INTSTATUS 拿到当次触发 pin 位图，
- *     查 g_port_state[port].cb[pin_index] 分派用户回调，清 pending。
+ * Interrupt dispatch model (see Zephyr gpio_rtl87x3g.c):
+ *   - Chip GPIO interrupts are shared per group: A0/A1 are separate, A2-7 / A8-15 / A16-23 / A24-31
+ *     share one physical IRQn; same for GPIOB.
+ *   - On SET_IRQ, irq_connect_dynamic() attaches the corresponding IRQn to
+ *     gpio_port_isr(). All 32 pins of the same port share one dispatcher.
+ *   - The dispatcher reads GPIO_TypeDef->INTSTATUS to get the triggered pin bitmap for this event,
+ *     looks up g_port_state[port].cb[pin_index] to dispatch to user callbacks, and clears pending.
  *
- * 依赖：Zephyr CONFIG_GPIO=y 但 dts 中 gpioa/gpiob 保持 disabled
- *       （避免 Zephyr 官方 driver 抢占 irq_connect_dynamic 的目标）
+ * Dependency: Zephyr CONFIG_GPIO=y but gpioa/gpiob stay disabled in the dts
+ *       (so the official Zephyr driver does not claim the irq_connect_dynamic target)
  * ================================================================ */
 
 #include "posix.h"
@@ -38,12 +38,12 @@
 
 #include <zephyr/irq.h>
 
-/* ---------- 每 port 32 pin 的中断状态 ---------- */
+/* ---------- Interrupt state for 32 pins per port ---------- */
 typedef struct
 {
     void (*callback)(void *arg);
     void  *arg;
-    uint8_t abs_pin;                 /* 全局 pin 号（P0_0..P4_x），供 hw 调用 */
+    uint8_t abs_pin;                 /* global pin number (P0_0..P4_x), used for hw calls */
     uint8_t reserved;
 } gpio_pin_state_t;
 
@@ -54,12 +54,12 @@ typedef struct
     uint32_t      apb_clock;
     uint8_t       inited;
     gpio_pin_state_t pins[32];
-    uint32_t      irq_registered_mask; /* bit i = 该 pin 的 IRQn 已 dynamic-connect */
+    uint32_t      irq_registered_mask; /* bit i = that pin's IRQn is dynamic-connected */
 } gpio_port_state_t;
 
 static gpio_port_state_t s_ports[2];    /* [0]=GPIOA, [1]=GPIOB */
 
-/* ---------- GPIO 控制器"驱动私有数据"（每个 posix 设备一份） ---------- */
+/* ---------- GPIO controller "driver private data" (one per posix device) ---------- */
 typedef struct
 {
     int                unit;         /* 0=GPIOA, 1=GPIOB */
@@ -69,13 +69,13 @@ typedef struct
 static gpio_drv_data_t s_gpio0 = { .unit = 0, .state = &s_ports[0] };
 static gpio_drv_data_t s_gpio1 = { .unit = 1, .state = &s_ports[1] };
 
-/* ---------- per-open file 私有 ---------- */
+/* ---------- per-open file private data ---------- */
 typedef struct
 {
     bool             in_use;
     gpio_drv_data_t *drv;
-    int              pin;            /* 组内 pin_index 0~31 */
-    uint8_t          abs_pin;        /* 全局 pin 号（板级 P3_5 = 27 等） */
+    int              pin;            /* in-group pin_index 0~31 */
+    uint8_t          abs_pin;        /* global pin number (board-level P3_5 = 27 etc.) */
     uint8_t          direction;
     uint8_t          pull;
 } gpio_file_t;
@@ -84,26 +84,26 @@ typedef struct
 static gpio_file_t s_gpio_files[MAX_GPIO_FILES];
 
 /* ================================================================
- * pin_index (0~31) + port_unit (0/1) → 全局 pin 号
+ * pin_index (0~31) + port_unit (0/1) → global pin number
  *
- * RTL87x3G 里 GPIO_GetNum(P3_5) = 26（即 GPIOA26，属 GPIOA port, index 26）。
- * 反向映射（组+index → 全局 pin）由芯片手册决定，多数板子上不是简单加法：
- * 需要走 PIN_INDEX 反查。为简化 posix 层 open 语义，这里让应用**显式**通过
- * pin_index 打开——即路径里的编号就是 GPIOA/GPIOB 组内 0~31 的 index，
- * 而不是 P3_5 这种全局号。
+ * In RTL87x3G, GPIO_GetNum(P3_5) = 26 (i.e. GPIOA26, in the GPIOA port, index 26).
+ * The reverse mapping (group+index → global pin) is defined by the chip manual and is not simple addition on most boards:
+ * it requires a PIN_INDEX reverse lookup. To simplify posix-layer open semantics, the app opens **explicitly** by
+ * pin_index — i.e. the number in the path is the in-group 0~31 index of GPIOA/GPIOB,
+ * not a global number like P3_5.
  *
- * 但硬件 API（Pinmux_Config / Pad_Config）需要全局 pin 号。因此 SET_DIR
- * 时应用要提供 abs_pin（把它塞进 posix_gpio_config_t.pin 字段——原本这个
- * 字段被文档说"fd 已绑定 pin，填 0"，这里我们语义扩展：**若 cfg->pin>0
- * 视为芯片全局 pin 号，用于 Pinmux/Pad 配置**；否则跳过 Pinmux/Pad 步骤
- * 假设应用已在别处配好 pad。
+ * But the hardware API (Pinmux_Config / Pad_Config) needs the global pin number. So on SET_DIR
+ * the app must provide abs_pin (placed in the posix_gpio_config_t.pin field — this field was
+ * originally documented as "fd already bound to pin, put 0"; here we extend the semantics: **if cfg->pin>0
+ * it is treated as the chip global pin number, used for Pinmux/Pad config**; otherwise the Pinmux/Pad step is
+ * skipped, assuming the app has already configured the pad elsewhere.
  * ================================================================ */
 
-/* 目前 posix 层用组内 pin_index，直接从 fd 走 port_base + (1<<pin_idx)。
- * 若将来支持"以芯片全局 pin 号打开"，可以用 SDK 的 GPIO_GetPort()/
- * GPIO_GetPinBit() 反查——留给下次改动时再引入。 */
+/* The posix layer currently uses in-group pin_index, going directly from the fd to port_base + (1<<pin_idx).
+ * If "open by chip global pin number" is supported in the future, the SDK's GPIO_GetPort()/
+ * GPIO_GetPinBit() reverse lookup can be used — to be introduced in a later change. */
 
-/* ---------- port 初始化（时钟 + 每 port 一次） ---------- */
+/* ---------- port init (clock, once per port) ---------- */
 static void gpio_port_hw_init(gpio_port_state_t *st, int unit)
 {
     if (st->inited) { return; }
@@ -114,9 +114,9 @@ static void gpio_port_hw_init(gpio_port_state_t *st, int unit)
     st->inited = 1;
 }
 
-/* ---------- 统一中断 dispatcher（port-level） ----------
- * 参考 gpio_rtl87x3g.c 的做法：读 INTSTATUS 一次拿位图，遍历分派。
- * 用 GPIO_GetINTStatus 逐 pin 查（虽然多几次 MMIO 但代码更可移植）。
+/* ---------- Unified interrupt dispatcher (port-level) ----------
+ * Following gpio_rtl87x3g.c: read INTSTATUS once to get the bitmap, then iterate and dispatch.
+ * Uses GPIO_GetINTStatus per pin (a few extra MMIO reads but more portable code).
  */
 static void gpio_port_isr(const void *arg)
 {
@@ -128,7 +128,7 @@ static void gpio_port_isr(const void *arg)
         uint32_t bit = 1u << i;
         if (GPIO_GetINTStatus(bus, bit) != SET) { continue; }
 
-        /* 屏蔽 + 派发 + 清 pending（RTL 官方推荐顺序） */
+        /* Mask + dispatch + clear pending (RTL-recommended order) */
         GPIO_MaskINTConfig(bus, bit, ENABLE);
 
         gpio_pin_state_t *ps = &st->pins[i];
@@ -139,9 +139,9 @@ static void gpio_port_isr(const void *arg)
     }
 }
 
-/* pin_index → 物理 IRQn（每 group 共享）
+/* pin_index → physical IRQn (shared per group)
  *
- * GPIO 中断按组共享 NVIC 向量（见 vector_table_auto_gen.h）：
+ * GPIO interrupts share NVIC vectors per group (see vector_table_auto_gen.h):
  *   GPIOA:  pin0 → 18   pin1 → 19
  *           pin2..7   → 20 (GPIO_A2_7)
  *           pin8..15  → 21 (GPIO_A8_15)
@@ -152,8 +152,8 @@ static void gpio_port_isr(const void *arg)
  *           pin16..23 → 39
  *           pin24..31 → 40
  *
- * 同组多 pin 共用一个物理 IRQn，都指向本文件的 gpio_port_isr，
- * dispatcher 内部再用 GPIO_GetINTStatus 遍历分派到具体 pin。
+ * Multiple pins in the same group share one physical IRQn, all pointing to this file's gpio_port_isr;
+ * the dispatcher then uses GPIO_GetINTStatus to iterate and dispatch to the specific pin.
  */
 static unsigned gpio_pin_to_irqn(int port_unit, int pin_idx)
 {
@@ -172,16 +172,16 @@ static unsigned gpio_pin_to_irqn(int port_unit, int pin_idx)
     return 40;                                         /* GPIO_B24_31   */
 }
 
-/* ---------- open：解析路径 pin_index ---------- */
+/* ---------- open: parse pin_index from the path ---------- */
 static void *gpio_open(void *drv_data, const char *path)
 {
     gpio_drv_data_t *d = (gpio_drv_data_t *)drv_data;
 
     const char *p = strstr(path, "/p");
     if (!p) { return POSIX_OPEN_ERR; }
-    p++;                           /* 跳过 '/' */
-    if (*p == 'p') { p++; }        /* 跳过 'p' */
-    if (*p == 'i') { p += 2; }     /* 跳过 "in" (pin 风格) */
+    p++;                           /* skip '/' */
+    if (*p == 'p') { p++; }        /* skip 'p' */
+    if (*p == 'i') { p += 2; }     /* skip "in" (pin style) */
 
     const char *digit_start = p;
     char *end;
@@ -207,7 +207,7 @@ static void *gpio_open(void *drv_data, const char *path)
 
     f->drv       = d;
     f->pin       = (int)pin;
-    f->abs_pin   = 0;              /* SET_DIR 时应用可通过 cfg->pin 提供 */
+    f->abs_pin   = 0;              /* the app can provide it via cfg->pin on SET_DIR */
     f->direction = POSIX_GPIO_DIR_INPUT;
     f->pull      = POSIX_GPIO_PULL_NONE;
     return f;
@@ -219,7 +219,7 @@ static int gpio_close(void *drv_data, void *file_priv)
     gpio_file_t *f = (gpio_file_t *)file_priv;
     if (f && f->in_use)
     {
-        /* 卸中断（如果注册过） */
+        /* Remove the interrupt (if registered) */
         uint32_t bit = 1u << f->pin;
         GPIO_INTConfig(f->drv->state->port_base, bit, DISABLE);
         f->drv->state->pins[f->pin].callback = NULL;
@@ -229,7 +229,7 @@ static int gpio_close(void *drv_data, void *file_priv)
     return POSIX_OK;
 }
 
-/* ---------- 应用 cfg->pin → abs_pin + pinmux + pad 配置 ---------- */
+/* ---------- Apply cfg->pin → abs_pin + pinmux + pad config ---------- */
 static void gpio_apply_pinmux(gpio_file_t *f, uint8_t abs_pin,
                               uint8_t direction, uint8_t pull)
 {
@@ -251,7 +251,7 @@ static void gpio_apply_pinmux(gpio_file_t *f, uint8_t abs_pin,
     f->abs_pin = abs_pin;
 }
 
-/* ---------- read/write：走 hw 读写 ---------- */
+/* ---------- read/write: go through hw read/write ---------- */
 static posix_ssize_t gpio_read(void *drv_data, void *file_priv,
                                void *buf, size_t count)
 {
@@ -293,7 +293,7 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
             if (!arg) { return POSIX_ERR_INVAL; }
             posix_gpio_config_t *cfg = (posix_gpio_config_t *)arg;
 
-            /* 若应用给了 cfg->pin（全局 pin 号），做完整 pinmux+pad 配置 */
+            /* If the app provided cfg->pin (global pin number), do full pinmux+pad config */
             if (cfg->pin > 0)
             {
                 gpio_apply_pinmux(f, (uint8_t)cfg->pin, cfg->direction, cfg->pull);
@@ -301,7 +301,7 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
             f->direction = cfg->direction;
             f->pull      = cfg->pull;
 
-            /* 用 GPIO_SetDirection 设方向（不清中断配置） */
+            /* Set direction with GPIO_SetDirection (does not clear interrupt config) */
             GPIO_SetDirection(bus, pin_bit,
                               (cfg->direction == POSIX_GPIO_DIR_OUTPUT)
                               ? GPIO_Mode_OUT : GPIO_Mode_IN);
@@ -335,11 +335,11 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
             if (!arg) { return POSIX_ERR_INVAL; }
             posix_gpio_irq_t *irq = (posix_gpio_irq_t *)arg;
 
-            /* 存回调 */
+            /* Store the callback */
             st->pins[f->pin].callback = irq->callback;
             st->pins[f->pin].arg      = irq->arg;
 
-            /* 写触发极性 / 边沿 */
+            /* Set trigger polarity / edge */
             GPIO_InitTypeDef init;
             GPIO_StructInit(&init);
             init.GPIO_PinBit    = pin_bit;
@@ -378,12 +378,12 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
             }
             GPIOx_Init(bus, &init);
 
-            /* 挂 IRQn → gpio_port_isr（同 port 内多次调用会覆盖成同一 arg，OK） */
+            /* Attach IRQn → gpio_port_isr (repeated calls within a port overwrite with the same arg, OK) */
             unsigned irqn = gpio_pin_to_irqn(d->unit, f->pin);
             irq_connect_dynamic(irqn, 3, gpio_port_isr, st, 0);
             st->irq_registered_mask |= pin_bit;
 
-            /* 先屏蔽，等 ENABLE_IRQ 打开 */
+            /* Mask first, wait for ENABLE_IRQ to open */
             GPIO_MaskINTConfig(bus, pin_bit, ENABLE);
             GPIO_INTConfig(bus, pin_bit, ENABLE);
             return POSIX_OK;
@@ -402,7 +402,7 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
         {
             GPIO_MaskINTConfig(bus, pin_bit, ENABLE);
             GPIO_INTConfig(bus, pin_bit, DISABLE);
-            /* 不动 NVIC——同 IRQn 可能还挂着其它 pin */
+            /* Leave NVIC alone — the same IRQn may still have other pins attached */
             return POSIX_OK;
         }
 
@@ -411,7 +411,7 @@ static int gpio_ioctl(void *drv_data, void *file_priv,
     }
 }
 
-/* ---------- 驱动函数表 + 自动注册 ---------- */
+/* ---------- Driver ops table + auto-registration ---------- */
 const posix_driver_ops_t g_gpio_ops =
 {
     .open  = gpio_open,

@@ -1,25 +1,25 @@
 /* ================================================================
- * Touch 层：当前板选型（决定 /dev/touch0 挂到哪颗芯片）
+ * Touch layer: current board selection (decides which chip /dev/touch0 maps to)
  *
- * 本文件不含硬件访问逻辑，做两件事：
+ * This file contains no hardware access logic; does two things:
  *
- *  1. 提供 posix_touch_bind / unbind —— 为 touch 应用层保留一个带类型
- *     前缀的 API。实现只是转发到框架层的 posix_device_bind_alias
- *     （见 core/posix_device.c），gsensor 等其它多型号外设走同一机制。
+ *  1. Provides posix_touch_bind / unbind —— keeps a typed-prefix
+ *     API for the touch app layer. The implementation just forwards to the framework's posix_device_bind_alias
+ *     (see core/posix_device.c); other multi-model peripherals like gsensor use the same mechanism.
  *
- *  2. 在 POSIX_INIT_APP_EXPORT 阶段调一次 bind，把当前板对应的芯片挂成
- *     /dev/touch0。上层应用只 open /dev/touch0，不关心底下是 CST816D
- *     还是 CHSC6417；调试仍可直接 open /dev/cst816d。
+ *  2. Calls bind once at POSIX_INIT_APP_EXPORT time, mounting the board's chip as
+ *     /dev/touch0. Upper-layer apps only open /dev/touch0 and do not care whether it is CST816D
+ *     or CHSC6417; for debugging you can still open /dev/cst816d directly.
  *
- * 换板/换芯片只改本文件的 #if 分支（或加 Kconfig 项）：
- *     CONFIG_BOARD_TOUCH_CST816D  (默认，对齐 eBadge 板)
+ * Changing boards/chips only touches this file's #if branches (or adds a Kconfig option):
+ *     CONFIG_BOARD_TOUCH_CST816D  (default, matching eBadge board)
  *     CONFIG_BOARD_TOUCH_CHSC6417
- * 两颗芯片的驱动 .c 与 posix 框架都不动。
+ * Neither chip driver .c nor the posix framework changes.
  *
- * init 段优先级说明：
- *   芯片驱动通过 POSIX_INIT_DEVICE_EXPORT 位于 .posix$init1，
- *   本文件的 board_touch_init 位于 .posix$init2（APP_EXPORT），
- *   由链接脚本保证 bind 发生在芯片自身注册之后。
+ * init section priority note:
+ *   The chip driver is in .posix$init1 via POSIX_INIT_DEVICE_EXPORT,
+ *   this file's board_touch_init is in .posix$init2 (APP_EXPORT),
+ *   and the linker script guarantees bind happens after the chip registers itself.
  * ================================================================ */
 
 #include "posix.h"
@@ -29,7 +29,7 @@
 
 #define TOUCH_CST816D_CHIP_ID   0xB6
 
-/* ---------- 带类型前缀的薄壳（转发到框架层通用 alias 机制） ---------- */
+/* ---------- Typed thin wrappers (forward to the framework's generic alias mechanism) ---------- */
 
 int posix_touch_bind(const char *alias, const char *chip_path)
 {

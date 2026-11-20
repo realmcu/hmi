@@ -1,15 +1,15 @@
 // Zephyr Shell test: uart:~$ posix_lcd
 /* ================================================================
- * LCD 使用示例
+ * LCD usage example
  *
- * 关键约定（详见 posix_ioctl_lcd.h 顶部）：
- *   1. 屏幕分辨率由驱动报告，应用层通过 GET_CONFIG 拿到，不要硬编码
- *   2. posix_write 的 count 单位是【字节】，与其它 posix 设备一致；
- *      RGB565 一行字节数 = width * 2，可直接写 sizeof(line_buf)
- *   3. posix_write 内部会 apply 上一次 SET_WINDOW 保存的 rect，
- *      因此逐行写时必须每行都 SET_WINDOW 一次
+ * Key conventions (see the top of posix_ioctl_lcd.h for details):
+ *   1. The display resolution is reported by the driver; the app gets it via GET_CONFIG, do not hardcode
+ *   2. posix_write's count unit is [bytes], consistent with other posix devices;
+ *      one RGB565 row is width * 2 bytes, so you can write sizeof(line_buf) directly
+ *   3. posix_write internally applies the rect saved by the last SET_WINDOW,
+ *      so when writing row by row you must SET_WINDOW once per row
  *
- * 编译要求：posix.h + posix_ioctl_lcd.h
+ * Build requirements: posix.h + posix_ioctl_lcd.h
  * ================================================================ */
 
 #include "posix.h"
@@ -17,16 +17,16 @@
 #include "ioctls/posix_ioctl_lcd.h"
 
 /* ================================================================
- * 教科书示例：查询尺寸 → 打开显示 → 全屏纯色 → 关闭
+ * Textbook example: query size → turn on display → fill screen with a solid color → close
  *
- * 逐行送数据，避免栈上放 width*height*2 字节的整屏 buffer。
+ * Feed data row by row to avoid putting a full-screen width*height*2-byte buffer on the stack.
  * ================================================================ */
 void example_lcd(void)
 {
     posix_fd_t lcd = posix_open("/dev/lcd0");
     if (lcd == POSIX_FD_NULL) { return; }
 
-    /* 1. 从驱动查真实尺寸，不假设 */
+    /* 1. Query the real size from the driver; do not assume */
     posix_lcd_config_t cfg = {0};
     if (posix_ioctl(lcd, POSIX_LCD_IOCTL_GET_CONFIG, &cfg) != POSIX_OK ||
         cfg.width == 0 || cfg.height == 0)
@@ -35,19 +35,19 @@ void example_lcd(void)
         return;
     }
 
-    /* 2. 打开显示 + 背光 */
+    /* 2. Turn on display + backlight */
     posix_ioctl(lcd, POSIX_LCD_IOCTL_DISPLAY_ON, NULL);
     posix_ioctl(lcd, POSIX_LCD_IOCTL_SET_BRIGHTNESS, &(int) {100});
 
-    /* 3. 逐行填充红色（RGB565 = 0xF800）
-     *    静态行缓冲的宽度上限用编译期常量兜底，运行期按 cfg.width 截断 */
+    /* 3. Fill red row by row (RGB565 = 0xF800)
+     *    the static line buffer's width cap is a compile-time constant, truncated to cfg.width at runtime */
 #define POSIX_LCD_MAX_LINE_PX  480
     static uint16_t line_buf[POSIX_LCD_MAX_LINE_PX];
     uint16_t line_w = (cfg.width <= POSIX_LCD_MAX_LINE_PX)
                       ? cfg.width : POSIX_LCD_MAX_LINE_PX;
     for (uint16_t i = 0; i < line_w; i++) { line_buf[i] = 0xF800; }
 
-    /* 每行都 SET_WINDOW 一次；write 的 count 是字节数（line_w * 2） */
+    /* SET_WINDOW once per row; write's count is bytes (line_w * 2) */
     for (uint16_t row = 0; row < cfg.height; row++)
     {
         posix_lcd_rect_t win = { .x = 0, .y = row, .w = line_w, .h = 1 };
@@ -80,11 +80,11 @@ static int cmd_lcd_test(const struct shell *sh, size_t argc, char **argv)
 }
 
 /* posix_lcd fill [0xRGB565]
- * 屏幕尺寸由驱动 GET_CONFIG 报告，应用不猜芯片型号 */
+ * Screen size is reported by the driver via GET_CONFIG; the app does not guess the chip model */
 static int cmd_lcd_fill(const struct shell *sh, size_t argc, char **argv)
 {
 
-    uint16_t color = 0xF800U; /* 默认红色 */
+    uint16_t color = 0xF800U; /* default red */
     if (argc > 1) { color = (uint16_t)strtoul(argv[1], NULL, 0); }
 
 
@@ -108,14 +108,14 @@ static int cmd_lcd_fill(const struct shell *sh, size_t argc, char **argv)
     posix_ioctl(fd, POSIX_LCD_IOCTL_DISPLAY_ON, NULL);
 
 
-    /* 静态行缓冲，编译期上限兜底任何面板宽度 */
+    /* Static line buffer; compile-time cap covers any panel width */
 #define POSIX_LCD_MAX_LINE_PX  480
     static uint16_t s_fill_line[POSIX_LCD_MAX_LINE_PX];
     uint16_t line_w = (cfg.width <= POSIX_LCD_MAX_LINE_PX)
                       ? cfg.width : POSIX_LCD_MAX_LINE_PX;
     for (uint16_t i = 0; i < line_w; i++) { s_fill_line[i] = color; }
 
-    /* 逐行 SET_WINDOW + write；write count = 字节数 = line_w * 2 */
+    /* Row by row: SET_WINDOW + write; write count = bytes = line_w * 2 */
     for (uint16_t row = 0; row < cfg.height; row++)
     {
 
