@@ -53,8 +53,8 @@ static int rtk_nor_init(void)
 static int rtk_nor_read(long offset, uint8_t *buf, size_t size)
 {
     uint32_t abs_addr = RTK_NOR_FLASH_XIP_BASE + (uint32_t)offset;
-    /* no memcpy:XIP go D-Cache/flash read-cache, read after write will get stale value。
-    * fmc_flash_nor_read through SPIC directly read flash, ensure data is newest */
+    /* no memcpy: XIP goes through D-Cache/flash read-cache, so a read after a write
+    * returns stale data. fmc_flash_nor_read via SPIC reads flash directly, ensuring fresh data */
     int rc = fmc_flash_nor_read(abs_addr, buf, (uint32_t)size);
     return (rc == 1) ? (int)size : -1;
 }

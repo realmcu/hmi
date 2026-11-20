@@ -1,5 +1,5 @@
-# West 扩展命令配置
-# 这些自定义命令将被添加到 west 命令行工具中
+# West extension command configuration
+# These custom commands are added to the west command-line tool
 
 west-commands:
   - file: commands.py

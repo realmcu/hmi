@@ -27,9 +27,9 @@ else()
 endif()
 #===========post build===========
 
-# FlashDB 以 West project 方式引入，其 module.yml 声明了 kconfig-ext: True，
-# Zephyr 会自动生成 osource "$(ZEPHYR_FLASHDB_KCONFIG)"。
-# 此处将该变量指向应用工程内的空 Kconfig，避免构建报错。
+# FlashDB is pulled in as a West project; its module.yml declares kconfig-ext: True,
+# so Zephyr automatically generates osource "$(ZEPHYR_FLASHDB_KCONFIG)".
+# Point that variable at the empty Kconfig inside this application to avoid build errors.
 set(ZEPHYR_FLASHDB_KCONFIG ${CMAKE_CURRENT_SOURCE_DIR}/port/flashdb/Kconfig)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})

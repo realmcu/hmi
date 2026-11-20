@@ -39,7 +39,7 @@ class ProjectInfo(WestCommand):
         log.inf('')
         log.inf('Workspace: ' + os.getcwd())
 
-        # 显示应用路径
+        # Show the application path
         app_path = Path('zephyrproject/realtek-app/applications/hmi')
         if app_path.exists():
             log.inf(f'Application Path: {app_path}')
@@ -86,13 +86,13 @@ class CleanAll(WestCommand):
 
         log.inf('Cleaning build artifacts...')
 
-        # 清理 build 目录
+        # Clean the build directory
         build_dir = Path('build')
         if build_dir.exists():
             shutil.rmtree(build_dir)
             log.inf(f'Removed: {build_dir}')
 
-        # 清理 build-* 目录
+        # Clean the build-* directories
         for build_variant in Path('.').glob('build-*'):
             if build_variant.is_dir():
                 shutil.rmtree(build_variant)
@@ -133,7 +133,7 @@ class FlashJLink(WestCommand):
 
         log.inf(f'Flashing {hex_file} to RTL8773G using J-Link...')
 
-        # 这里是示例，实际需要根据你的 J-Link 配置调整
+        # This is an example; adjust it for your J-Link configuration
         jlink_script = f'''
 r
 h
@@ -146,7 +146,7 @@ exit
         log.inf('J-Link flash command would be executed here')
         log.inf('(This is a template - customize for your hardware setup)')
 
-        # 实际使用时取消注释：
+        # Uncomment for actual use:
         # with open('/tmp/jlink.cmd', 'w') as f:
         #     f.write(jlink_script)
         # subprocess.run(['JLinkExe', '-device', 'RTL8773G', '-if', 'SWD',
