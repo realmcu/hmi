@@ -19,16 +19,16 @@
 #define ATCMD_RX_BUF_SIZE   256
 #define ATCMD_TIMEOUT_MS    20000
 
-/* ---- AT CMD 队列节点 ---- */
+/* ---- AT CMD queue node ---- */
 typedef struct t_atcmd_queue_node
 {
-    struct t_atcmd_queue_node *p_next; /* 必须在首位 */
+    struct t_atcmd_queue_node *p_next; /* must be first */
     T_ATCMD_TYPE               cmd;
     T_ATCMD_RSP_CB             cb;
     char                       param[0];
 } T_ATCMD_QUEUE_NODE;
 
-/* ---- 命令解析状态 ---- */
+/* ---- Command parse state ---- */
 typedef struct
 {
     T_ATCMD_TYPE cur_cmd;
@@ -36,7 +36,7 @@ typedef struct
     uint16_t     rx_cnt;
 } T_ATCMD_STATE;
 
-/* ---- 命令表条目 ---- */
+/* ---- Command table entry ---- */
 typedef bool (*T_RSP_FUNC)(const char *rsp_line, T_ATCMD_RSP_CB cb);
 
 typedef struct
@@ -118,9 +118,9 @@ static void atcmd_timeout_cb(uint8_t timer_evt, uint16_t param)
 {
     app_stop_timer(&s_timer_handle);
 
-    /* 超时即丢弃当前命令并推进队列。
-     * 注：原 resend 机制无法工作——flow_ctrl 见 cur_cmd 非空会拒发，
-     * 重发分支既不重发也不推进，反而使命令永久卡死，故彻底移除。*/
+    /* On timeout drop the current command and advance the queue.
+     * Note: the old resend mechanism could not work -- flow_ctrl refuses to send while
+     * cur_cmd is set and it neither resent nor advanced, wedging commands, so it was removed. */
     printf("[atcmd] timeout, drop cmd %d\n", s_atcmd.cur_cmd);
     s_atcmd.cur_cmd = ATCMD_NUM;
     s_atcmd.rx_cnt  = 0;
@@ -133,7 +133,7 @@ static void atcmd_timeout_cb(uint8_t timer_evt, uint16_t param)
     atcmd_trigger_next();
 }
 
-/* ---- 公开接口 ---- */
+/* ---- Public API ---- */
 
 void wifi_atcmd_init(void)
 {
@@ -253,7 +253,7 @@ cmdbuf_read:
                     }
                 }
             }
-            /* 命令执行期间收到的不匹配行（如扫描 AP 信息行）作为中间数据处理 */
+            /* Non-matching lines during command execution (e.g. AP scan) are interim data */
             if (!prefix_matched && s_atcmd.cur_cmd != ATCMD_NUM)
             {
                 T_ATCMD_QUEUE_NODE *node = os_queue_peek(&s_atcmd_queue, 0);

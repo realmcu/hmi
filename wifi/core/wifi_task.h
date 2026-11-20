@@ -13,10 +13,10 @@ extern "C" {
 
 #include "wifi_types.h"
 
-/* 向 WiFi 任务发送消息（可从任意上下文调用，包括 ISR） */
+/* Send a message to the WiFi task (callable from any context, including ISR) */
 bool wifi_task_send_msg(T_WIFI_MSG *p_msg);
 
-/* WiFi 模块上下电及 RF 开关控制 */
+/* WiFi module power on/off and RF switch control */
 void wifi_enable(bool enable);
 
 #ifdef __cplusplus

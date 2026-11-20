@@ -3,16 +3,16 @@
 cmake_minimum_required(VERSION 3.20.0)
 
 # ============================================================
-# HMI 应用位置无关锚点
-#   REALTEK_APP_ROOT — realtek-app SDK 根目录
+# HMI application location-independent anchor
+#   REALTEK_APP_ROOT - realtek-app SDK root directory
 #
-# REALTEK_APP_ROOT 必须在 find_package(Zephyr) 之前可用（version_generate /
-# post_build 依赖它），因此不能用 Zephyr module 系统的 ZEPHYR_<name>_MODULE_DIR
-# 变量（那些要 find_package 之后才注入）。此处用 $ENV{ZEPHYR_BASE} 派生 ——
-# west 在调用 CMake 前保证 ZEPHYR_BASE 已设置为 zephyrproject/zephyr，
-# realtek-app 作为 SDK 一部分固定在 zephyrproject/realtek-app，
-# 因此 $ENV{ZEPHYR_BASE}/../realtek-app 是稳定路径，与 hmi 检出深浅无关。
-# 禁止用 ../../ 相对路径跨 hmi 边界引用。
+# REALTEK_APP_ROOT must be available before find_package(Zephyr) (version_generate /
+# post_build depend on it), so the Zephyr module system variables ZEPHYR_<name>_MODULE_DIR
+# cannot be used (they are injected only after find_package). Derive it from $ENV{ZEPHYR_BASE} --
+# west guarantees ZEPHYR_BASE is set to zephyrproject/zephyr before it invokes CMake,
+# and realtek-app is fixed at zephyrproject/realtek-app as part of the SDK,
+# so $ENV{ZEPHYR_BASE}/../realtek-app is a stable path regardless of hmi checkout depth.
+# Do not reference across the hmi boundary with ../../ relative paths.
 # ============================================================
 set(REALTEK_APP_ROOT $ENV{ZEPHYR_BASE}/../realtek-app)
 
@@ -26,9 +26,9 @@ include(${REALTEK_APP_ROOT}/cmake/post_build.cmake)
 rtk_post_build()
 #===========post build===========
 
-# FlashDB 以 West project 方式引入，其 module.yml 声明了 kconfig-ext: True，
-# Zephyr 会自动生成 osource "$(ZEPHYR_FLASHDB_KCONFIG)"。
-# 此处将该变量指向应用工程内的空 Kconfig，避免构建报错。
+# FlashDB is pulled in as a West project; its module.yml declares kconfig-ext: True,
+# so Zephyr generates osource "$(ZEPHYR_FLASHDB_KCONFIG)" automatically.
+# Point that variable at the empty Kconfig in this application to avoid a build error.
 set(ZEPHYR_FLASHDB_KCONFIG ${CMAKE_CURRENT_SOURCE_DIR}/port/flashdb/Kconfig)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})

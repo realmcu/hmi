@@ -16,8 +16,8 @@
 #include "wifi_types.h"
 #include "wifi_task.h"
 
-#define RX_DMA_BUF_LEN  256   /* DMA 单次搬运量，~22ms@115200，ring buffer 始终有足够余量 */
-#define RX_BUF_LEN      2048  /* ring buffer，足够容纳一次完整扫描响应 (~2KB) */
+#define RX_DMA_BUF_LEN  256   /* DMA batch size, ~22ms@115200, ring buffer always has slack */
+#define RX_BUF_LEN      2048  /* ring buffer, fits one complete scan response (~2KB) */
 #define TX_BUF_LEN      128
 
 static const struct device *const uart_dev = DEVICE_DT_GET(DT_ALIAS(uart3));
@@ -112,7 +112,7 @@ static uint16_t ring_buf_read(uint8_t *buf, uint16_t max_len)
     return read_len;
 }
 
-/* ---- async callback (参考 watch wifi_uart.c) ---- */
+/* ---- async callback (see watch wifi_uart.c) ---- */
 
 static void uart_async_cb(const struct device *dev, struct uart_event *evt, void *user_data)
 {
@@ -152,7 +152,7 @@ static void uart_async_cb(const struct device *dev, struct uart_event *evt, void
     }
 }
 
-/* ---- 公开接口 ---- */
+/* ---- Public API ---- */
 
 int wifi_uart_init(void)
 {
@@ -217,10 +217,10 @@ bool wifi_uart_tx(const uint8_t *data, uint16_t len)
         return false;
     }
 
-    /* 忙等上一笔发送完成再抢锁(原子 test-and-set)。
-     * tx_lock 由 UART_TX_DONE 中断异步清除；connect 的 ATW0/ATW1/ATWC 三条
-     * 在 wifi task 内几乎无间隔连发，若不等待则后两条会被直接拒发、丢命令。
-     * 最多等 ~100ms 兜底，避免 TX 卡死时长时间阻塞 task。*/
+    /* Busy-wait for the previous send, then take the lock (atomic test-and-set).
+     * tx_lock is cleared asynchronously by the UART_TX_DONE interrupt; the ATW0/ATW1/ATWC
+     * of a connect are sent back to back from the wifi task, so without this wait the
+     * last two are rejected and lost. Wait at most ~100ms to avoid blocking the task. */
     uint16_t wait_ms = 0;
     for (;;)
     {
@@ -245,7 +245,7 @@ bool wifi_uart_tx(const uint8_t *data, uint16_t len)
     int ret = uart_tx(uart_dev, s_ring.tx_buf, len, SYS_FOREVER_US);
     if (ret != 0)
     {
-        /* 发送启动失败不会有 UART_TX_DONE，立即释放锁，否则通道永久死锁 */
+        /* A failed send start yields no UART_TX_DONE: release the lock or deadlock forever */
         printf("[uart] uart_tx fail ret=%d\n", ret);
         s_ring.tx_lock = false;
         return false;

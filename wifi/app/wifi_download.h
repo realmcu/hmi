@@ -14,8 +14,8 @@ extern "C" {
 #include <stdbool.h>
 #include "wifi_xmodem.h"
 
-/* 一键式固件烧录（阻塞）:
- * GPIO 复位 → MP 模式 → 握手 → Flash 分块读取 → xmodem_send → xmodem_finish */
+/* One-shot firmware flash (blocking):
+ * GPIO reset -> MP mode -> handshake -> chunked Flash read -> xmodem_send -> xmodem_finish */
 T_XMODEM_STATUS wifi_download_firmware(void);
 
 #ifdef __cplusplus

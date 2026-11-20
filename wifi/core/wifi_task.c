@@ -49,7 +49,7 @@ void wifi_enable(bool enable)
     if (enable)
     {
         printf("[wifi] enable\n");
-        /* 先拉低再拉高确保复位时序 */
+        /* Pull low then high to guarantee the reset sequence */
         Pad_Config(WIFI_EN_PIN, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_UP, PAD_OUT_ENABLE, PAD_OUT_LOW);
         os_delay(200);
         Pad_Config(WIFI_EN_PIN, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_UP, PAD_OUT_ENABLE, PAD_OUT_HIGH);
@@ -192,8 +192,8 @@ static bool on_tcp_open_rsp(T_ATCMD_TYPE cmd, const char *rsp)
 static int cmd_wifi_tcp_open(const struct shell *sh, size_t argc, char **argv)
 {
     /* Usage:
-     *   wifi tcp_open <ip> <port>    client: 连接到 ip:port
-     *   wifi tcp_open -s <port>      server: 监听 port，等待 PC 连入
+     *   wifi tcp_open <ip> <port>    client: connect to ip:port
+     *   wifi tcp_open -s <port>      server: listen on port, wait for the PC to connect
      */
     if (argc < 3)
     {
@@ -205,7 +205,7 @@ static int cmd_wifi_tcp_open(const struct shell *sh, size_t argc, char **argv)
     bool is_server = (strcmp(argv[1], "-s") == 0);
     uint16_t port  = (uint16_t)atoi(argv[2]);
 
-    /* RX 帧不带 ip/port，统一用通配 handler 接收对端数据 */
+    /* RX frames carry no ip/port; the wildcard handler receives peer data */
     wifi_data_rx_register(0, 0, on_sdio_rx);
 
     if (is_server)
@@ -267,8 +267,8 @@ static bool on_iperf_rsp(T_ATCMD_TYPE cmd, const char *rsp)
 static int cmd_wifi_iperf(const struct shell *sh, size_t argc, char **argv)
 {
     /* Usage:
-     *   wifi iperf udp <args>   例: wifi iperf udp -s,-i,1
-     *   wifi iperf tcp <args>   例: wifi iperf tcp -c,192.168.3.98,-n,10m,-i,1
+     *   wifi iperf udp <args>   e.g.: wifi iperf udp -s,-i,1
+     *   wifi iperf tcp <args>   e.g.: wifi iperf tcp -c,192.168.3.98,-n,10m,-i,1
      */
     if (argc < 3)
     {

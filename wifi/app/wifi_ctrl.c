@@ -25,7 +25,7 @@ static bool ctrl_send(T_ATCMD_TYPE cmd, const char *param, T_ATCMD_RSP_CB cb)
     return wifi_task_send_msg(&msg);
 }
 
-/* replace_ip_address 改为 static，不对外暴露 */
+/* replace_ip_address is now static, no longer exposed externally */
 static int replace_ip_in_cmd(const char *cmd_str, const char *new_ip,
                              char *output, size_t output_size)
 {
@@ -83,8 +83,8 @@ bool wifi_ctrl_connect(const char *ssid, const char *passwd, T_ATCMD_RSP_CB cb)
 
 bool wifi_ctrl_disconnect(T_ATCMD_RSP_CB cb)
 {
-    /* 测试文档未提供断开命令；原实现误用 ATW1(=录入密码)，会清空已设密码，已移除。
-     * 待查模组 AT 手册补正确的断开指令后再启用。*/
+    /* The test docs give no disconnect command; the old code misused ATW1 (= set password), which
+     * clears the stored password, so it was removed. Re-enable after the correct command is found. */
     (void)cb;
     printf("[ctrl] disconnect: no AT cmd confirmed in doc, skip\n");
     return false;

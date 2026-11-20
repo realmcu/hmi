@@ -17,12 +17,12 @@ extern "C" {
 typedef enum
 {
     ATCMD_ATWS,  /* WiFi scan */
-    ATCMD_ATW0,  /* 录入待连接 AP 的 SSID:   ATW0=ssid */
-    ATCMD_ATW1,  /* 录入连接 AP 的密码:      ATW1=password */
-    ATCMD_ATWC,  /* 在 ATW0/ATW1 之后连接 AP: ATWC */
+    ATCMD_ATW0,  /* set the SSID of the AP to join:   ATW0=ssid */
+    ATCMD_ATW1,  /* set the password of the AP:       ATW1=password */
+    ATCMD_ATWC,  /* connect to the AP after ATW0/ATW1: ATWC */
     ATCMD_ATWI,  /* Ping:            ATWI=ip */
-    ATCMD_ATWU,  /* UDP iperf 吞吐:  ATWU=-s/-c,host,... */
-    ATCMD_ATWT,  /* TCP iperf 吞吐:  ATWT=-s/-c,host,... */
+    ATCMD_ATWU,  /* UDP iperf throughput:  ATWU=-s/-c,host,... */
+    ATCMD_ATWT,  /* TCP iperf throughput:  ATWT=-s/-c,host,... */
     ATCMD_ATPN,  /* Connect AP: ATPN=ssid,password */
     ATCMD_ATSL,  /* Sleep mode */
     ATCMD_ATWO,  /* WiFi OTA */
@@ -32,19 +32,19 @@ typedef enum
     ATCMD_NUM,
 } T_ATCMD_TYPE;
 
-/* 收到 AT 响应行时的回调，rsp_line 为 '\0' 结尾字符串 */
+/* Callback for an AT response line; rsp_line is a '\0'-terminated string */
 typedef bool (*T_ATCMD_RSP_CB)(T_ATCMD_TYPE cmd, const char *rsp_line);
 
-/* 初始化命令表、定时器、队列 */
+/* Initialize the command table, timer and queue */
 void wifi_atcmd_init(void);
 
-/* 将一条 AT CMD 加入发送队列；param 可为 NULL */
+/* Append an AT CMD to the send queue; param may be NULL */
 bool wifi_atcmd_enqueue(T_ATCMD_TYPE cmd, const char *param, T_ATCMD_RSP_CB cb);
 
-/* 处理 EVENT_UART_RX：读 ring buffer、解析响应行、触发回调、推进流控 */
+/* Handle EVENT_UART_RX: read the ring buffer, parse a line, fire callbacks, advance flow */
 void wifi_atcmd_rx_handler(void);
 
-/* 处理 EVENT_UART_CMD_FLOW_CTRL：从队列取下一条命令发送 */
+/* Handle EVENT_UART_CMD_FLOW_CTRL: pop the next command from the queue and send it */
 void wifi_atcmd_flow_ctrl_handler(void);
 
 #ifdef __cplusplus
