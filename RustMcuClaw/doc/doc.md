@@ -1,84 +1,84 @@
-# CLAW 介绍
+# CLAW Introduction
 
-- CLAW是运行在MCU（RTL8783G）上的AI智能体。
+- CLAW is an AI agent running on the MCU (RTL8783G).
 
-- 整合云端大语言模型、本地的智能体、外设驱动和网络功能，实现完全基于自然语言的MCU应用
+- It integrates the cloud large language model, the local agent, peripheral drivers, and network capabilities to realize MCU applications based entirely on natural language
 
-- 通过飞书、板载屏幕或者串口终端来聊天
+- Chat through Feishu, the onboard screen, or a serial terminal
 
-- 智能体能够操作外设（灯、SD卡、传感器）和操作系统（定时任务、监测信号），有长期记忆，知晓自己和用户的身份
+- The agent can operate peripherals (lights, SD card, sensors) and the operating system (scheduled tasks, signal monitoring); it has long-term memory and knows its own and the user's identity
 
-## 示例展示
+## Example Showcase
 
-### 检测空气并记录日记
+### Detect the air and write a diary
 
-CLAW通过多次循环工具调用
-- 理解了空气检测目前的运行环境只能检测温湿度
-- 执行温湿度读取并拿到读取结果
-- 根据读取结果总结为自然语言
-- 执行SD卡新建文件和写入操作，写入空气检测结果
-- 拿到SD卡操作结果，总结为自然语言答复
+Through multiple rounds of tool calls, CLAW:
+- Understood that the current environment for air detection can only measure temperature and humidity
+- Performed a temperature/humidity read and obtained the results
+- Summarized the results into natural language
+- Created a new file on the SD card and wrote the air detection results
+- Retrieved the SD card operation result and summarized it into a natural-language reply
 
-![检测湿度并记录日记](检测湿度并记录日记.jpg)
+![Detect humidity and record a diary](%E6%A3%80%E6%B5%8B%E6%B9%BF%E5%BA%A6%E5%B9%B6%E8%AE%B0%E5%BD%95%E6%97%A5%E8%AE%B0.jpg)
 
-### 控制灯带
+### Control the light strip
 
-- CLAW学习了系统提示词里的灯带控制语法
-- 生成灯带控制指令
-- 分析指令执行结果
-- 用自然语言答复了预期的控制效果
+- CLAW learned the light strip control syntax in the system prompt
+- Generated light strip control commands
+- Analyzed the command execution results
+- Replied with the expected control effect in natural language
 
-![控制灯带](./灯带.jpg)
+![Control the light strip](./%E7%81%AF%E5%B8%A6.jpg)
 
-<video src="彩虹灯带.mp4" controls width="100%"></video>
+<video src="%E5%BD%A9%E8%99%B9%E7%81%AF%E5%B8%A6.mp4" controls width="100%"></video>
 
-### 知晓身份
+### Know its identity
 
-- CLAW通过角色文件知晓了自己的身份和运行环境
-- 聊天内容同时在飞书和本地屏幕显示
+- Through the role file, CLAW learned its own identity and runtime environment
+- Chat content is displayed on both Feishu and the local screen
 
-![知晓身份](./你好.png)
-
-
-
-### 检测湿度并警告
-
-CLAW通过多次循环工具调用
-- 学习了灯和监视器的使用方法
-- 设置了监视器，
-- 用自然语言答复了设置监视器成功
-
-![检测湿度并警告](./湿度监测.jpg)
-
-视频里通过喷雾触发了湿度警告（亮灯）
-
-<video src="喷雾.mp4" controls width="100%"></video>
+![Know its identity](./%E4%BD%A0%E5%A5%BD.png)
 
 
-### 长期记忆
 
-![长期记忆](image-1.png)
+### Detect humidity and warn
+
+Through multiple rounds of tool calls, CLAW:
+- Learned how to use the light and the monitor
+- Set up a monitor,
+- Replied in natural language that the monitor was set up successfully
+
+![Detect humidity and warn](./%E6%B9%BF%E5%BA%A6%E7%9B%91%E6%B5%8B.jpg)
+
+In the video, spraying triggered the humidity warning (light on)
+
+<video src="%E5%96%B7%E9%9B%BE.mp4" controls width="100%"></video>
 
 
-## CLAW 核心
+### Long-term memory
 
-智能体循环
-从聊天记录可以看到CLAW经常有多次cycle的代码回复，最后才能有通顺自然语言回复，这是CLAW相对于单独的大语言模型的一个重要优势，是能够执行复杂任务的核心流程
+![Long-term memory](image-1.png)
 
-![智能体循环](image.png)
 
-其中的提示词拼接内容：
-- 用户输入
-- 角色文件
-- 长期记忆
-- 本次聊天历史
-- 工具调用语法
-- 可能有工具执行结果
+## CLAW Core
 
-## 架构说明
+Agent loop
+From the chat history, you can see that CLAW often has multiple cycles of code replies before it can finally produce a fluent natural-language reply. This is an important advantage of CLAW over a standalone large language model, and it is the core process that enables it to perform complex tasks.
 
-- 充分利用板载芯片和外设的能力，实现了与LLM服务器、与飞书服务器的通信，智能体核心循环，工具指令调用等功能，支撑了CLAW的实现；
+![Agent loop](image.png)
 
-![架构图](./架构图.png)
+The prompt assembly includes:
+- User input
+- Role file
+- Long-term memory
+- Current chat history
+- Tool calling syntax
+- Possibly tool execution results
+
+## Architecture
+
+- It makes full use of the onboard chip and peripheral capabilities, implementing communication with the LLM server and the Feishu server, the agent core loop, tool command invocation, and other features that support CLAW's implementation;
+
+![Architecture diagram](./%E6%9E%B6%E6%9E%84%E5%9B%BE.png)
 
 

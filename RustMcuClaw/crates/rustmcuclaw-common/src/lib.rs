@@ -33,12 +33,12 @@ pub const SUMMARY_COMPRESSION_SYSTEM_PROMPT: &str = "你是对话记忆压缩器
 pub const PC_RUNTIME_DESCRIPTION: &str = "你正在扮演一个有总结记忆和定时任务能力的 PC 终端助手。";
 pub const MCU_RUNTIME_DESCRIPTION: &str = "运行环境：RTL8783G + Zephyr，多线程串口 CLI，PSRAM FATFS JSON/TOML/Markdown 文件，Z2Plus HTTPS 云 LLM。";
 
-/// 工具调用说明（中文）。包含可用工具列表、调用语法和示例。
-/// 在系统提示词末尾追加，让 LLM 知道何时以及如何发起函数调用。
-/// 设计目标：
-///   1. 协议与后续工具（舵机、温度传感器、IMU 等）共享，只需在工具列表里追加条目即可；
-///   2. 调用语法是单行 JSON，外面用 `<tool_call>...</tool_call>` 标签包裹，便于 claw 解析；
-///   3. 当用户的请求不需要工具时，LLM 直接用自然语言回答即可，不要发起调用。
+/// Tool-call description (Chinese). Contains the available tool list, call syntax, and examples.
+/// Appended to the end of the system prompt so the LLM knows when and how to issue function calls.
+/// Design goals:
+///   1. The protocol is shared with future tools (servos, temperature sensors, IMU, etc.); just append an entry to the tool list.
+///   2. The call syntax is single-line JSON wrapped in `<tool_call>...</tool_call>` tags for easy parsing by claw.
+///   3. When a user request does not need tools, the LLM answers directly in natural language and does not issue a call.
 pub const TOOLS_PROMPT_SECTION: &str = concat!(
     "\n\n[Tools]\n",
     "你（claw）可以调用以下设备工具完成自然语言下达的任务，包括 SD 卡文件操作和环境传感器读取：\n",

@@ -1,10 +1,10 @@
 data_dir = "data"
 
 [provider]
-# 可选：mock, open_ai, kimi, github_models, github_copilot_compatible, open_ai_compatible
+# Optional: mock, open_ai, kimi, github_models, github_copilot_compatible, open_ai_compatible
 kind = "mock"
 model = "mock-local"
-# 可选：直接填 API Key；更推荐使用下面的 api_key_env
+# Optional: fill in the API Key directly; using api_key_env below is recommended instead
 # api_key = ""
 # endpoint = "https://api.openai.com/v1/chat/completions"
 api_key_env = "OPENAI_API_KEY"
@@ -13,8 +13,8 @@ max_tokens = 2048
 
 [chat]
 history_limit = 12
-# 一次用户消息最多触发多少轮 “LLM → 工具 → 结果 → LLM” 循环。
-# 1 = 关闭循环（经典单轮）；>=2 才允许 claw 把工具结果回灌给 LLM 继续推理。
+# Maximum number of "LLM -> tool -> result -> LLM" loops triggered by one user message.
+# 1 = disable the loop (classic single turn); >=2 allows claw to feed tool results back to the LLM for further reasoning.
 max_tool_loops = 4
 
 [heartbeat]
@@ -28,9 +28,9 @@ role = "role.md"
 summary_memory = "summary_memory.jsonl"
 tasks = "tasks.json"
 
-# 飞书 / Lark 开放平台 App 凭证。MCU 端目前持久化并在 /doctor 展示；
-# 长连接事件订阅由 Z2Plus AT 命令 ATFW 提供 bootstrap，wss 帧层下一轮接入。
-# Secret 强烈建议直接在 SD 卡 rmcc.toml 中填写，不要提交到仓库。
+# Feishu / Lark Open Platform app credentials. The MCU side currently persists them and shows them in /doctor;
+# Long-connection event subscription bootstraps via the Z2Plus AT command ATFW; the wss frame layer will be integrated next round.
+# It is strongly recommended to fill in the secret directly in rmcc.toml on the SD card, not to commit it to the repository.
 [channels.feishu]
 enabled = false
 app_id = "cli_a92512f2f3391bd4"

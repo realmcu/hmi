@@ -1,10 +1,10 @@
-# CLAW 编译说明
+# CLAW Build Instructions
 
-工程的编译入口。
+The build entry point for the project.
 
 
 
-## 编译
+## Build
 
 
 ```powershell
@@ -14,9 +14,9 @@ west build -b rtl87x3g_watch/rtl8783gbf  realtek-app\applications\claw\RustMcuCl
 
 
 
-## 产物
+## Output
 
-成功后位于：
+On success, located at:
 
 
 
@@ -26,26 +26,26 @@ zephyrproject\bin
 
 ### Z2PLUS
 
-Z2PLUS 需要实现 HTTPS, WSS, ATCMD, 预生成固件位置：```RustMcuClaw\mcu\Z2plus```
+Z2PLUS needs HTTPS, WSS, ATCMD implemented; prebuilt firmware location: ```RustMcuClaw\mcu\Z2plus```
 
-## SD卡
+## SD Card
 
-需要拷贝```RustMcuClaw\config\SDcard\RustMcuClaw```到SD卡中，需要修改密钥（LLM,飞书）。
+Copy ```RustMcuClaw\config\SDcard\RustMcuClaw``` to the SD card, and update the keys (LLM, Feishu).
 
-##  目录速览
+##  Directory Overview
 
 ```
 claw/
-├── README.md                          # 本文件
-├── RustMcuClaw/mcu/                   # Zephyr 应用 (CMakeLists.txt 在此)
+├── README.md                          # This file
+├── RustMcuClaw/mcu/                   # Zephyr application (CMakeLists.txt is here)
 ├── manifest/
 │   └── rtl8773g-zephyr-claw.yml        # west manifest
 └── west_commands_extention/
-    ├── west-commands.yml              # 注册 claw-build / claw-flash / claw-clean
-    ├── commands.py                    # 命令实现
-    └── README.md                      # 扩展命令详细说明
+    ├── west-commands.yml              # Registers claw-build / claw-flash / claw-clean
+    ├── commands.py                    # Command implementations
+    └── README.md                      # Detailed extension command docs
 ```
 
-详细命令参数和排错见 [west_commands_extention/README.md](west_commands_extention/README.md)。
+For detailed command parameters and troubleshooting, see [west_commands_extention/README.md](west_commands_extention/README.md).
 
 

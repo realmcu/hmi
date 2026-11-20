@@ -1,47 +1,47 @@
-# RustMcuClaw MCU 版
+# RustMcuClaw MCU Version
 
-这个目录是 `RustMcuClaw` 的 RTL8783G/Zephyr MCU 版，不包含 GUI。
+This directory is the RTL8783G/Zephyr MCU version of `RustMcuClaw`, without a GUI.
 
-## 功能
+## Features
 
-- 串口 CLI：PC 串口工具直接和 EVB 上的 Claw 对话。
-- Zephyr 多线程：`claw_cli` 线程处理串口行输入，`claw_poll` 线程处理 heartbeat 和定时任务。
-- PSRAM 堆：Rust `no_std + alloc` 静态库使用 `RUSTMCUCLAW_PSRAM_BASE` / `RUSTMCUCLAW_PSRAM_SIZE` 初始化 bump allocator。
-- SD 卡文件：默认路径 `/SD:/RustMcuClaw`，文件格式沿用 PC 版：
+- Serial CLI: a PC serial tool can chat directly with Claw on the EVB.
+- Zephyr multithreading: the `claw_cli` thread handles serial line input, and the `claw_poll` thread handles heartbeat and scheduled tasks.
+- PSRAM heap: the Rust `no_std + alloc` static library initializes the bump allocator using `RUSTMCUCLAW_PSRAM_BASE` / `RUSTMCUCLAW_PSRAM_SIZE`.
+- SD card files: default path `/SD:/RustMcuClaw`, with file formats following the PC version:
   - `rmcc.toml`
   - `soul.md`
   - `user.md`
   - `role.md`
   - `summary_memory.jsonl`
   - `tasks.json`
-- 云 LLM：Rust 生成 OpenAI-compatible JSON 请求，通过 C 回调 `claw_mcu_https_post_json()` 调用 Z2Plus HTTPS 能力。
+- Cloud LLM: Rust generates OpenAI-compatible JSON requests, and calls the Z2Plus HTTPS capability through the C callback `claw_mcu_https_post_json()`.
 
-## Z2Plus HTTPS 对接点
+## Z2Plus HTTPS Integration Point
 
-当前 SDK 搜索到的公开例程主要是 Z2Plus AT/TCP 通道（如 `ATPN`、`ATWT`、`ATSD`）和 MQTT 透明 TCP 示例，未发现通用 HTTPS 命令的最终函数名。因此 MCU app 已经预留强符号覆盖点：
+The public examples found in the current SDK are mainly the Z2Plus AT/TCP channel (such as `ATPN`, `ATWT`, `ATSD`) and MQTT transparent TCP examples; the final function name of a generic HTTPS command was not found. Therefore the MCU app already provides a strong-symbol override point:
 
-- 默认弱实现：`mcu/src/main.c` 中的 `z2plus_https_post_json()` 返回 `-ENOTSUP`。
-- 如果 Z2Plus 固件提供 HTTPS POST API，请在板级文件里实现同名非弱函数：
-  - 输入：OpenAI-compatible endpoint、API key、JSON body。
-  - 输出：HTTP 响应 JSON 原文，例如 OpenAI chat-completions 格式。
+- Default weak implementation: `z2plus_https_post_json()` in `mcu/src/main.c` returns `-ENOTSUP`.
+- If the Z2Plus firmware provides an HTTPS POST API, implement a non-weak function with the same name in a board-level file:
+  - Input: OpenAI-compatible endpoint, API key, JSON body.
+  - Output: the raw HTTP response JSON, for example in OpenAI chat-completions format.
 
-`rmcc.toml` 中 `[provider].kind = "mock"` 时不访问网络，可先验证串口、SD 卡、任务和 Rust 堆。
+When `[provider].kind = "mock"` in `rmcc.toml`, the network is not accessed, so you can first verify serial, SD card, tasks, and the Rust heap.
 
-## 构建
+## Build
 
-先安装 Rust 目标：
+Install the Rust target first:
 
 ```powershell
 rustup target add thumbv8m.main-none-eabihf
 ```
 
-从 SDK/Zephyr build 环境中构建本目录应用，示例：
+Build this directory's application from the SDK/Zephyr build environment, for example:
 
 ```powershell
 west build -b rtl87x3g_watch/rtl8783gbf realtek-app/applications/claw/RustMcuClaw/mcu
 ```
 
-如板级 PSRAM 地址或大小不同，可在 CMake/编译参数中覆盖：
+If the board PSRAM address or size differs, override it in CMake/build parameters:
 
 - `RUSTMCUCLAW_PSRAM_BASE`
 - `RUSTMCUCLAW_PSRAM_SIZE`

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CLAW · 运行在芯片上的 AI 智能体</title>
+<title>CLAW · An AI Agent Running on a Chip</title>
 <style>
   :root{
     --ink:#0c1116;
@@ -209,10 +209,10 @@
   <div class="wrap nav-inner">
     <div class="brand"><span class="dot"></span>CLAW</div>
     <nav class="nav-links">
-      <a href="#showcase">实景演示</a>
-      <a href="#features">能力</a>
-      <a href="#core">智能体核心</a>
-      <a href="#arch">技术架构</a>
+      <a href="#showcase">Showcase</a>
+      <a href="#features">Capabilities</a>
+      <a href="#core">Agent Core</a>
+      <a href="#arch">Architecture</a>
     </nav>
   </div>
 </header>
@@ -220,20 +220,20 @@
 <!-- HERO -->
 <section class="hero">
   <div class="wrap">
-    <span class="pill">运行在 RTL8783G 芯片上的 AI 智能体</span>
-    <h1 class="hero-title">让一颗芯片<br>听懂<span class="grad">自然语言</span>，并动手去做</h1>
+    <span class="pill">An AI agent running on the RTL8783G chip</span>
+    <h1 class="hero-title">Let a chip<br>understand <span class="grad">natural language</span> and take action</h1>
     <p class="hero-sub">
-      CLAW 把云端大语言模型、本地智能体、外设驱动与网络能力融为一体。
-      你只需要用一句话说出需求，它就能思考、调用工具、操作硬件，并用自然语言回答你。
+      CLAW brings together a cloud large language model, a local agent, peripheral drivers, and network capabilities.
+      Just describe what you need in one sentence, and it can think, call tools, operate hardware, and answer you in natural language.
     </p>
     <div class="cta">
-      <a class="btn btn-primary" href="#showcase">看它怎么工作 →</a>
-      <a class="btn btn-ghost" href="#arch">了解技术架构</a>
+      <a class="btn btn-primary" href="#showcase">See how it works →</a>
+      <a class="btn btn-ghost" href="#arch">Explore the architecture</a>
     </div>
     <div class="hero-stats">
-      <div class="stat"><div class="num">多种聊天入口</div><div class="lbl">飞书 / 屏幕 / 串口</div></div>
-      <div class="stat"><div class="num">∞ 长期记忆</div><div class="lbl">记得你和它自己</div></div>
-      <div class="stat"><div class="num">自然语言</div><div class="lbl">全程自然语言，无需编程</div></div>
+      <div class="stat"><div class="num">Many ways to chat</div><div class="lbl">Feishu / screen / serial</div></div>
+      <div class="stat"><div class="num">∞ long-term memory</div><div class="lbl">Remembers you and itself</div></div>
+      <div class="stat"><div class="num">Natural language</div><div class="lbl">All in natural language, no programming required</div></div>
     </div>
   </div>
 </section>
@@ -243,75 +243,75 @@
   <div class="wrap">
     <div class="head reveal">
       <div class="eyebrow">In Action</div>
-      <h2>实拍演示</h2>
-      <p>下面是 CLAW 在硬件上的实拍演示——从理解需求到完成动作，全程自动。</p>
+      <h2>Live Demos</h2>
+      <p>Below are live demos of CLAW on real hardware — from understanding a request to completing an action, fully automated.</p>
     </div>
 
     <div class="show-row reveal">
       <div class="text">
-        <span class="tag">环境感知 · 自动记录</span>
-        <h3>检测空气并写成日记</h3>
+        <span class="tag">Environment sensing · Auto logging</span>
+        <h3>Detect the air and write a diary</h3>
         <ul>
-          <li>自己判断出当前环境只能检测温湿度</li>
-          <li>读取传感器并拿到真实数据</li>
-          <li>把结果总结成一段自然语言</li>
-          <li>在 SD 卡上新建文件并写入这份"日记"</li>
+          <li>Figures out that the current environment can only measure temperature and humidity</li>
+          <li>Reads the sensor and gets real data</li>
+          <li>Summarizes the results into natural language</li>
+          <li>Creates a file on the SD card and writes this "diary" to it</li>
         </ul>
       </div>
-      <div class="media"><img src="检测湿度并记录日记.jpg" alt="检测湿度并记录日记"></div>
+      <div class="media"><img src="%E6%A3%80%E6%B5%8B%E6%B9%BF%E5%BA%A6%E5%B9%B6%E8%AE%B0%E5%BD%95%E6%97%A5%E8%AE%B0.jpg" alt="Detect humidity and record a diary"></div>
     </div>
 
     <div class="show-row rev reveal">
       <div class="text">
-        <span class="tag">硬件控制</span>
-        <h3>一句话点亮彩虹灯带</h3>
+        <span class="tag">Hardware control</span>
+        <h3>Light up a rainbow strip with one sentence</h3>
         <ul>
-          <li>学习系统提供的灯带控制方法</li>
-          <li>自动生成对应的控制指令</li>
-          <li>执行并核对实际效果</li>
-          <li>用自然语言告诉你它做了什么</li>
+          <li>Learns the light strip control method provided by the system</li>
+          <li>Automatically generates the corresponding control commands</li>
+          <li>Executes them and verifies the actual effect</li>
+          <li>Tells you in natural language what it did</li>
         </ul>
       </div>
-      <div class="media"><video src="彩虹灯带.mp4" controls muted playsinline poster="灯带.jpg"></video></div>
+      <div class="media"><video src="%E5%BD%A9%E8%99%B9%E7%81%AF%E5%B8%A6.mp4" controls muted playsinline poster="%E7%81%AF%E5%B8%A6.jpg"></video></div>
     </div>
 
     <div class="show-row reveal">
       <div class="text">
-        <span class="tag">主动监测 · 自动报警</span>
-        <h3>湿度超标，自动亮灯警告</h3>
+        <span class="tag">Active monitoring · Auto alarm</span>
+        <h3>Humidity too high — lights up to warn automatically</h3>
         <ul>
-          <li>理解灯与监视器的配合用法</li>
-          <li>自行设置一个持续运行的监视器</li>
-          <li>视频中用喷雾触发湿度上升</li>
-          <li>条件命中后立即亮灯报警</li>
+          <li>Understands how the light and the monitor work together</li>
+          <li>Sets up a monitor that keeps running on its own</li>
+          <li>In the video, spraying triggers a rise in humidity</li>
+          <li>When the condition is met, it lights up to warn immediately</li>
         </ul>
       </div>
-      <div class="media"><video src="喷雾.mp4" controls muted playsinline poster="湿度监测.jpg"></video></div>
+      <div class="media"><video src="%E5%96%B7%E9%9B%BE.mp4" controls muted playsinline poster="%E6%B9%BF%E5%BA%A6%E7%9B%91%E6%B5%8B.jpg"></video></div>
     </div>
 
     <div class="show-row rev reveal">
       <div class="text">
-        <span class="tag">身份认知 · 多端同步</span>
-        <h3>它知道自己是谁</h3>
+        <span class="tag">Self-awareness · Multi-device sync</span>
+        <h3>It knows who it is</h3>
         <ul>
-          <li>通过角色文件了解自身身份与运行环境</li>
-          <li>对话内容同时在飞书和板载屏幕显示</li>
-          <li>多个入口，同一个 CLAW</li>
+          <li>Learns its identity and runtime environment from the role file</li>
+          <li>Conversation content is displayed on both Feishu and the onboard screen</li>
+          <li>Multiple entry points, the same CLAW</li>
         </ul>
       </div>
-      <div class="media"><img src="你好.png" alt="知晓身份"></div>
+      <div class="media"><img src="%E4%BD%A0%E5%A5%BD.png" alt="Knows its identity"></div>
     </div>
 
     <div class="show-row reveal">
       <div class="text">
-        <span class="tag">长期记忆</span>
-        <h3>它还记得你们上次聊过什么</h3>
+        <span class="tag">Long-term memory</span>
+        <h3>It still remembers what you talked about last time</h3>
         <ul>
-          <li>每次对话结束后自动生成摘要，存入 SD 卡</li>
-          <li>下次启动时读取记忆，作为上下文的一部分</li>
+          <li>Automatically generates a summary after each conversation and stores it on the SD card</li>
+          <li>Loads the memory on the next startup as part of the context</li>
         </ul>
       </div>
-      <div class="media"><img src="image-1.png" alt="长期记忆"></div>
+      <div class="media"><img src="image-1.png" alt="Long-term memory"></div>
     </div>
   </div>
 </section>
@@ -321,39 +321,39 @@
   <div class="wrap">
     <div class="head reveal">
       <div class="eyebrow">Why CLAW</div>
-      <h2>不只是会聊天，更会动手</h2>
-      <p>普通的大语言模型只会回话；CLAW 在一颗小小的 MCU 上，把"理解—决策—执行"连成了完整闭环。</p>
+      <h2>It doesn't just chat — it takes action</h2>
+      <p>An ordinary large language model only replies; CLAW, on a tiny MCU, closes the full loop of "understand — decide — execute."</p>
     </div>
     <div class="grid">
       <div class="card reveal">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
-        <h3>用一句话指挥</h3>
-        <p>通过飞书、板载触摸屏或串口终端，像跟人聊天一样下达指令，不需要任何专业语法。</p>
+        <h3>Command it in one sentence</h3>
+        <p>Through Feishu, the onboard touch screen, or a serial terminal, give instructions as if chatting with a person — no special syntax required.</p>
       </div>
       <div class="card reveal">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 2.6 14H2a2 2 0 0 1 0-4h.1A1.6 1.6 0 0 0 4.6 7l-.1-.1A2 2 0 1 1 7.3 4.1l.1.1A1.6 1.6 0 0 0 9 4.6V4a2 2 0 0 1 4 0v.1A1.6 1.6 0 0 0 17 4.6l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8 1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></div>
-        <h3>真正操作硬件</h3>
-        <p>点亮灯带、读取温湿度传感器、读写 SD 卡——它能直接驱动板上的外设，把回答变成现实动作。</p>
+        <h3>Truly operates hardware</h3>
+        <p>Lights up the light strip, reads the temperature/humidity sensor, reads and writes the SD card — it directly drives the peripherals on the board and turns answers into real actions.</p>
       </div>
       <div class="card reveal">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg></div>
-        <h3>会盯梢、会定时</h3>
-        <p>设定定时任务、持续监测信号——比如湿度超标就自动亮灯报警，无需你时刻守着。</p>
+        <h3>Keeps watch and keeps time</h3>
+        <p>Sets scheduled tasks and continuously monitors signals — for example, it lights up to warn automatically when humidity is too high, with no need for you to watch it all the time.</p>
       </div>
       <div class="card reveal">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>
-        <h3>长期记忆</h3>
-        <p>每次对话都会被总结沉淀，下次见面它依然记得过往的约定与偏好。</p>
+        <h3>Long-term memory</h3>
+        <p>Each conversation is summarized and retained, so it still remembers past agreements and preferences the next time you meet.</p>
       </div>
       <div class="card reveal">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-        <h3>知晓身份</h3>
-        <p>通过角色文件，它清楚自己是谁、运行在什么环境，也认得正在与之对话的你。</p>
+        <h3>Knows its identity</h3>
+        <p>Through the role file, it knows exactly who it is and what environment it runs in, and it also recognizes you, the one it is talking to.</p>
       </div>
       <div class="card reveal">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></div>
-        <h3>云端大脑加持</h3>
-        <p>无缝接入云端大语言模型，让一颗MCU芯片，也拥有强大的语言理解与推理能力。</p>
+        <h3>Powered by a cloud brain</h3>
+        <p>Seamlessly connects to a cloud large language model, giving even a single MCU chip powerful language understanding and reasoning abilities.</p>
       </div>
     </div>
   </div>
@@ -364,28 +364,28 @@
   <div class="wrap">
     <div class="head reveal">
       <div class="eyebrow">The Core</div>
-      <h2>智能体循环：复杂任务的秘密</h2>
-      <p>面对一个复杂请求，CLAW 不会一口回答，而是反复"思考—调用工具—查看结果"，直到把事情真正做完——这正是它超越单纯语言模型的关键。</p>
+      <h2>The agent loop: the secret to complex tasks</h2>
+      <p>Faced with a complex request, CLAW does not answer in one shot; it repeatedly "thinks — calls tools — checks results" until the job is truly done — and that is exactly what makes it superior to a plain language model.</p>
     </div>
     <div class="loop-grid">
       <div class="steps reveal">
-        <div class="step"><span class="n">1</span><div><b>理解你的需求</b><span>把这句话和它对环境的认知结合起来</span></div></div>
-        <div class="step"><span class="n">2</span><div><b>决定该用什么工具</b><span>读传感器？写 SD 卡？还是点灯？</span></div></div>
-        <div class="step"><span class="n">3</span><div><b>执行并拿到结果</b><span>真实操作硬件，获取真实反馈</span></div></div>
-        <div class="step"><span class="n">4</span><div><b>判断是否还要继续</b><span>没做完就回到上一步，继续循环</span></div></div>
-        <div class="step"><span class="n">5</span><div><b>给出自然语言回答</b><span>把整件事总结成通顺的一句话</span></div></div>
+        <div class="step"><span class="n">1</span><div><b>Understand your request</b><span>Combines this sentence with its knowledge of the environment</span></div></div>
+        <div class="step"><span class="n">2</span><div><b>Decide which tool to use</b><span>Read a sensor? Write the SD card? Or turn on a light?</span></div></div>
+        <div class="step"><span class="n">3</span><div><b>Execute and get the result</b><span>Operates real hardware and gets real feedback</span></div></div>
+        <div class="step"><span class="n">4</span><div><b>Decide whether to continue</b><span>If not done, go back to the previous step and keep looping</span></div></div>
+        <div class="step"><span class="n">5</span><div><b>Give a natural-language answer</b><span>Summarizes the whole thing into one fluent sentence</span></div></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:22px;">
-        <div class="media reveal"><img src="image.png" alt="智能体循环流程图"></div>
+        <div class="media reveal"><img src="image.png" alt="Agent loop flowchart"></div>
         <div class="prompt-card reveal">
-          <h4>每一次思考，它都会综合这些信息</h4>
+          <h4>With every thought, it combines all of this information</h4>
           <div class="chip-list">
-            <span class="chip">你的输入</span>
-            <span class="chip">角色文件</span>
-            <span class="chip">长期记忆</span>
-            <span class="chip">本次聊天历史</span>
-            <span class="chip">工具使用方法</span>
-            <span class="chip">工具执行结果</span>
+            <span class="chip">Your input</span>
+            <span class="chip">Role file</span>
+            <span class="chip">Long-term memory</span>
+            <span class="chip">Current chat history</span>
+            <span class="chip">How to use tools</span>
+            <span class="chip">Tool execution results</span>
           </div>
         </div>
       </div>
@@ -398,17 +398,17 @@
   <div class="wrap">
     <div class="head reveal">
       <div class="eyebrow">Architecture</div>
-      <h2>充分利用芯片与外设的能力</h2>
-      <p>主控芯片承载 CLAW 的智能体核心，网络芯片负责与云端通信，二者协同，让小硬件做大事。</p>
+      <h2>Making the most of the chip and peripherals</h2>
+      <p>The main control chip hosts CLAW's agent core, while the network chip handles communication with the cloud; working together, they let small hardware do big things.</p>
     </div>
     <div class="arch-frame reveal">
-      <img src="架构图.png" alt="CLAW 技术架构图">
+      <img src="%E6%9E%B6%E6%9E%84%E5%9B%BE.png" alt="CLAW technical architecture diagram">
     </div>
     <div class="arch-legend">
-      <div class="leg reveal"><b>MCU 主控</b><span>运行 CLAW 应用、智能体核心与外设驱动</span></div>
-      <div class="leg reveal"><b>网络芯片</b><span>负责 Wi-Fi、安全通信与对外服务对接</span></div>
-      <div class="leg reveal"><b>云端服务</b><span>大语言模型、飞书、网络授时</span></div>
-      <div class="leg reveal"><b>板载外设</b><span>屏幕、传感器、SD 卡、舵机与灯带</span></div>
+      <div class="leg reveal"><b>MCU main control</b><span>Runs the CLAW application, agent core, and peripheral drivers</span></div>
+      <div class="leg reveal"><b>Network chip</b><span>Handles Wi-Fi, secure communication, and external service integration</span></div>
+      <div class="leg reveal"><b>Cloud services</b><span>Large language model, Feishu, network time</span></div>
+      <div class="leg reveal"><b>Onboard peripherals</b><span>Screen, sensors, SD card, servo, and light strip</span></div>
     </div>
   </div>
 </section>
@@ -419,24 +419,24 @@
     <div class="ftop">
       <div>
         <div class="brand"><span class="dot"></span>CLAW</div>
-        <p>运行在 MCU 上的 AI 智能体——用自然语言连接人、模型与真实世界的硬件。</p>
+        <p>An AI agent running on an MCU — connecting people, models, and real-world hardware through natural language.</p>
       </div>
       <div class="cols">
         <div>
-          <h5>产品</h5>
-          <a href="#features">核心能力</a>
-          <a href="#showcase">实景演示</a>
-          <a href="#core">智能体循环</a>
+          <h5>Product</h5>
+          <a href="#features">Core capabilities</a>
+          <a href="#showcase">Live demos</a>
+          <a href="#core">Agent loop</a>
         </div>
         <div>
-          <h5>技术</h5>
-          <a href="#arch">系统架构</a>
-          <a href="#arch">硬件平台 RTL8783G</a>
-          <a href="#arch">云端大模型接入</a>
+          <h5>Technology</h5>
+          <a href="#arch">System architecture</a>
+          <a href="#arch">Hardware platform RTL8783G</a>
+          <a href="#arch">Cloud LLM integration</a>
         </div>
       </div>
     </div>
-    <div class="fbar">© 2026 CLAW · 让芯片理解世界</div>
+    <div class="fbar">© 2026 CLAW · Let chips understand the world</div>
   </div>
 </footer>
 

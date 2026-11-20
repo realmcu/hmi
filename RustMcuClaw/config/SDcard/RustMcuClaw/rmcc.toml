@@ -1,10 +1,10 @@
 data_dir = "/SD:/RustMcuClaw"
 
 [provider]
-# 可选：mock, open_ai, kimi, github_models, github_copilot_compatible, open_ai_compatible
+# Optional: mock, open_ai, kimi, github_models, github_copilot_compatible, open_ai_compatible
 kind = "kimi"
 model = "kimi-k2.6"
-# API Key 直接填在这里（SD 卡不提交仓库，安全）
+# Fill in the API Key directly here (the SD card is not committed to the repository, so it is safe)
 api_key = "sk-"
 endpoint = "https://api.moonshot.cn/v1/chat/completions"
 temperature = 1
@@ -12,7 +12,7 @@ max_tokens = 2048
 
 [chat]
 history_limit = 4
-# 1 = 关闭循环（经典单轮）；>=2 允许工具结果回灌 LLM 继续推理
+# 1 = disable the loop (classic single turn); >=2 allows tool results to be fed back to the LLM for further reasoning
 max_tool_loops = 4
 
 [heartbeat]

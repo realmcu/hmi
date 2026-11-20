@@ -1,47 +1,47 @@
 # RustMcuClaw
 
-RustMcuClaw 是一个用 Rust 编写的 PC 终端智能体，功能类似 OpenClaw：支持终端聊天、云端 LLM、总结记忆、定时任务、心跳、soul 文件、用户描述文件和角色文件。
+RustMcuClaw is a PC terminal agent written in Rust, with features similar to OpenClaw: it supports terminal chat, cloud LLM, summarized memory, scheduled tasks, heartbeat, soul files, user profile files, and role files.
 
-本工程现在同时包含 MCU 版：`mcu/` 是 RTL8783G/Zephyr 应用，`crates/rustmcuclaw-mcu/` 是 `no_std + alloc` Rust 静态库。
+This project now also includes an MCU version: `mcu/` is the RTL8783G/Zephyr application, and `crates/rustmcuclaw-mcu/` is a `no_std + alloc` Rust static library.
 
-## 特性
+## Features
 
-- 内存安全：PC 版业务逻辑使用安全 Rust；MCU 版仅在 FFI、PSRAM allocator 和 C 字符串边界使用必要的 `unsafe`。
-- 终端聊天：`rustmcuclaw chat` 或直接运行默认进入聊天。
-- 云端 LLM：支持 OpenAI、Kimi、GitHub Models、OpenAI-compatible endpoint。GitHub Copilot 相关能力通过用户提供的兼容 endpoint/token 接入，不读取或绕过 VS Code Copilot 凭据。
-- 总结记忆：每次完整聊天结束后，调用 LLM 生成不超过 50 字的总结，追加保存到 JSONL，并在新聊天中作为系统提示词的一部分加载。
-- 定时任务：支持周期任务；任务到期后会自动把任务文本作为一条聊天发给 Claw，最小周期 10 分钟。
-- 心跳：后台周期打印存活信号。
-- 人设文件：`soul.md`、`user.md`、`role.md` 会组合成系统提示词。
+- Memory safety: The PC version's business logic uses safe Rust; the MCU version uses the necessary `unsafe` only at FFI, PSRAM allocator, and C string boundaries.
+- Terminal chat: `rustmcuclaw chat`, or run it directly to enter chat by default.
+- Cloud LLM: Supports OpenAI, Kimi, GitHub Models, and OpenAI-compatible endpoints. GitHub Copilot-related capabilities are accessed through a user-provided compatible endpoint/token; it does not read or bypass VS Code Copilot credentials.
+- Summarized memory: After each complete chat, it calls the LLM to generate a summary of no more than 50 characters, appends it to JSONL, and loads it as part of the system prompt in new chats.
+- Scheduled tasks: Supports periodic tasks; when a task is due, the task text is automatically sent to Claw as a chat message. The minimum period is 10 minutes.
+- Heartbeat: Periodically prints a liveness signal in the background.
+- Persona files: `soul.md`, `user.md`, and `role.md` are combined into the system prompt.
 
-## 快速开始
+## Quick Start
 
 ```powershell
 cargo run -- init
 cargo run -- chat
 ```
 
-在聊天中可使用：
+In chat you can use:
 
 - `/help`
 - `/doctor`
 - `/task list`
-- `/task add 600 喝水`
+- `/task add 600 drink water`
 - `/task done <id>`
 - `/exit`
 
-## 命令行
+## Command Line
 
 ```powershell
-cargo run -- ask "你好，介绍一下自己"
-cargo run -- task add "检查设备心跳" --every 600
+cargo run -- ask "Hello, introduce yourself"
+cargo run -- task add "check device heartbeat" --every 600
 cargo run -- task list
 cargo run -- doctor
 ```
 
-## 配置 LLM
+## Configuring the LLM
 
-初始化后编辑 `config/rmcc.toml`。
+After initialization, edit `config/rmcc.toml`.
 
 ### OpenAI
 
@@ -76,7 +76,7 @@ temperature = 0.7
 max_tokens = 2048
 ```
 
-### OpenAI 兼容服务 / GitHub Copilot Compatible
+### OpenAI-compatible Service / GitHub Copilot Compatible
 
 ```toml
 [provider]
@@ -88,48 +88,48 @@ temperature = 0.7
 max_tokens = 2048
 ```
 
-## 数据文件
+## Data Files
 
-默认数据目录由系统决定；如果使用示例配置，则在项目 `data/` 下：
+The default data directory is determined by the system; if the example configuration is used, it is under the project's `data/`:
 
-- `soul.md`：助手灵魂设定
-- `user.md`：用户描述
-- `role.md`：角色和行为约束
-- `summary_memory.jsonl`：总结记忆
-- `tasks.json`：定时任务
+- `soul.md`: Assistant soul settings
+- `user.md`: User description
+- `role.md`: Role and behavior constraints
+- `summary_memory.jsonl`: Summarized memory
+- `tasks.json`: Scheduled tasks
 
-## 构建
+## Build
 
 ```powershell
 cargo build --release
 ```
 
-## MCU 版（RTL8783G / Zephyr）
+## MCU Version (RTL8783G / Zephyr)
 
-MCU 版目标是在 EVB 上通过串口工具直接聊天，不需要 GUI：
+The MCU version aims to chat directly through a serial tool on the EVB, without a GUI:
 
-- 串口 CLI：Zephyr `claw_cli` 线程读取串口行输入并输出回答。
-- 云 LLM：Rust 生成 OpenAI-compatible JSON，由 C 回调 `claw_mcu_https_post_json()` 对接 Z2Plus HTTPS。
-- SD 卡文件系统：默认数据目录 `/SD:/RustMcuClaw`，文件名和 PC 版一致。
-- Zephyr 多线程：独立 CLI 线程和 poll/定时任务线程。
-- PSRAM 堆：Rust MCU crate 由 `rustmcuclaw_mcu_init()` 使用 PSRAM 初始化全局 allocator。
+- Serial CLI: The Zephyr `claw_cli` thread reads line input from the serial port and outputs answers.
+- Cloud LLM: Rust generates OpenAI-compatible JSON, and the C callback `claw_mcu_https_post_json()` connects to Z2Plus HTTPS.
+- SD card filesystem: The default data directory is `/SD:/RustMcuClaw`, with file names consistent with the PC version.
+- Zephyr multithreading: Separate CLI thread and poll/scheduled task thread.
+- PSRAM heap: The Rust MCU crate is initialized with PSRAM by `rustmcuclaw_mcu_init()` to set up the global allocator.
 
-先安装 Rust MCU target：
+First install the Rust MCU target:
 
 ```powershell
 rustup target add thumbv8m.main-none-eabihf
 ```
 
-检查 Rust MCU 静态库：
+Check the Rust MCU static library:
 
 ```powershell
 cargo check -p rustmcuclaw-mcu --target thumbv8m.main-none-eabihf
 ```
 
-构建 Zephyr app：
+Build the Zephyr app:
 
 ```powershell
 west build -b rtl87x3g_watch/rtl8783gbf realtek-app/applications/claw/RustMcuClaw/mcu
 ```
 
-注意：当前 SDK 中已找到 Z2Plus `ATPN`/`ATWT`/透明 TCP 相关代码，但未找到通用 HTTPS POST 的最终公开 API；因此 `mcu/src/main.c` 提供了弱符号 `z2plus_https_post_json()`。实际接入 Z2Plus HTTPS 固件时，实现同名非弱函数即可替换默认返回 `-ENOTSUP` 的占位实现。
+Note: The current SDK already contains Z2Plus `ATPN`/`ATWT`/transparent TCP related code, but the final public API for generic HTTPS POST has not been found; therefore `mcu/src/main.c` provides a weak symbol `z2plus_https_post_json()`. To actually integrate with the Z2Plus HTTPS firmware, implement a non-weak function with the same name to replace the placeholder implementation that returns `-ENOTSUP` by default.

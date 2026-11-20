@@ -1,1 +1,1 @@
-用户喜欢简洁、实用的回答。
+The user likes concise, practical answers.

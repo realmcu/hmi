@@ -1335,7 +1335,7 @@ impl App {
         // Rust-native sensor monitor loop: reads sensors, compares against
         // user-defined thresholds, and triggers actions without invoking the
         // LLM. This is the path that turns natural-language requests like
-        // “等湿度高于 80 时给我发飞书�?into deterministic, low-cost loops.
+        // "send me a Feishu message when humidity is above 80" into deterministic, low-cost loops.
         let monitor_out = self.poll_monitors(now);
         if !monitor_out.is_empty() {
             out.push_str(&monitor_out);
@@ -1703,7 +1703,7 @@ impl App {
         // Restore the prior state explicitly so the LED ends in a known
         // place AND so we can report it back to the caller. Without this
         // the LLM has to guess the final state and tends to hallucinate
-        // (e.g. claim "灯已恢复常亮" when it is actually off).
+        // (e.g. claim "the light is back to steady on" when it is actually off).
         let final_state = if prior == 1 { "on" } else { "off" };
         unsafe {
             let _ = claw_mcu_led_set(idx, if prior == 1 { 1 } else { 0 });
@@ -1722,8 +1722,8 @@ impl App {
     ///   rainbow: "speed" 1..10 (10 = fastest, default 5),
     ///            "brightness" 0..255 (default 80)
     ///   solid/blink: colour via "color" name (red/green/blue/white/yellow/
-    ///                cyan/magenta/orange/purple/pink and 红/绿/蓝/白/黄/青/
-    ///                紫/橙/粉) OR explicit "r","g","b" 0..255;
+    ///                cyan/magenta/orange/purple/pink and red/green/blue/white/yellow/cyan/
+    ///                purple/orange/pink) OR explicit "r","g","b" 0..255;
     ///                "brightness" 0..255 scales a named colour (default 120)
     ///   blink: extra "period_ms" 100..5000 (default 500)
     fn tool_strip_effect(&mut self, args: &serde_json::Value) -> String {

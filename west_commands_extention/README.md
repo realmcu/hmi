@@ -1,21 +1,21 @@
-# CLAW West 扩展命令
+# CLAW West Extension Commands
 
-本目录提供 `realtek-app/applications/claw/RustMcuClaw/mcu` 工程专用的 West
-扩展命令，省去每次手动输入 `-b` 和应用路径的麻烦。
+This directory provides West
+extension commands dedicated to the `realtek-app/applications/claw/RustMcuClaw/mcu` project, saving you from typing `-b` and the application path by hand every time.
 
-文件结构：
+File structure:
 
 ```
 applications/claw/
 ├── manifest/
-│   └── rtl8773g-zephyr-claw.yml        # 项目 manifest，引用本目录的 west-commands.yml
+│   └── rtl8773g-zephyr-claw.yml        # Project manifest, references this directory's west-commands.yml
 └── west_commands_extention/
-    ├── west-commands.yml              # 注册三个 claw-* 命令
-    ├── commands.py                    # 命令实现 (HmiBuild / HmiFlash / HmiClean)
-    └── README.md                      # 本文档
+    ├── west-commands.yml              # Registers the three claw-* commands
+    ├── commands.py                    # Command implementations (HmiBuild / HmiFlash / HmiClean)
+    └── README.md                      # This document
 ```
 
-等价的原始命令（任何时候仍然可用）：
+Equivalent raw commands (still available at any time):
 
 ```powershell
 west build -b rtl87x3g_watch/rtl8783gbf `
@@ -23,30 +23,30 @@ west build -b rtl87x3g_watch/rtl8783gbf `
 west flash -d realtek-app\applications\claw\RustMcuClaw\mcu\build
 ```
 
-## 4. 默认值
+## 4. Defaults
 
-`commands.py` 顶部集中了三个默认值，按需修改：
+The three defaults are centralized at the top of `commands.py`; modify them as needed:
 
-| 变量 | 默认值 |
+| Variable | Default |
 | --- | --- |
 | `_APP_DIR`           | `applications/claw/RustMcuClaw/mcu` |
 | `_DEFAULT_BOARD`     | `rtl87x3g_watch/rtl8783gbf` |
 | `_DEFAULT_BUILD_DIR` | `<_APP_DIR>/build` |
 
-## 5. 常见问题
+## 5. FAQ
 
 **`FATAL ERROR: no west workspace found ...`**
-当前目录不在已初始化的 west workspace 内，或者 `.west/config` 被删了。
-按第 1 节重新 `west init -l` 即可。
+The current directory is not inside an initialized west workspace, or `.west/config` was deleted.
+Re-run `west init -l` as described in section 1.
 
 **`west: error: argument <command>: invalid choice: 'claw-build'`**
-说明 manifest 没有指向本目录的 `west-commands.yml`，常见原因：
+This means the manifest does not point to this directory's `west-commands.yml`. Common causes:
 
-1. `west config manifest.path` 不是 `realtek-app/applications/claw/manifest`。
-2. 手动改过 manifest 后没有再次 `west update`。
+1. `west config manifest.path` is not `realtek-app/applications/claw/manifest`.
+2. The manifest was edited manually but `west update` was not run again.
 
-**Rust 目标找不到**
-首次编译前需要安装 thumbv8 目标：
+**Rust target not found**
+Install the thumbv8 target before the first build:
 
 ```powershell
 rustup target add thumbv8m.main-none-eabihf
