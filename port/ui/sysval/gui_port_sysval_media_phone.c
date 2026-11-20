@@ -202,6 +202,31 @@ static void set_media_request(const gui_sysval_value_t *value,
     {
         rc = app_media_prev();
     }
+    else if (strcmp(command, "record_start") == 0)
+    {
+        rc = app_media_record_active() ||
+             app_media_record_start_from_ui() ? 0 : -1;
+    }
+    else if (strcmp(command, "record_stop") == 0)
+    {
+        if (app_media_record_active())
+        {
+            app_media_record_stop();
+        }
+        rc = 0;
+    }
+    else if (strcmp(command, "record_toggle") == 0)
+    {
+        if (app_media_record_active())
+        {
+            app_media_record_stop();
+            rc = 0;
+        }
+        else
+        {
+            rc = app_media_record_start_from_ui() ? 0 : -1;
+        }
+    }
     else
     {
         gui_sysval_respond(request, GUI_SYSVAL_STATUS_INVALID_VALUE, NULL);
