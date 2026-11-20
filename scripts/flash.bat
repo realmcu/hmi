@@ -1,11 +1,11 @@
 @echo off
-:: flash.bat —— 在 Windows 下驱动 mpcli.exe 烧录 RTL87X3G 的 App 镜像。
+:: flash.bat -- drive mpcli.exe on Windows to flash the RTL87X3G App image.
 ::
-:: 用法：
-::   scripts\flash.bat           默认 COM7
-::   scripts\flash.bat COM8      指定下载口
+:: Usage:
+::   scripts\flash.bat           default COM7
+::   scripts\flash.bat COM8      specify the download port
 ::
-:: 烧录前请确认设备已进入 MP 下载模式（P2_0 接 GND 后复位）。
+:: Before flashing, make sure the device is in MP download mode (tie P2_0 to GND then reset).
 
 setlocal
 
