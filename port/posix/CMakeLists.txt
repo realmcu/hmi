@@ -1,12 +1,12 @@
 # ================================================================
-# posix-device 接入
+# posix-device integration
 #
-# 写法对齐 eBadge_8773g_dev/port/posix（新的、可用的接入逻辑）。
-# 源使用本工程自带的 component/posix-device —— 与 dev 引用的
-# component/posix 是同一个 gitee 仓库(realmcu_admin/posix-device)的
-# 最新版（gsensor/touch 已验证）。
+# Mirrors the style of eBadge_8773g_dev/port/posix (the newer, working integration logic).
+# The sources use this project's bundled component/posix-device -- the same
+# gitee repo (realmcu_admin/posix-device) as the component/posix referenced by dev,
+# at the latest version (gsensor/touch verified).
 #
-# 数据流: /dev/gsensor0 --alias--> /dev/sc7a20 --> /dev/i2c0 --> SC7A20(0x18)
+# Data flow: /dev/gsensor0 --alias--> /dev/sc7a20 --> /dev/i2c0 --> SC7A20(0x18)
 # ================================================================
 set(POSIX_DEVICE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../component/posix-device)
 set(POSIX_DEVICE_PORT_COMMON ${POSIX_DEVICE_ROOT}/examples/port/common)

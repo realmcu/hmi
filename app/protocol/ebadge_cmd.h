@@ -18,7 +18,7 @@
  *
  * IMPORTANT -- TLV namespace (spec §2.4):
  *
- *   "type | 在该命令上下文内解释（不同命令可复用相同 type 号）"
+ *   "type | interpreted in that command's context (commands may reuse the same type number)"
  *
  * TLV type numbers are scoped PER COMMAND and every command restarts at
  * 0x01.  There is deliberately NO global TLV table here: EB_TLV_BAT_PERCENT
@@ -466,7 +466,7 @@ extern "C" {
 /**
  * Sanity cap on a 0x02 SEND_FILE body.  The spec does not fix a number here
  * (§8.3 leaves the single-file limit open, suggesting ~2 MiB for the Wi-Fi
- * path), but §4.2 and §7's "大图禁止 BLE 0x02 主路径" restrict this BLE route
+ * path), but §4.2 and §7's "large images must not use the BLE 0x02 main path" restrict this BLE route
  * to debug and small config files -- wallpaper must go through 0x10 + TCP.
  * 64 KiB is generous for that role while keeping a bogus length from parking
  * the RX stream in raw mode for minutes.  Bodies are streamed, never

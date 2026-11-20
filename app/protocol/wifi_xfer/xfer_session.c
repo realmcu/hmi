@@ -920,8 +920,8 @@ void xfer_session_offer(const char *name, uint8_t file_type,
     EBADGE_LOG2("xfer: offer accepted for approval, size=%u type=%d",
                 (unsigned)size, (int)file_type);
 
-    /* V1.3 §4.7 removed the confirmation Overlay: "设备不弹窗，自动回复同意
-     * 或拒绝".  Every reason to say no (busy / bad type / no space) has
+    /* V1.3 §4.7 removed the confirmation Overlay: "the device shows no prompt,
+     * auto-replies accept or reject".  Every reason to say no (busy / bad type / no space) has
      * already answered 0x16 and returned above, so reaching here IS the
      * accept.  Auto-answer now instead of parking in WAIT_CONFIRM waiting
      * for a UI call that no longer exists -- without this, V1.3 offers would

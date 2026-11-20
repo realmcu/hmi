@@ -8,7 +8,7 @@
  *   FIRST_DATA     10s   §6.5: STA associated -> TCP connected + first bytes
  *   FRAME_GAP       3s   §6.4: gap between frames; expiry ends the session
  *
- * §6.5 tabulates only the 10s "STA 关联成功 -> TCP连接" row.  port_tcp has no
+ * §6.5 tabulates only the 10s "STA associated -> TCP connected" row.  port_tcp has no
  * connect callback -- only on_data / on_close -- so "connected" is observed as
  * "first byte arrived", which is a slightly stricter reading of the same
  * intent.  WAIT_STA reuses the §5.5 60s value; §6 does not restate it, and

@@ -1,17 +1,17 @@
-# West 扩展命令
+# West extension commands
 
-这个目录包含了为 RTL8773G HMI 项目定制的 West 扩展命令。
+This directory contains the West extension commands customised for the RTL8773G HMI project.
 
-## 可用命令
+## Available commands
 
 ### `west info`
-显示项目版本和构建信息。
+Shows project version and build information.
 
 ```bash
 west info
 ```
 
-**输出示例：**
+**Sample output:**
 ```
 RTL8773G HMI Project Information
 ==================================================
@@ -27,74 +27,74 @@ Application Path: zephyrproject/realtek-app/applications/hmi
 ---
 
 ### `west clean-all`
-清理所有构建产物和缓存文件。
+Cleans all build artifacts and cache files.
 
 ```bash
-# 交互式清理（会提示确认）
+# interactive clean (prompts for confirmation)
 west clean-all
 
-# 强制清理（不提示确认）
+# forced clean (no confirmation prompt)
 west clean-all -f
 west clean-all --force
 ```
 
-**说明：**
-- 删除 `build/` 目录
-- 删除所有 `build-*` 目录（如 `build-rtl8773g`）
-- 不使用 `-f` 参数时会要求确认
+**Notes:**
+- Deletes the `build/` directory
+- Deletes all `build-*` directories (such as `build-rtl8773g`)
+- Asks for confirmation when `-f` is not given
 
 ---
 
 ### `west flash-jlink`
-使用 J-Link 调试器烧录固件到 RTL8773G。
+Flashes firmware to the RTL8773G using the J-Link debugger.
 
 ```bash
-# 使用默认的 hex 文件（build/zephyr/zephyr.hex）
+# use the default hex file (build/zephyr/zephyr.hex)
 west flash-jlink
 
-# 指定自定义 hex 文件
+# specify a custom hex file
 west flash-jlink --hex path/to/custom.hex
 ```
 
-**说明：**
-- 这是一个模板命令，需要根据实际的 J-Link 配置进行定制
-- 默认查找 `build/zephyr/zephyr.hex` 文件
-- 实际使用前请修改 `commands.py` 中的 J-Link 参数
+**Notes:**
+- This is a template command; it needs to be customised for the actual J-Link setup
+- Looks for `build/zephyr/zephyr.hex` by default
+- Edit the J-Link parameters in `commands.py` before real use
 
 ---
 
 ### `west gui-demo`
-构建启用了 GUI 演示功能的 HMI 应用。
+Builds the HMI application with the GUI demo feature enabled.
 
 ```bash
-# 为默认板子（rtl8773g）构建
+# build for the default board (rtl8773g)
 west gui-demo
 
-# 为特定板子构建
+# build for a specific board
 west gui-demo -b rtl8773g
 
-# 强制重新构建（pristine build）
+# force a rebuild (pristine build)
 west gui-demo --pristine
 ```
 
-**说明：**
-- 自动添加 `-DCONFIG_GUI_DEMO=y` 编译选项
-- 构建完成后使用 `west flash` 烧录
-- 使用 `--pristine` 进行完全重新构建
+**Notes:**
+- Automatically adds the `-DCONFIG_GUI_DEMO=y` build option
+- Flashes with `west flash` after the build completes
+- Use `--pristine` for a full rebuild
 
 ---
 
-## 如何添加新命令
+## How to add a new command
 
-1. **编辑 `west-commands.yml`**，添加新命令定义：
+1. **Edit `west-commands.yml`** and add the new command definition:
 
 ```yaml
 - name: my-command
   class: MyCommand
-  help: 我的自定义命令描述
+  help: my custom command description
 ```
 
-2. **在 `commands.py` 中实现命令类**：
+2. **Implement the command class in `commands.py`**:
 
 ```python
 class MyCommand(WestCommand):
@@ -111,28 +111,28 @@ class MyCommand(WestCommand):
             help=self.help,
             description=self.description
         )
-        # 添加命令参数
-        parser.add_argument('--option', help='选项说明')
+        # add command arguments
+        parser.add_argument('--option', help='option description')
         return parser
 
     def do_run(self, args, unknown_args):
-        # 实现命令逻辑
-        log.inf('执行我的命令')
+        # implement the command logic
+        log.inf('run my command')
 ```
 
-3. **测试新命令**：
+3. **Test the new command**:
 
 ```bash
 west my-command
 ```
 
-## 文件说明
+## File overview
 
-- **`west-commands.yml`**: West 命令配置文件，定义了所有扩展命令
-- **`commands.py`**: Python 脚本，包含所有命令的实现
-- **`README.md`**: 本文件，说明如何使用这些命令
+- **`west-commands.yml`**: West command configuration file, defining all extension commands
+- **`commands.py`**: Python script containing the implementations of all commands
+- **`README.md`**: this file, explaining how to use these commands
 
-## 参考资料
+## References
 
 - [West Extension Commands Documentation](https://docs.zephyrproject.org/latest/develop/west/extensions.html)
 - [West API Reference](https://docs.zephyrproject.org/latest/develop/west/west-apis.html)

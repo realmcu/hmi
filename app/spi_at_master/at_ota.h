@@ -30,7 +30,7 @@
  *     exists if "Enable OTA" was ticked under CONFIG SHELL in that project's
  *     menuconfig.  Without it, AT+OTAUSER comes back as a plain unknown-command
  *     ERROR and there is nothing this side can do about it.
- *   - The doc restricts AT+OTAUSER to 主控控制模式 (host-controlled mode), which
+ *   - The doc restricts AT+OTAUSER to host-controlled mode, which
  *     is what the SPI link is -- so this is satisfied here, but it is the reason
  *     the command is unavailable over a plain UART console without flow control.
  *

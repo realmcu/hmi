@@ -50,7 +50,7 @@ static at_ota_done_cb_t     s_reset_done;
 static void                *s_reset_user;
 
 /*----------------------------------------------------------------------------*
- *  Error table  (doc: OTA AT 命令集, AT+OTAUSER 错误码)
+ *  Error table  (doc: OTA AT command set, AT+OTAUSER error codes)
  *----------------------------------------------------------------------------*/
 const char *at_ota_err_str(int error_no)
 {

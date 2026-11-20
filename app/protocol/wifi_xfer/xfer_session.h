@@ -55,7 +55,7 @@ xfer_session_state_t xfer_session_state(void);
  *          - no space?         -> emit 0x16 FAIL(STORAGE_FULL)
  *
  *         If none of those fire, V1.3 §4.7 requires an immediate automatic
- *         accept ("设备不弹窗，自动回复同意或拒绝"), so this calls
+ *         accept ("the device shows no prompt and auto-replies accept or reject"), so this calls
  *         xfer_session_user_decision(true) itself and returns with the AP
  *         coming up.  WAIT_CONFIRM is therefore transient in V1.3.
  */
