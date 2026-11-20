@@ -11,10 +11,17 @@
 #include "gui_message.h"
 #include "posix.h"
 #include "posix_port.h"
+#include "ioctls/posix_ioctl_gpio.h"
 #include "ioctls/posix_ioctl_touch.h"
 #include <os_task.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/printk.h>
+#include "app_haptic.h"
 
 #define TOUCH_DEVICE_PATH           "/dev/touch0"
+#define KEY_GPIO_PATH               "/dev/gpio0/p23" /* P3_0 / GPIOA23 */
+#define KEY_GPIO_PIN                23
+#define KEY_DEBOUNCE_MS             20
 #define TOUCH_PANEL_WIDTH           360
 #define TOUCH_PANEL_HEIGHT          360
 #define TOUCH_READER_STACK_SIZE     2048
@@ -31,6 +38,109 @@ static gui_wheel_port_data_t wheel_port_data = {0};
 static bool home_state = false;
 static uint32_t home_timestamp_ms_press = 0;
 static uint32_t home_timestamp_ms_release = 0;
+static posix_fd_t s_key_fd = POSIX_FD_NULL;
+static struct k_work_delayable s_key_debounce_work;
+
+static void key_gpio_irq(void *arg);
+
+static int key_set_trigger(uint8_t trigger)
+{
+    posix_gpio_irq_t irq = {
+        .pin = KEY_GPIO_PIN,
+        .trigger = trigger,
+        .callback = key_gpio_irq,
+        .arg = NULL,
+    };
+    int rc = posix_ioctl(s_key_fd, POSIX_GPIO_IOCTL_SET_IRQ, &irq);
+    if (rc == POSIX_OK)
+    {
+        rc = posix_ioctl(s_key_fd, POSIX_GPIO_IOCTL_ENABLE_IRQ, NULL);
+    }
+    return rc;
+}
+
+static void key_debounce_work_handler(struct k_work *work)
+{
+    (void)work;
+    int raw = 1;
+    if (s_key_fd == POSIX_FD_NULL ||
+        posix_read(s_key_fd, &raw, sizeof(raw)) != (posix_ssize_t)sizeof(raw))
+    {
+        (void)key_set_trigger(home_state ? POSIX_GPIO_INT_RISING
+                                         : POSIX_GPIO_INT_FALLING);
+        return;
+    }
+
+    const bool pressed = raw == 0; /* P3_0 is active-low. */
+    if (pressed == home_state)
+    {
+        (void)key_set_trigger(pressed ? POSIX_GPIO_INT_RISING
+                                      : POSIX_GPIO_INT_FALLING);
+        return;
+    }
+
+    home_state = pressed;
+    printk("[KEY] %s\n", pressed ? "pressed" : "released");
+    if (pressed)
+    {
+        home_timestamp_ms_press = k_uptime_get_32();
+        app_haptic_ui(APP_HAPTIC_UI_PAGE);
+    }
+    else
+    {
+        home_timestamp_ms_release = k_uptime_get_32();
+    }
+    (void)key_set_trigger(pressed ? POSIX_GPIO_INT_RISING
+                                  : POSIX_GPIO_INT_FALLING);
+}
+
+static void key_gpio_irq(void *arg)
+{
+    (void)arg;
+    (void)posix_ioctl_isr(s_key_fd, POSIX_GPIO_IOCTL_DISABLE_IRQ, NULL);
+    (void)k_work_schedule(&s_key_debounce_work, K_MSEC(KEY_DEBOUNCE_MS));
+}
+
+static void key_init(void)
+{
+    (void)posix_port_init_all();
+    k_work_init_delayable(&s_key_debounce_work, key_debounce_work_handler);
+
+    s_key_fd = posix_open(KEY_GPIO_PATH);
+    if (s_key_fd == POSIX_FD_NULL)
+    {
+        gui_log("key: open %s failed", KEY_GPIO_PATH);
+        return;
+    }
+
+    posix_gpio_config_t cfg = {
+        .pin = 0,
+        .direction = POSIX_GPIO_DIR_INPUT,
+        .pull = POSIX_GPIO_PULL_UP,
+    };
+    if (posix_ioctl(s_key_fd, POSIX_GPIO_IOCTL_SET_DIR, &cfg) != POSIX_OK)
+    {
+        gui_log("key: gpio config failed");
+        return;
+    }
+
+    int raw = 1;
+    (void)posix_read(s_key_fd, &raw, sizeof(raw));
+    home_state = raw == 0;
+    if (home_state)
+    {
+        home_timestamp_ms_press = k_uptime_get_32();
+    }
+
+    int rc = key_set_trigger(home_state ? POSIX_GPIO_INT_RISING
+                                        : POSIX_GPIO_INT_FALLING);
+    if (rc != POSIX_OK)
+    {
+        gui_log("key: gpio irq setup failed (%d)", rc);
+        return;
+    }
+    gui_log("key: P3_0 gpio irq ready");
+}
 
 
 /***touch device***/
@@ -179,7 +289,7 @@ static struct gui_indev indev =
 extern void gui_indev_info_register(struct gui_indev *info);
 void gui_port_indev_init(void)
 {
-    gui_log("gui_port_indev_init - touch only");
+    gui_log("gui_port_indev_init - touch + key");
 
     gui_indev_info_register(&indev);
 
@@ -190,7 +300,10 @@ void gui_port_indev_init(void)
         gui_log("touch: reader task creation failed");
     }
 
-    // Create keyboard input devices using the new API
+    key_init();
+
+    /* HoneyGUI's keyboard algorithm reads state and timestamps through these
+     * pointers; the P3_0 GPIO IRQ path updates them after 20 ms debounce. */
     gui_kb_create("Home", &home_state,
                   &home_timestamp_ms_press,
                   &home_timestamp_ms_release);

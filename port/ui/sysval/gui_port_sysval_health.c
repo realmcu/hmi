@@ -46,6 +46,63 @@ static void get_unavailable(gui_sysval_request_t *request)
     gui_port_sysval_respond_error(request);
 }
 
+static void get_heart_rate(gui_sysval_request_t *request)
+{
+    uint8_t bpm = 0;
+    if (app_health_get_heart_rate(&bpm, NULL))
+    {
+        gui_port_sysval_respond_int(request, bpm);
+    }
+    else
+    {
+        gui_port_sysval_respond_error(request);
+    }
+}
+
+static void get_heart_rate_measuring(gui_sysval_request_t *request)
+{
+    bool measuring = false;
+    (void)app_health_get_heart_rate(NULL, &measuring);
+    gui_port_sysval_respond_bool(request, measuring);
+}
+
+static void set_heart_rate_measuring(const gui_sysval_value_t *value,
+                                     gui_sysval_request_t *request)
+{
+    const bool measuring = value != NULL && value->data.b;
+    if (measuring)
+    {
+        app_health_start_heart_rate();
+    }
+    else
+    {
+        app_health_stop_heart_rate();
+    }
+    gui_port_sysval_respond_bool(request, measuring);
+}
+
+static void get_spo2_measuring(gui_sysval_request_t *request)
+{
+    bool measuring = false;
+    (void)app_health_get_spo2_raw(NULL, NULL, &measuring);
+    gui_port_sysval_respond_bool(request, measuring);
+}
+
+static void set_spo2_measuring(const gui_sysval_value_t *value,
+                               gui_sysval_request_t *request)
+{
+    const bool measuring = value != NULL && value->data.b;
+    if (measuring)
+    {
+        app_health_start_spo2();
+    }
+    else
+    {
+        app_health_stop_spo2();
+    }
+    gui_port_sysval_respond_bool(request, measuring);
+}
+
 static gui_sysval_adapter_t steps_adapter = {
     .key = GUI_SYSVAL_KEY_HEALTH_PEDOMETER_STEPS,
     .type = GUI_SYSVAL_TYPE_INT,
@@ -79,7 +136,27 @@ static gui_sysval_adapter_t calorie_target_adapter = {
 static gui_sysval_adapter_t heart_rate_adapter = {
     .key = GUI_SYSVAL_KEY_HEALTH_HEART_RATE,
     .type = GUI_SYSVAL_TYPE_INT,
+    .get_request = get_heart_rate,
+};
+
+static gui_sysval_adapter_t heart_rate_measuring_adapter = {
+    .key = GUI_SYSVAL_KEY_HEALTH_HEART_RATE_MEASURING,
+    .type = GUI_SYSVAL_TYPE_BOOL,
+    .get_request = get_heart_rate_measuring,
+    .set_request = set_heart_rate_measuring,
+};
+
+static gui_sysval_adapter_t spo2_adapter = {
+    .key = GUI_SYSVAL_KEY_HEALTH_SPO2,
+    .type = GUI_SYSVAL_TYPE_INT,
     .get_request = get_unavailable,
+};
+
+static gui_sysval_adapter_t spo2_measuring_adapter = {
+    .key = GUI_SYSVAL_KEY_HEALTH_SPO2_MEASURING,
+    .type = GUI_SYSVAL_TYPE_BOOL,
+    .get_request = get_spo2_measuring,
+    .set_request = set_spo2_measuring,
 };
 
 static gui_sysval_adapter_t sleep_deep_adapter = {
@@ -103,6 +180,9 @@ static int gui_port_sysval_health_init(void)
         &step_target_adapter,
         &calorie_target_adapter,
         &heart_rate_adapter,
+        &heart_rate_measuring_adapter,
+        &spo2_adapter,
+        &spo2_measuring_adapter,
         &sleep_deep_adapter,
         &sleep_light_adapter,
     };

@@ -38,6 +38,7 @@
 
 #include "app_health.h"
 #include "app_health_internal.h"
+#include "health_hrm.h"
 #include "app_event.h"
 #include "app_event_defs.h"
 #include "app_time.h"
@@ -59,6 +60,60 @@ _Static_assert(HEALTH_BUCKET_MIN == APP_TIME_TICK_MIN_STEP,
 /* Both events land on app_task, so these lifecycle flags are serialised. */
 static bool s_time_synced;
 static bool s_user_bound;
+
+bool app_health_get_heart_rate(uint8_t *bpm, bool *measuring)
+{
+    app_health_hrm_state_t state;
+    health_hrm_get_state(&state);
+    if (measuring != NULL)
+    {
+        *measuring = state.hr_measuring;
+    }
+    if (bpm != NULL)
+    {
+        *bpm = state.bpm;
+    }
+    return state.hr_valid;
+}
+
+bool app_health_get_spo2_raw(uint16_t *red, uint16_t *ir, bool *measuring)
+{
+    app_health_hrm_state_t state;
+    health_hrm_get_state(&state);
+    if (measuring != NULL)
+    {
+        *measuring = state.spo2_measuring;
+    }
+    if (red != NULL)
+    {
+        *red = state.spo2_red;
+    }
+    if (ir != NULL)
+    {
+        *ir = state.spo2_ir;
+    }
+    return state.spo2_raw_valid;
+}
+
+void app_health_start_heart_rate(void)
+{
+    health_hrm_start_heart_rate();
+}
+
+void app_health_stop_heart_rate(void)
+{
+    health_hrm_stop_heart_rate();
+}
+
+void app_health_start_spo2(void)
+{
+    health_hrm_start_spo2();
+}
+
+void app_health_stop_spo2(void)
+{
+    health_hrm_stop_spo2();
+}
 
 /* Thin forwarder. The today rollup lives in health_worker; this exists so
  * consumers outside the module only ever include app_health.h.
@@ -172,10 +227,18 @@ static void on_evt_power_low(app_event_id_t id, const void *payload,
     (void)id; (void)payload; (void)len; (void)user;
     APP_LOGW("EVT_POWER_LOW — stopping health worker");
     health_worker_stop(HEALTH_STOP_FLUSH);
+    health_hrm_set_suspended(true);
 }
 
 static int health_init(void)
 {
+    /* The PPG sensor is independent of the persisted step pipeline. Start it
+     * before the FlashDB checks so a storage problem cannot disable HR. */
+    if (health_hrm_start() != 0)
+    {
+        APP_LOGE("heart-rate service not started");
+    }
+
     /* The worker must not start without a usable, synchronized store. */
     if (health_db_init() != 0)
     {

@@ -8,6 +8,18 @@
 extern "C" {
 #endif
 
+/** Latest heart-rate result and whether a spot measurement is running. */
+bool app_health_get_heart_rate(uint8_t *bpm, bool *measuring);
+
+/** Latest raw SpO2 red/IR sample. No percentage is published without a
+ * validated SpO2 algorithm. */
+bool app_health_get_spo2_raw(uint16_t *red, uint16_t *ir, bool *measuring);
+
+void app_health_start_heart_rate(void);
+void app_health_stop_heart_rate(void);
+void app_health_start_spo2(void);
+void app_health_stop_spo2(void);
+
 /**
  * @file  app_health.h
  * @brief Aggregation layer for pedometer, heart rate, SpO2 and future

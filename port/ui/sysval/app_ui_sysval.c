@@ -122,6 +122,15 @@ static void publish_health_today(void)
     publish_int(GUI_SYSVAL_KEY_HEALTH_PEDOMETER_CALORIES, kcal);
 }
 
+static void publish_health_hr(void)
+{
+    uint8_t bpm = 0;
+    if (app_health_get_heart_rate(&bpm, NULL))
+    {
+        publish_int(GUI_SYSVAL_KEY_HEALTH_HEART_RATE, bpm);
+    }
+}
+
 static void on_power_level(app_event_id_t id, const void *payload,
                            size_t len, void *user)
 {
@@ -153,6 +162,16 @@ static void on_health_updated(app_event_id_t id, const void *payload,
 {
     (void)id; (void)payload; (void)len; (void)user;
     publish_health_today();
+}
+
+static void on_health_hr_updated(app_event_id_t id, const void *payload,
+                                 size_t len, void *user)
+{
+    (void)id; (void)user;
+    if (payload != NULL && len == sizeof(uint8_t) && *(const uint8_t *)payload != 0u)
+    {
+        publish_int(GUI_SYSVAL_KEY_HEALTH_HEART_RATE, *(const uint8_t *)payload);
+    }
 }
 
 static void on_media_state(app_event_id_t id, const void *payload,
@@ -285,6 +304,7 @@ void app_ui_sysval_publish_all(void)
         publish_bool(GUI_SYSVAL_KEY_CONNECTIVITY_BLUETOOTH_CONNECTED, connected);
     }
     publish_health_today();
+    publish_health_hr();
     publish_media_state();
     publish_int(GUI_SYSVAL_KEY_MEDIA_MUSIC_VOLUME, app_media_volume_get());
     publish_media_metadata();
@@ -298,6 +318,7 @@ static int app_ui_sysval_init(void)
     if (app_event_subscribe(EVT_POWER_LEVEL, on_power_level, NULL) != 0 ||
         app_event_subscribe(EVT_POWER_CHARGING, on_power_charging, NULL) != 0 ||
         app_event_subscribe(EVT_HEALTH_STEPS_UPDATED, on_health_updated, NULL) != 0 ||
+        app_event_subscribe(EVT_HEALTH_HR_UPDATED, on_health_hr_updated, NULL) != 0 ||
         app_event_subscribe(EVT_BLE_CONNECTED, on_ble_connected, NULL) != 0 ||
         app_event_subscribe(EVT_BLE_DISCONNECTED, on_ble_disconnected, NULL) != 0 ||
         app_event_subscribe(EVT_MEDIA_STATE_CHANGED, on_media_state, NULL) != 0 ||

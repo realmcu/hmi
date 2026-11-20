@@ -47,18 +47,13 @@
 	 * PRE_KERNEL_1, after the SOC early log-UART initialization. */
 	uart2_default: uart2_default {
 		group1 {
-			psels =
-				<RTL87X3G_PSEL(UART2_TX, P2_0, DIR_OUT, DRV_HIGH, PULL_UP)>,
-				<RTL87X3G_PSEL(UART2_RX, P2_6, DIR_IN,  DRV_HIGH, PULL_UP)>;
+			/* Console is TX-only on this product. */
+			psels = <RTL87X3G_PSEL(UART2_TX, P2_0, DIR_OUT, DRV_HIGH, PULL_UP)>;
 		};
 	};
 	uart2_sleep: uart2_sleep {
 		group1 {
 			psels = <RTL87X3G_PSEL(SW_MODE, P2_0, DIR_OUT, DRV_HIGH, PULL_UP)>;
-		};
-		group2 {
-			psels = <RTL87X3G_PSEL(SW_MODE, P2_6, DIR_IN, DRV_HIGH, PULL_UP)>;
-			wakeup-low;
 		};
 	};
 
@@ -144,12 +139,9 @@
 };
 
 &sdhc0 {
-	pin-group = <0>;
-	bus-width = <1>;
-	max-bus-freq = <50000000>;
-	pinctrl-0 = <&sdhc0_default>;
-	pinctrl-names = "default";
-	status = "okay";
+	/* MOY.M81023.01 has no SD socket. P5_0/P5_1/P5_2 are the display
+	 * backlight, sensor rail enable and LCD reset controls instead. */
+	status = "disabled";
 };
 
 / {
@@ -165,6 +157,7 @@
 			label = "wifi int";
 		};
 	};
+
 };
 
 &i2c1 {
