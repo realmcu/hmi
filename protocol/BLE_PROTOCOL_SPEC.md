@@ -1,49 +1,49 @@
-# 智能手环蓝牙私有通信协议
+# Smart Bracelet BLE Private Communication Protocol
 
-> 原文档：百度智能手环蓝牙私有通信协议（2014年8月）  
-> 模块负责人：陈喜雄 · 项目负责人：孙鹤飞  
-> 版权所有：百度在线网络技术（北京）有限公司
-
----
-
-## 目录
-
-1. [名词解释与约定](#1-名词解释与约定)
-2. [协议结构介绍](#2-协议结构介绍)
-3. [L2 Command 详解](#3-l2-command-详解)
-4. [附录：关键数据结构速查](#附录关键数据结构速查)
+> Original document: Baidu Smart Bracelet Bluetooth Private Communication Protocol (August 2014)  
+> Module owner: Chen Xixiong · Project owner: Sun Hefei  
+> Copyright: Baidu Online Network Technology (Beijing) Co., Ltd.
 
 ---
 
-## 1 名词解释与约定
+## Table of Contents
 
-### 1.1 名词解释
-
-| 术语 | 说明 |
-|------|------|
-| **设备** | 手环、手表、电子秤等，一般是蓝牙的 Master 端 |
-| **手机** | 支持 BLE 的智能手机，也可能是 Bluetooth USB Dongle |
-
-### 1.2 约定
-
-#### 1.2.1 字节序
-
-**本协议所有多字节字段均使用 Big-Endian（大端模式）。**
-
-示例：`uint16_t a = 0xABCD`，传输字节流从低到高为：`A, B, C, D`。
-
-若一个字节中包含两个值（a=0xa 占低 4 bit，b=0xb 占高 4 bit），字节流内容（二进制）为：`1011 1010`。
-
-#### 1.2.2 L2 层 V-length 注意项
-
-当某 command 下某 key 的 value 为空时，v-length = 0。  
-Key Header 固定占用 **2 个字节**，v-length = 0 时这 2 个字节仍须发送，不可省略。
+1. [Terminology and Conventions](#1-terminology-and-conventions)
+2. [Protocol Structure Overview](#2-protocol-structure-overview)
+3. [L2 Command Details](#3-l2-command-details)
+4. [Appendix: Key Data Structure Quick Reference](#appendix-key-data-structure-quick-reference)
 
 ---
 
-## 2 协议结构介绍
+## 1 Terminology and Conventions
 
-### 2.1 协议栈结构
+### 1.1 Terminology
+
+| Term | Description |
+|------|-------------|
+| **Device** | Bracelet, watch, smart scale, etc.; usually the Bluetooth Master side |
+| **Phone** | A BLE-capable smartphone, or possibly a Bluetooth USB Dongle |
+
+### 1.2 Conventions
+
+#### 1.2.1 Byte Order
+
+**All multi-byte fields in this protocol use Big-Endian.**
+
+Example: `uint16_t a = 0xABCD`; the transmitted byte stream from low to high is: `A, B, C, D`.
+
+If one byte contains two values (a=0xa occupies the low 4 bits, b=0xb occupies the high 4 bits), the byte stream content (binary) is: `1011 1010`.
+
+#### 1.2.2 L2 V-length Note
+
+When the value of a key under a command is empty, v-length = 0.  
+The Key Header always occupies **2 bytes**; when v-length = 0 these 2 bytes must still be sent and cannot be omitted.
+
+---
+
+## 2 Protocol Structure Overview
+
+### 2.1 Protocol Stack Structure
 
 ```
 ┌─────────────────────────────┐
@@ -59,35 +59,35 @@ Key Header 固定占用 **2 个字节**，v-length = 0 时这 2 个字节仍须�
 
 ---
 
-### 2.2 L0 — UART Profile（BLE）
+### 2.2 L0 — UART Profile (BLE)
 
-#### GATT 服务 UUID
+#### GATT Service UUID
 
-| 角色 | UUID |
+| Role | UUID |
 |------|------|
 | UART Profile Service | `6e400001-b5a3-f393-e0a9-e50e24dcca9e` |
 | Write Characteristic | `6e400002-b5a3-f393-e0a9-e50e24dcca9e` |
-| Read Characteristic  | `6e400003-b5a3-f393-e0a9-e50e24dcca9e`（Notification 模式）|
+| Read Characteristic  | `6e400003-b5a3-f393-e0a9-e50e24dcca9e` (Notification mode) |
 
-#### 说明
+#### Description
 
-- **Device 端（Master）**：实现 UART Profile，提供 write + read 两个 characteristic
-- **Phone 端（Slave）**：基于 character operation 实现 write interface 和 receive interface
-- Phone 端 receive 基于 **notify** 模式；Device 端 receive 基于 **write character**（push 方式，非 pull）
+- **Device side (Master)**: implements the UART Profile and provides two characteristics, write and read
+- **Phone side (Slave)**: implements the write interface and receive interface based on character operations
+- Phone-side receive uses **notify** mode; Device-side receive uses **write character** (push mode, not pull)
 - MTU = **20 bytes**
 
 ---
 
 ### 2.3 L1 — Transport Layer
 
-#### 功能
+#### Functions
 
-- 在 L0 之上实现可靠传输（发送 + 接收）
-- L0 MTU = 20 bytes，L1 通过拆包/组包支持最大 **65535 bytes** payload（16-bit 长度字段）
-- 实现 **ACK 机制**：接收方校验后发送 success/error ACK
-- 重传：收到 error ACK 或超时后重发，失败结果上报 L2
+- Provides reliable transport (send + receive) on top of L0
+- L0 MTU = 20 bytes; L1 supports a maximum payload of **65535 bytes** via packet fragmentation/reassembly (16-bit length field)
+- Implements an **ACK mechanism**: the receiver sends a success/error ACK after validation
+- Retransmission: resend after receiving an error ACK or timing out; report failures to L2
 
-#### L1 数据包结构
+#### L1 Packet Structure
 
 ```
 ┌───────────────────────────────────────────────┐
@@ -98,36 +98,36 @@ Key Header 固定占用 **2 个字节**，v-length = 0 时这 2 个字节仍须�
 └──────────────────────────┴────────────────────┘
 ```
 
-#### L1 Header（8 bytes，Big-Endian）
+#### L1 Header (8 bytes, Big-Endian)
 
-| Byte | 位域 | 宽度 | 说明 |
-|------|------|------|------|
-| 0 | Magic | 8 bits | 固定值 `0xAB` |
-| 1 [7:6] | Reserve | 2 bits | 保留 |
-| 1 [5] | ERR flag | 1 bit | 1 = 传输出错 |
-| 1 [4] | ACK flag | 1 bit | 1 = 这是 ACK 包 |
-| 1 [3:0] | Version | 4 bits | 当前版本 = 0 |
-| 2~3 | Payload length | 16 bits | Big-Endian，高字节在前 |
-| 4~5 | CRC16 | 16 bits | 覆盖 Header[0..3] + Payload，Big-Endian |
-| 6~7 | Sequence ID | 16 bits | 包序号，Big-Endian |
+| Byte | Bit field | Width | Description |
+|------|-----------|-------|-------------|
+| 0 | Magic | 8 bits | Fixed value `0xAB` |
+| 1 [7:6] | Reserve | 2 bits | Reserved |
+| 1 [5] | ERR flag | 1 bit | 1 = transmission error |
+| 1 [4] | ACK flag | 1 bit | 1 = this is an ACK packet |
+| 1 [3:0] | Version | 4 bits | Current version = 0 |
+| 2~3 | Payload length | 16 bits | Big-Endian, high byte first |
+| 4~5 | CRC16 | 16 bits | Covers Header[0..3] + Payload, Big-Endian |
+| 6~7 | Sequence ID | 16 bits | Packet sequence number, Big-Endian |
 
-#### ACK 包格式
+#### ACK Packet Format
 
-| 包类型 | ACK flag (bit4) | ERR flag (bit5) | Payload length |
-|--------|-----------------|-----------------|----------------|
-| 数据包 | 0 | 0 | 实际 payload 长度 |
+| Packet type | ACK flag (bit4) | ERR flag (bit5) | Payload length |
+|-------------|-----------------|-----------------|----------------|
+| Data packet | 0 | 0 | Actual payload length |
 | Success ACK | 1 | 0 | 0 |
 | Error ACK | 1 | 1 | 0 |
 
-> ACK 包的 Sequence ID = 被 ACK 的数据包 Sequence ID。
+> The Sequence ID of an ACK packet = the Sequence ID of the data packet being ACKed.
 
-#### L1 版本号：**0**
+#### L1 Version: **0**
 
 ---
 
 ### 2.4 L2 — Application Layer
 
-#### L2 数据包结构
+#### L2 Packet Structure
 
 ```
 ┌───────────────────┬───────────────────────────┐
@@ -135,17 +135,17 @@ Key Header 固定占用 **2 个字节**，v-length = 0 时这 2 个字节仍须�
 └───────────────────┴───────────────────────────┘
 ```
 
-> L2 Payload 上限受 L1 payload 容量约束（最大 65535 B），实际可用大小取决于设备固件缓冲区。
+> The L2 Payload upper bound is constrained by the L1 payload capacity (max 65535 B); the actual usable size depends on the device firmware buffer.
 
-#### L2 Header（16 bits，Big-Endian）
+#### L2 Header (16 bits, Big-Endian)
 
-| 位域 | 宽度 | 说明 |
-|------|------|------|
-| Command ID | 8 bits | 命令类型，见 Command 列表 |
-| Version | 4 bits | L2 版本号 |
-| Reserve | 4 bits | 保留 |
+| Bit field | Width | Description |
+|-----------|-------|-------------|
+| Command ID | 8 bits | Command type, see the Command list |
+| Version | 4 bits | L2 version number |
+| Reserve | 4 bits | Reserved |
 
-#### L2 Payload 结构
+#### L2 Payload Structure
 
 ```
 ┌─────┬────────────┬───────────┬─────┬────────────┬───────────┬─────┐
@@ -154,759 +154,759 @@ Key Header 固定占用 **2 个字节**，v-length = 0 时这 2 个字节仍须�
 └─────┴────────────┴───────────┴─────┴────────────┴───────────┴─────┘
 ```
 
-#### Key Header（16 bits）
+#### Key Header (16 bits)
 
-| 位域 | 宽度 | 说明 |
-|------|------|------|
-| Key Value Length (v-length) | 16 bits | 该 key 的 value 字节数，最大 65535 |
+| Bit field | Width | Description |
+|-----------|-------|-------------|
+| Key Value Length (v-length) | 16 bits | Number of bytes in this key's value, max 65535 |
 
-> 原设计 [15:9] 为 Reserve、[8:0] 为 v-length（9 bits，最大 511 bytes）。  
-> 已扩展为全 16 bits v-length 以支持大块传输（≥512 bytes）。双端实现须同步更新。
+> The original design used [15:9] as Reserve and [8:0] as v-length (9 bits, max 511 bytes).  
+> It has been extended to a full 16-bit v-length to support large transfers (≥512 bytes). Both ends must be updated in sync.
 
 ---
 
-## 3 L2 Command 详解
+## 3 L2 Command Details
 
-### 3.1 Command 列表
+### 3.1 Command List
 
-| Command ID | 命令 |
+| Command ID | Command |
 |-----------|------|
-| `0x01` | 固件升级命令 |
-| `0x02` | 设置命令 |
-| `0x03` | 绑定命令 |
-| `0x04` | 提醒命令 |
-| `0x05` | 运动数据命令 |
-| `0x06` | 工厂测试命令 |
-| `0x07` | 控制命令 |
-| `0x08` | Dump Stack 命令 |
-| `0x09` | 测试 Flash 读取命令 |
-| `0x0a` | 日志命令 |
-| `0x0b` | 文件传输命令 |
-| `0x0c` | BLE 连接参数命令 |
-| `0x0d` | WiFi 配网命令 |
+| `0x01` | Firmware upgrade command |
+| `0x02` | Settings command |
+| `0x03` | Binding command |
+| `0x04` | Alert command |
+| `0x05` | Sport data command |
+| `0x06` | Factory test command |
+| `0x07` | Control command |
+| `0x08` | Dump Stack command |
+| `0x09` | Test Flash read command |
+| `0x0a` | Log command |
+| `0x0b` | File transfer command |
+| `0x0c` | BLE connection parameter command |
+| `0x0d` | WiFi provisioning command |
 
 ---
 
-### 3.2 固件升级命令 (command id 0x01)
+### 3.2 Firmware Upgrade Command (command id 0x01)
 
-L2 版本号：**0**
+L2 version: **0**
 
-| Key | 定义 |
+| Key | Definition |
 |-----|------|
-| `0x01` | 进入固件升级模式请求 |
-| `0x02` | 进入固件升级模式返回 |
+| `0x01` | Enter firmware upgrade mode request |
+| `0x02` | Enter firmware upgrade mode response |
 
-#### 0x01 — 进入固件升级模式请求
+#### 0x01 — Enter Firmware Upgrade Mode Request
 
-**方向**：手机 → 设备 | **Value**：空（v-length = 0）
+**Direction**: Phone → Device | **Value**: empty (v-length = 0)
 
-#### 0x02 — 进入固件升级模式返回
+#### 0x02 — Enter Firmware Upgrade Mode Response
 
-**方向**：设备 → 手机 | **Value（2 bytes）**：
+**Direction**: Device → Phone | **Value (2 bytes)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
-| Status code | 1 byte | `0x00`=OTA 成功；`0x01`=OTA 失败 |
-| Error code | 1 byte | `0x01`=电量过低（仅 status=0x01 时有效）|
+| Status code | 1 byte | `0x00`=OTA success; `0x01`=OTA failure |
+| Error code | 1 byte | `0x01`=battery too low (valid only when status=0x01) |
 
 ---
 
-### 3.3 设置命令 (command id 0x02)
+### 3.3 Settings Command (command id 0x02)
 
-L2 版本号：**0**
+L2 version: **0**
 
-| Key | 定义 |
+| Key | Definition |
 |-----|------|
-| `0x01` | 时间设置 |
-| `0x02` | 闹钟设置 |
-| `0x03` | 获取设备闹钟列表请求 |
-| `0x04` | 获取设备闹钟列表返回 |
-| `0x05` | 计步目标设定 |
-| `0x10` | 用户 profile 设置 |
-| `0x20` | 防丢设置 |
-| `0x21` | 久坐提醒设置 |
-| `0x22` | 左右手佩戴设置 |
-| `0x23` | 手机操作系统设置 |
-| `0x24` | 来电通知电话列表设置 |
-| `0x25` | 来电通知开关设置 |
+| `0x01` | Time setting |
+| `0x02` | Alarm setting |
+| `0x03` | Get device alarm list request |
+| `0x04` | Get device alarm list response |
+| `0x05` | Step goal setting |
+| `0x10` | User profile setting |
+| `0x20` | Anti-loss setting |
+| `0x21` | Sedentary reminder setting |
+| `0x22` | Left/right hand wearing setting |
+| `0x23` | Phone OS setting |
+| `0x24` | Incoming call notification phone list setting |
+| `0x25` | Incoming call notification switch setting |
 
-#### 0x01 — 时间设置
+#### 0x01 — Time Setting
 
-**方向**：手机 → 设备（每次绑定成功后需同步）| **Value（32 bits）**：
+**Direction**: Phone → Device (must sync after each successful binding) | **Value (32 bits)**:
 
-| 字段 | 宽度 | 有效值 |
+| Field | Width | Valid values |
 |------|------|--------|
-| Year | 6 bits | 0~63（从 2000 年起，13=2013）|
+| Year | 6 bits | 0~63 (from year 2000; 13=2013) |
 | Month | 4 bits | 1~12 |
 | Day | 5 bits | 1~31 |
 | Hour | 5 bits | 0~23 |
 | Minute | 6 bits | 0~59 |
 | Second | 6 bits | 0~59 |
 
-#### 0x02 / 0x04 — 闹钟设置 / 获取闹钟列表返回
+#### 0x02 / 0x04 — Alarm Setting / Get Alarm List Response
 
-最多支持 **8 个闹钟**。**Value（5×N bytes）**，每个 Alarm item（40 bits）：
+Supports up to **8 alarms**. **Value (5×N bytes)**, each Alarm item (40 bits):
 
-| 字段 | 宽度 | 说明 |
+| Field | Width | Description |
 |------|------|------|
-| Year | 6 bits | 从 2000 年起 |
+| Year | 6 bits | From year 2000 |
 | Month | 4 bits | 1~12 |
 | Day | 5 bits | 1~31 |
 | Hour | 5 bits | 0~23 |
 | Minute | 6 bits | 0~59 |
-| Id | 3 bits | 闹钟编号（0~7）|
+| Id | 3 bits | Alarm index (0~7) |
 | Reserve | 4 bits | — |
-| Day flags | 7 bits | 低位→高位对应周一→周日；1=重复，0=不重复；全 0=只当天有效 |
+| Day flags | 7 bits | Low→high bits correspond to Monday→Sunday; 1=repeat, 0=do not repeat; all 0=valid only for the current day |
 
-#### 0x03 — 获取设备闹钟列表请求
+#### 0x03 — Get Device Alarm List Request
 
-**Value**：空
+**Value**: empty
 
-#### 0x05 — 计步目标设定
+#### 0x05 — Step Goal Setting
 
-**Value（4 bytes，Big-Endian）**：  
+**Value (4 bytes, Big-Endian)**:  
 `Target = Byte1<<24 | Byte2<<16 | Byte3<<8 | Byte4`
 
-#### 0x10 — 用户 Profile 设置
+#### 0x10 — User Profile Setting
 
-**Value（32 bits）**：
+**Value (32 bits)**:
 
-| 字段 | 宽度 | 说明 |
+| Field | Width | Description |
 |------|------|------|
-| 性别 | 1 bit | 0=女；1=男 |
-| 年龄 | 7 bits | 0~127 |
-| 身高 | 9 bits | 0.0~256.0 cm（精度 0.5 cm）|
-| 体重 | 10 bits | 0.0~512.0 kg（精度 0.5 kg）|
+| Gender | 1 bit | 0=female; 1=male |
+| Age | 7 bits | 0~127 |
+| Height | 9 bits | 0.0~256.0 cm (resolution 0.5 cm) |
+| Weight | 10 bits | 0.0~512.0 kg (resolution 0.5 kg) |
 | Reserved | 5 bits | — |
 
-#### 0x20 — 防丢设置
+#### 0x20 — Anti-loss Setting
 
-**Value（8 bits）**：低 4 bits = Mode：`0x0`=no alert；`0x1`=middle alert；`0x2`=high alert
+**Value (8 bits)**: low 4 bits = Mode: `0x0`=no alert; `0x1`=middle alert; `0x2`=high alert
 
-#### 0x21 — 久坐提醒设置
+#### 0x21 — Sedentary Reminder Setting
 
-**Value（8 bytes）**：
+**Value (8 bytes)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
 | Reserved | 1 byte | — |
-| 使能开关 | 1 byte | `0x00`=关闭；`0x01`=打开 |
-| 阈值 | 2 bytes | 步数阈值（0~65535）|
-| 久坐时间 | 1 byte | 分钟，超时才提醒 |
-| 开始提醒时间 | 1 byte | 小时（0~23）|
-| 结束提醒时间 | 1 byte | 小时（0~23）|
-| Day flags | 1 byte | 低→高位对应周一→周日；全 0=只当天 |
+| Enable switch | 1 byte | `0x00`=off; `0x01`=on |
+| Threshold | 2 bytes | Step count threshold (0~65535) |
+| Sedentary time | 1 byte | Minutes; alert only after exceeding |
+| Reminder start time | 1 byte | Hour (0~23) |
+| Reminder end time | 1 byte | Hour (0~23) |
+| Day flags | 1 byte | Low→high bits correspond to Monday→Sunday; all 0=current day only |
 
-#### 0x22 — 左右手佩戴设置
+#### 0x22 — Left/Right Hand Wearing Setting
 
-**Value（1 byte）**：`0x01`=左手；`0x02`=右手
+**Value (1 byte)**: `0x01`=left hand; `0x02`=right hand
 
-#### 0x23 — 手机操作系统设置
+#### 0x23 — Phone OS Setting
 
-**Value（2 bytes）**：Byte0：`0x01`=iOS；`0x02`=Android；Byte1：Reserved
+**Value (2 bytes)**: Byte0: `0x01`=iOS; `0x02`=Android; Byte1: Reserved
 
-#### 0x24 — 来电通知电话列表设置
+#### 0x24 — Incoming Call Notification Phone List Setting
 
-**Value（1+20×N bytes，N≤3）**：操作类型（1 byte）+名字或电话号码（20 bytes×N）  
-操作类型：`0x01`=增加；`0x02`=替换
+**Value (1+20×N bytes, N≤3)**: operation type (1 byte) + name or phone number (20 bytes×N)  
+Operation type: `0x01`=add; `0x02`=replace
 
-#### 0x25 — 来电通知开关
+#### 0x25 — Incoming Call Notification Switch
 
-**Value（1 byte）**：`0x01`=使能；`0x02`=关闭
+**Value (1 byte)**: `0x01`=enable; `0x02`=disable
 
 ---
 
-### 3.4 绑定命令 (command id 0x03)
+### 3.4 Binding Command (command id 0x03)
 
-L2 版本号：**0**
+L2 version: **0**
 
-| Key | 定义 |
+| Key | Definition |
 |-----|------|
-| `0x01` | 绑定用户请求 |
-| `0x02` | 绑定用户返回 |
-| `0x03` | 用户登录请求 |
-| `0x04` | 用户登录返回 |
-| `0x05` | 用户解除绑定 |
-| `0x06` | 超级绑定 |
-| `0x07` | 超级绑定返回 |
+| `0x01` | Bind user request |
+| `0x02` | Bind user response |
+| `0x03` | User login request |
+| `0x04` | User login response |
+| `0x05` | User unbind |
+| `0x06` | Super binding |
+| `0x07` | Super binding response |
 
-#### 0x01 — 绑定用户请求
+#### 0x01 — Bind User Request
 
-**Value**：32 bytes 用户 ID（靠低字节对齐，不足用 `0x00` 补齐）
+**Value**: 32-byte user ID (aligned to the low bytes, padded with `0x00` if shorter)
 
-#### 0x02 — 绑定用户返回
+#### 0x02 — Bind User Response
 
-**Value（1 byte）**：`0x00`=成功；`0x01`=超时失败
+**Value (1 byte)**: `0x00`=success; `0x01`=timeout failure
 
-#### 0x03 — 用户登录请求
+#### 0x03 — User Login Request
 
-**Value**：32 bytes 用户 ID（同上）
+**Value**: 32-byte user ID (same as above)
 
-#### 0x04 — 用户登录返回
+#### 0x04 — User Login Response
 
-**Value（1 byte）**：`0x00`=成功；`0x01`=ID 不一致失败
+**Value (1 byte)**: `0x00`=success; `0x01`=ID mismatch failure
 
-#### 0x05 — 用户解除绑定
+#### 0x05 — User Unbind
 
-**Value**：1 byte 预留
+**Value**: 1 byte reserved
 
-#### 0x06 — 超级绑定
+#### 0x06 — Super Binding
 
-**Value（64 bytes）**：User ID（32 bytes）+ Super key（32 bytes）
+**Value (64 bytes)**: User ID (32 bytes) + Super key (32 bytes)
 
-#### 0x07 — 超级绑定返回
+#### 0x07 — Super Binding Response
 
-**Value（1 byte）**：`0x00`=成功；`0x01`=超时；`0x02`=Super key 校验失败；`0x03`=电量低
+**Value (1 byte)**: `0x00`=success; `0x01`=timeout; `0x02`=Super key validation failed; `0x03`=low battery
 
 ---
 
-### 3.5 提醒命令 (command id 0x04)
+### 3.5 Alert Command (command id 0x04)
 
-L2 版本号：**0**
+L2 version: **0**
 
-| Key | 定义 | 方向 | Value |
+| Key | Definition | Direction | Value |
 |-----|------|------|-------|
-| `0x01` | 来电提醒 | 手机→设备 | 空 |
-| `0x02` | 来电已接听 | 手机→设备 | 空 |
-| `0x03` | 来电已拒接 | 手机→设备 | 空 |
+| `0x01` | Incoming call alert | Phone→Device | empty |
+| `0x02` | Incoming call answered | Phone→Device | empty |
+| `0x03` | Incoming call rejected | Phone→Device | empty |
 
 ---
 
-### 3.6 运动数据命令 (command id 0x05)
+### 3.6 Sport Data Command (command id 0x05)
 
-L2 版本号：**0**
+L2 version: **0**
 
-| Key | 定义 |
+| Key | Definition |
 |-----|------|
-| `0x01` | 请求数据（手机→设备）|
-| `0x02` | 运动数据返回（设备→手机）|
-| `0x03` | 睡眠数据返回（设备→手机）|
-| `0x04` | More flag（设备→手机，还有更多数据）|
-| `0x05` | 睡眠设定数据返回（设备→手机）|
-| `0x06` | 数据实时同步设置（手机→设备）|
-| `0x07` | 历史数据同步开始（设备→手机）|
-| `0x08` | 历史数据同步结束（设备→手机）|
-| `0x09` | 当天运动状态同步（手机→设备）|
-| `0x0a` | 最近一次运动状态同步（手机→设备）|
-| `0x0b` | 当天总运动数据校准（设备→手机）|
-| `0x0c` | 当天总运动数据校准返回（手机→设备）|
+| `0x01` | Request data (Phone→Device) |
+| `0x02` | Sport data response (Device→Phone) |
+| `0x03` | Sleep data response (Device→Phone) |
+| `0x04` | More flag (Device→Phone, more data available) |
+| `0x05` | Sleep setting data response (Device→Phone) |
+| `0x06` | Real-time data sync setting (Phone→Device) |
+| `0x07` | History data sync start (Device→Phone) |
+| `0x08` | History data sync end (Device→Phone) |
+| `0x09` | Current day sport status sync (Phone→Device) |
+| `0x0a` | Most recent sport status sync (Phone→Device) |
+| `0x0b` | Current day total sport data calibration (Device→Phone) |
+| `0x0c` | Current day total sport data calibration response (Phone→Device) |
 
-#### 0x01 — 请求数据
+#### 0x01 — Request Data
 
-**Value**：空
+**Value**: empty
 
-#### 0x02 — 运动数据返回
+#### 0x02 — Sport Data Response
 
-**Value**：Sport data header（4 bytes）+ N × Sport item（8 bytes）
+**Value**: Sport data header (4 bytes) + N × Sport item (8 bytes)
 
-**Sport data header（32 bits）**：
+**Sport data header (32 bits)**:
 
-| 字段 | 宽度 | 说明 |
+| Field | Width | Description |
 |------|------|------|
-| Date | 16 bits | 见 Date 定义 |
+| Date | 16 bits | See the Date definition |
 | Reserve | 8 bits | — |
-| Sport Item count | 8 bits | 后续 sport item 的个数 |
+| Sport Item count | 8 bits | Number of following sport items |
 
-**Date（16 bits）**：
+**Date (16 bits)**:
 
-| 字段 | 宽度 | 说明 |
+| Field | Width | Description |
 |------|------|------|
 | Reserve | 1 bit | — |
-| Year | 6 bits | 0~63，从 2000 年起 |
+| Year | 6 bits | 0~63, from year 2000 |
 | Month | 4 bits | 1~12 |
 | Day | 5 bits | 1~31 |
 
-**Sport item（8 bytes = 64 bits）**：
+**Sport item (8 bytes = 64 bits)**:
 
-| 字段 | 宽度 | 说明 |
+| Field | Width | Description |
 |------|------|------|
-| Offset | 11 bits | 从每天 0 点起，每 15 分钟 +1 |
-| Mode | 2 bits | 运动模式 |
-| Step count | 12 bits | 步数 |
-| Active time | 4 bits | 活动时间 |
-| Calory | 19 bits | 卡路里 |
-| Distance | 16 bits | 距离 |
+| Offset | 11 bits | From 00:00 each day, +1 every 15 minutes |
+| Mode | 2 bits | Sport mode |
+| Step count | 12 bits | Step count |
+| Active time | 4 bits | Active time |
+| Calory | 19 bits | Calories |
+| Distance | 16 bits | Distance |
 
-#### 0x03 — 睡眠数据返回
+#### 0x03 — Sleep Data Response
 
-**Value**：Sleep data header（4 bytes）+ N × Sleep item（4 bytes）
+**Value**: Sleep data header (4 bytes) + N × Sleep item (4 bytes)
 
-**Sleep data header（32 bits）**：Date（16 bits）+ Sleep Item count（16 bits）
+**Sleep data header (32 bits)**: Date (16 bits) + Sleep Item count (16 bits)
 
-**Sleep item（32 bits）**：
+**Sleep item (32 bits)**:
 
-| 字段 | 宽度 | 说明 |
+| Field | Width | Description |
 |------|------|------|
-| Minutes | 16 bits | 从 Date 0 点起的分钟数 |
+| Minutes | 16 bits | Minutes since 00:00 of Date |
 | Reserve | 12 bits | — |
-| Mode | 4 bits | `0x01`=深睡眠；`0x02`=浅睡眠；`0x03`=未进入睡眠 |
+| Mode | 4 bits | `0x01`=deep sleep; `0x02`=light sleep; `0x03`=not asleep |
 
 #### 0x04 — More flag
 
-**Value**：空（还有更多数据，手机应继续请求）
+**Value**: empty (more data available; the phone should keep requesting)
 
-#### 0x05 — 睡眠设定数据返回
+#### 0x05 — Sleep Setting Data Response
 
-**Value**：Sleep setting data header（4 bytes）+ N × Sleep setting item（4 bytes）
+**Value**: Sleep setting data header (4 bytes) + N × Sleep setting item (4 bytes)
 
-**Sleep setting item（32 bits）**：
+**Sleep setting item (32 bits)**:
 
-| 字段 | 宽度 | 说明 |
+| Field | Width | Description |
 |------|------|------|
-| Minutes | 16 bits | 从 Date 0 点起的分钟数 |
+| Minutes | 16 bits | Minutes since 00:00 of Date |
 | Reserve | 12 bits | — |
-| Mode | 4 bits | `0x00`=进入睡眠；`0x01`=退出睡眠 |
+| Mode | 4 bits | `0x00`=enter sleep; `0x01`=exit sleep |
 
-#### 0x06 — 数据实时同步设置
+#### 0x06 — Real-time Data Sync Setting
 
-**Value（1 byte）**：`0x00`=关闭；`0x01`=打开
+**Value (1 byte)**: `0x00`=off; `0x01`=on
 
-#### 0x07 / 0x08 — 历史数据同步开始 / 结束
+#### 0x07 / 0x08 — History Data Sync Start / End
 
-**Value**：空
+**Value**: empty
 
-#### 0x09 — 当天运动状态同步
+#### 0x09 — Current Day Sport Status Sync
 
-**Value（12 bytes）**：total steps（4B）+ total distance in m（4B）+ total calory in 1/1000 KA（4B）
+**Value (12 bytes)**: total steps (4B) + total distance in m (4B) + total calory in 1/1000 KA (4B)
 
-#### 0x0a — 最近一次运动状态同步
+#### 0x0a — Most Recent Sport Status Sync
 
-**Value（Sport item，10 bytes）**：Mode（1B）+ Active time（1B）+ Calory（4B）+ Step count（2B）+ Distance（2B）
+**Value (Sport item, 10 bytes)**: Mode (1B) + Active time (1B) + Calory (4B) + Step count (2B) + Distance (2B)
 
-#### 0x0b — 当天总运动数据校准
+#### 0x0b — Current Day Total Sport Data Calibration
 
-**Value（Calibrate Record，16 bytes）**：
+**Value (Calibrate Record, 16 bytes)**:
 
-| 字段 | 宽度 | 说明 |
+| Field | Width | Description |
 |------|------|------|
-| offset | 8 bits | 当前 offset（0~96）|
-| 当天总步数 | 24 bits | 步 |
-| 当天总卡路里 | 24 bits | 0.001 卡 |
-| 当天总距离 | 24 bits | m |
-| 当前 15 分钟步数 | 16 bits | 步 |
-| 当前 15 分钟卡路里 | 16 bits | 0.001 卡 |
-| 当前 15 分钟距离 | 16 bits | 米 |
+| offset | 8 bits | Current offset (0~96) |
+| Total steps today | 24 bits | steps |
+| Total calories today | 24 bits | 0.001 cal |
+| Total distance today | 24 bits | m |
+| Current 15-minute steps | 16 bits | steps |
+| Current 15-minute calories | 16 bits | 0.001 cal |
+| Current 15-minute distance | 16 bits | m |
 
-#### 0x0c — 当天总运动数据校准返回
+#### 0x0c — Current Day Total Sport Data Calibration Response
 
-**Value（Calibrate delta value，7 bytes）**：
+**Value (Calibrate delta value, 7 bytes)**:
 
-| 字段 | 宽度 | 说明 |
+| Field | Width | Description |
 |------|------|------|
-| offset | 8 bits | 当前 offset（0~96）|
-| delta_steps | 16 bits | 与前一个 offset 的步数差值 |
-| delta_calories | 16 bits | 差值（0.001 卡）|
-| delta_distance | 16 bits | 差值（米）|
+| offset | 8 bits | Current offset (0~96) |
+| delta_steps | 16 bits | Step difference from the previous offset |
+| delta_calories | 16 bits | Difference (0.001 cal) |
+| delta_distance | 16 bits | Difference (m) |
 
 ---
 
-### 3.7 工厂测试命令 (command id 0x06)
+### 3.7 Factory Test Command (command id 0x06)
 
-L2 版本号：**0**
+L2 version: **0**
 
-| Key | 定义 |
+| Key | Definition |
 |-----|------|
-| `0x01` | 请求 echo 服务 |
-| `0x02` | Echo 服务返回 |
-| `0x03` | 请求 charge 信息 |
-| `0x04` | 返回 charge 信息 |
-| `0x05` | 点亮 LED |
-| `0x06` | 震动马达 |
-| `0x07` | 写 SN |
-| `0x08` | 读 SN |
-| `0x09` | SN 返回 |
-| `0x0a` | 写 test flag |
-| `0x0b` | 读 test flag |
-| `0x0c` | test flag 返回 |
-| `0x0d` | 请求 sensor 数据 |
-| `0x0e` | 返回 sensor 数据 |
-| `0x10` | 进入测试模式（超级命令）|
-| `0x11` | 退出测试模式（超级命令）|
-| `0x21` | 按键测试 |
-| `0x31` | 马达老化测试 |
-| `0x32` | LED 老化测试 |
+| `0x01` | Request echo service |
+| `0x02` | Echo service response |
+| `0x03` | Request charge info |
+| `0x04` | Return charge info |
+| `0x05` | Turn on LED |
+| `0x06` | Vibrate motor |
+| `0x07` | Write SN |
+| `0x08` | Read SN |
+| `0x09` | SN response |
+| `0x0a` | Write test flag |
+| `0x0b` | Read test flag |
+| `0x0c` | test flag response |
+| `0x0d` | Request sensor data |
+| `0x0e` | Return sensor data |
+| `0x10` | Enter test mode (super command) |
+| `0x11` | Exit test mode (super command) |
+| `0x21` | Button test |
+| `0x31` | Motor aging test |
+| `0x32` | LED aging test |
 
 #### 0x01/0x02 — Echo
 
-请求 Value：N bytes 字符串；返回 Value：原封不动返回
+Request Value: N-byte string; response Value: returned unchanged
 
-#### 0x03/0x04 — Charge 信息
+#### 0x03/0x04 — Charge Info
 
-请求 Value：空；返回 **Value（2 bytes）**：Voltage（16 bits，负数表示未检测到）
+Request Value: empty; response **Value (2 bytes)**: Voltage (16 bits; a negative value means not detected)
 
-#### 0x05 — 点亮 LED
+#### 0x05 — Turn On LED
 
-**Value**：空=点亮所有 LED；`0x00`=第一行；`0x01`=第二行；...
+**Value**: empty=turn on all LEDs; `0x00`=first row; `0x01`=second row; ...
 
-#### 0x06 — 震动马达
+#### 0x06 — Vibrate Motor
 
-**Value**：空
+**Value**: empty
 
-#### 0x07/0x08/0x09 — SN 写/读/返回
+#### 0x07/0x08/0x09 — SN Write/Read/Response
 
-写请求/返回 Value：32 bytes SN；读请求 Value：空
+Write request/response Value: 32-byte SN; read request Value: empty
 
-#### 0x0a/0x0b/0x0c — test flag 写/读/返回
+#### 0x0a/0x0b/0x0c — test flag Write/Read/Response
 
-写请求/返回 Value：1 byte flag；读请求 Value：空
+Write request/response Value: 1-byte flag; read request Value: empty
 
-#### 0x0d/0x0e — sensor 数据请求/返回
+#### 0x0d/0x0e — sensor Data Request/Response
 
-请求 Value：空；返回 **Value（48 bits）**：X axis（16b）+ Y axis（16b）+ Z axis（16b）
+Request Value: empty; response **Value (48 bits)**: X axis (16b) + Y axis (16b) + Z axis (16b)
 
-#### 0x10/0x11 — 进入/退出测试模式
+#### 0x10/0x11 — Enter/Exit Test Mode
 
-**Value**：32 bytes token（设备验证通过后才执行）
+**Value**: 32-byte token (executed only after the device validates it)
 
-#### 0x21 — 按键测试
+#### 0x21 — Button Test
 
-**方向**：设备 → 手机 | **Value（8 bytes）**：
+**Direction**: Device → Phone | **Value (8 bytes)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
-| Code | 1 byte | `0x00`=DOWN；`0x01`=UP；`0x02`=SHORT_CLICK；`0x03`=LONG_CLICK |
+| Code | 1 byte | `0x00`=DOWN; `0x01`=UP; `0x02`=SHORT_CLICK; `0x03`=LONG_CLICK |
 | Id | 1 byte | Button ID |
 | Reserved | 2 bytes | — |
-| Timestamp | 4 bytes | 从 2000 年起的秒数 |
+| Timestamp | 4 bytes | Seconds since 2000 |
 
-#### 0x31/0x32 — 马达/LED 老化测试
+#### 0x31/0x32 — Motor/LED Aging Test
 
-**Value（1 byte）**：`0x01`=开始；`0x02`=结束
+**Value (1 byte)**: `0x01`=start; `0x02`=end
 
 ---
 
-### 3.8 控制命令 (command id 0x07)
+### 3.8 Control Command (command id 0x07)
 
-L2 版本号：**0**
+L2 version: **0**
 
-| Key | 定义 | 方向 | Value |
+| Key | Definition | Direction | Value |
 |-----|------|------|-------|
-| `0x01` | 拍照控制 | 设备→手机 | 空 |
-| `0x02` | 单击控制 | 设备→手机 | 空 |
-| `0x03` | 双击控制 | 设备→手机 | 空 |
-| `0x11` | 相机应用状态请求 | 手机→设备 | `0x00`=前台；`0x01`=后台 |
+| `0x01` | Photo control | Device→Phone | empty |
+| `0x02` | Single-click control | Device→Phone | empty |
+| `0x03` | Double-click control | Device→Phone | empty |
+| `0x11` | Camera app status request | Phone→Device | `0x00`=foreground; `0x01`=background |
 
 ---
 
-### 3.9 Dump Stack 命令 (command id 0x08)
+### 3.9 Dump Stack Command (command id 0x08)
 
-> 暂未实现
+> Not implemented yet
 
-| Key | 定义 |
+| Key | Definition |
 |-----|------|
-| `0x01` | 手机请求获取手环 assert 位置信息 |
-| `0x02` | 手环返回 assert 位置信息 |
-| `0x03` | 手机请求获取 assert 栈信息 |
-| `0x04` | 手环反馈 assert 栈信息 |
+| `0x01` | Phone requests the bracelet's assert location info |
+| `0x02` | Bracelet returns assert location info |
+| `0x03` | Phone requests assert stack info |
+| `0x04` | Bracelet reports assert stack info |
 
 ---
 
-### 3.10 测试 Flash 读取命令 (command id 0x09)
+### 3.10 Test Flash Read Command (command id 0x09)
 
-> 暂未实现
+> Not implemented yet
 
 ---
 
-### 3.11 日志命令 (command id 0x0a)
+### 3.11 Log Command (command id 0x0a)
 
-L2 版本号：**0**
+L2 version: **0**
 
-| Key | 定义 | 方向 | Value |
+| Key | Definition | Direction | Value |
 |-----|------|------|-------|
-| `0x01` | 打开日志功能 | 手机→设备 | 空 |
-| `0x02` | 关闭日志功能 | 手机→设备 | 空 |
-| `0x03` | 日志发送 | 设备→手机 | 0~499 bytes 日志字符串 |
+| `0x01` | Enable logging | Phone→Device | empty |
+| `0x02` | Disable logging | Phone→Device | empty |
+| `0x03` | Log transmission | Device→Phone | 0~499 byte log string |
 
 ---
 
-### 3.12 文件传输命令 (command id 0x0b)
+### 3.12 File Transfer Command (command id 0x0b)
 
-L2 版本号：**0**
+L2 version: **0**
 
-#### 概述
+#### Overview
 
-文件传输命令在 L1 可靠传输之上提供一套应用层会话机制，支持图片、视频及原始二进制数据从手机到设备的单向传输。传输流程如下：
+The file transfer command provides an application-layer session mechanism on top of the L1 reliable transport, supporting one-way transfer of images, videos, and raw binary data from the phone to the device. The transfer flow is as follows:
 
 ```
-手机                                    设备
+Phone                                   Device
  │                                        │
- │──── XFER_BEGIN_REQ (0x01) ────────────▶│  协商文件类型、大小、块大小
- │◀─── XFER_BEGIN_RSP (0x02) ────────────│  接受或拒绝；返回实际块大小
+ │──── XFER_BEGIN_REQ (0x01) ────────────▶│  negotiate file type, size, chunk size
+ │◀─── XFER_BEGIN_RSP (0x02) ────────────│  accept or reject; return actual chunk size
  │                                        │
  │──── XFER_DATA      (0x03) [seq=0] ───▶│  ┐
- │──── XFER_DATA      (0x03) [seq=1] ───▶│  │ 连续发送，L1 可靠传输保证到达
- │──── XFER_DATA      (0x03) [seq=2] ───▶│  ┘ 序号错误时设备发 XFER_ABORT
+ │──── XFER_DATA      (0x03) [seq=1] ───▶│  │ continuous transmission, L1 reliable transport guarantees arrival
+ │──── XFER_DATA      (0x03) [seq=2] ───▶│  ┘ on sequence error the device sends XFER_ABORT
  │              …                         │
- │──── XFER_END_REQ   (0x05) ───────────▶│  携带完整文件的 CRC32
- │◀─── XFER_END_RSP   (0x06) ───────────│  校验结果
+ │──── XFER_END_REQ   (0x05) ───────────▶│  carries the CRC32 of the complete file
+ │◀─── XFER_END_RSP   (0x06) ───────────│  validation result
  │                                        │
 ```
 
-任意一方均可在会话期间发送 XFER_ABORT（0x07）立即终止传输。同一时刻仅允许一个活跃传输会话；设备在会话未结束时收到新的 XFER_BEGIN_REQ，应回复 status = `0x01`（设备忙）。
+Either side may send XFER_ABORT (0x07) at any time during the session to terminate the transfer immediately. Only one active transfer session is allowed at a time; if the device receives a new XFER_BEGIN_REQ before the current session ends, it should reply with status = `0x01` (device busy).
 
-#### Key 列表
+#### Key List
 
-| Key | 定义 | 方向 |
+| Key | Definition | Direction |
 |-----|------|------|
-| `0x01` | 传输会话建立请求 | 手机 → 设备 |
-| `0x02` | 传输会话建立响应 | 设备 → 手机 |
-| `0x03` | 数据块发送 | 手机 → 设备 |
-| `0x05` | 传输结束请求 | 手机 → 设备 |
-| `0x06` | 传输结束响应 | 设备 → 手机 |
-| `0x07` | 传输中止 | 双向 |
+| `0x01` | Transfer session setup request | Phone → Device |
+| `0x02` | Transfer session setup response | Device → Phone |
+| `0x03` | Data block send | Phone → Device |
+| `0x05` | Transfer end request | Phone → Device |
+| `0x06` | Transfer end response | Device → Phone |
+| `0x07` | Transfer abort | Bidirectional |
 
 ---
 
-#### 0x01 — 传输会话建立请求（XFER_BEGIN_REQ）
+#### 0x01 — Transfer Session Setup Request (XFER_BEGIN_REQ)
 
-**方向**：手机 → 设备 | **Value（8 + filename_len bytes）**：
+**Direction**: Phone → Device | **Value (8 + filename_len bytes)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
-| file_type | 1 byte | `0x01`=图片；`0x02`=视频；`0x03`=原始数据 |
-| total_size | 4 bytes | 文件总字节数（Big-Endian）|
-| chunk_size | 2 bytes | 请求的单块字节数，有效范围 1~2048（Big-Endian）|
-| filename_len | 1 byte | 文件名字节数；`0x00` 表示不携带文件名 |
-| filename | filename_len bytes | UTF-8 编码文件名，不含 null 终止符 |
+| file_type | 1 byte | `0x01`=image; `0x02`=video; `0x03`=raw data |
+| total_size | 4 bytes | Total file size in bytes (Big-Endian) |
+| chunk_size | 2 bytes | Requested bytes per chunk, valid range 1~2048 (Big-Endian) |
+| filename_len | 1 byte | Filename length in bytes; `0x00` means no filename follows |
+| filename | filename_len bytes | UTF-8 encoded filename, without a null terminator |
 
-> `chunk_size` 为手机期望值，设备可在响应中调小；双方以 XFER_BEGIN_RSP 中的值为准。
+> `chunk_size` is the value desired by the phone; the device may reduce it in the response. Both sides use the value in XFER_BEGIN_RSP.
 
 ---
 
-#### 0x02 — 传输会话建立响应（XFER_BEGIN_RSP）
+#### 0x02 — Transfer Session Setup Response (XFER_BEGIN_RSP)
 
-**方向**：设备 → 手机 | **Value（3 bytes）**：
+**Direction**: Device → Phone | **Value (3 bytes)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
-| status | 1 byte | `0x00`=接受；`0x01`=设备忙；`0x02`=存储空间不足；`0x03`=不支持的文件类型 |
-| chunk_size | 2 bytes | 设备实际接受的块大小（仅 status=`0x00` 时有效；Big-Endian）|
+| status | 1 byte | `0x00`=accepted; `0x01`=device busy; `0x02`=insufficient storage; `0x03`=unsupported file type |
+| chunk_size | 2 bytes | Chunk size actually accepted by the device (valid only when status=`0x00`; Big-Endian) |
 
 ---
 
-#### 0x03 — 数据块发送（XFER_DATA）
+#### 0x03 — Data Block Send (XFER_DATA)
 
-**方向**：手机 → 设备 | **Value（2 + data_len bytes）**：
+**Direction**: Phone → Device | **Value (2 + data_len bytes)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
-| seq | 2 bytes | 块序号，从 `0` 开始单调递增（Big-Endian）|
-| data | 1~chunk_size bytes | 块数据；最后一块可小于 chunk_size |
+| seq | 2 bytes | Block sequence number, starting at `0` and increasing monotonically (Big-Endian) |
+| data | 1~chunk_size bytes | Block data; the last block may be smaller than chunk_size |
 
-> L1 可靠传输保证数据块按序到达；设备若检测到序号不连续，应发送 XFER_ABORT（reason=`0x01`）。
+> L1 reliable transport guarantees in-order arrival of data blocks; if the device detects a discontinuity in sequence numbers, it should send XFER_ABORT (reason=`0x01`).
 
 ---
 
-#### 0x05 — 传输结束请求（XFER_END_REQ）
+#### 0x05 — Transfer End Request (XFER_END_REQ)
 
-**方向**：手机 → 设备 | **Value（4 bytes）**：
+**Direction**: Phone → Device | **Value (4 bytes)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
-| crc32 | 4 bytes | 完整文件的 CRC32 校验值（多项式 `0xEDB88320`，Big-Endian）|
+| crc32 | 4 bytes | CRC32 checksum of the complete file (polynomial `0xEDB88320`, Big-Endian) |
 
 ---
 
-#### 0x06 — 传输结束响应（XFER_END_RSP）
+#### 0x06 — Transfer End Response (XFER_END_RSP)
 
-**方向**：设备 → 手机 | **Value（2 bytes）**：
+**Direction**: Device → Phone | **Value (2 bytes)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
-| status | 1 byte | `0x00`=成功；`0x01`=CRC32 校验失败；`0x02`=数据不完整 |
-| error_code | 1 byte | `0x00`=无；`0x01`=写入失败；`0x02`=解码失败（仅 status≠`0x00` 时有效）|
+| status | 1 byte | `0x00`=success; `0x01`=CRC32 validation failed; `0x02`=incomplete data |
+| error_code | 1 byte | `0x00`=none; `0x01`=write failed; `0x02`=decode failed (valid only when status≠`0x00`) |
 
 ---
 
-#### 0x07 — 传输中止（XFER_ABORT）
+#### 0x07 — Transfer Abort (XFER_ABORT)
 
-**方向**：双向 | **Value（1 byte）**：
+**Direction**: Bidirectional | **Value (1 byte)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
-| reason | 1 byte | `0x00`=用户取消；`0x01`=传输错误；`0x02`=超时 |
+| reason | 1 byte | `0x00`=user cancelled; `0x01`=transfer error; `0x02`=timeout |
 
-> 收到 XFER_ABORT 的一方应立即停止传输并释放会话资源，无需回复。
+> The party receiving XFER_ABORT should stop the transfer immediately and release the session resources; no reply is required.
 
 ---
 
-### 3.13 BLE 连接参数命令 (command id 0x0c)
+### 3.13 BLE Connection Parameter Command (command id 0x0c)
 
-L2 版本号：**0**
+L2 version: **0**
 
-| Key | 定义 |
+| Key | Definition |
 |-----|------|
-| `0x01` | 请求 BLE 连接参数（手机→设备）|
-| `0x02` | 返回 BLE 连接参数（设备→手机）|
+| `0x01` | Request BLE connection parameters (Phone→Device) |
+| `0x02` | Return BLE connection parameters (Device→Phone) |
 
-#### 0x01 — 请求 BLE 连接参数
+#### 0x01 — Request BLE Connection Parameters
 
-**方向**：手机 → 设备 | **Value**：空（v-length = 0）
+**Direction**: Phone → Device | **Value**: empty (v-length = 0)
 
-#### 0x02 — 返回 BLE 连接参数
+#### 0x02 — Return BLE Connection Parameters
 
-**方向**：设备 → 手机 | **Value（7 bytes，Big-Endian）**：
+**Direction**: Device → Phone | **Value (7 bytes, Big-Endian)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
-| conn_interval | 2 bytes | 当前连接间隔，单位 1.25ms（例：0x0018 = 24 × 1.25ms = 30ms）|
-| conn_latency | 2 bytes | 从设备延迟（Slave Latency）|
-| conn_supervision_timeout | 2 bytes | 监督超时，单位 10ms（例：0x01F4 = 500 × 10ms = 5000ms）|
-| conn_mtu_size | 1 byte | 当前 ATT MTU 大小（字节）|
+| conn_interval | 2 bytes | Current connection interval, unit 1.25 ms (e.g. 0x0018 = 24 × 1.25 ms = 30 ms) |
+| conn_latency | 2 bytes | Slave latency (Slave Latency) |
+| conn_supervision_timeout | 2 bytes | Supervision timeout, unit 10 ms (e.g. 0x01F4 = 500 × 10 ms = 5000 ms) |
+| conn_mtu_size | 1 byte | Current ATT MTU size (bytes) |
 
 ---
 
 
 
-### 3.14 WiFi 配网命令 (command id 0x0d)
+### 3.14 WiFi Provisioning Command (command id 0x0d)
 
-L2 版本号：**0**
+L2 version: **0**
 
-#### 概述
+#### Overview
 
-WiFi 配网命令允许 App 通过已建立的 BLE 连接将 WiFi 凭据（SSID/密码）下发给设备，监听配网状态，配网成功后获取设备 TCP 服务的 IP 和端口，用于后续切换至 WiFi 传输通道。
+The WiFi provisioning command allows the App to send WiFi credentials (SSID/password) to the device over the established BLE connection, monitor the provisioning status, and, after successful provisioning, obtain the IP and port of the device TCP service for subsequent switching to the WiFi transport channel.
 
-#### 配网交互流程
+#### Provisioning Interaction Flow
 
 ```
 App                                     Device
  │                                        │
- │──── WIFI_CONFIG_SET (0x01) ──────────▶│  下发 SSID / 密码
- │◀─── WIFI_CONFIG_ACK (0x02) ──────────│  接受或拒绝（5s 超时）
+ │──── WIFI_CONFIG_SET (0x01) ──────────▶│  send SSID / password
+ │◀─── WIFI_CONFIG_ACK (0x02) ──────────│  accept or reject (5s timeout)
  │                                        │
- │      （设备在后台发起 WiFi 连接）       │
+ │      (device initiates WiFi connection in background)  │
  │                                        │
- │◀─── WIFI_STATUS     (0x04) ──────────│  主动上报状态变更（connecting / connected / failed）
+ │◀─── WIFI_STATUS     (0x04) ──────────│  proactively report status changes (connecting / connected / failed)
  │                                        │
- │  [可选：30s 后超时未收到最终状态]       │
- │──── WIFI_STATUS_REQ (0x03) ──────────▶│  主动查询当前状态
- │◀─── WIFI_STATUS     (0x04) ──────────│  返回当前状态
+ │  [optional: no final status received after 30s timeout]  │
+ │──── WIFI_STATUS_REQ (0x03) ──────────▶│  actively query current status
+ │◀─── WIFI_STATUS     (0x04) ──────────│  return current status
 ```
 
-- App 收到 `WIFI_CONFIG_ACK` 后启动 30s 状态超时定时器；
-- 超时后发送一次 `WIFI_STATUS_REQ` 主动查询，再等 10s；仍无响应则判定配网失败；
-- 设备连接成功后在 `WIFI_STATUS` 中携带 IP 和 TCP 端口，App 可随即发起 TCP 连接。
+- After receiving `WIFI_CONFIG_ACK`, the App starts a 30s status timeout timer;
+- After the timeout, send one `WIFI_STATUS_REQ` to query actively, then wait another 10s; if there is still no response, provisioning is considered failed;
+- After the device connects successfully, it carries the IP and TCP port in `WIFI_STATUS`, and the App can then initiate a TCP connection.
 
-#### Key 列表
+#### Key List
 
-| Key | 定义 | 方向 |
+| Key | Definition | Direction |
 |-----|------|------|
-| `0x01` | WIFI_CONFIG_SET — 下发 SSID/密码 | App → Device |
-| `0x02` | WIFI_CONFIG_ACK — 确认是否接受请求 | Device → App |
-| `0x03` | WIFI_STATUS_REQ — 主动查询配网状态 | App → Device |
-| `0x04` | WIFI_STATUS — 上报配网状态 / IP | Device → App |
+| `0x01` | WIFI_CONFIG_SET — send SSID/password | App → Device |
+| `0x02` | WIFI_CONFIG_ACK — confirm whether the request is accepted | Device → App |
+| `0x03` | WIFI_STATUS_REQ — actively query provisioning status | App → Device |
+| `0x04` | WIFI_STATUS — report provisioning status / IP | Device → App |
 
 ---
 
 #### 0x01 — WIFI_CONFIG_SET
 
-**方向**：App → Device | **Value（5 + ssid_len + pwd_len bytes）**：
+**Direction**: App → Device | **Value (5 + ssid_len + pwd_len bytes)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
-| request_id | 2 bytes | 请求序号（Big-Endian），用于与 ACK 匹配；每次配网递增 |
-| flags | 1 byte | 位标志：bit0 = `FLAG_SAVE_CREDENTIALS`（1 = 保存凭据到设备，下次自动连接） |
-| ssid_len | 1 byte | SSID UTF-8 编码后字节数（1~32） |
-| ssid | ssid_len bytes | SSID，UTF-8 编码，不含 null 终止符 |
-| pwd_len | 1 byte | 密码 UTF-8 编码后字节数（0~64）；0 表示开放网络，无密码 |
-| password | pwd_len bytes | 密码，UTF-8 编码，不含 null 终止符 |
+| request_id | 2 bytes | Request sequence number (Big-Endian), used to match the ACK; incremented on each provisioning attempt |
+| flags | 1 byte | Bit flags: bit0 = `FLAG_SAVE_CREDENTIALS` (1 = save credentials to the device for automatic connection next time) |
+| ssid_len | 1 byte | SSID length in UTF-8 encoded bytes (1~32) |
+| ssid | ssid_len bytes | SSID, UTF-8 encoded, without a null terminator |
+| pwd_len | 1 byte | Password length in UTF-8 encoded bytes (0~64); 0 means an open network with no password |
+| password | pwd_len bytes | Password, UTF-8 encoded, without a null terminator |
 
 ---
 
 #### 0x02 — WIFI_CONFIG_ACK
 
-**方向**：Device → App | **Value（4 bytes）**：
+**Direction**: Device → App | **Value (4 bytes)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
-| request_id | 2 bytes | 对应的请求序号（Big-Endian） |
-| result | 1 byte | `0x00`=接受；`0x01`=拒绝 |
-| error | 1 byte | 错误码（仅 result=`0x01` 时有效；接受时置 `0x00`） |
+| request_id | 2 bytes | Corresponding request sequence number (Big-Endian) |
+| result | 1 byte | `0x00`=accepted; `0x01`=rejected |
+| error | 1 byte | Error code (valid only when result=`0x01`; set to `0x00` when accepted) |
 
-**error 错误码**：
+**error error codes**:
 
-| 错误码 | 说明 |
+| Error code | Description |
 |--------|------|
-| `0x00` | 无错误 |
-| `0x01` | Payload 格式错误 |
-| `0x02` | 不支持的配网模式 |
-| `0x03` | 无效的 SSID |
-| `0x04` | 无效的密码 |
-| `0x05` | 设备繁忙（已有配网会话进行中）|
+| `0x00` | No error |
+| `0x01` | Malformed payload |
+| `0x02` | Unsupported provisioning mode |
+| `0x03` | Invalid SSID |
+| `0x04` | Invalid password |
+| `0x05` | Device busy (a provisioning session is already in progress) |
 
 ---
 
 #### 0x03 — WIFI_STATUS_REQ
 
-**方向**：App → Device | **Value（2 bytes）**：
+**Direction**: App → Device | **Value (2 bytes)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
-| request_id | 2 bytes | 对应的请求序号（Big-Endian）|
+| request_id | 2 bytes | Corresponding request sequence number (Big-Endian) |
 
-> 设备收到此命令后应立即回复当前配网状态（`WIFI_STATUS`），即使状态仍为 idle。
+> After receiving this command, the device should immediately reply with the current provisioning status (`WIFI_STATUS`), even if the status is still idle.
 
 ---
 
 #### 0x04 — WIFI_STATUS
 
-**方向**：Device → App | **Value（6 + ip_len bytes）**：
+**Direction**: Device → App | **Value (6 + ip_len bytes)**:
 
-| 字段 | 大小 | 说明 |
+| Field | Size | Description |
 |------|------|------|
-| request_id | 2 bytes | 对应的请求序号（Big-Endian）|
-| state | 1 byte | 配网状态码（见下表）|
-| error | 1 byte | 错误码（仅 state=`0x03` 时有效；其余状态置 `0x00`）|
-| ip_len | 1 byte | IP 字符串 ASCII 编码字节数；未连接时为 `0x00` |
-| ip | ip_len bytes | 点分十进制 IP 地址字符串（如 `"192.168.1.100"`），ASCII 编码，不含 null 终止符 |
-| port | 2 bytes | TCP 服务端口号（Big-Endian；默认 8783）|
+| request_id | 2 bytes | Corresponding request sequence number (Big-Endian) |
+| state | 1 byte | Provisioning status code (see the table below) |
+| error | 1 byte | Error code (valid only when state=`0x03`; set to `0x00` for other states) |
+| ip_len | 1 byte | IP string length in ASCII-encoded bytes; `0x00` when not connected |
+| ip | ip_len bytes | Dotted-decimal IP address string (e.g. `"192.168.1.100"`), ASCII encoded, without a null terminator |
+| port | 2 bytes | TCP service port number (Big-Endian; default 8783) |
 
-**state 状态码**：
+**state status codes**:
 
-| 状态码 | 说明 |
+| Status code | Description |
 |--------|------|
-| `0x00` | Idle（空闲，未发起连接）|
-| `0x01` | Connecting（正在连接 WiFi）|
-| `0x02` | Connected（已连接，ip/port 字段有效）|
-| `0x03` | Failed（连接失败，error 字段有效）|
+| `0x00` | Idle (no connection initiated) |
+| `0x01` | Connecting (connecting to WiFi) |
+| `0x02` | Connected (connected; ip/port fields are valid) |
+| `0x03` | Failed (connection failed; the error field is valid) |
 
-**error 错误码**（state=`0x03` 时）：
+**error error codes** (when state=`0x03`):
 
-| 错误码 | 说明 |
+| Error code | Description |
 |--------|------|
-| `0x00` | 无错误 |
-| `0x01` | WiFi 认证失败（SSID/密码错误）|
-| `0x02` | 未找到该 WiFi（AP 不在范围内）|
-| `0x03` | DHCP 失败 |
-| `0x04` | 连接超时 |
-| `0x05` | TCP 服务启动失败 |
-| `0x06` | 未知错误 |
+| `0x00` | No error |
+| `0x01` | WiFi authentication failed (wrong SSID/password) |
+| `0x02` | WiFi not found (AP out of range) |
+| `0x03` | DHCP failed |
+| `0x04` | Connection timeout |
+| `0x05` | TCP service failed to start |
+| `0x06` | Unknown error |
 
 ---
 
-## 附录：关键数据结构速查
+## Appendix: Key Data Structure Quick Reference
 
-### L1 Header 字节布局（Big-Endian）
+### L1 Header Byte Layout (Big-Endian)
 
 ```
 Byte 0:  [7:0]  Magic = 0xAB
 Byte 1:  [7:6]  Reserve
-         [5]    ERR flag   (1=出错)
-         [4]    ACK flag   (1=ACK包)
-         [3:0]  Version    (当前=0)
-Byte 2:  [7:0]  Payload length 高字节
-Byte 3:  [7:0]  Payload length 低字节
-Byte 4:  [7:0]  CRC16 高字节
-Byte 5:  [7:0]  CRC16 低字节
-Byte 6:  [7:0]  Sequence ID 高字节
-Byte 7:  [7:0]  Sequence ID 低字节
+         [5]    ERR flag   (1=error)
+         [4]    ACK flag   (1=ACK packet)
+         [3:0]  Version    (current=0)
+Byte 2:  [7:0]  Payload length high byte
+Byte 3:  [7:0]  Payload length low byte
+Byte 4:  [7:0]  CRC16 high byte
+Byte 5:  [7:0]  CRC16 low byte
+Byte 6:  [7:0]  Sequence ID high byte
+Byte 7:  [7:0]  Sequence ID low byte
 ```
 
-### CRC16 计算范围
+### CRC16 Calculation Range
 
-覆盖 **Header[0..3]**（Magic + Byte1 + Payload Length）+ **完整 Payload**。
+Covers **Header[0..3]** (Magic + Byte1 + Payload Length) + the **complete Payload**.
 
-### L2 Header 字节布局（Big-Endian）
+### L2 Header Byte Layout (Big-Endian)
 
 ```
 Byte 0:  [7:0]  Command ID
@@ -914,11 +914,11 @@ Byte 1:  [7:4]  Version
          [3:0]  Reserve
 ```
 
-### Date 字段（16 bits，各命令通用）
+### Date Field (16 bits, common to all commands)
 
 ```
 [15]    Reserve
-[14:9]  Year   (0~63, 从 2000 年起)
+[14:9]  Year   (0~63, from year 2000)
 [8:5]   Month  (1~12)
 [4:0]   Day    (1~31)
 ```
