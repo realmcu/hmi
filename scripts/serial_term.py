@@ -48,17 +48,17 @@ import argparse
 import serial
 
 try:
-    import msvcrt  # Windows 键盘逐字符读取
+    import msvcrt  # Windows per-character keyboard read
     _HAS_MSVCRT = True
 except ImportError:
     _HAS_MSVCRT = False
 
 
-ESC_KEY = '\x1d'  # Ctrl + ]  作为命令引导键(沿用 telnet 习惯)
+ESC_KEY = '\x1d'  # Ctrl + ] as the command escape key (telnet habit)
 
-# Windows 控制台读到功能键时,会先给 \x00 或 \xe0 前缀,再给一个扫描码字符。
-# 这里把它翻译成 VT100/ANSI 转义序列发到串口 —— 这样目标设备的 shell
-# (readline / linenoise 一类) 才认得 "上一条命令"。PuTTY 默认就是这么干的。
+# On Windows, function keys arrive as a \x00 or \xe0 prefix followed by a scan code.
+# Translate that into VT100/ANSI escape sequences before sending it to the serial port,
+# so the target shell (readline / linenoise style) recognizes "previous command". PuTTY does the same.
 _FN_KEY_MAP = {
     'H': '\x1b[A',   # Up
     'P': '\x1b[B',   # Down
@@ -77,34 +77,34 @@ class SerialTerm(object):
     def __init__(self, port, baud, crlf=False):
         self.port = port
         self.baud = baud
-        self.crlf = crlf          # 回车时是否发 \r\n(否则只发 \r)
+        self.crlf = crlf          # send \r\n on Enter (otherwise \r only)
         self.ser = None
-        self._running = False     # 程序主循环是否在跑(q 退出才置 False)
-        self._connected = False   # 串口当前是否打开
+        self._running = False     # whether the main loop runs (False only on q exit)
+        self._connected = False   # whether the serial port is currently open
         self._rx_thread = None
-        self._log_file = None     # 正在记录的 log 文件句柄(None=未记录)
+        self._log_file = None     # log file handle being recorded (None = not recording)
         self._log_path = None
 
-    # ---- 连接:打开串口 + 启动接收线程,全程不 assert RTS/DTR ----
+    # ---- connect: open the port + start the rx thread, never asserting RTS/DTR ----
     def connect(self):
         if self._connected:
             sys.stdout.write("[已经是连接状态]\r\n")
             return True
         try:
-            ser = serial.Serial()            # 空构造,此时尚未打开,不会动控制线
+            ser = serial.Serial()            # empty constructor, not open yet, control lines untouched
             ser.port = self.port
             ser.baudrate = self.baud
             ser.bytesize = serial.EIGHTBITS
             ser.parity = serial.PARITY_NONE
             ser.stopbits = serial.STOPBITS_ONE
-            ser.rtscts = False               # 关闭硬件流控,否则驱动会接管 RTS
+            ser.rtscts = False               # disable hardware flow control, or the driver takes over RTS
             ser.dsrdtr = False
             ser.xonxoff = False
-            ser.timeout = 0.05               # 读超时,让接收线程能定期检查标志
-            ser.rts = False                  # 关键:open 前就把状态钉成 deassert
+            ser.timeout = 0.05               # read timeout so the rx thread can check flags periodically
+            ser.rts = False                  # key point: pin the state to deassert before open
             ser.dtr = False
-            ser.open()                       # 按预设状态配置控制线 -> 不复位
-            ser.rts = False                  # 双保险
+            ser.open()                       # configure control lines from preset state -> no reset
+            ser.rts = False                  # belt and braces
             ser.dtr = False
         except (serial.SerialException, OSError) as err:
             sys.stdout.write("[打开 %s 失败: %s]\r\n" % (self.port, err))
@@ -118,17 +118,17 @@ class SerialTerm(object):
         sys.stdout.flush()
         return True
 
-    # ---- 断开:停接收线程 + 关串口,但不退出程序 ----
+    # ---- disconnect: stop the rx thread + close the port, but do not exit ----
     def disconnect(self):
-        # 用 self.ser 判断而不是 _connected:接收线程异常退出时会把
-        # _connected 置 False 但句柄还在,这种情况下也得把端口收回来。
+        # Test self.ser rather than _connected: if the rx thread dies abnormally it
+        # sets _connected to False but the handle remains, and the port must be reclaimed.
         if self.ser is None:
             sys.stdout.write("[当前未连接]\r\n")
             sys.stdout.flush()
             return
         self._connected = False
         t = self._rx_thread
-        # 不要 join 自己 —— 万一以后从 rx 线程里走到这条路径会真死锁
+        # Never join yourself -- reaching this path from the rx thread would deadlock
         if t is not None and t is not threading.current_thread():
             t.join(timeout=1)
         self._rx_thread = None
@@ -141,15 +141,15 @@ class SerialTerm(object):
         sys.stdout.write("[已关闭 %s,端口已释放]\r\n" % self.port)
         sys.stdout.flush()
 
-    # ---- 开始/停止记录 log ----
+    # ---- start/stop logging ----
     def toggle_log(self):
         if self._log_file is None:
-            # COM 口名一般是 "COM7" 没问题,但 pyserial 也接受 "\\.\COM27"
-            # 这种带反斜杠的写法,直接拿来拼文件名会炸,先 sanitize 一下。
+            # A COM port name is usually "COM7", but pyserial also accepts "\\.\COM27"
+            # with backslashes; using that directly in a filename breaks, so sanitize first.
             safe_port = self.port.replace('\\', '_').replace('/', '_').replace(':', '_')
             fname = "serial_%s_%s.log" % (safe_port, time.strftime("%Y%m%d_%H%M%S"))
             try:
-                # buffering=0:无缓冲,每块直接落盘 —— 即使直接关窗口也几乎不丢 log
+                # buffering=0: unbuffered, every chunk goes straight to disk -- almost no log lost even if the window is closed
                 f = open(fname, "ab", buffering=0)
             except OSError as err:
                 sys.stdout.write("[创建 log 文件失败: %s]\r\n" % err)
@@ -160,7 +160,7 @@ class SerialTerm(object):
             sys.stdout.write("[开始记录 log -> %s]\r\n" % self._log_path)
         else:
             f = self._log_file
-            self._log_file = None     # 先断开引用,接收线程不再写
+            self._log_file = None     # drop the reference first so the rx thread stops writing
             try:
                 f.flush()
                 f.close()
@@ -170,7 +170,7 @@ class SerialTerm(object):
             self._log_path = None
         sys.stdout.flush()
 
-    # ---- 接收线程 ----
+    # ---- receive thread ----
     def _rx_loop(self):
         while self._running and self._connected:
             try:
@@ -184,17 +184,17 @@ class SerialTerm(object):
                 break
             if not data:
                 continue
-            # 直接写二进制到 stdout.buffer,绕过文本层的 codec —— 这样设备发的
-            # 任何字节(含 ANSI 颜色 \x1b[...m、光标控制等)都能原样透传到终端,
-            # 不会被 cp936/utf-8 解码层吃成 "?"。
+            # Write raw bytes straight to stdout.buffer, bypassing the text-layer codec, so
+            # every byte the device sends (ANSI colour \x1b[...m, cursor control, ...) is passed
+            # through unchanged instead of being mangled into "?" by the cp936/utf-8 decoder.
             try:
                 sys.stdout.buffer.write(data)
                 sys.stdout.buffer.flush()
             except (OSError, ValueError, AttributeError):
-                # 万一 stdout 被重定向到不支持 .buffer 的对象,降级回文本写
+                # If stdout is redirected to something without .buffer, fall back to text writes
                 sys.stdout.write(data.decode("latin-1"))
                 sys.stdout.flush()
-            # 记录原始字节到 log(取本地引用,避免与停止记录竞争)
+            # Record the raw bytes to the log (local reference avoids racing with stop)
             f = self._log_file
             if f is not None:
                 try:
@@ -209,7 +209,7 @@ class SerialTerm(object):
                 self.port, self.baud, log_state)
         return "[端口=%s 波特率=%d  已连接  log:%s]" % (self.port, self.ser.baudrate, log_state)
 
-    # ---- 命令菜单(按 Ctrl+] 进入)----
+    # ---- command menu (entered with Ctrl+]) ----
     def _command_menu(self):
         sys.stdout.write(
             "\r\n--- 命令: [o]打开 [c]关闭 [l]记录log [i]状态 [q]退出 [回车]返回 ---\r\n")
@@ -228,12 +228,12 @@ class SerialTerm(object):
             sys.stdout.write("[退出]\r\n")
             sys.stdout.flush()
             self._running = False
-        # 其它(含回车)直接返回终端
+        # anything else (including Enter) returns to the terminal
 
-    # ---- 主循环 ----
+    # ---- main loop ----
     def run(self):
         self._running = True
-        self.connect()  # 启动时自动连接一次(失败也进入终端,可 Ctrl+] -> o 重试)
+        self.connect()  # auto-connect once at startup (on failure still enter the terminal; Ctrl+] -> o retries)
 
         sys.stdout.write(self.status() + "\r\n")
         sys.stdout.write("按 Ctrl+] 进入命令菜单(o打开 / c关闭 / l记录log / q退出)。\r\n")
@@ -247,13 +247,13 @@ class SerialTerm(object):
             if ch == ESC_KEY:                 # Ctrl + ]
                 self._command_menu()
                 continue
-            if ch in ('\x00', '\xe0'):        # 功能键/方向键前缀,后跟扫描码
-                # 必须把扫描码读掉,否则下一轮 getwch 会拿到一个孤零零的字符
+            if ch in ('\x00', '\xe0'):        # function/arrow key prefix, followed by a scan code
+                # The scan code must be consumed, otherwise the next getwch gets a stray character
                 scan = msvcrt.getwch() if msvcrt.kbhit() else ''
                 if not self._connected:
                     continue
                 payload = _FN_KEY_MAP.get(scan)
-                if payload is None:           # 未映射的功能键,静默忽略
+                if payload is None:           # unmapped function key, silently ignore
                     continue
                 try:
                     self.ser.write(payload.encode("latin-1"))
@@ -261,7 +261,7 @@ class SerialTerm(object):
                     sys.stdout.write("\r\n[串口写异常,连接已断开]\r\n")
                     self._connected = False
                 continue
-            # 普通字符:未连接时静默忽略,避免无端口可发
+            # ordinary character: ignore silently while disconnected, no port to send to
             if not self._connected:
                 continue
             if ch == '\r':

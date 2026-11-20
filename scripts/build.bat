@@ -1,9 +1,9 @@
 @echo off
-:: build.bat —— 在 Windows 下调用 west build 编译 RTL87X3G 应用。
+:: build.bat -- build the RTL87X3G application with west build on Windows.
 ::
-:: 用法：
-::   scripts\build.bat          增量编译
-::   scripts\build.bat -p       全量重编（pristine）
+:: Usage:
+::   scripts\build.bat          incremental build
+::   scripts\build.bat -p       full rebuild (pristine)
 
 setlocal
 

@@ -1,11 +1,11 @@
 @echo off
-:: monitor.bat —— 在 Windows 下读取 COM 口上的 RTL87X3G 串口 log。
+:: monitor.bat -- reads the RTL87X3G serial log from a COM port on Windows.
 ::
-:: 关键：open 前先将 RTS/DTR 钉成 False，避免复位芯片。
+:: Key point: pin RTS/DTR to False before open so the chip is not reset.
 ::
-:: 用法：
-::   scripts\monitor.bat                  COM9 @ 2000000，持续读到 Ctrl-C
-::   scripts\monitor.bat COM9 2000000 5   只读 5 秒后退出
+:: Usage:
+::   scripts\monitor.bat                  COM9 @ 2000000, read until Ctrl-C
+::   scripts\monitor.bat COM9 2000000 5   read for 5 seconds then exit
 
 setlocal
 
@@ -17,7 +17,7 @@ if not "%1"=="" set PORT=%1
 if not "%2"=="" set BAUD=%2
 if not "%3"=="" set SECS=%3
 
-:: 用 where 自动找第一个 python.exe
+:: Use where to find the first python.exe
 for /f "delims=" %%i in ('where python 2^>nul') do (
     set WIN_PY=%%i
     goto :found
@@ -29,7 +29,7 @@ exit /b 1
 echo [monitor] python = %WIN_PY%
 echo [monitor] %PORT% @ %BAUD%  (secs=%SECS%, 0=until Ctrl-C)
 
-:: bat 不支持 heredoc，将 Python 脚本写到临时文件后执行
+:: bat does not support heredoc, so the Python script is written to a temp file and run
 set TMPPY=%TEMP%\rtl_monitor_%RANDOM%.py
 (
 echo import serial, time, sys
