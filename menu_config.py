@@ -5,15 +5,15 @@
 #
 import os
 
-# 定义交叉编译工具的相关设置
+# Cross-compilation tool settings
 ARCH = 'arm'
 CPU = 'cortex-m3'
 CROSS_TOOL = 'armcc'
 
-# bsp lib 配置
+# BSP library configuration
 BSP_LIBRARY_TYPE = None
 
-# 获取环境变量中的配置
+# Read settings from environment variables
 if os.getenv('RTT_CC'):
     CROSS_TOOL = os.getenv('RTT_CC')
 if os.getenv('RTT_ROOT'):
@@ -21,13 +21,13 @@ if os.getenv('RTT_ROOT'):
 
 RTT_ROOT = os.path.normpath(os.getcwd() + '../../rt-thread')
 
-# 根据交叉编译工具设置平台和执行路径
+# Set the platform and exec path for the selected cross tool
 if CROSS_TOOL == 'gcc':
     PLATFORM = 'gcc'
     EXEC_PATH = r'/usr/bin'
 elif CROSS_TOOL == 'armcc':
     PLATFORM = 'armcc'
-    EXEC_PATH = r'C:/Keil_v5/ARM/ARMCC/bin'  # 修改路径确保使用 ARM Compiler 5
+    EXEC_PATH = r'C:/Keil_v5/ARM/ARMCC/bin'  # Adjust this path to ensure ARM Compiler 5 is used
 elif CROSS_TOOL == 'iar':
     PLATFORM = 'iar'
     EXEC_PATH = r'C:/Program Files (x86)/IAR Systems/Embedded Workbench 8.0'
@@ -68,7 +68,7 @@ if PLATFORM == 'gcc':
     POST_ACTION = OBJCOPY + ' -O binary $TARGET rtthread.bin\n' + SIZE + ' $TARGET \n'
     
 elif PLATFORM == 'armcc':
-    # 工具链相关设置
+    # Toolchain settings
     CC = 'armcc'
     CXX = 'armcc'
     AS = 'armasm'
@@ -86,7 +86,7 @@ elif PLATFORM == 'armcc':
     EXEC_PATH += '/ARM/ARMCC/bin'
     
     if BUILD == 'debug':
-        CFLAGS += ' -g -O0 -D__MICROLIB'  # 添加 -D__MICROLIB
+        CFLAGS += ' -g -O0 -D__MICROLIB'  # Add -D__MICROLIB
         AFLAGS += ' -g'
     else:
         CFLAGS += ' -O2'
@@ -94,13 +94,13 @@ elif PLATFORM == 'armcc':
     CXXFLAGS = CFLAGS 
     CFLAGS += ' --implicit-type'
 
-    # 确保没有未被识别的 -D 选项
-    # 修改宏定义，确保没有空格并且使用正确的定义格式
+    # Make sure no unrecognized -D options are passed
+    # Fix up macro definitions: no spaces, correct definition format
     CFLAGS += ' -D PROJECT_VERSION="1.0.0"'
     
     POST_ACTION = 'fromelf --bin $TARGET --output rtthread.bin \nfromelf -z $TARGET'
 
-# 输出编译器设置以便调试
+# Print compiler settings for debugging
 print("CC: ", CC)
 print("CFLAGS: ", CFLAGS)
 print("AFLAGS: ", AFLAGS)
