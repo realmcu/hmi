@@ -1,4 +1,4 @@
-# FAL：Flash Abstraction Layer
+# FAL: Flash Abstraction Layer
 
 [Chinese](./README_ZH.md) | English
 

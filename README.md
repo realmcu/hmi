@@ -2,7 +2,7 @@
 
 ![GitHub Action](https://github.com/armink/FlashDB/workflows/AutoTestCI/badge.svg) [![license](https://img.shields.io/github/license/armink/FlashDB)](https://raw.githubusercontent.com/armink/FlashDB/master/LICENSE) [![docs](https://img.shields.io/badge/docs-perfect-blue)](https://armink.github.io/FlashDB/#/)
 
-EN | [中文](README_zh.md)
+EN | [Chinese](README_zh.md)
 
 ## Introduction
 
