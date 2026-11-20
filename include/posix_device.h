@@ -52,6 +52,8 @@
 #define POSIX_DEVICE_MAGIC_FDB     0x0A   /* FlashDB (KV/TS/BF, path-multiplexed) */
 #define POSIX_DEVICE_MAGIC_I2C     0x0B
 #define POSIX_DEVICE_MAGIC_RTC     0x0C
+#define POSIX_DEVICE_MAGIC_MOTOR   0x0D
+#define POSIX_DEVICE_MAGIC_HRM     0x0E
 /* 0x0D~0xEF 保留给将来设备类型 */
 /* 0xF0~0xFF 保留给用户自定义设备 */
 

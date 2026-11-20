@@ -79,6 +79,12 @@ int posix_sem_take(void *sem, uint32_t timeout_ms)
     return -1;
 }
 
+uint32_t posix_port_cycle_get_32(void)
+{
+    /* Replace with the target RTOS free-running cycle counter. */
+    return 0;
+}
+
 int posix_port_init_all(void)
 {
     posix_port_lock_init();

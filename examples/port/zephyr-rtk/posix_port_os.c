@@ -78,6 +78,11 @@ void posix_port_delay_ms(uint32_t ms)
     k_msleep((int32_t)ms);
 }
 
+uint32_t posix_port_cycle_get_32(void)
+{
+    return k_cycle_get_32();
+}
+
 int posix_port_init_all(void)
 {
     posix_port_lock_init();

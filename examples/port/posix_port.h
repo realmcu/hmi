@@ -24,6 +24,9 @@ void posix_port_lock_init(void);
 /* 毫秒延时（可在任务上下文调用，不可在 ISR 里调用） */
 void posix_port_delay_ms(uint32_t ms);
 
+/* Free-running cycle counter for short relative timing measurements. */
+uint32_t posix_port_cycle_get_32(void);
+
 /* ================================================================
  * 静态内存池模式（推荐用于无堆嵌入式环境）
  *

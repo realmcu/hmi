@@ -25,7 +25,7 @@
 #include "posix.h"
 #include "posix_init.h"
 #include "ioctls/posix_ioctl_touch.h"
-#include <zephyr/sys/printk.h>
+#include <stdio.h>
 
 #define TOUCH_CST816D_CHIP_ID   0xB6
 
@@ -49,7 +49,7 @@ static int board_touch_init(void)
 
     if (probe == POSIX_FD_NULL)
     {
-        printk("[TOUCH] open /dev/cst816d failed\n");
+        printf("[TOUCH] open /dev/cst816d failed\n");
         return POSIX_ERR_NODEV;
     }
 
@@ -59,18 +59,18 @@ static int board_touch_init(void)
 
     if (ret != POSIX_OK)
     {
-        printk("[TOUCH] CST816D read id failed: %d\n", ret);
+        printf("[TOUCH] CST816D read id failed: %d\n", ret);
         return ret;
     }
 
-    printk("[TOUCH] CST816D id: 0x%08X\n", chip_id);
+    printf("[TOUCH] CST816D id: 0x%08X\n", chip_id);
 
     if (chip_id == TOUCH_CST816D_CHIP_ID)
     {
         return posix_touch_bind("/dev/touch0", "/dev/cst816d");
     }
 
-    printk("[TOUCH] CST816D id mismatch\n");
+    printf("[TOUCH] CST816D id mismatch\n");
     return POSIX_ERR_NODEV;
 }
 POSIX_INIT_POST_DEVICE_EXPORT(board_touch_init);
