@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
-# 只烧 app 镜像（不改 romfs / FDB）——在 WSL2 里驱动 Windows 版 mpcli.exe。
+# Flash only the app image (do not change romfs / FDB) — drives the Windows mpcli.exe from WSL2.
 #
-# 参考 scripts/flash-wsl-app.sh（独立仓库 HoneyRepo/hmi），按本工程布局调整：
-#   - 仓库根由 tools/scripts/ 推出，可从任意目录执行
-#   - 默认镜像与地址按 --bank 推导，地址取自 flash_map.ini，不写死
-#   - 默认镜像为 OTA 产物 bin/bank<N>/app_bank<N>.bin；
-#     打包过的完整镜像（app+romfs）用 --fw bin/bank<N>/app_bank<N>_packed.bin
+# Based on scripts/flash-wsl-app.sh (separate repo HoneyRepo/hmi), adapted to this project's layout:
+#   - repo root is derived from tools/scripts/, so it can be run from any directory
+#   - default image and address are derived from --bank; the address comes from flash_map.ini, not hardcoded
+#   - default image is the OTA artifact bin/bank<N>/app_bank<N>.bin;
+#     for a packed full image (app+romfs) use --fw bin/bank<N>/app_bank<N>_packed.bin
 #
-# 原理：WSL 直接调用 Windows 的 mpcli.exe（原生进程，能访问 COM 口），
-#       用 wslpath -w 把 WSL 里的固件路径转成 Windows 形式喂给 -F。
+# How it works: WSL calls the Windows mpcli.exe directly (a native process that can access COM ports),
+#       and wslpath -w converts the WSL firmware path to Windows form for -F.
 #
-# 用法：
-#   ./tools/scripts/flash_app.sh                       # 默认 bank0 + COM5
-#   ./tools/scripts/flash_app.sh COM7                  # 位置参数 = 串口
+# Usage:
+#   ./tools/scripts/flash_app.sh                       # default bank0 + COM5
+#   ./tools/scripts/flash_app.sh COM7                  # positional argument = serial port
 #   ./tools/scripts/flash_app.sh --bank 1
 #   ./tools/scripts/flash_app.sh --fw bin/bank0/app_bank0_packed.bin
-#   DRY=1 ./tools/scripts/flash_app.sh                 # 只打印命令
+#   DRY=1 ./tools/scripts/flash_app.sh                 # print the command only
 #
-# 环境变量: MPCLI_EXE FW ADDR PORT BAUD DRY=1
-#   MPCLI_EXE 默认 scripts/tool/mpcli/mpcli.exe（与 flash_fdb.sh / flash_romfs.sh 相同）
+# Environment variables: MPCLI_EXE FW ADDR PORT BAUD DRY=1
+#   MPCLI_EXE defaults to scripts/tool/mpcli/mpcli.exe (same as flash_fdb.sh / flash_romfs.sh)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"                 # 应用工程根目录 = 仓库根
+APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"                 # application project root = repo root
 
 MPCLI_EXE="${MPCLI_EXE:-$APP_DIR/scripts/tool/mpcli/mpcli.exe}"
 FLASH_MAP="$APP_DIR/flash_map.ini"
@@ -56,7 +56,7 @@ while [ $# -gt 0 ]; do
         --dry-run) DRY=1; shift ;;
         -h|--help) usage; exit 0 ;;
         -*) echo "未知参数: $1" >&2; usage; exit 1 ;;
-        *)  PORT="$1"; shift ;;      # 位置参数 = 端口
+        *)  PORT="$1"; shift ;;      # positional argument = port
     esac
 done
 
@@ -69,28 +69,28 @@ die() { echo "[app-flash] 错误: $*" >&2; exit 1; }
 
 FW="${FW:-$APP_DIR/bin/bank${BANK}/app_bank${BANK}.bin}"
 
-# ---- 烧录地址：默认从 flash_map.ini 读，避免脚本里再写一份常量 ----
+# ---- flash address: read from flash_map.ini by default, so the script does not duplicate a constant ----
 if [ -z "$ADDR" ]; then
     [ -f "$FLASH_MAP" ] || die "找不到 flash_map.ini: $FLASH_MAP"
     ADDR=$(grep -E "^BANK${BANK}_APP_ADDR=" "$FLASH_MAP" | cut -d= -f2 | tr -d '[:space:]' || true)
     [ -n "$ADDR" ] || die "flash_map.ini 里没有 BANK${BANK}_APP_ADDR"
 fi
 
-# ---- 前置检查 ----
+# ---- preflight checks ----
 [ -f "$MPCLI_EXE" ] || die "找不到 mpcli.exe: $MPCLI_EXE"
 [ -f "$FW" ]        || die "找不到镜像: $FW
        先生成: ./tools/scripts/build.sh --bank $BANK"
 
-# 下面会 cd 到 mpcli.exe 所在目录（WindowsInterop 路径），-F 必须是绝对路径。
-# wslpath 对相对路径只做格式转换，不会补全。
+# Below we cd into mpcli.exe's directory (a WindowsInterop path), so -F must be an absolute path.
+# wslpath only reformats relative paths; it does not resolve them.
 FW="$(cd "$(dirname "$FW")" && pwd)/$(basename "$FW")"
 
 echo "[app-flash] exe  = $MPCLI_EXE"
 echo "[app-flash] port = $PORT   addr = $ADDR   baud = $BAUD"
 echo "[app-flash] fw   = $FW"
 
-# ---- WSLInterop 检测（同 scripts/flash-wsl-app.sh）----
-# 未注册时直接执行 .exe 会报 "Exec format error"，改用 /init + 临时 .bat。
+# ---- WSLInterop detection (same as scripts/flash-wsl-app.sh) ----
+# When it is not registered, running the .exe directly reports "Exec format error"; use /init + a temp .bat instead.
 interop_ok=0
 if [ -r /proc/sys/fs/binfmt_misc/WSLInterop ]; then
     grep -q '^enabled' /proc/sys/fs/binfmt_misc/WSLInterop && interop_ok=1
@@ -103,8 +103,8 @@ else
 fi
 
 if [ "$interop_ok" = 1 ]; then
-    # mpcli.exe(frozen) 用 sys.executable 目录定位 fw/、config/，与 CWD 无关；
-    # 这里 cd 到 exe 目录纯粹是和其他 flash 脚本保持一致。
+    # mpcli.exe (frozen) locates fw/ and config/ from the sys.executable directory, regardless of CWD;
+    # we cd to the exe directory here purely to stay consistent with the other flash scripts.
     cd "$(dirname "$MPCLI_EXE")"
     set -- -c "$PORT" -T RTL87X3G -M 5 -p -A "$ADDR" -F "$FW_WIN" -b "$BAUD" -r -u -d
     if [ "$DRY" = "1" ]; then
@@ -114,11 +114,11 @@ if [ "$interop_ok" = 1 ]; then
     exec "$MPCLI_EXE" "$@"
 fi
 
-# ---- WSLInterop 未注册：走 /init + 临时 .bat 回退 ----
+# ---- WSLInterop not registered: /init + temp .bat fallback ----
 echo "[app-flash] 提示: WSLInterop 未注册，改用 /init + 临时 .bat 启动 Windows 进程" >&2
 [ -x /init ] || die "找不到 /init；请在 Windows 端直接用 mpcli.exe 烧录"
 
-# .bat 需要放在 Windows 可见的目录；优先用 C:\Windows\Temp 或 %TEMP%。
+# The .bat must live in a directory Windows can see; prefer C:\Windows\Temp or %TEMP%.
 BAT_DIR=""
 for d in /mnt/c/Windows/Temp /mnt/c/Users/*/AppData/Local/Temp; do
     [ -d "$d" ] && [ -w "$d" ] && { BAT_DIR="$d"; break; }
@@ -127,7 +127,7 @@ done
 
 TMP_BAT="$(mktemp "$BAT_DIR/mpcli-app-XXXXXX.bat")"
 trap 'rm -f "$TMP_BAT"' EXIT INT TERM
-# CRT 换行，cmd.exe 才能正确解析。
+# CRLF line endings so cmd.exe parses it correctly.
 printf '@echo off\r\n"%s" -c %s -T RTL87X3G -M 5 -p -A %s -F "%s" -b %s -r -u -d\r\nexit /b %%ERRORLEVEL%%\r\n' \
     "$(wslpath -w "$MPCLI_EXE")" "$PORT" "$ADDR" "$FW_WIN" "$BAUD" > "$TMP_BAT"
 
@@ -137,8 +137,8 @@ if [ "$DRY" = "1" ]; then
     exit 0
 fi
 
-# cmd.exe 不支持把 UNC 路径（\\wsl.localhost\...）当当前目录，先切到 Windows
-# 本地目录，避免启动时的 UNC 警告。这里不用 exec，好让 EXIT trap 删除临时 .bat。
+# cmd.exe does not accept a UNC path (\\wsl.localhost\...) as the current directory, so switch to a
+# Windows-local directory first to avoid the UNC warning on startup. We avoid exec so the EXIT trap can delete the temp .bat.
 cd "$BAT_DIR"
 /init /mnt/c/Windows/System32/cmd.exe /c "$(wslpath -w "$TMP_BAT")"
 rc=$?

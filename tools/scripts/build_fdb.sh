@@ -15,14 +15,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"                 # 应用工程根目录 = 仓库根
+APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"                 # application project root = repo root
 
-# 素材目录按优先级取：
-#   1) 命令行 --assets-dir
-#   2) 环境变量 ASSETS_DIR
-#   3) 仓库内的 tools/pack/fdb_resource_bin（随工程管理）
-#   4) 本 checkout 的 designer 构建树（HoneyGUI Designer 导出的 bin）
-#   5) Windows 侧同一工程的 designer 构建树（WSL 内没有导出结果时）
+# Asset directory is resolved in priority order:
+#   1) command line --assets-dir
+#   2) environment variable ASSETS_DIR
+#   3) tools/pack/fdb_resource_bin inside the repo (tracked with the project)
+#   4) the designer build tree of this checkout (bins exported by HoneyGUI Designer)
+#   5) the designer build tree of the same project on the Windows side (when WSL has no exported results)
 if [ -z "${ASSETS_DIR:-}" ]; then
     for d in "$APP_DIR/tools/pack/fdb_resource_bin" \
              "$APP_DIR/app/designer/build/assets/images" \
@@ -78,7 +78,7 @@ args=(
 
 VIDEO_INCLUDED=0
 if [ "$WITH_VIDEO" = "1" ]; then
-    # 视频是可选的：fdb_resource_bin 默认不带 4MB 的 wl-video.avi。
+    # Video is optional: fdb_resource_bin does not include the 4MB wl-video.avi by default.
     if [ -f "$ASSETS_DIR/wl-video.avi" ]; then
         args+=(--file "video1=$ASSETS_DIR/wl-video.avi")
         VIDEO_INCLUDED=1

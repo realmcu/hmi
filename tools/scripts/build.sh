@@ -1,43 +1,43 @@
 #!/usr/bin/env bash
-# eBadge 冷启动一键编译（+ 可选烧录），WSL/Linux 版，对应 build.ps1（Windows 版）。
+# eBadge one-shot cold build (+ optional flashing), WSL/Linux version, counterpart of build.ps1 (Windows version).
 #
-# 脚本在 tools/scripts/ 下，但所有相对路径（build_*、bin/、snippets/）都相对
-# 仓库根目录，从任何目录执行都可以。
+# The script lives in tools/scripts/, but all relative paths (build_*, bin/, snippets/) are relative
+# to the repo root, so it can be run from any directory.
 #
-# 默认参数 = --bank 0 --snippet wifi（本机常用组合：OTA bank0 + 外挂 8711）。
-# 不带参数直接 ./tools/scripts/build.sh 即可。要回到老行为（单 bank、无 snippet）：
+# Default arguments = --bank 0 --snippet wifi (the usual combination on this machine: OTA bank0 + external 8711).
+# Running ./tools/scripts/build.sh with no arguments is enough. To return to the old behavior (single bank, no snippet):
 #   ./tools/scripts/build.sh --bank '' --snippet ''
 #
-# -Bank 用于 OTA 双 bank 构建（参考 sample/ota）：
-#   '0'  加 --snippet flash_32M_bank0，独立 -d build_bank0，编到 bin/bank0/app_bank0.bin（默认）。
-#   '1'  加 --snippet flash_32M_bank1，编到 bin/bank1/app_bank1.bin。
-#   'both'   依次编 bank0、bank1（其中一个失败就不再编下一个，跟 ps1 版本行为一致）。
-#   ''   不加 snippet，编到 bin/app.bin（老行为，OTA 前的普通开发编译用）。
-# bank app 地址：运行时读 flash_map.ini 的 BANK<N>_APP_ADDR（当前 bank0=0x7009E000,
-# bank1=0x704F3000），不在此脚本里写死。
+# -Bank is for OTA dual-bank builds (see sample/ota):
+#   '0'  adds --snippet flash_32M_bank0, separate -d build_bank0, output bin/bank0/app_bank0.bin (default).
+#   '1'  adds --snippet flash_32M_bank1, output bin/bank1/app_bank1.bin.
+#   'both'   builds bank0 then bank1 in order (if one fails the next is not built, same as the ps1 version).
+#   ''   adds no snippet, output bin/app.bin (old behavior, for ordinary development builds before OTA).
+# bank app address: read at run time from BANK<N>_APP_ADDR in flash_map.ini (currently bank0=0x7009E000,
+# bank1=0x704F3000); it is not hardcoded in this script.
 #
-# --snippet 传任意额外 snippet（可多次传，默认已带 wifi），与 --bank 叠加。本工程自带：
-#   wifi            外挂 8711 Wi-Fi。本机做 SPI 主机 @25MHz + Realtek 标准 AT 命令集。
-#   flash_32M_bank0/1  32M flash 分区表（OTA bank0 / bank1）。
+# --snippet passes any additional snippet (repeatable; wifi is included by default) and stacks with --bank. This project ships:
+#   wifi            external 8711 Wi-Fi. This device acts as SPI host @25MHz with the Realtek standard AT command set.
+#   flash_32M_bank0/1  32M flash partition table (OTA bank0 / bank1).
 #
-# flash_32M_bank* 放在本工程的 snippets/ 下（随本仓库管理），不走 realtek-app/snippets。
-# 两处同名不会覆盖而是各追加一次 overlay，所以这里构建前会校验解析到的是本工程那份。
+# flash_32M_bank* lives under this project's snippets/ (tracked in this repo) and does not use realtek-app/snippets.
+# Two snippets with the same name do not override each other, they each append an overlay, so before building we check that the resolved one is this project's.
 #
-# 例：
-#   ./tools/scripts/build.sh                          # 默认: bank0 + wifi（增量）
-#   ./tools/scripts/build.sh --pristine               # 首次 / 新增 .c 文件后干净重建
-#   ./tools/scripts/build.sh --bank both --pristine   # 依次干净重建 bank0 和 bank1
+# Examples:
+#   ./tools/scripts/build.sh                          # default: bank0 + wifi (incremental)
+#   ./tools/scripts/build.sh --pristine               # first build / clean rebuild after adding .c files
+#   ./tools/scripts/build.sh --bank both --pristine   # clean rebuild of bank0 and bank1 in order
 set -euo pipefail
 
-# ===== 路径（换机器改这里，或用环境变量覆盖）=====
+# ===== paths (change here on another machine, or override with environment variables) =====
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"                 # 应用工程根目录 = 仓库根
+APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"                 # application project root = repo root
 REALTEK_APP_DIR="$(cd "$APP_DIR/../.." && pwd)"            # realtek-app/
 
-VENV_PYTHON="${VENV_PYTHON:-/home/sheldeng/Mi_eBadge/.venv/bin/python}"   # west 跑在这个 venv 里（zephyr 依赖已装）
-SDK_DIR="${SDK_DIR:-/home/sheldeng/zephyr-sdk-0.16.9}"                     # Zephyr SDK（已跑过 setup.sh -c 注册 cmake 包）
+VENV_PYTHON="${VENV_PYTHON:-/home/sheldeng/Mi_eBadge/.venv/bin/python}"   # west runs in this venv (zephyr dependencies installed)
+SDK_DIR="${SDK_DIR:-/home/sheldeng/zephyr-sdk-0.16.9}"                     # Zephyr SDK (setup.sh -c already run to register the cmake package)
 BOARD="${BOARD:-rtl87x3g_evb}"
-PORT_DEFAULT="${PORT_DEFAULT:-/dev/ttyUSB0}"                # WSL2 下需要先用 usbipd-win 把 USB 转串口设备挂进来
+PORT_DEFAULT="${PORT_DEFAULT:-/dev/ttyUSB0}"                # under WSL2 the USB-to-serial device must first be attached with usbipd-win
 MPCLI="${MPCLI:-$REALTEK_APP_DIR/tools/mpcli/Linux/mpcli}"
 
 usage() {
@@ -62,8 +62,8 @@ ROMFS_BIN="$APP_DIR/app/designer/build/app_romfs_0x70536400.bin"
 PYTHON_PACK="$APP_DIR/tools/pack/pack.py"
 ROMFS_OFFSET_ARG=""
 
-# Designer 新版把用户源文件放进 src/user/，romfs_layout.h 也跟着搬了家。
-# 两个位置都可能存在；src/ 那份会遮蔽 src/user/，优先读实际生效的那份。
+# Newer Designer versions put user source files in src/user/, and romfs_layout.h moved with them.
+# Both locations may exist; the copy in src/ shadows the one in src/user/, so read whichever is actually in effect.
 resolve_layout_h() {
     local a="$APP_DIR/app/designer/src/romfs_layout.h"
     local b="$APP_DIR/app/designer/src/user/romfs_layout.h"
@@ -73,11 +73,11 @@ resolve_layout_h() {
     else echo "$a"; fi
 }
 
-# pack.py fwcheck 返回 2 = ELF 里的 romfs 挂载地址还是旧的。
-# 其它返回码（0/无法校验）都当作 OK，不让环境缺失阻断打包。
+# pack.py fwcheck returns 2 = the romfs mount address in the ELF is still the old one.
+# Any other return code (0 / unable to check) is treated as OK, so a missing environment does not block packing.
 #
-# 显式传 --elf：build_bank<N>_wifi 和 build_bank<N> 会同时存在，让 pack.py 自己
-# 挑很容易挑到没在用的那个，于是永远判 stale、每轮都重编，直到轮数用尽报错。
+# --elf is passed explicitly: build_bank<N>_wifi and build_bank<N> can both exist, and letting pack.py
+# pick by itself easily picks the one not in use, so it always reports stale and rebuilds every round until the rounds run out.
 fw_mount_ok() { # $1=bank_sel $2=offset
     local rc=0
     python3 "$PYTHON_PACK" fwcheck --bank "bank$1" --offset "$2" \
@@ -97,7 +97,7 @@ while [ $# -gt 0 ]; do
         --romfs) ROMFS_BIN="$2"; shift 2 ;;
         --romfs-offset) ROMFS_OFFSET_ARG="$2"; shift 2 ;;
         --snippet)
-            # 显式传过 --snippet（值为空表示「不要默认 wifi」），后面不再自动加 wifi
+            # --snippet was passed explicitly (an empty value means "no default wifi"); wifi is not added automatically afterwards
             SNIPPETS_EXPLICIT=1
             if [ -n "$2" ]; then SNIPPETS+=("$2"); fi
             shift 2
@@ -112,12 +112,12 @@ case "$BANK" in
     *) echo "错误: --bank 只能是 '' / 0 / 1 / both" >&2; exit 1 ;;
 esac
 
-# 默认 snippet = wifi；显式传过任何 --snippet（含空值）就不再自动加
+# default snippet = wifi; any explicit --snippet (including an empty value) disables the automatic addition
 if [ "$SNIPPETS_EXPLICIT" -eq 0 ] && [ ${#SNIPPETS[@]} -eq 0 ]; then
     SNIPPETS=(wifi)
 fi
 
-# ===== 前置检查 =====
+# ===== preflight checks =====
 [ -x "$VENV_PYTHON" ] || { echo "找不到 venv python: $VENV_PYTHON" >&2; exit 1; }
 [ -x "$SDK_DIR/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc" ] || { echo "找不到 Zephyr SDK 工具链: $SDK_DIR" >&2; exit 1; }
 for b in 0 1; do
@@ -127,7 +127,7 @@ for b in 0 1; do
     }
 done
 
-# ===== 环境变量 =====
+# ===== environment variables =====
 export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 export ZEPHYR_SDK_INSTALL_DIR="$SDK_DIR"
 echo "[env]   VARIANT=zephyr  SDK=$SDK_DIR"
@@ -138,7 +138,7 @@ if [ ${#SNIPPETS[@]} -gt 0 ]; then
     echo "[snip]  ${SNIPPETS[*]}"
 fi
 
-# ===== 耗时统计（bash 没有 Stopwatch，用 SECONDS 内建变量，够用）=====
+# ===== timing (bash has no Stopwatch; the SECONDS builtin is good enough) =====
 TIMING_ORDER=()
 declare -A TIMING_SEC
 declare -A TIMING_OK
@@ -179,7 +179,7 @@ print_summary() {
     fi
 }
 
-# ===== 单次编译(+可选烧录)。$1: ''=默认, '0', '1' =====
+# ===== one build (+ optional flashing). $1: ''=default, '0', '1' =====
 invoke_app_build() {
     local bank_sel="$1"
     local build_args=(-m west build -b "$BOARD")
@@ -198,8 +198,8 @@ invoke_app_build() {
     [ -n "$bank_sel" ] && label="build bank${bank_sel}"
     measure_phase "$label" "$VENV_PYTHON" "${build_args[@]}" || return 1
 
-    # 校验分区表真的来自本工程：Zephyr 对同名 snippet 是各追加一次 overlay
-    # （不是后者覆盖前者），若 realtek-app/snippets 下也有一份，两份会同时生效。
+    # Check that the partition table really comes from this project: for same-named snippets Zephyr appends
+    # each overlay separately (the latter does not override the former), so if realtek-app/snippets has one too, both take effect.
     if [ -n "$bank_sel" ]; then
         local want="$APP_DIR/snippets/flash_32M_bank${bank_sel}/flash_32M_bank${bank_sel}.overlay"
         local gen="$APP_DIR/build_bank${bank_sel}${snip_suffix}/zephyr/snippets_generated.cmake"
@@ -225,7 +225,7 @@ invoke_app_build() {
     fi
     [ -f "$bin" ] || { echo "编译声称成功但找不到镜像: $bin" >&2; return 1; }
 
-    # 烧录地址以 flash_map.ini 为准（无 bank 的普通编译按 bank0 处理）
+    # The flash address comes from flash_map.ini (a plain build with no bank is treated as bank0)
     addr=$(grep -E "^BANK${bank_sel:-0}_APP_ADDR=" "$APP_DIR/flash_map.ini" \
            | cut -d= -f2 | tr -d '[:space:]' || true)
     [ -n "$addr" ] || {
@@ -234,12 +234,12 @@ invoke_app_build() {
     }
     echo "[build] OK -> $bin (@ $addr)"
 
-    # ===== 可选：合并 romfs 进 app 镜像 =====
+    # ===== optional: merge romfs into the app image =====
     #
-    # romfs 在镜像内的偏移 ROMFS_OFFSET 写在 app/designer/src[/user]/romfs_layout.h，
-    # 而它又取决于 app 的体积 —— 所以「先编译才知道偏移，已知偏移才能打包，
-    # 打包后固件才正确」是个环。这里迭代到收敛：打包 → 偏移变了就重编 → 再打包。
-    # 实测增量重编 ~15s，通常 2 轮收敛。
+    # The in-image romfs offset ROMFS_OFFSET is written to app/designer/src[/user]/romfs_layout.h,
+    # and it in turn depends on the size of app — so "build first to learn the offset, the offset is needed to pack,
+    # and only a packed image makes the firmware correct" is a cycle. We iterate to convergence: pack -> rebuild if the offset changed -> pack again.
+    # A measured incremental rebuild takes ~15s and it usually converges in 2 rounds.
     if [ "$PACK" -eq 1 ]; then
         [ -f "$ROMFS_BIN" ] || { echo "找不到 romfs: $ROMFS_BIN" >&2; return 1; }
         [ -n "$bank_sel" ] || { echo "--pack 需要显式 --bank 0|1|both" >&2; return 1; }
@@ -247,7 +247,7 @@ invoke_app_build() {
         local layout_h
         layout_h=$(resolve_layout_h)
         local merged="$APP_DIR/bin/bank${bank_sel}/app_bank${bank_sel}_packed.bin"
-        # 单独烧录用：已重定位、4K 对齐落点的 romfs 副本
+        # for standalone flashing: a relocated copy of romfs with a 4K-aligned target address
         local romfs_only="$APP_DIR/bin/bank${bank_sel}/app_romfs_bank${bank_sel}_reloc.bin"
         local round=0
         while :; do
@@ -257,8 +257,8 @@ invoke_app_build() {
             local pack_mp_args=()
             [ "$PACK_MP" -eq 1 ] && pack_mp_args+=(--mp)
 
-            # --mp: 追加 512B MP 头。mpcli 靠它识别镜像类型/版本；
-            #       烧录地址仍来自 -A 或 json（不来自 MP 头）。
+            # --mp: append a 512B MP header. mpcli uses it to identify the image type/version;
+            #       the flash address still comes from -A or the json (not from the MP header).
             measure_phase "pack bank${bank_sel} (round $round)" \
                 "$PYTHON_PACK" app \
                     --bank "bank${bank_sel}" --app "$bin" --romfs "$ROMFS_BIN" \
@@ -267,10 +267,10 @@ invoke_app_build() {
                     ${ROMFS_OFFSET_ARG:+--romfs-offset $ROMFS_OFFSET_ARG}
             after=$(grep -oE 'ROMFS_OFFSET 0x[0-9A-Fa-f]+' "$layout_h" 2>/dev/null | awk '{print $2}')
 
-            # 收敛条件有两个：偏移没变，且固件 ELF 里真的挂着这个地址。
-            # 后者是必需的：romfs_layout.h 换过位置（src/ -> src/user/）后，
-            # ninja 里旧的依赖已失效，偏移没变也不会重编 Mi_eBadgeEntry.c，
-            # ELF 会一直停在旧挂载地址 —— 镜像对、固件错，UI 全黑。
+            # There are two convergence conditions: the offset did not change, and the firmware ELF really mounts this address.
+            # The latter is essential: after romfs_layout.h moved (src/ -> src/user/),
+            # the old ninja dependency is stale, so Mi_eBadgeEntry.c is not rebuilt even when the offset is unchanged,
+            # and the ELF stays stuck at the old mount address — right image, wrong firmware, all-black UI.
             local need_rebuild=0 reason=""
             if [ "$before" != "$after" ]; then
                 need_rebuild=1
@@ -288,7 +288,7 @@ invoke_app_build() {
                 return 1
             fi
             echo "[pack] $reason，重编 app 后重试"
-            # 头文件可能刚换了位置，touch 源文件确保 Mi_eBadgeEntry.c 真的重编。
+            # The header may just have moved, so touch the source to make sure Mi_eBadgeEntry.c is really rebuilt.
             touch "$APP_DIR/app/designer/src/Mi_eBadgeEntry.c"
             build_args=(-m west build -b "$BOARD")
             build_args+=(-d "build_bank${bank_sel}${snip_suffix}" --snippet "flash_32M_bank${bank_sel}")
@@ -306,7 +306,7 @@ invoke_app_build() {
         echo "       （等价命令: mpcli -c <port> -p -A $raddr -F $romfs_only ...）"
     fi
 
-    # ===== 可选烧录 =====
+    # ===== optional flashing =====
     if [ "$FLASH" -eq 1 ]; then
         [ -x "$MPCLI" ] || { echo "找不到 mpcli: $MPCLI" >&2; return 1; }
         [ -e "$PORT" ] || echo "[flash] 警告: 串口 $PORT 不存在（WSL2 下需要先 usbipd attach）" >&2
@@ -320,7 +320,7 @@ invoke_app_build() {
     fi
 }
 
-# ===== 编译（结束后恢复原目录，并始终打耗时汇总）=====
+# ===== build (restore the original directory afterwards and always print the timing summary) =====
 ORIG_DIR="$(pwd)"
 TOTAL_START=$SECONDS
 

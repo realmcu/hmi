@@ -1,14 +1,14 @@
 ﻿<#
 .SYNOPSIS
-  只烧 romfs（壁纸/UI 资源），不动 app ——Windows 版 flash_romfs.sh。
+  Flash only romfs (wallpaper/UI assets) without touching app — Windows version of flash_romfs.sh.
 
 .DESCRIPTION
-  需要先执行: .\tools\scripts\build.ps1 -Bank <N> -Pack
-  生成的 bin\bank<N>\app_romfs_bank<N>_reloc.bin 已按当前偏移重定位。
+  Requires running first: .\tools\scripts\build.ps1 -Bank <N> -Pack
+  The generated bin\bank<N>\app_romfs_bank<N>_reloc.bin is already relocated for the current offset.
 
-  烧之前校验：
-    - ROMFS_OFFSET 与挂载地址按 4KB 对齐（否则擦除会波及 app 所在扇区）
-    - reloc 文件首项目录指针 == app 基址 + 当前偏移（否则是旧包）
+  Checks before flashing:
+    - ROMFS_OFFSET and the mount address are 4KB aligned (otherwise erasing reaches into app's sector)
+    - the first directory pointer in the reloc file == app base + current offset (otherwise it is a stale image)
 
 .EXAMPLE
   .\tools\scripts\flash_romfs.ps1               # bank0 + COM5
@@ -18,7 +18,7 @@
   .\tools\scripts\flash_romfs.ps1 -DryRun
 #>
 
-# #requires 必须排在帮助块之后，见 build.ps1 里的说明。
+# #requires must come after the help block; see the note in build.ps1.
 #requires -Version 5
 
 [CmdletBinding()]
@@ -35,7 +35,7 @@ $ErrorActionPreference = 'Stop'
 
 $Port = Get-EbadgePort $Port
 $Mpcli = Get-EbadgeMpcli
-# romfs_layout.h 可能在 src\ 或 src\user\（Designer 新导出布局）。
+# romfs_layout.h may live in src\ or src\user\ (the new Designer export layout).
 $LayoutH = Join-Path $AppDir 'app\designer\src\romfs_layout.h'
 if (-not (Test-Path $LayoutH)) {
     $userLayout = Join-Path $AppDir 'app\designer\src\user\romfs_layout.h'
@@ -58,7 +58,7 @@ $mount = $appAddr + $offset
 $RomfsFull = (Resolve-Path $Romfs).Path
 $size = (Get-Item $RomfsFull).Length
 
-# ---- 校验 ----
+# ---- checks ----
 if (($offset % 4096) -ne 0) {
     throw ("ROMFS_OFFSET={0} 未按 4KB 对齐 —— 烧它会擦掉 app 尾部。`n       重新打包: .\tools\scripts\build.ps1 -Bank $Bank -Pack" -f (Format-EbadgeHex $offset))
 }

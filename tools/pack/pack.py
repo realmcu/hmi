@@ -41,13 +41,13 @@ REALTEK_APP = os.path.abspath(os.path.join(APP_ROOT, "..", ".."))
 GADGETS = os.path.join(REALTEK_APP, "tools", "Gadgets")
 FLASHDB = os.path.join(APP_ROOT, "component", "FlashDB")
 
-HDR_SIZE = 0x400          # 镜像头（T_IMG_HEADER_FORMAT）
-MP_HDR_SIZE = 0x200       # MP 头
+HDR_SIZE = 0x400          # image header (T_IMG_HEADER_FORMAT)
+MP_HDR_SIZE = 0x200       # MP header
 HDRSIZE = 0x400
 
 
 # --------------------------------------------------------------------------
-# 小工具
+# small helpers
 # --------------------------------------------------------------------------
 
 def die(msg, rc=1):
@@ -118,7 +118,7 @@ def host_cc():
 
 
 # --------------------------------------------------------------------------
-# romfs：解析 + 重定位
+# romfs: parse + relocate
 # --------------------------------------------------------------------------
 
 ROMFS_DIRENT = struct.Struct("<IIII")   # type, name*, data*, size
@@ -137,9 +137,9 @@ def _walk_dirents(buf, off, old_base, seen, out):
         return
     out.append((off, name_p, data_p, size, typ))
     if typ == ROMFS_DIRENT_DIR:
-        # 空目录（size==0）的 data 指针指向子项数组的"起始位置"，而该位置
-        # 往往正好是文件末尾——例如 `user` 目录在最后。此时没有子项要访问，
-        # 指针越界不是错误，只需照样重定位它。必须先判 size 再校验边界。
+        # For an empty directory (size==0) the data pointer points at the "start" of the child array, which
+        # is often exactly the end of the file — e.g. the `user` directory comes last. There are no children to
+        # visit then, so an out-of-range pointer is not an error and it is simply relocated too. Check size before bounds.
         if size == 0:
             return
         child_off = data_p - old_base
@@ -157,7 +157,7 @@ def romfs_infer_base(buf):
     typ, name_p, data_p, size = ROMFS_DIRENT.unpack_from(buf, 0)
     if typ != ROMFS_DIRENT_DIR:
         die("romfs 根不是目录 (type=%d)" % typ)
-    # mkromfs 的固定布局：根目录项 16B，name 紧跟其后，children 再 4B
+    # mkromfs' fixed layout: root dirent 16B, name right after it, children 4B later
     base = name_p - ROMFS_DIRENT.size
     if data_p - base != ROMFS_DIRENT.size + 4:
         die("romfs 根布局不是预期形式（name=0x%X data=0x%X），"
@@ -176,7 +176,7 @@ def romfs_relocate(buf, new_base, old_base=None):
         struct.pack_into("<I", buf, off + 4, name_p + delta)
         struct.pack_into("<I", buf, off + 8, data_p + delta)
 
-    # 重定位后自检：每个指针都必须落在这块 romfs 内
+    # post-relocation self-check: every pointer must fall inside this romfs
     lo, hi = new_base, new_base + len(buf)
     for off, name_p, data_p, size, typ in entries:
         n = name_p + delta
@@ -204,7 +204,7 @@ def romfs_list(buf):
 
 
 # --------------------------------------------------------------------------
-# 镜像头
+# image header
 # --------------------------------------------------------------------------
 
 IMG_CTRL_OFF = 196        # offsetof(T_IMG_HEADER_FORMAT, ctrl_header)
@@ -234,7 +234,7 @@ def _eval_c_int(expr):
     if not re.fullmatch(r"[0-9A-Fa-fxX()+\-*/\s<>|&]+", e):
         return None
     try:
-        return int(eval(e, {"__builtins__": {}}, {}))  # noqa: S307 - 已限字符集
+        return int(eval(e, {"__builtins__": {}}, {}))  # noqa: S307 - charset already restricted
     except Exception:
         return None
 
@@ -255,7 +255,7 @@ def cmd_check(args):
     lay, lay_path = load_layout(args.layout)
     problems = []
 
-    stale = []          # 工程已不再使用的 flash 变体（16M/8M/4M）差异
+    stale = []          # differences of flash variants the project no longer uses (16M/8M/4M)
 
     def cmp(name, got, want, where, target=None):
         bucket = problems if target is None else target
@@ -276,19 +276,19 @@ def cmd_check(args):
                 b["app_addr"], "flash_map.h")
             cmp("%s_APP_SIZE" % up, fm.get("%s_APP_SIZE" % up),
                 b["app_size"], "flash_map.h")
-        # USER_DATA1 已归零、区域交给 FlashDB：它的起点必须与 FDB 起点一致，
-        # 大小必须是 0（否则 OTA 仍会往 FDB 区写资源镜像）。
+        # USER_DATA1 is zeroed out and its region given to FlashDB: its start must match the FDB start,
+        # and its size must be 0 (otherwise OTA still writes resource images into the FDB region).
         cmp("USER_DATA1_ADDR", fm.get("USER_DATA1_ADDR"),
             lay["fdb"]["kvdb_addr"], "flash_map.h")
         cmp("USER_DATA1_SIZE", fm.get("USER_DATA1_SIZE"), 0, "flash_map.h")
     else:
         problems.append("flash_map.h 不存在")
 
-    # --- snippets overlay（分区表） ---
-    # 两个 SNIPPET_ROOT 都要扫：realtek-app 下是各应用共享的变体（16M/8M/4M），
-    # 本工程自己的 snippets/ 下是当前在用的 32M 版。改布局时不会有哪一份被漏掉。
-    # 同名以本工程优先 —— 与 Zephyr 的行为一致：两处同名会把 overlay 各追加一次，
-    # 而本工程的排在后面，最终生效的是它。
+    # --- snippets overlay (partition table) ---
+    # Both SNIPPET_ROOTs must be scanned: under realtek-app are the variants shared by all apps (16M/8M/4M),
+    # and under this project's own snippets/ is the 32M version currently in use. That way no copy is missed when the layout changes.
+    # Same names prefer this project — matching Zephyr's behavior: a name present in both places appends the overlay twice,
+    # and this project's comes later, so it is the one that ends up in effect.
     snip_roots = [os.path.join(REALTEK_APP, "snippets"),
                   os.path.join(APP_ROOT, "snippets")]
     snip_paths = {}
@@ -299,8 +299,8 @@ def cmd_check(args):
             if re.fullmatch(r"flash_\d+M_bank[01]", d):
                 snip_paths[d] = os.path.join(root, d)
     snip_variants = sorted(snip_paths)
-    # layout.json 的 flash.size 决定哪个变体是"当前使用中"的：
-    #   flash 32M -> flash_32M_*  是活配置，其余是可选的备用变体
+    # layout.json's flash.size decides which variant is "currently in use":
+    #   flash 32M -> flash_32M_* is the live configuration, the rest are optional spare variants
     active_mb = lay["flash"]["size"] // (1024 * 1024)
     for snip in snip_variants:
         is_active = snip.startswith("flash_%dM_" % active_mb)
@@ -321,7 +321,7 @@ def cmd_check(args):
                 if end > lay["flash"]["size"]:
                     tgt.append("%-26s overlay 越界: 末尾 %s > flash %s"
                                % (snip, hexs(end), hexs(lay["flash"]["size"])))
-        # app 分区
+        # app partition
         m = re.search(r"bank_app_partition:\s*partition@([0-9A-Fa-f]+)\s*\{"
                       r".*?reg\s*=\s*<0x[0-9A-Fa-f]+\s+DT_SIZE_K\((\d+)\)>",
                       text, re.S)
@@ -331,7 +331,7 @@ def cmd_check(args):
                 b["app_addr"], "overlay", tgt)
             cmp("%s: app 大小" % snip,
                 int(m.group(2)) * 1024, b["app_size"], "overlay", tgt)
-        # 声明给 DT 的 flash 容量：32M 版必须能容纳 layout 的末尾
+        # flash capacity declared to DT: the 32M version must be able to hold the end of the layout
         msize = re.search(r"flash:\s*flash@70000000\s*\{[^}]*?"
                           r"reg\s*=\s*<0x[0-9A-Fa-f]+\s+DT_SIZE_K\((\d+)\)>",
                           text, re.S)
@@ -358,7 +358,7 @@ def cmd_check(args):
         cmp("FDB kvdb 大小", d.get("FDB_KVDB_SIZE"), fdb["kvdb_size"], "fal_cfg.h")
         cmp("FDB bf 大小", d.get("FDB_BF_DATA_SIZE"), fdb["bf_data_size"],
             "fal_cfg.h")
-        # 两端各自判越界：只要 BF 区有一部分落在 flash 之外，"存在"就不成立
+        # overflow is checked at both ends: if any part of the BF region falls outside flash, it does not "exist"
         flash_lo = lay["flash"]["base"]
         flash_hi = flash_lo + lay["flash"]["size"]
         for tag, addr, size in (("kvdb", fdb["kvdb_addr"], fdb["kvdb_size"]),
@@ -372,14 +372,14 @@ def cmd_check(args):
                             % (hexs(proj_bf + d.get("FDB_BF_DATA_SIZE", 0)),
                                hexs(flash_hi)))
 
-    # --- romfs 挂载点 ---
+    # --- romfs mount point ---
     #
-    # 两种合法写法：
-    #   a) 绝对常量：gui_vfs_mount_romfs("/", (void *)0x70536400, 0)
-    #      -> 必须等于 layout 的 romfs.addr
-    #   b) 运行时偏移：...(__rom_region_start + ROMFS_OFFSET)
-    #      -> 与打包方式绑定，不再依赖 layout 的绝对地址；只确认 ROMFS_OFFSET
-    #         由 romfs_layout.h 提供且非 0
+    # Two legal forms:
+    #   a) absolute constant: gui_vfs_mount_romfs("/", (void *)0x70536400, 0)
+    #      -> must equal romfs.addr in the layout
+    #   b) run-time offset: ...(__rom_region_start + ROMFS_OFFSET)
+    #      -> tied to the packing method and no longer relying on the layout's absolute address; it only checks that ROMFS_OFFSET
+    #         is provided by romfs_layout.h and is non-zero
     entry = os.path.join(APP_ROOT, "app", "designer", "src", "Mi_eBadgeEntry.c")
     if os.path.exists(entry):
         with open(entry, encoding="utf-8", errors="replace") as f:
@@ -410,8 +410,8 @@ def cmd_check(args):
                           r"(0x[0-9A-Fa-f]+)", t)
             cmp("romfs 挂载地址", int(m.group(1), 16) if m else None,
                 lay.get("romfs", {}).get("addr"), "Mi_eBadgeEntry.c")
-    # project.json 的 romfsBaseAddr 只在「绝对常量」写法下才有意义；
-    # 用运行时偏移时它只是设计器的仿真提示，不参与固件，故不比对。
+    # project.json's romfsBaseAddr only matters for the "absolute constant" form;
+    # with a run-time offset it is only a designer simulation hint, not part of the firmware, so it is not compared.
     uses_runtime = "__rom_region_start" in t
     pj = os.path.join(APP_ROOT, "app", "designer", "project.json")
     if os.path.exists(pj) and not uses_runtime and lay.get("romfs", {}).get("addr"):
@@ -435,7 +435,7 @@ def cmd_check(args):
         return 1
 
     print("layout.json 与工程各处一致。")
-    # 顺带报告已知的 _todo
+    # also report the known _todo
     for sec in ("romfs", "fdb"):
         todo = lay.get(sec, {}).get("_todo")
         if todo:
@@ -444,11 +444,11 @@ def cmd_check(args):
 
 
 # --------------------------------------------------------------------------
-# app：合并 + 重定位 + 重签名
+# app: merge + relocate + re-sign
 # --------------------------------------------------------------------------
 
 ROMFS_LAYOUT_H = os.path.join(APP_ROOT, "app", "designer", "src", "romfs_layout.h")
-# HoneyGUI Designer 新版把用户源文件放到 src/user/，romfs_layout.h 也跟着搬了家。
+# Newer HoneyGUI Designer versions put user source files in src/user/, and romfs_layout.h moved with them.
 ROMFS_LAYOUT_H_USER = os.path.join(APP_ROOT, "app", "designer", "src", "user",
                                    "romfs_layout.h")
 
@@ -518,7 +518,7 @@ def _version_rename_win(tmp, version_file):
         return None
 
     major, minor, rev, build = words[2], words[5], words[8], words[11]
-    gcid = words[17][2:]          # 等价于 cut -c 3-
+    gcid = words[17][2:]          # equivalent to cut -c 3-
 
     h = hashlib.md5()
     with open(tmp, "rb") as f:
@@ -560,15 +560,15 @@ def _version_rename(path, base_name, keep_stale=False):
 
     out_dir = os.path.dirname(os.path.abspath(path))
     tmp = os.path.join(out_dir, base_name + "_MP.bin")
-    # 清掉上轮的中间名/旧产物，避免 glob 命中多个
+    # remove the previous round's intermediate name/old artifacts so glob does not match several
     for stale in glob.glob(os.path.join(out_dir, base_name + "_MP*.bin")):
         if os.path.abspath(stale) != os.path.abspath(path):
             os.unlink(stale)
 
     shutil.copy2(path, tmp)
     if IS_WIN:
-        # Windows 上 PowerShell 里的 bash 可能是 WSL（看不懂 C:\ 路径），
-        # 直接用 Python 复刻 md5_generate.sh 的命名规则。
+        # On Windows the bash in PowerShell may be WSL (which cannot read C:\ paths),
+        # so md5_generate.sh's naming rule is replicated directly in Python.
         if _version_rename_win(tmp, version) is None:
             warn("版本化命名失败（VERSION 格式异常），产物仍是 %s" % path)
             return None
@@ -610,7 +610,7 @@ def _elf_flash_used(elf, app_addr, app_size):
     except OSError:
         return None
     if len(blob) < 52 or blob[:4] != b"\x7fELF" or blob[4] != 1 or blob[5] != 1:
-        return None                       # 只处理 32-bit little-endian（Cortex-M）
+        return None                       # only handle 32-bit little-endian (Cortex-M)
     phoff = struct.unpack_from("<I", blob, 0x1C)[0]
     entsize = struct.unpack_from("<H", blob, 0x2A)[0]
     phnum = struct.unpack_from("<H", blob, 0x2C)[0]
@@ -646,11 +646,11 @@ def _fw_elf_candidates(bank):
     于是 -Pack 的收敛循环每轮都 touch + 重编、判 stale、再重编，直到轮数用尽报错。
     """
     out = []
-    # 1) post-build 复制到 bin/<bank>/ 的那份，和 app_<bank>.bin 同一次产出
+    # 1) the copy post-build placed in bin/<bank>/, produced together with app_<bank>.bin
     p = os.path.join(APP_ROOT, "bin", bank, "app_%s.elf" % bank)
     if os.path.exists(p):
         out.append(p)
-    # 2) 各 snippet 组合的 build 目录，新的优先
+    # 2) the build directories of the snippet combinations, newest first
     builds = []
     for d in glob.glob(os.path.join(APP_ROOT, "build_%s*" % bank)):
         e = os.path.join(d, "zephyr", "zephyr.elf")
@@ -690,13 +690,13 @@ def _fw_mount_check(bank, app_addr, offset, elf=None):
     if r.returncode != 0:
         return "skip", "objdump 执行失败"
 
-    # 字面量池在函数结尾，位于 bl 之后，所以不能只搜这截代码。
-    # 正确做法：取每次 bl 之前的 ldr [pc, #N] 所指向的地址，再去全文查那些
-    # 地址处的 .word 值 —— 其中一个是挂载地址。
+    # The literal pool sits at the end of the function, after the bl, so searching only this code slice is not enough.
+    # Correct approach: take the address each ldr [pc, #N] before a bl points to, then look up those
+    # addresses' .word values in the whole output — one of them is the mount address.
     #
-    # 注意 app_init 里可能有**多**次 gui_vfs_mount_romfs：Designer 生成的代码
-    # 先挂一个硬编码旧地址，再 unmount 换成 __rom_region_start + ROMFS_OFFSET。
-    # 只检查第一次会误报 stale（第一次的常量天然是旧地址），必须逐个看。
+    # Note that app_init may call gui_vfs_mount_romfs **several** times: Designer-generated code
+    # first mounts a hardcoded old address, then unmounts and switches to __rom_region_start + ROMFS_OFFSET.
+    # Checking only the first would wrongly report stale (the first constant is naturally the old address), so check every one.
     calls = list(re.finditer(r"bl\s+\w+\s+<gui_vfs_mount_romfs>", r.stdout))
     if not calls:
         return "skip", "app_init 里找不到 gui_vfs_mount_romfs 调用"
@@ -786,27 +786,27 @@ def cmd_app(args):
     info("app: %s  payload=%s  img_id=0x%04X"
          % (os.path.basename(args.app), hexs(hdr["payload_len"]), hdr["img_id"]))
 
-    # 这份 bin 旁边 post-build 复制出来的 ELF —— 和镜像同一次产出，不存在
-    # 「挑错 build 目录」的问题。下面「romfs 别压到代码上」和末尾的 fwcheck 都用它。
+    # The ELF post-build copied next to this bin — produced together with the image, so there is no
+    # "wrong build directory" problem. It is used by the "romfs must not overlap code" check below and by the final fwcheck.
     elf = os.path.splitext(args.app)[0] + ".elf"
     if not os.path.exists(elf):
         elf = None
 
-    # romfs 落点。
+    # romfs target address.
     #
-    # 默认「紧跟 app 末尾」（64 对齐）。这不是随意选的：app 分区只有 1.41MB，
-    # 而 app 末尾到旧 romfs 地址（0x70536400）之间隔着 3.6MB 空白 —— 若把
-    # romfs 放在那个旧偏移上，合并镜像里 3.6MB 全是填充，比分区本身还大，
-    # 永远过不了体积检查。紧贴放置时，合并长度 ≈ app + romfs。
+    # The default is "right after the end of app" (64-aligned). This is not arbitrary: the app partition is only 1.41MB,
+    # and between the end of app and the old romfs address (0x70536400) lie 3.6MB of blank space — placing
+    # romfs at that old offset makes 3.6MB of pure padding in the merged image, larger than the partition itself,
+    # so it would never pass the size check. Placed right after, the merged length is ≈ app + romfs.
     #
-    # 代价：romfs 绝对地址随 app 体积浮动，且 bank0/bank1 基址不同时也不同。
-    # 所以固件不能用编译期常量挂载，必须用运行时表达式：
+    # The cost: the absolute romfs address varies with the size of app and also differs between bank0/bank1 bases.
+    # So the firmware cannot mount with a compile-time constant and must use a run-time expression:
     #     gui_vfs_mount_romfs("/", (void *)ROMS_PTR(), 0);
-    #     #define ROMFS_OFFSET 0x00100000   /* 由 pack.py 输出 */
+    #     #define ROMFS_OFFSET 0x00100000   /* output by pack.py */
     #     static inline void *ROMS_PTR(void)
-    #     { extern unsigned char __rom_region_start[];   /* linker: app 基址 */
+    #     { extern unsigned char __rom_region_start[];   /* linker: app base */
     #       return __rom_region_start + ROMFS_OFFSET; }
-    # 本工具会在结束时打印应填的 ROMFS_OFFSET。
+    # This tool prints the ROMFS_OFFSET to fill in when it finishes.
     if args.romfs_addr is not None:
         romfs_addr = args.romfs_addr
         romfs_off = romfs_addr - app_addr
@@ -814,12 +814,12 @@ def cmd_app(args):
         romfs_off = args.romfs_offset
         romfs_addr = app_addr + romfs_off
     else:
-        # 默认落点：紧跟 app 之后，向上对齐到 flash 擦除块（4KB）。
+        # default target: right after app, aligned up to the flash erase block (4KB).
         #
-        # 为什么要 4KB 而不是 romfs 内部要求的 64B：这样 romfs 独占若干完整
-        # 擦除扇区，app 的最后一个扇区不会被 romfs 共用。带来的能力是——
-        # 改壁纸后可以**只烧 romfs**（-A <挂载地址> -F romfs.bin），
-        # 不必重烧整个 2.5MB 的合并镜像；否则擦除 romfs 首扇区会把 app 尾部擦掉。
+        # Why 4KB instead of the 64B romfs requires internally: this way romfs occupies whole
+        # erase sectors and app's last sector is not shared with romfs. The capability this gives is that —
+        # after changing wallpaper you can **flash only romfs** (-A <mount address> -F romfs.bin),
+        # without reflashing the whole 2.5MB merged image; otherwise erasing romfs' first sector would erase the tail of app.
         romfs_off = (len(app) + args.romfs_gap + args.romfs_align - 1) \
                     // args.romfs_align * args.romfs_align
         romfs_addr = app_addr + romfs_off
@@ -829,17 +829,17 @@ def cmd_app(args):
         die("romfs 偏移 %s 必须 64 字节对齐（romfs 文件内部按 64 对齐布局）"
             % hexs(romfs_off))
     if args.romfs_align > 64 and romfs_addr % args.romfs_align != 0:
-        # 显式给了 --romfs-offset/--romfs-addr 但没对齐：警告而非报错，
-        # 因为有人可能需要复刻历史布局；但单独烧 romfs 会不安全。
+        # --romfs-offset/--romfs-addr given explicitly but not aligned: warn instead of failing,
+        # because someone may need to reproduce a historical layout; but standalone romfs flashing is then unsafe.
         warn("romfs 绝对地址 %s 未按 %d 字节对齐：单独烧 romfs 会擦掉"
              "app 的尾部（该扇区与 app 共用）" % (hexs(romfs_addr),
                                                 args.romfs_align))
-    # 硬校验：romfs 不许压到 app 代码上。
+    # Hard check: romfs must not overlap app code.
     #
-    # 只看 len(app) 不够 —— 决定「代码到哪结束」的是固件 ELF。两者若不是同一次
-    # 编译（换 snippet 组合后只 build 不 pack 就会这样），len(app) 会偏小，
-    # romfs 就正好落进代码区：烧进去是 app 尾部被覆盖，表现成 UI 全黑 / 跑飞，
-    # 很难往「偏移算小了」上想。所以拿 ELF 的实际占用一起卡。
+    # Looking only at len(app) is not enough — what decides "where the code ends" is the firmware ELF. If the two are not from the
+    # same build (which is what happens after switching snippet combinations and only building, not packing), len(app) is too small,
+    # romfs lands right in the code region, flashing overwrites the tail of app and the result looks like an all-black UI or a crash,
+    # which is hard to trace back to "the offset was computed too small". So the ELF's actual usage is checked as well.
     used = len(app)
     elf_used = _elf_flash_used(elf, app_addr, app_size) if elf else None
     if elf_used is not None:
@@ -871,7 +871,7 @@ def cmd_app(args):
              "调小 romfs 偏移能同时省 OTA 传输量和 flash 占用。"
              % (hexs(gap), hexs(len(romfs))))
 
-    # romfs 重定位到最终地址
+    # relocate romfs to its final address
     old_base, new_base, n_ent = romfs_relocate(romfs, romfs_addr,
                                                args.romfs_old_base)
     info("romfs: 重定位 %s -> %s（%d 个目录项）"
@@ -889,7 +889,7 @@ def cmd_app(args):
          % (hexs(merged_len), hexs(len(app)),
             hexs(romfs_off - len(app)), hexs(len(romfs))))
 
-    # 体积检查：OTA 用 OTA header 里的槽大小做上限
+    # size check: OTA uses the slot size in the OTA header as the upper bound
     if merged_len > app_size:
         msg = ("合并镜像 %s 超过 app 分区 %s（差 %s）。OTA 时 "
                "app_ota_check_section_size 会直接拒绝。"
@@ -906,7 +906,7 @@ def cmd_app(args):
     with open(tmp, "wb") as f:
         f.write(merged)
 
-    # 1) 更新 payload_len（+ 可选重新签名）
+    # 1) update payload_len (+ optional re-sign)
     cmd = [gadget("prepend_header"), "/app_code", tmp,
            "/ic_type", args.ic_type]
     if args.sign:
@@ -918,7 +918,7 @@ def cmd_app(args):
         die("prepend_header 失败:\n%s%s" % (r.stdout, r.stderr))
     info(r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "image header ok")
 
-    # 2) 可选 MP 头（工具会把结果写成 <name>_MP.bin）
+    # 2) optional MP header (the tool writes the result as <name>_MP.bin)
     if args.mp:
         base = os.path.splitext(tmp)[0]
         mp_cmd = [gadget("prepend_header"),
@@ -940,34 +940,34 @@ def cmd_app(args):
     if os.path.exists(tmp):
         os.unlink(tmp)
 
-    # 2.5) 导出"可单独烧录"的 romfs。
+    # 2.5) export a "standalone flashable" romfs.
     #
-    # romfs 落点已 4K 对齐，因此它与 app 不共用擦除扇区 —— 改壁纸后可以只烧
-    # 这一段，省掉整个合并镜像的传输时间。但必须用**重定位后**的副本：
-    # 原始 app_romfs_*.bin 里的指针还指向它被 mkromfs 时的旧基址，直接烧过
-    # 去会让目录项全部指错。
+    # The romfs target is 4K aligned, so it shares no erase sector with app — after changing wallpaper you can flash only
+    # this region, saving the transfer time of the whole merged image. But it must be the **relocated** copy:
+    # pointers in the original app_romfs_*.bin still point at the old base it had when mkromfs ran, and flashing
+    # it directly makes every directory entry point to the wrong place.
     if args.romfs_out:
         with open(args.romfs_out, "wb") as f:
             f.write(romfs)
         info("可单烧 romfs: %s (%d B, 落点 %s)"
              % (args.romfs_out, len(romfs), hexs(romfs_addr)))
 
-    # 3) 同步固件的 ROMFS_OFFSET（fw 用 __rom_region_start + 它来挂载）
+    # 3) sync the firmware's ROMFS_OFFSET (fw mounts with __rom_region_start + it)
     _write_romfs_layout(romfs_off, bank, romfs_addr, args.no_layout_update)
 
-    # 3.5) 版本化文件名 —— 与原始 post_build 完全一致：
-    #      cmake/post_build.cmake 在加完 MP 头后调用
+    # 3.5) versioned file name — exactly the same as the original post_build:
+    #      after adding the MP header, cmake/post_build.cmake calls
     #        bash Gadgets/md5_generate.sh <xxx_MP.bin> <VERSION>
-    #      （Windows 上没有可靠的 bash，由 _version_rename_win() 用 Python 复刻）
-    #      把 xxx_MP.bin 重命名为
+    #      (Windows has no reliable bash, so _version_rename_win() replicates it in Python)
+    #      and renames xxx_MP.bin to
     #        xxx_MP-v<MAJOR>.<MINOR>.<REV>.<BUILD>-<GCID>-<MD5>.bin
-    #      打包/烧录目录依赖这个命名（md5 也用于校验镜像唯一性）。
-    #      这里对最终产物做同样的事，同时保留一个固定名方便本地调试。
+    #      The pack/flash directories depend on this name (the md5 is also used to verify image uniqueness).
+    #      Do the same to the final artifact here, while keeping a fixed name for local debugging.
     if args.version_name:
-        # base 名必须与原始 post_build 一致：app_bank<N>，不能带 _packed
+        # the base name must match the original post_build: app_bank<N>, without _packed
         _version_rename(out, "app_%s" % bank)
 
-    # 4) 产出自检：重新解析头 + 重定位后的 romfs 指针
+    # 4) artifact self-check: re-parse the header + the relocated romfs pointers
     with open(out, "rb") as f:
         chk = f.read()
     off = MP_HDR_SIZE if (chk[:2] == b"\x01\x00" and chk[:6] != b"IMGHDR") else 0
@@ -984,8 +984,8 @@ def cmd_app(args):
     info("自检通过：payload_len=%s, romfs@%s（%d 项）"
          % (hexs(h2["payload_len"]), hexs(base2), len(rows)))
 
-    # 5) 挂载地址可追溯性：把"固件应该读到什么"和"固件现在是什么"都印出来。
-    #    改 romfs 落点只改这一个数字，但两边必须同步，否则开机挂到野地址。
+    # 5) mount address traceability: print both "what the firmware should read" and "what it has now".
+    #    Changing the romfs target changes only this number, but both sides must stay in sync or boot mounts a wild address.
     print("")
     print("  romfs 挂载：")
     print("    偏移   ROMFS_OFFSET = %s   (相对 app 基址，两个 bank 共用)" % hexs(romfs_off))
@@ -1007,7 +1007,7 @@ def cmd_app(args):
 
 
 # --------------------------------------------------------------------------
-# fdb：host 上生成 FlashDB 镜像
+# fdb: generate the FlashDB image on the host
 # --------------------------------------------------------------------------
 
 FAL_CFG_TMPL = """\
@@ -1054,7 +1054,7 @@ def _build_host_tools(build_dir, kvdb, bf):
 
     cc = host_cc()
     exe_suffix = ".exe" if IS_WIN else ""
-    inc = ["-I" + os.path.join(build_dir),                 # 生成/复制的配置头
+    inc = ["-I" + os.path.join(build_dir),                 # generated/copied config header
            "-I" + os.path.join(HERE, "fdb_host"),          # fdb_cfg.h
            "-I" + os.path.join(FLASHDB, "inc"),
            "-I" + os.path.join(FLASHDB, "port", "fal", "inc")]
@@ -1109,7 +1109,7 @@ def _collect_assets(dirpath, with_video=False):
             continue
         skipped.append("%s（不符合 wp-N.bin / pre-N.bin 命名）" % name)
 
-    # 壁纸与缩略图按序号配对，合成一个组：wp1=<wp-1>,pre=<pre-1>
+    # wallpapers and previews are paired by index into one group: wp1=<wp-1>,pre=<pre-1>
     for n in sorted(walls):
         spec = "wp%d=%s" % (n, walls[n])
         if n in previews:
@@ -1138,16 +1138,16 @@ def cmd_fdb(args):
             die("--file 需要 <key>=<path>[,pre=..][,mask=..][,part=..]，收到 '%s'" % spec)
         k, rest = spec.split("=", 1)
         for part in rest.split(","):
-            val = part.split("=", 1)[-1]        # 支持 "data=p" 与裸 "p"
+            val = part.split("=", 1)[-1]        # accept "data=p" and a bare "p"
             if not os.path.exists(val):
                 die("资源不存在: %s" % val)
         files.append((k, spec))
 
-    # --assets-dir：按 eBadge 的资源命名规则批量收集
-    #   wp-N.bin   -> key "wpN"    壁纸      (SRC_IMG)
-    #   pre-N.bin  -> key "preN"   缩略图    (img_preview)
-    #   *.avi      -> key "videoN" 视频      (SRC_VIDEO，默认跳过)
-    # 目录里其它文件（如非约定的 bin）忽略并报告。
+    # --assets-dir: bulk-collect by eBadge's asset naming rule
+    #   wp-N.bin   -> key "wpN"    wallpaper (SRC_IMG)
+    #   pre-N.bin  -> key "preN"   preview   (img_preview)
+    #   *.avi      -> key "videoN" video     (SRC_VIDEO, skipped by default)
+    # Other files in the directory (e.g. bins not following the convention) are ignored and reported.
     if args.assets_dir:
         if not os.path.isdir(args.assets_dir):
             die("--assets-dir 不是目录: %s" % args.assets_dir)
@@ -1181,8 +1181,8 @@ def cmd_fdb(args):
     if r.returncode != 0:
         die("fdb_host_pack 失败 rc=%d" % r.returncode)
 
-    # 立刻读回：模拟设备开机的 kvdb_init -> bf_init -> bf_foreach。
-    # 这一步能抓到"写成功但读不出"的一整类问题（也验证没被自动格式化）。
+    # Read back immediately: simulate the device booting through kvdb_init -> bf_init -> bf_foreach.
+    # This catches a whole class of "written fine but unreadable" problems (and verifies nothing was auto-formatted).
     vcmd = [exes["fdb_host_verify"], "--img", out,
             "--xip-base", hex(fdb["kvdb_addr"]),
             "--kvdb-size", str(fdb["kvdb_size"]),

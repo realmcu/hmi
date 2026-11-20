@@ -1,38 +1,38 @@
 #!/usr/bin/env bash
-# 烧录预制资源 FDB 镜像（tools/pack/fdb_resource_bin/fdb_prebuilt.bin），
-# 开机后由 flashdb_prepare()
-# 枚举出 mainface_list。
+# Flash the prebuilt resource FDB image (tools/pack/fdb_resource_bin/fdb_prebuilt.bin);
+# after boot it is enumerated by flashdb_prepare()
+# into mainface_list.
 #
-# 烧录地址 = KVDB 起始地址，由 tools/pack/layout.json 的 fdb.kvdb_addr 决定，
-# 并与固件 port/flashdb/fal_cfg.h 的一致性由 tools/pack/pack.py check 保证。
+# Flash address = KVDB start address, determined by fdb.kvdb_addr in tools/pack/layout.json;
+# its consistency with the firmware's port/flashdb/fal_cfg.h is guaranteed by tools/pack/pack.py check.
 #
-# WSL 下必须用 Windows 版 mpcli.exe：COM 口是 Windows 设备，Linux 版
-# mpcli 在 WSL 里打不开。这里沿用 scripts/flash-wsl-app.sh 的两条路径：
-#   1) WSLInterop 已注册 -> 直接执行 .exe
-#   2) 未注册           -> /init + 临时 .bat
+# Under WSL the Windows mpcli.exe must be used: COM ports are Windows devices, so the
+# Linux mpcli cannot open them from WSL. This follows the two paths of scripts/flash-wsl-app.sh:
+#   1) WSLInterop registered -> run the .exe directly
+#   2) not registered        -> /init + temp .bat
 #
-# 用法：
-#   ./tools/scripts/flash_fdb.sh                     # 默认 COM5
-#   ./tools/scripts/flash_fdb.sh COM7                # 指定端口
-#   ./tools/scripts/flash_fdb.sh --fdb bin/xxx.bin   # 指定镜像
-#   ./tools/scripts/flash_fdb.sh --split 0x100000    # 单段上限（默认 2MB；0 = 整文件一次烧）
-#   DRY=1 ./tools/scripts/flash_fdb.sh               # 只打印命令
+# Usage:
+#   ./tools/scripts/flash_fdb.sh                     # default COM5
+#   ./tools/scripts/flash_fdb.sh COM7                # specify the port
+#   ./tools/scripts/flash_fdb.sh --fdb bin/xxx.bin   # specify the image
+#   ./tools/scripts/flash_fdb.sh --split 0x100000    # per-chunk limit (default 2MB; 0 = flash the whole file at once)
+#   DRY=1 ./tools/scripts/flash_fdb.sh               # print the command only
 #
-# mpcli 的 -F 会拒绝大于 CONFIG_FLASH_SIZE_MAX 的单个文件（RTL87X3G 默认
-# 只有 2MB），所以镜像按 --split（默认 2MB）切片、按连续地址依次烧录。
-#   `CHUNK_SIZE=0x100000 ./tools/scripts/flash_fdb.sh` 与 `--split 0x100000` 等价。
+# mpcli's -F rejects any single file larger than CONFIG_FLASH_SIZE_MAX (RTL87X3G defaults
+# to only 2MB), so the image is sliced by --split (2MB by default) and flashed at consecutive addresses.
+#   `CHUNK_SIZE=0x100000 ./tools/scripts/flash_fdb.sh` is equivalent to `--split 0x100000`.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"                 # 应用工程根目录 = 仓库根
+APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"                 # application project root = repo root
 
 MPCLI_EXE="${MPCLI_EXE:-$APP_DIR/scripts/tool/mpcli/mpcli.exe}"
 LAYOUT="${LAYOUT:-$APP_DIR/tools/pack/layout.json}"
 FW="${FW:-$APP_DIR/tools/pack/fdb_resource_bin/fdb_prebuilt.bin}"
 PORT="${PORT:-COM5}"
 BAUD="${BAUD:-3000000}"
-ADDR=""                       # 留空则从 layout.json 读
-CHUNK_SIZE="${CHUNK_SIZE:-0x200000}"   # 单段上限（默认 2MB）；0 = 整文件一次烧
+ADDR=""                       # empty = read from layout.json
+CHUNK_SIZE="${CHUNK_SIZE:-0x200000}"   # per-chunk limit (2MB by default); 0 = flash the whole file at once
 
 usage() {
     cat <<EOF
@@ -58,19 +58,19 @@ while [ $# -gt 0 ]; do
         --split) CHUNK_SIZE=$(( $2 )); shift 2 ;;
         -h|--help) usage; exit 0 ;;
         -*) echo "未知参数: $1" >&2; usage; exit 1 ;;
-        *)  PORT="$1"; shift ;;      # 位置参数 = 端口
+        *)  PORT="$1"; shift ;;      # positional argument = port
     esac
 done
 
 die() { echo "[fdb-flash] 错误: $*" >&2; exit 1; }
 
-# ---- 前置检查 ----
+# ---- preflight checks ----
 [ -f "$MPCLI_EXE" ] || die "找不到 mpcli.exe: $MPCLI_EXE"
 [ -f "$FW" ]        || die "找不到镜像: $FW
        先生成: ./tools/scripts/build_fdb.sh"
 [ -f "$LAYOUT" ]    || die "找不到 $LAYOUT"
 
-# ---- 烧录地址：与固件 fal_cfg.h 的一致性由 pack.py check 保证 ----
+# ---- flash address: consistency with the firmware's fal_cfg.h is guaranteed by pack.py check ----
 if [ -z "$ADDR" ]; then
     ADDR=$(python3 - "$LAYOUT" <<'PY'
 import json, sys
@@ -83,7 +83,7 @@ PY
     ) || die "无法从 layout.json 解析 kvdb_addr"
 fi
 
-# ---- 镜像与区域大小核对 ----
+# ---- image and region size checks ----
 python3 - "$FW" "$LAYOUT" "$ADDR" <<'PY'
 import json, os, sys
 fw, layout, addr = sys.argv[1], sys.argv[2], int(sys.argv[3], 16)
@@ -95,9 +95,9 @@ total = kv_sz + bf_sz
 
 if addr != kv:
     sys.exit("[fdb-flash] 错误: 烧录地址 %#x 与 kvdb_addr %#x 不一致" % (addr, kv))
-# 镜像可以比整个 FDB 区短（尾部未使用的 0xFF 被截断了）：
-#   - 不能短于 KVDB（目录项在里面）
-#   - 不能长于 kvdb+bf
+# The image may be shorter than the whole FDB region (trailing unused 0xFF is trimmed):
+#   - it must not be shorter than the KVDB (the directory entries live there)
+#   - it must not be longer than kvdb+bf
 if size < kv_sz:
     sys.exit("[fdb-flash] 错误: 镜像 %d B 小于 KVDB (%d B)，目录项不完整" % (size, kv_sz))
 if size > total:
@@ -110,7 +110,7 @@ print("[fdb-flash] 大小   = %d B (%.2f MB)" % (size, size / 1048576))
 print("[fdb-flash] 区域   = %#x .. %#x  (kvdb %#x +%#x, bf %#x +%#x)"
       % (kv, kv + total, kv, kv_sz, kv + kv_sz, bf_sz))
 
-# 与 flash_map.ini 的其它分区做重叠检查，避免顺手覆盖 app/OTA
+# Overlap check against the other partitions in flash_map.ini, so app/OTA are not overwritten by accident
 ini_path = os.path.join(os.path.dirname(layout), "..", "..", "flash_map.ini")
 if os.path.exists(ini_path):
     import re
@@ -133,25 +133,25 @@ if os.path.exists(ini_path):
     print("[fdb-flash] 重叠检查: 通过")
 PY
 
-# ---- WSLInterop 检测（同 scripts/flash-wsl-app.sh）----
+# ---- WSLInterop detection (same as scripts/flash-wsl-app.sh) ----
 interop_ok=0
 if [ -r /proc/sys/fs/binfmt_misc/WSLInterop ]; then
     grep -q '^enabled' /proc/sys/fs/binfmt_misc/WSLInterop && interop_ok=1
 fi
 
-# ---- 分段烧录 --------------------------------------------------------------
-# mpcli 内嵌的 config/chip_configs/RTL87X3G/custom_config.ini 里 flash_size
-# 默认只有 0x200000，下载时它会拿单个 -F 文件的大小和这个值比较（`>`），
-# 超过就报 "please check the file content size"。所以默认按 2MB 切片、
-# 依次烧到连续地址；最终 flash 内容与整段烧录一致。
+# ---- chunked flashing ------------------------------------------------------
+# In the config/chip_configs/RTL87X3G/custom_config.ini embedded in mpcli, flash_size
+# defaults to only 0x200000; when downloading it compares the size of a single -F file against it (`>`)
+# and reports "please check the file content size" if exceeded. So by default we slice into 2MB
+# chunks and flash them at consecutive addresses; the final flash content matches flashing the whole region.
 CHUNK=$((CHUNK_SIZE))
 ADDR_INT=$((ADDR))
 SIZE=$(stat -c %s "$FW")
-# 每段都从 4K 对齐地址开始
+# Every chunk starts at a 4K-aligned address
 if [ "$CHUNK" -gt 0 ] && [ $((CHUNK % 4096)) -ne 0 ]; then
     die "分段大小必须 4K 对齐（当前 $CHUNK）"
 fi
-# --split 0 或大于镜像：整文件一次烧
+# --split 0, or larger than the image: flash the whole file at once
 if [ "$CHUNK" -le 0 ] || [ "$CHUNK" -gt "$SIZE" ]; then
     CHUNK=$SIZE
 fi
@@ -163,7 +163,7 @@ echo "[fdb-flash] exe   = $MPCLI_EXE"
 echo "[fdb-flash] port  = $PORT   addr = $ADDR   baud = $BAUD"
 echo "[fdb-flash] 分段  = $N x $CHUNK B (镜像 $SIZE B)"
 
-# 未注册 WSLInterop 时用的临时目录
+# temp directory used when WSLInterop is not registered
 BAT_DIR=""
 if [ "$interop_ok" != 1 ]; then
     echo "[fdb-flash] 提示: WSLInterop 未注册，改用 /init + 临时 .bat" >&2

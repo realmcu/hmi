@@ -1,101 +1,101 @@
 ﻿<#
 .SYNOPSIS
-  eBadge 冷启动一键编译（+ 可选烧录）。自带全部环境变量，开新 PowerShell 窗口可直接跑。
+  eBadge one-shot cold build (+ optional flashing). It sets up all environment variables itself, so a fresh PowerShell window can run it directly.
 .DESCRIPTION
-  工具链 = Realtek 验证的 Zephyr SDK 0.16.8 (arm-zephyr-eabi)，variant=zephyr。
-  （gnuarmemb 编出的固件在 Cortex-M55 上跑不起来，已换此工具链验证可正常运行。详见 build-setup.md §9。）
+  Toolchain = the Zephyr SDK 0.16.8 (arm-zephyr-eabi) validated by Realtek, variant=zephyr.
+  (Firmware built with gnuarmemb will not run on Cortex-M55; with this toolchain it was verified to run normally. See build-setup.md §9.)
 
-  -Bank 用于 OTA 双 bank 构建（参考 sample/ota）：
-    ''(默认) 不加 snippet，编到 bin\app.bin（老行为，OTA 前的普通开发编译用）。
-    '0'/'1'  加 --snippet flash_32M_bank<N>，独立 -d build_bank<N>，编到 bin\bank<N>\app_bank<N>.bin。
-    'both'   依次编 bank0、bank1。
-  bank app 地址：运行时读 flash_map.ini 的 BANK<N>_APP_ADDR（当前 bank0=0x7009E000,
-  bank1=0x704F3000），不在此脚本里写死。
+  -Bank is for OTA dual-bank builds (see sample/ota):
+    '' (default) adds no snippet, output bin\app.bin (old behavior, for ordinary development builds before OTA).
+    '0'/'1'  adds --snippet flash_32M_bank<N>, separate -d build_bank<N>, output bin\bank<N>\app_bank<N>.bin.
+    'both'   builds bank0 then bank1.
+  bank app address: read at run time from BANK<N>_APP_ADDR in flash_map.ini (currently bank0=0x7009E000,
+  bank1=0x704F3000); it is not hardcoded in this script.
 
-  -Snippet 传任意额外 snippet（可多个），与 -Bank 叠加。本工程自带：
-    wifi   外挂 8711 Wi-Fi。本机做 SPI 主机 @25MHz + Realtek 标准 AT 命令集。
-           见 note\spi-master-at-refactor-plan.md
+  -Snippet passes any additional snippet (repeatable) and stacks with -Bank. This project ships:
+    wifi   external 8711 Wi-Fi. This device acts as SPI host @25MHz with the Realtek standard AT command set.
+           See note\spi-master-at-refactor-plan.md
 
-  flash_32M_bank0/1（32M flash 分区表）放在本工程的 snippets\ 下，随本仓库管理，
-  不走 realtek-app\snippets。Zephyr 对同名 snippet 是**各追加一次 overlay**而不是
-  后者覆盖前者，所以两处各有一份会让分区表叠加两次 —— 编译后会校验解析结果。
+  flash_32M_bank0/1 (the 32M flash partition table) lives under this project's snippets\, tracked by this repo,
+  and does not use realtek-app\snippets. For snippets with the same name Zephyr **appends each overlay** instead of
+  letting the latter override the former, so having one in both places applies the partition table twice — the resolved result is checked after building.
 
-  旧的 wifi_8711（本机做从机 + 自研 AT 命令集）与 spi_at_master（主机 bring-up
-  harness）已被 wifi 取代：从机角色退役后不再有「两个 snippet 抢同一组 pad、
-  必须二选一」的问题，-Snippet wifi 就等于主机角色。两个旧目录已在重构阶段 5
-  删除（连同 app\wifi_8711\），要回退参照去翻 git 历史。
+  The old wifi_8711 (device acts as slave + custom AT command set) and spi_at_master (host bring-up
+  harness) were replaced by wifi: now that the slave role is retired there is no longer the "two snippets fight over the same pads and
+  one must win" problem, and -Snippet wifi simply means the host role. Both old directories were deleted in refactoring phase 5
+  (together with app\wifi_8711\); for the old reference, look through git history.
 
-  snippet 组合会参与 -d 目录命名（build_wifi / build_bank0_wifi ...），
-  这样切换组合不会撞上 Zephyr「snippet 集合变了必须 pristine」的限制。
+  The snippet combination contributes to the -d directory name (build_wifi / build_bank0_wifi ...),
+  so switching combinations does not hit Zephyr's "snippet set changed, pristine required" restriction.
 
-  每个阶段（编译 / 烧录，分 bank 时各 bank 分开）单独计时，结束打一张 [time] 行 +
-  汇总表。失败也会打，因为「跑到第几分钟才炸」和成功耗时一样值得看。
-  注意这个数在同一台机器上才可比：ccache 命中率、其它进程抢 CPU、以及第一次
-  pristine 要跑完整 CMake 配置，都能让同样的改动差出几倍。
+  Each phase (build / flash, and each bank separately when building per bank) is timed on its own, printing a [time] line plus
+  a summary table at the end. Failures are timed too, because "which minute it blew up in" is as worth seeing as the success duration.
+  Note that these numbers are only comparable on the same machine: ccache hit rate, other processes competing for CPU, and the first
+  pristine run doing a full CMake configure can all make the same change differ by several times.
 .EXAMPLE
   .\tools\scripts\build.ps1
-  # 增量编译（改完代码后日常用），bin\app.bin
+  # incremental build (for daily use after editing code), bin\app.bin
 .EXAMPLE
   .\tools\scripts\build.ps1 -Pristine
-  # 干净重建：换配置、换工具链、或 west update 之后用
+  # clean rebuild: use after changing configuration or toolchain, or after west update
 .EXAMPLE
   .\tools\scripts\build.ps1 -Bank 0 -Snippet wifi -Pristine
-  # 常用命令：OTA bank0 + 外挂 8711（SPI 主机）-> build_bank0_wifi\
+  # common command: OTA bank0 + external 8711 (SPI host) -> build_bank0_wifi\
   #
-  # 首次必须 -Pristine，之后每次「新增 .c 文件」也必须：
-  # app\spi_at_master\CMakeLists.txt 用 file(GLOB)，增量构建看不见新增的 .c，
-  # 症状是链接期报未定义符号而不是编译错误。重构会陆续加
-  # at_parser / at_client / at_wifi / at_socket 四组文件，这条比以前更容易踩。
+  # -Pristine is required the first time, and every time a new .c file is added:
+  # app\spi_at_master\CMakeLists.txt uses file(GLOB), so incremental builds do not see new .c files
+  # and the symptom is an undefined symbol at link time rather than a compile error. The refactoring adds files
+  # in four groups (at_parser / at_client / at_wifi / at_socket), so this is easier to hit than before.
 .EXAMPLE
   .\tools\scripts\build.ps1 -Bank 0 -Pristine
-  # OTA：干净重建 bank0 -> bin\bank0\app_bank0.bin (+ _MP.bin)
+  # OTA: clean rebuild of bank0 -> bin\bank0\app_bank0.bin (+ _MP.bin)
 .EXAMPLE
   .\tools\scripts\build.ps1 -Bank both -Pristine
-  # OTA：依次干净重建 bank0 和 bank1
+  # OTA: clean rebuild bank0 and bank1 in order
 .EXAMPLE
   .\tools\scripts\build.ps1 -Bank 0 -Pack
-  # 编译 bank0 并合并 romfs -> bin\bank0\app_bank0_packed.bin
-  # 同时导出可单独烧录的 bin\bank0\app_romfs_bank0_reloc.bin
+  # build bank0 and merge romfs -> bin\bank0\app_bank0_packed.bin
+  # also exports bin\bank0\app_romfs_bank0_reloc.bin for standalone flashing
 .EXAMPLE
   .\tools\scripts\build.ps1 -Bank both -Pack -NoMp
-  # 两个 bank 都打包，不追加 MP 头
+  # pack both banks, do not append the MP header
 .EXAMPLE
   .\tools\scripts\build.ps1 -Bank 0 -Flash -Port COM7
-  # 编 bank0 并用 mpcli 烧到 0x7009E000
+  # build bank0 and flash it to 0x7009E000 with mpcli
 .EXAMPLE
   .\tools\scripts\build.ps1 -Bank 0 -Pack -Flash -Port COM7
-  # 打包并烧录合并后的完整镜像
+  # pack and flash the merged full image
 #>
 
-# #requires 必须排在帮助块之后：它是一条语句而不是注释，放在文件第一行会让
-# comment-based help 不再算「位于文件开头」，Get-Help 就只能拿到自动生成的语法行。
+# #requires must come after the help block: it is a statement, not a comment, and putting it on the first line means
+# comment-based help no longer counts as "at the top of the file", so Get-Help only shows the auto-generated syntax line.
 #requires -Version 5
 
 [CmdletBinding()]
 param(
-    [switch]$Pristine,          # 加 -p always 干净重建
-    [switch]$Flash,             # 编译成功后用 mpcli 烧录
-    [string]$Port = $(if ($env:EBADGE_PORT) { $env:EBADGE_PORT } else { "COM7" }),  # 烧录串口（可用 EBADGE_PORT 覆盖）
+    [switch]$Pristine,          # add -p always for a clean rebuild
+    [switch]$Flash,             # flash with mpcli after a successful build
+    [string]$Port = $(if ($env:EBADGE_PORT) { $env:EBADGE_PORT } else { "COM7" }),  # flash serial port (overridable with EBADGE_PORT)
     [ValidateSet('', '0', '1', 'both')]
-    [string]$Bank = '',         # OTA 分 bank 编译；空=默认单 bank(bin\app.bin)
-    [string[]]$Snippet = @(),   # 额外 snippet（如 wifi），与 -Bank 叠加
-    [switch]$Pack,              # 编译后把 romfs 合并进镜像（需要显式 -Bank 0/1/both）
-    [switch]$NoMp,              # -Pack 时不追加 MP 头
-    [string]$Romfs = $env:EBADGE_ROMFS,          # romfs 输入（默认 designer 构建产物）
-    [string]$RomfsOffset = $env:EBADGE_ROMFS_OFFSET  # 固定 romfs 偏移，默认自动收敛
+    [string]$Bank = '',         # OTA per-bank build; empty = default single bank (bin\app.bin)
+    [string[]]$Snippet = @(),   # extra snippets (e.g. wifi), stacked with -Bank
+    [switch]$Pack,              # merge romfs into the image after building (needs an explicit -Bank 0/1/both)
+    [switch]$NoMp,              # do not append the MP header with -Pack
+    [string]$Romfs = $env:EBADGE_ROMFS,          # romfs input (default: the designer build artifact)
+    [string]$RomfsOffset = $env:EBADGE_ROMFS_OFFSET  # fixed romfs offset; by default it converges automatically
 )
 
-# ===== 路径（换机器改这里，或用环境变量覆盖）=====
-# $AppDir 由脚本位置推出（tools\scripts\ -> 仓库根），不再写死绝对路径。
+# ===== paths (change here on another machine, or override with environment variables) =====
+# $AppDir is derived from the script location (tools\scripts\ -> repo root); no absolute path is hardcoded.
 $AppDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 if (-not $Romfs) {
     $Romfs = Join-Path $AppDir 'app\designer\build\app_romfs_0x70536400.bin'
 }
 
-# Zephyr SDK：环境变量优先，否则在常见安装位置里挑第一个装好的。
-# 不要只写死一条路径 —— 各机器 SDK 版本/位置不同，写死一条的下场是换台机器就
-# 「找不到 Zephyr SDK 工具链」而看不出该改哪里。
+# Zephyr SDK: environment variables win, otherwise pick the first installed one among the common locations.
+# Do not hardcode a single path — each machine has a different SDK version/location, and hardcoding one means
+# another machine reports "Zephyr SDK toolchain not found" with no hint about what to change.
 function Test-ZephyrSdk([string]$Dir) {
     return ($Dir -and (Test-Path (Join-Path $Dir 'arm-zephyr-eabi\bin\arm-zephyr-eabi-gcc.exe')))
 }
@@ -116,7 +116,7 @@ $Python = if ($env:EBADGE_PYTHON) { $env:EBADGE_PYTHON }
 $Mpcli  = if ($env:EBADGE_MPCLI)   { $env:EBADGE_MPCLI }   else { Join-Path $AppDir 'scripts\tool\mpcli\mpcli.exe' }
 $Board  = if ($env:EBADGE_BOARD)   { $env:EBADGE_BOARD }   else { "rtl87x3g_evb" }
 
-# ===== 前置检查 =====
+# ===== preflight checks =====
 if (-not (Test-Path $Python)) { throw "找不到 Python 3.12: $Python`n       用 EBADGE_PYTHON 指定，或把 python 加入 PATH" }
 if (-not (Test-ZephyrSdk $SdkDir)) {
     $where = if ($SdkDir) { $SdkDir } else { '(未设置)' }
@@ -127,11 +127,11 @@ if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
 }
 if (-not (Test-Path $AppDir)) { throw "找不到 eBadge 应用目录: $AppDir" }
 
-# Realtek 的 cmake 有两处要 bash：version_generate.cmake 跑 version_gen_config.sh、
-# post_build.cmake 跑 md5_generate.sh。它按 PATH 找 bash.exe，而 Windows 自带的
-# ...\AppData\Local\Microsoft\WindowsApps\bash.exe 是 WSL 启动器 —— 它不认 C:/xxx
-# 这种 Windows 路径，只会报 "No such file or directory"（exit 127）。后果：VERSION
-# 退化成 0.0.0，最后 md5 步骤让整次编译失败。所以必须是 Git Bash / MSYS2 的 bash。
+# Realtek's cmake needs bash in two places: version_generate.cmake runs version_gen_config.sh
+# and post_build.cmake runs md5_generate.sh. It looks for bash.exe on PATH, but the Windows-shipped
+# ...\AppData\Local\Microsoft\WindowsApps\bash.exe is the WSL launcher — it does not understand Windows
+# paths like C:/xxx and only reports "No such file or directory" (exit 127). The consequence: VERSION
+# degrades to 0.0.0 and the final md5 step fails the whole build. So it must be Git Bash / MSYS2 bash.
 $bashCmd = Get-Command bash -ErrorAction SilentlyContinue
 if (-not $bashCmd -or $bashCmd.Source -like '*\WindowsApps\bash.exe') {
     $gitBash = @("$env:ProgramFiles\Git\bin\bash.exe",
@@ -153,32 +153,32 @@ foreach ($b in @('0', '1')) {
     }
 }
 
-# ===== 环境变量（关键三件套）=====
-$env:PYTHONUTF8 = "1"                               # 中文 Windows 防 west GBK 崩溃
-$env:ZEPHYR_TOOLCHAIN_VARIANT = "zephyr"            # 用 Realtek 验证的 SDK 工具链
+# ===== environment variables (the key trio) =====
+$env:PYTHONUTF8 = "1"                               # prevent west GBK crashes on Chinese Windows
+$env:ZEPHYR_TOOLCHAIN_VARIANT = "zephyr"            # use the SDK toolchain validated by Realtek
 $env:ZEPHYR_SDK_INSTALL_DIR = $SdkDir
-if (Test-Path Env:GNUARMEMB_TOOLCHAIN_PATH) { Remove-Item Env:GNUARMEMB_TOOLCHAIN_PATH }  # 清掉旧 gnuarmemb 干扰
+if (Test-Path Env:GNUARMEMB_TOOLCHAIN_PATH) { Remove-Item Env:GNUARMEMB_TOOLCHAIN_PATH }  # clear leftover gnuarmemb interference
 Write-Host "[env]   PYTHONUTF8=1  VARIANT=zephyr  SDK=$SdkDir" -ForegroundColor Cyan
 
-# ===== 耗时统计 =====
-# 用 Stopwatch 而不是两次 (Get-Date) 相减：Stopwatch 读的是单调计数器，不受系统时间被
-# NTP 拨动或夏令时切换影响。一次 pristine 要好几分钟，正好是「期间时钟被校准一下」的
-# 窗口，那时候 Get-Date 之差能给出跳变甚至负数，而这个数是要拿来横向比对的。
+# ===== timing =====
+# Use Stopwatch instead of subtracting two (Get-Date) values: Stopwatch reads a monotonic counter and is unaffected
+# by NTP clock adjustments or daylight-saving switches. A pristine build takes several minutes — exactly the window
+# in which the clock may be recalibrated, so a Get-Date difference can jump or go negative, and these numbers are compared across runs.
 $script:Timings = [System.Collections.Generic.List[object]]::new()
 
 function Format-Duration([TimeSpan]$ts) {
-    # 用 TimeSpan 自带的 .Minutes/.Seconds 分量，不要拿 TotalMinutes 自己算余数：
-    # PowerShell 的 [int] 转换是「四舍五入」不是「截断」，[int]7.705 == 8，
-    # 于是 7m42s 会被算成 8 分 -17.7 秒，打出 "8m-17.7s" 这种东西（已实测踩过）。
+    # Use TimeSpan's own .Minutes/.Seconds components instead of computing the remainder from TotalMinutes:
+    # PowerShell's [int] cast rounds rather than truncates, [int]7.705 == 8,
+    # so 7m42s becomes 8 minutes minus 17.7 seconds and prints things like "8m-17.7s" (actually hit in practice).
     $frac = $ts.Seconds + $ts.Milliseconds / 1000.0
     if ($ts.TotalSeconds -lt 60)  { return ('{0:N1}s' -f $ts.TotalSeconds) }
     if ($ts.TotalMinutes -lt 60)  { return ('{0}m{1:00.0}s' -f $ts.Minutes, $frac) }
     return ('{0}h{1:00}m{2:00}s' -f ($ts.Days * 24 + $ts.Hours), $ts.Minutes, $ts.Seconds)
 }
 
-# 计时跑一段，无论成功失败都记账。
-# 失败也记：「编译到第几分钟才炸」本身就是有用的信息，而且如果只在成功路径上记账，
-# -Bank both 里 bank0 失败会让汇总表整个消失。
+# Time a block and record it whether it succeeds or fails.
+# Failures are recorded too: "which minute the build blew up in" is useful information by itself, and if only
+# the success path recorded, a bank0 failure under -Bank both would make the whole summary table disappear.
 function Measure-Phase([string]$name, [scriptblock]$body) {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $ok = $false
@@ -196,7 +196,7 @@ function Measure-Phase([string]$name, [scriptblock]$body) {
     }
 }
 
-# 汇总表。各阶段之和会略小于总耗时，差值是环境检查与镜像存在性检查那点开销。
+# Summary table. The sum of the phases is slightly less than the total; the difference is the overhead of the environment and image-presence checks.
 function Write-TimingSummary([TimeSpan]$total) {
     if ($script:Timings.Count -eq 0) { return }
     $mode = if ($Pristine) { 'pristine 干净重建' } else { '增量' }
@@ -212,7 +212,7 @@ function Write-TimingSummary([TimeSpan]$total) {
     }
 }
 
-# romfs_layout.h 可能在 src\ 或 src\user\（Designer 新导出布局）。
+# romfs_layout.h may live in src\ or src\user\ (the new Designer export layout).
 function Get-RomfsLayoutPath {
     $a = Join-Path $AppDir 'app\designer\src\romfs_layout.h'
     $b = Join-Path $AppDir 'app\designer\src\user\romfs_layout.h'
@@ -222,7 +222,7 @@ function Get-RomfsLayoutPath {
     return $a
 }
 
-# 读取 pack.py 生成的 ROMFS_OFFSET；打包收敛判断用。
+# Read the ROMFS_OFFSET produced by pack.py; used for the packing convergence check.
 function Get-RomfsOffset([string]$Path) {
     if (-not (Test-Path $Path)) { return $null }
     $m = [regex]::Match((Get-Content -Raw -Encoding UTF8 -Path $Path), 'ROMFS_OFFSET\s+(0x[0-9A-Fa-f]+)')
@@ -230,31 +230,31 @@ function Get-RomfsOffset([string]$Path) {
     return ('0x' + $m.Groups[1].Value.Substring(2).ToUpperInvariant())
 }
 
-# 额外 snippet 拼成目录后缀：-Snippet wifi -> "_wifi"。
-# 每种组合独占一个 build 目录，避免 Zephyr 的 "snippet 集合变化需 pristine" 报错。
+# Extra snippets are joined into a directory suffix: -Snippet wifi -> "_wifi".
+# Each combination gets its own build directory, avoiding Zephyr's "snippet set changed, pristine required" error.
 $snipSuffix = if ($Snippet.Count -gt 0) { "_" + ($Snippet -join "_") } else { "" }
 if ($Snippet.Count -gt 0) {
     Write-Host "[snip]  $($Snippet -join ', ')" -ForegroundColor Cyan
 }
 
-# ===== 单次编译(+可选烧录)。$bankSel: ''=默认, '0', '1' =====
+# ===== one build (+ optional flashing). $bankSel: ''=default, '0', '1' =====
 function Invoke-AppBuild([string]$bankSel) {
     $buildArgs = @("-m", "west", "build", "-b", $Board)
     if ($bankSel -ne '') {
-        # 分 bank：独立 build 目录 + snippet（决定 flash 分区/active bank），输出到 bin\bank<N>\
+        # per bank: separate build directory + snippet (decides flash partitions/active bank), output to bin\bank<N>\
         $buildArgs += @("-d", "build_bank$bankSel$snipSuffix", "--snippet", "flash_32M_bank$bankSel")
     }
     elseif ($snipSuffix -ne '') {
-        # 只有额外 snippet、没分 bank：也得换目录，否则跟默认 build\ 的 snippet 集合冲突
+        # only extra snippets, no bank split: still needs another directory, or it conflicts with the snippet set of the default build\
         $buildArgs += @("-d", "build$snipSuffix")
     }
     foreach ($s in $Snippet) { $buildArgs += @("--snippet", $s) }
     if ($Pristine) { $buildArgs += @("-p", "always") }
 
-    # find_program 的结果会被 CMake 缓存下来，改了 PATH 也不会重新探测。所以上面那次
-    # PATH 修正只对「新 build 目录」和 -Pristine 生效；老目录里若还缓存着 WindowsApps
-    # 的 WSL bash，version_gen_config.sh 仍会失败、VERSION 停在 0.0.0。
-    # 这里只读检查并提示 —— 不直接改 CMakeCache.txt（改坏整个配置比 0.0.0 的版本号糟糕得多）。
+    # find_program results are cached by CMake and not re-probed when PATH changes. So the PATH fix
+    # above only takes effect for new build directories and for -Pristine; if an old directory still caches
+    # the WindowsApps WSL bash, version_gen_config.sh still fails and VERSION stays at 0.0.0.
+    # This only checks read-only and warns — it does not rewrite CMakeCache.txt (corrupting the whole configuration is far worse than a 0.0.0 version number).
     $buildDir = if ($bankSel -ne '') { "build_bank$bankSel$snipSuffix" }
                 elseif ($snipSuffix -ne '') { "build$snipSuffix" }
                 else { 'build' }
@@ -270,8 +270,8 @@ function Invoke-AppBuild([string]$bankSel) {
         if ($LASTEXITCODE -ne 0) { throw "west build 失败 (bank='$bankSel', exit $LASTEXITCODE)" }
     }
 
-    # 校验分区表真的来自本工程：Zephyr 对同名 snippet 是各追加一次 overlay
-    # （不是后者覆盖前者），若 realtek-app\snippets 下也有一份，两份会同时生效。
+    # Check that the partition table really comes from this project: for same-named snippets Zephyr appends
+    # each overlay separately (the latter does not override the former), so if realtek-app\snippets has one too, both take effect.
     if ($bankSel -ne '') {
         $want = Join-Path $AppDir "snippets\flash_32M_bank$bankSel\flash_32M_bank$bankSel.overlay"
         $gen  = Join-Path $AppDir "build_bank$bankSel$snipSuffix\zephyr\snippets_generated.cmake"
@@ -280,7 +280,7 @@ function Invoke-AppBuild([string]$bankSel) {
         if ($found.Count -ne 1) {
             throw "flash_32M_bank$bankSel 解析到 $($found.Count) 份 overlay（应为 1）；若 realtek-app\snippets 下也有同名目录，请删除它，否则分区表会被叠加两次"
         }
-        # snippets.py 在 Windows 上也把路径写成 posix 风格，这里统一成正斜杠再比
+        # snippets.py writes paths in posix style even on Windows, so normalize to forward slashes before comparing
         $wantPosix = $want.Replace('\', '/')
         if ($found[0].Line -notmatch [regex]::Escape($wantPosix)) {
             throw "分区表不是取自本工程: $want"
@@ -296,7 +296,7 @@ function Invoke-AppBuild([string]$bankSel) {
     }
     if (-not (Test-Path $bin)) { throw "编译声称成功但找不到镜像: $bin" }
 
-    # 烧录地址以 flash_map.ini 为准（无 bank 的普通编译按 bank0 处理）
+    # The flash address comes from flash_map.ini (a plain build with no bank is treated as bank0)
     $bankForAddr = if ($bankSel -eq '') { '0' } else { $bankSel }
     $addrLine = Select-String -Path (Join-Path $AppDir 'flash_map.ini') `
                               -Pattern "^BANK${bankForAddr}_APP_ADDR=" -List
@@ -304,10 +304,10 @@ function Invoke-AppBuild([string]$bankSel) {
     $addr = ($addrLine.Line -split '=', 2)[1].Trim()
     Write-Host "[build] OK -> $bin (@ $addr)" -ForegroundColor Green
 
-    # ===== 可选：合并 romfs 进 app 镜像 =====
+    # ===== optional: merge romfs into the app image =====
     #
-    # romfs 偏移取决于 app 体积，而偏移又写进 romfs_layout.h 影响下次编译，
-    # 所以要迭代到收敛：打包 -> 偏移变了就重编 -> 再打包。通常 2 轮内收敛。
+    # The romfs offset depends on the size of app, and the offset is written into romfs_layout.h affecting the next build,
+    # so iterate to convergence: pack -> rebuild if the offset changed -> pack again. It usually converges within 2 rounds.
     if ($Pack) {
         if ($bankSel -eq '') { throw '-Pack 需要显式 -Bank 0 / 1 / both' }
         if (-not (Test-Path $Romfs)) { throw "找不到 romfs: $Romfs" }
@@ -332,18 +332,18 @@ function Invoke-AppBuild([string]$bankSel) {
             }
 
             $after = Get-RomfsOffset $layoutH
-            # 收敛条件有两个：偏移没变，且固件 ELF 里真的挂着这个地址。
-            # 后者是必需的：romfs_layout.h 换过位置（src\ -> src\user\）后，
-            # ninja 里旧的依赖已失效，偏移没变也不会重编 Mi_eBadgeEntry.c，
-            # ELF 会一直停在旧挂载地址 —— 镜像对、固件错，UI 全黑。
+            # There are two convergence conditions: the offset did not change, and the firmware ELF really mounts this address.
+            # The latter is essential: after romfs_layout.h moved (src\ -> src\user\),
+            # the old ninja dependency is stale, so Mi_eBadgeEntry.c is not rebuilt even when the offset is unchanged,
+            # and the ELF stays stuck at the old mount address — right image, wrong firmware, all-black UI.
             $reason = $null
             if ($before -ne $after) {
                 $reason = "ROMFS_OFFSET $before -> $after"
             }
             elseif ($after) {
-                # 显式指定本次用的 ELF：build_bank<N>_wifi 和 build_bank<N> 会同时存在，
-                # 让 pack.py 自己挑的话很容易挑到没在用的那个，于是永远判 stale、
-                # 每轮都重编，直到 6 轮用完报错。
+                # Specify the ELF used this round explicitly: build_bank<N>_wifi and build_bank<N> can both exist,
+                # and if pack.py picks by itself it easily picks the unused one, so it always reports stale
+                # and rebuilds every round until the 6 rounds are used up and it errors out.
                 $elf = Join-Path $AppDir "$buildDir\zephyr\zephyr.elf"
                 & $Python $packPy fwcheck --bank "bank$bankSel" --offset $after --elf $elf *> $null
                 if ($LASTEXITCODE -eq 2) {
@@ -358,7 +358,7 @@ function Invoke-AppBuild([string]$bankSel) {
                 throw "[pack] 6 轮仍未收敛（$reason），放弃"
             }
             Write-Host "[pack] $reason，重编 app 后重试" -ForegroundColor Yellow
-            # 头文件可能刚换了位置，touch 源文件确保 Mi_eBadgeEntry.c 真的重编。
+            # The header may just have moved, so touch the source to make sure Mi_eBadgeEntry.c is really rebuilt.
             (Get-Item (Join-Path $AppDir 'app\designer\src\Mi_eBadgeEntry.c')).LastWriteTime = Get-Date
 
             $rebuildArgs = @('-m', 'west', 'build', '-b', $Board,
@@ -376,11 +376,11 @@ function Invoke-AppBuild([string]$bankSel) {
         Write-Host "[pack] 只更新壁纸: .\tools\scripts\flash_romfs.ps1 -Bank $bankSel"
     }
 
-    # ===== 可选烧录 =====
+    # ===== optional flashing =====
     if ($Flash) {
         if (-not (Test-Path $Mpcli)) { throw "找不到 mpcli: $Mpcli" }
-        # mpcli 在「当前工作目录」下找 RAM patch 镜像 fw\RTL87X3G\RTL87X3G_V0_FW.bin，
-        # 必须从 mpcli 所在目录（tools\meta_tools，其下自带 fw\）跑；$bin 是绝对路径不受影响。
+        # mpcli looks for the RAM patch image fw\RTL87X3G\RTL87X3G_V0_FW.bin under the current working directory,
+        # so it must run from the mpcli directory (tools\meta_tools, which ships fw\); $bin is an absolute path and unaffected.
         $mpcliDir = Split-Path $Mpcli
         Write-Host "[flash] $Port  <-  $bin  ($addr / RTL87X3G)" -ForegroundColor Cyan
         $label = if ($bankSel -eq '') { 'flash' } else { "flash bank$bankSel" }
@@ -397,7 +397,7 @@ function Invoke-AppBuild([string]$bankSel) {
     }
 }
 
-# ===== 编译（结束后恢复原目录）=====
+# ===== build (restore the original directory afterwards) =====
 $orig  = Get-Location
 $total = [System.Diagnostics.Stopwatch]::StartNew()
 try {
@@ -410,8 +410,8 @@ try {
     }
 }
 finally {
-    # 汇总放在 finally 里：编译失败时「跑了多久才炸」和成功时的耗时一样值得看，
-    # 而 throw 会跳过 try 尾部的任何语句。
+    # The summary lives in finally: on failure "how long until it blew up" is as worth seeing as a success duration,
+    # and a throw skips any statement at the end of try.
     Set-Location $orig
     $total.Stop()
     Write-TimingSummary $total.Elapsed

@@ -1,40 +1,40 @@
 #!/usr/bin/env bash
-# 只烧 romfs（壁纸/UI 资源），不动 app —— 改素材后的快速验证通道。
+# Flash only romfs (wallpaper/UI assets) without touching app — a quick verification path after changing assets.
 #
-# 为什么能只烧这一段：build.sh --pack 会把 romfs 放到 4KB 对齐的地址，
-# 使它与 app 不共用任何 flash 擦除扇区。所以烧 romfs 时擦除的是
-# [romfs 起点向下取整到 4KB, romfs 末尾向上取整]，app 代码完全不受影响。
+# Why flashing only this region works: build.sh --pack places romfs at a 4KB-aligned address,
+# so it shares no flash erase sector with app. Flashing romfs therefore erases only
+# [romfs start rounded down to 4KB, romfs end rounded up], leaving app code completely untouched.
 #
-# 前提：
-#   1. 已经跑过 ./tools/scripts/build.sh --bank <N> --pack
-#      （生成 bin/bank<N>/app_romfs_bank<N>_reloc.bin）
-#   2. 那份 reloc 文件里的目录项指针已经指向本次的挂载地址
-#      —— 直接用 app/designer/build/app_romfs_*.bin 是不行的，它的指针还是
-#         旧的绝对地址，烧上去 UI 会全黑。
+# Prerequisites:
+#   1. ./tools/scripts/build.sh --bank <N> --pack has already been run
+#      (producing bin/bank<N>/app_romfs_bank<N>_reloc.bin)
+#   2. the directory-entry pointers in that reloc file already point at this mount address
+#      — using app/designer/build/app_romfs_*.bin directly does not work: its pointers still hold
+#         the old absolute address, and flashing it turns the whole UI black.
 #
-# WSL 下必须用 Windows 版 mpcli.exe：COM 口是 Windows 设备，Linux 版
-# mpcli 在 WSL 里打不开。这里沿用 scripts/flash-wsl-app.sh 的两条路径：
-#   1) WSLInterop 已注册 -> 直接执行 .exe
-#   2) 未注册           -> /init + 临时 .bat
+# Under WSL the Windows mpcli.exe must be used: COM ports are Windows devices, so the
+# Linux mpcli cannot open them from WSL. This follows the two paths of scripts/flash-wsl-app.sh:
+#   1) WSLInterop registered -> run the .exe directly
+#   2) not registered        -> /init + temp .bat
 #
-# 用法：
-#   ./tools/scripts/flash_romfs.sh                    # 默认 bank0 + COM5
+# Usage:
+#   ./tools/scripts/flash_romfs.sh                    # default bank0 + COM5
 #   ./tools/scripts/flash_romfs.sh --bank 1
 #   ./tools/scripts/flash_romfs.sh --port COM7
-#   DRY=1 ./tools/scripts/flash_romfs.sh              # 只打印命令
+#   DRY=1 ./tools/scripts/flash_romfs.sh              # print the command only
 #
-# 镜像地址由以下两处推出，不在此脚本硬编码：
-#   APP 基址   ← flash_map.ini 的 BANK<N>_APP_ADDR
-#   ROMFS 偏移 ← app/designer/src[/user]/romfs_layout.h 的 ROMFS_OFFSET
+# The image address is derived from these two places; it is not hardcoded in this script:
+#   APP base     ← BANK<N>_APP_ADDR in flash_map.ini
+#   ROMFS offset ← ROMFS_OFFSET in app/designer/src[/user]/romfs_layout.h
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"                 # 应用工程根目录 = 仓库根
+APP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"                 # application project root = repo root
 
 MPCLI_EXE="${MPCLI_EXE:-$APP_DIR/scripts/tool/mpcli/mpcli.exe}"
 FLASH_MAP="$APP_DIR/flash_map.ini"
 
-# romfs_layout.h 可能在 src/ 或 src/user/（Designer 新导出布局）。
+# romfs_layout.h may live in src/ or src/user/ (the new Designer export layout).
 LAYOUT_H="$APP_DIR/app/designer/src/romfs_layout.h"
 if [ ! -f "$LAYOUT_H" ] && [ -f "$APP_DIR/app/designer/src/user/romfs_layout.h" ]; then
     LAYOUT_H="$APP_DIR/app/designer/src/user/romfs_layout.h"
@@ -64,7 +64,7 @@ while [ $# -gt 0 ]; do
         --dry-run) DRY=1; shift ;;
         -h|--help) usage; exit 0 ;;
         -*) echo "未知参数: $1" >&2; usage; exit 1 ;;
-        *)  PORT="$1"; shift ;;          # 位置参数 = 端口
+        *)  PORT="$1"; shift ;;          # positional argument = port
     esac
 done
 
@@ -77,23 +77,23 @@ ROMFS="$APP_DIR/bin/bank${BANK}/app_romfs_bank${BANK}_reloc.bin"
 
 die() { echo "[romfs] 错误: $*" >&2; exit 1; }
 
-# ---- 前置检查 ----
+# ---- preflight checks ----
 [ -f "$MPCLI_EXE" ] || die "找不到 mpcli.exe: $MPCLI_EXE"
 [ -f "$ROMFS" ] || die "找不到 $ROMFS
        先执行: ./tools/scripts/build.sh --bank $BANK --pack"
 [ -f "$FLASH_MAP" ] || die "找不到 flash_map.ini"
 [ -f "$LAYOUT_H" ] || die "找不到 romfs_layout.h"
 
-# 偏移：ROMFS_OFFSET 0x000F2000
+# offset: ROMFS_OFFSET 0x000F2000
 OFFSET_HEX=$(grep -oE '#define[[:space:]]+ROMFS_OFFSET[[:space:]]+(0x[0-9A-Fa-f]+)' "$LAYOUT_H" \
              | grep -oE '0x[0-9A-Fa-f]+' | head -1)
 [ -n "$OFFSET_HEX" ] || die "romfs_layout.h 里没有 ROMFS_OFFSET"
 
-# app 基址：BANK0_APP_ADDR=0x7009E000
+# app base: BANK0_APP_ADDR=0x7009E000
 APP_ADDR_HEX=$(grep -E "^BANK${BANK}_APP_ADDR=" "$FLASH_MAP" | cut -d= -f2 | tr -d '[:space:]')
 [ -n "$APP_ADDR_HEX" ] || die "flash_map.ini 里没有 BANK${BANK}_APP_ADDR"
 
-# ---- 校验镜像（4K 对齐 / 指针 / 目录结构）----
+# ---- verify the image (4K alignment / pointers / directory structure) ----
 MOUNT_HEX=$(python3 - "$APP_ADDR_HEX" "$OFFSET_HEX" "$ROMFS" <<'PY'
 import os, struct, sys
 
@@ -107,14 +107,14 @@ def die(msg):
     sys.stderr.write("[romfs] 错误: %s\n" % msg)
     sys.exit(1)
 
-# 1) 落点必须 4K 对齐：否则擦除会波及 app 所在扇区
+# 1) the target address must be 4K aligned, otherwise erasing reaches into app's sector
 if offset % 4096 != 0:
     die("ROMFS_OFFSET=%#x 未按 4KB 对齐 —— 烧它会擦掉 app 尾部。\n"
         "       重新打包: ./tools/scripts/build.sh --bank <N> --pack" % offset)
 if mount % 4096 != 0:
     die("挂载地址 %#x 未按 4KB 对齐" % mount)
 
-# 2) reloc 文件的目录项必须真的指向本次挂载地址，否则是旧包
+# 2) the directory entry in the reloc file must really point at this mount address, otherwise it is a stale image
 with open(romfs_p, "rb") as f:
     head = f.read(4 * 4 + 64)
 if len(head) < 16:
@@ -140,11 +140,11 @@ print("%#x" % mount)
 PY
 ) || exit 1
 
-# 最后一行是挂载地址
+# the last line is the mount address
 ADDR=$(echo "$MOUNT_HEX" | tail -1)
 echo "$MOUNT_HEX" | sed '$d'
 
-# ---- WSLInterop 检测（同 scripts/flash-wsl-app.sh）----
+# ---- WSLInterop detection (same as scripts/flash-wsl-app.sh) ----
 interop_ok=0
 if [ -r /proc/sys/fs/binfmt_misc/WSLInterop ]; then
     grep -q '^enabled' /proc/sys/fs/binfmt_misc/WSLInterop && interop_ok=1
@@ -165,7 +165,7 @@ if [ "$interop_ok" = 1 ]; then
     exec "$MPCLI_EXE" "$@"
 fi
 
-# ---- 回退：WSLInterop 未注册，走 /init + 临时 .bat ----
+# ---- fallback: WSLInterop not registered, use /init + temp .bat ----
 echo "[romfs] 提示: WSLInterop 未注册，改用 /init + 临时 .bat" >&2
 [ -x /init ] || die "找不到 /init；请在 Windows 端用 mpcli.exe 手动烧录"
 

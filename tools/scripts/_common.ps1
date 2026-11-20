@@ -1,9 +1,9 @@
-﻿# 公共路径与工具解析 —— 由 tools/scripts/*.ps1 dot-source（Windows 专用）。
+﻿# Common path and tool resolution — dot-sourced by tools/scripts/*.ps1 (Windows only).
 #
 #   . (Join-Path $PSScriptRoot '_common.ps1')
 #
-# dot-source 后调用方可直接使用 $AppDir（= 仓库根）。
-# 各函数的 Override 参数优先于环境变量，环境变量优先于默认值。
+# After dot-sourcing, callers can use $AppDir directly (= repo root).
+# Each function's Override parameter wins over env vars; env vars win over defaults.
 
 $AppDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
@@ -57,18 +57,18 @@ function Get-BankAppAddr {
     return Get-FlashMapValue "BANK${Bank}_APP_ADDR"
 }
 
-# 调用外部程序。是否成功只看退出码（调用方自己查 $LASTEXITCODE）。
+# Invoke an external program. Success is judged only by the exit code (callers check $LASTEXITCODE themselves).
 #
-# PS 5.1 的坑：脚本输出一旦被重定向或进管道（`2>&1 | Tee-Object`、`*> log.txt`、
-# CI 收日志），子进程写 stderr 的每一行都会被包成 ErrorRecord；而 build_fdb.ps1 /
-# flash_*.ps1 都设了 $ErrorActionPreference='Stop'，于是那行提示直接变成终止错误，
-# 脚本当场中止。偏偏这里调的东西都爱往 stderr 写 —— pack.py 里的 FlashDB 会打提示、
-# mpcli.exe 每次运行都回显命令行和版本号（实测 184 B）。结果就是「直接跑没事、
-# 一记日志就炸」，中间只差一个 `>`。
+# PS 5.1 pitfall: once script output is redirected or piped (`2>&1 | Tee-Object`, `*> log.txt`,
+# CI log capture), every line a child process writes to stderr gets wrapped in an ErrorRecord; and build_fdb.ps1 /
+# flash_*.ps1 all set $ErrorActionPreference='Stop', so that hint line turns into a terminating error
+# and the script aborts on the spot. Yet the tools called here all love writing to stderr — FlashDB in pack.py prints hints,
+# and mpcli.exe echoes its command line and version on every run (184 B measured). The result is "fine when run directly,
+# blows up as soon as it is logged", with only a `>` between the two.
 #
-# 处理办法：显式 2>&1 把 stderr 收进来（不再依赖外层是否重定向），期间把 EAP 放宽成
-# Continue 免得终止，最后把 ErrorRecord 还原成普通文本行输出 —— 既保留信息，又不会
-# 变成刺眼的红字。
+# Fix: capture stderr explicitly with 2>&1 (no longer relying on outer redirection), relax EAP to
+# Continue for the duration so nothing terminates, then turn ErrorRecords back into plain text lines —
+# keeping the information without turning it into glaring red text.
 function Invoke-Native {
     param(
         [Parameter(Mandatory)][string]$Exe,
@@ -99,7 +99,7 @@ function Invoke-Mpcli {
         Write-Host ('[dry-run] "{0}" {1}' -f $Mpcli, ($Arguments -join ' '))
         return
     }
-    # mpcli 在自身目录下找 fw\、config\，必须从那里启动。
+    # mpcli looks for fw\ and config\ under its own directory, so it must be launched from there.
     Push-Location (Split-Path -Parent $Mpcli)
     try {
         Invoke-Native -Exe $Mpcli -Arguments $Arguments

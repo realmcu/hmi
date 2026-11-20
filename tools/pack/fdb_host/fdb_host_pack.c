@@ -171,7 +171,7 @@ static uint32_t crc_from(const uint8_t *p, size_t len, size_t skip)
 #define EB_FILE_TYPE_GIF    0x03
 #define EB_FILE_TYPE_BIN    0x06
 
-/* GUI_FormatType，from realgui/engine/draw/draw_img.h */
+/* GUI_FormatType, from realgui/engine/draw/draw_img.h */
 #define GUI_FMT_JPEG   12
 #define GUI_FMT_PNG    13
 #define GUI_FMT_GIF    14

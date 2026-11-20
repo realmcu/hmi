@@ -1,24 +1,24 @@
 ﻿<#
 .SYNOPSIS
-  烧录预制资源 FDB 镜像（tools\pack\fdb_resource_bin\fdb_prebuilt.bin）
-  ——Windows 版 flash_fdb.sh。
+  Flash the prebuilt resource FDB image (tools\pack\fdb_resource_bin\fdb_prebuilt.bin)
+  — Windows version of flash_fdb.sh.
 
 .DESCRIPTION
-  烧录地址 = layout.json 的 fdb.kvdb_addr，并与 flash_map.ini 的其它分区
-  做重叠检查，避免顺手覆盖 app/OTA。
+  Flash address = fdb.kvdb_addr in layout.json; an overlap check is done against the
+  other partitions in flash_map.ini, so app/OTA are not overwritten by accident.
 
-  mpcli 的 -F 会拒绝大于 CONFIG_FLASH_SIZE_MAX 的单个文件（RTL87X3G 默认
-  只有 2MB），所以镜像按 -Split（默认 2MB）切片、按连续地址依次烧录。
+  mpcli's -F rejects any single file larger than CONFIG_FLASH_SIZE_MAX (RTL87X3G defaults
+  to only 2MB), so the image is sliced by -Split (2MB by default) and flashed at consecutive addresses.
 
 .EXAMPLE
-  .\tools\scripts\flash_fdb.ps1                 # 默认 COM5
+  .\tools\scripts\flash_fdb.ps1                 # default COM5
 .EXAMPLE
   .\tools\scripts\flash_fdb.ps1 -Port COM7 -Fdb tools\pack\fdb_resource_bin\fdb_prebuilt.bin
 .EXAMPLE
   .\tools\scripts\flash_fdb.ps1 -DryRun
 #>
 
-# #requires 必须排在帮助块之后，见 build.ps1 里的说明。
+# #requires must come after the help block; see the note in build.ps1.
 #requires -Version 5
 
 [CmdletBinding()]
@@ -47,9 +47,9 @@ if (-not (Test-Path $Fdb)) {
 }
 if (-not (Test-Path $Layout)) { throw "找不到 $Layout" }
 
-# ---- 布局与镜像核对 ----
-# 必须显式 UTF-8：Windows PowerShell 5.1 的 Get-Content 默认按 ANSI 解码，
-# 会把 layout.json 里的中文注释读坏，导致 ConvertFrom-Json 直接失败。
+# ---- layout and image checks ----
+# UTF-8 must be explicit: Windows PowerShell 5.1 decodes Get-Content as ANSI by default,
+# which corrupts the Chinese comments in layout.json and makes ConvertFrom-Json fail outright.
 $lay = Get-Content -Raw -Encoding UTF8 -Path $Layout | ConvertFrom-Json
 $kv = Convert-EbadgeHex $lay.fdb.kvdb_addr
 $kvSz = Convert-EbadgeHex $lay.fdb.kvdb_size
@@ -82,7 +82,7 @@ Write-Host ("[fdb-flash] 区域   = {0} .. {1}  (kvdb {2}, bf {3})" -f `
     (Format-EbadgeHex $kv), (Format-EbadgeHex ($kv + $total)), `
     (Format-EbadgeHex $kv), (Format-EbadgeHex $bf))
 
-# 与 flash_map.ini 的其它分区做重叠检查
+# overlap check against the other partitions in flash_map.ini
 $reg = @{}
 foreach ($line in Get-Content -Path (Join-Path $AppDir 'flash_map.ini')) {
     $m = [regex]::Match($line.Trim(), '^(\w+)=(0x[0-9A-Fa-f]+)$')
@@ -105,7 +105,7 @@ foreach ($k in $reg.Keys) {
 if ($bad.Count -gt 0) { throw ('会覆盖其它分区: ' + ($bad -join ', ')) }
 Write-Host '[fdb-flash] 重叠检查: 通过' -ForegroundColor Green
 
-# ---- 分段烧录 ----
+# ---- chunked flashing ----
 $chunk = Convert-EbadgeHex $Split
 if ($chunk -gt 0 -and ($chunk % 4096) -ne 0) {
     throw "分段大小必须 4K 对齐（当前 $chunk）"

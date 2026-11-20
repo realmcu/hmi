@@ -1,20 +1,20 @@
 ﻿<#
 .SYNOPSIS
-  生成预制壁纸 FDB 镜像（tools\pack\fdb_resource_bin\fdb_prebuilt.bin）
-  ——Windows 版 build_fdb.sh。
+  Build the prebuilt wallpaper FDB image (tools\pack\fdb_resource_bin\fdb_prebuilt.bin)
+  — Windows version of build_fdb.sh.
 
 .DESCRIPTION
-  素材默认取 tools\pack\fdb_resource_bin（随工程管理）：
+  Assets come by default from tools\pack\fdb_resource_bin (tracked with the project):
     wp-*.bin / pre-*.bin / wp-tear.bin / tear_mask.bin / tear_part.bin /
     wl-video.avi
-  该目录没有 wp-1.bin 时退回 HoneyGUI Designer 的构建树
-  app\designer\build\assets\images。
+  If that directory has no wp-1.bin, fall back to the HoneyGUI Designer build tree
+  app\designer\build\assets\images.
 
-  组是显式写死的（不用 pack.py --assets-dir），因为 tear 组需要 4 个槽，
-  而自动收集默认会跳过 wp-tear.bin 和 .avi。
+  Groups are written out explicitly (instead of pack.py --assets-dir) because the tear group needs 4 slots,
+  and automatic collection skips wp-tear.bin and .avi by default.
 
-  生成后 pack.py 会读回校验（fdb_host_verify），失败即报错。
-  烧录用 tools\scripts\flash_fdb.ps1。
+  After building, pack.py reads the image back to verify it (fdb_host_verify) and errors out on failure.
+  To flash it use tools\scripts\flash_fdb.ps1.
 
 .EXAMPLE
   .\tools\scripts\build_fdb.ps1
@@ -22,7 +22,7 @@
   .\tools\scripts\build_fdb.ps1 -AssetsDir D:\assets\images -NoVideo
 #>
 
-# #requires 必须排在帮助块之后，见 build.ps1 里的说明。
+# #requires must come after the help block; see the note in build.ps1.
 #requires -Version 5
 
 [CmdletBinding()]
@@ -76,7 +76,7 @@ $packArgs = @(
 
 $videoIncluded = $false
 if ($withVideo) {
-    # 视频是可选的：fdb_resource_bin 默认不带 4MB 的 wl-video.avi。
+    # Video is optional: fdb_resource_bin does not include the 4MB wl-video.avi by default.
     $video = Join-Path $AssetsDir 'wl-video.avi'
     if (Test-Path $video) {
         $packArgs += @('--file', "video1=$video")
@@ -91,8 +91,8 @@ Write-Host "[fdb-build] assets = $AssetsDir" -ForegroundColor Cyan
 Write-Host "[fdb-build] output = $Out" -ForegroundColor Cyan
 Write-Host "[fdb-build] video  = $videoIncluded" -ForegroundColor Cyan
 
-# 走 Invoke-Native 而不是直接 &：pack.py 里的 FlashDB 会往 stderr 打提示，
-# 本脚本的 $ErrorActionPreference='Stop' 会让它在输出被重定向时当场中止（见 _common.ps1）。
+# Go through Invoke-Native instead of calling & directly: FlashDB in pack.py writes hints to stderr,
+# and this script's $ErrorActionPreference='Stop' would abort on the spot when its output is redirected (see _common.ps1).
 Invoke-Native -Exe $Python -Arguments (@(Join-Path $AppDir 'tools\pack\pack.py') + $packArgs)
 if ($LASTEXITCODE -ne 0) { throw "pack.py fdb 失败 (exit $LASTEXITCODE)" }
 

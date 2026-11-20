@@ -1,10 +1,10 @@
 ﻿<#
 .SYNOPSIS
-  只烧 app 镜像（不动 romfs / FDB）——Windows 版 flash_app.sh。
+  Flash only the app image (do not touch romfs / FDB) — Windows version of flash_app.sh.
 
 .DESCRIPTION
-  默认镜像 bin\bank<N>\app_bank<N>.bin，烧录地址读 flash_map.ini 的
-  BANK<N>_APP_ADDR。打包过的完整镜像（app+romfs）用 -Fw 指定。
+  Default image is bin\bank<N>\app_bank<N>.bin; the flash address is read from
+  BANK<N>_APP_ADDR in flash_map.ini. Use -Fw to specify a packed full image (app+romfs).
 
 .EXAMPLE
   .\tools\scripts\flash_app.ps1                 # bank0 + COM5
@@ -14,7 +14,7 @@
   .\tools\scripts\flash_app.ps1 -Fw bin\bank0\app_bank0_packed.bin -DryRun
 #>
 
-# #requires 必须排在帮助块之后，见 build.ps1 里的说明。
+# #requires must come after the help block; see the note in build.ps1.
 #requires -Version 5
 
 [CmdletBinding()]
