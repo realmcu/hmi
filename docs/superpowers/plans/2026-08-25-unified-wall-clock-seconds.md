@@ -1,55 +1,55 @@
-# 统一墙上时钟秒 实现计划
+# Unified wall clock seconds implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 把协议、固件、手机 App 三侧的时间标量统一为单一的墙上时钟秒（wall clock seconds，1970 纪元，手机定锚，固件永不加减偏移），根除现有的双重时区偏移缺陷。
+**Goal:** Unify the time scalar across protocol, firmware and phone App onto a single wall clock seconds value (1970 epoch, anchored by the phone, never shifted by the firmware), and eradicate the existing double-timezone-offset defect.
 
-**Architecture:** 手机把用户本地日历按 UTC 规则折算成 `uint32_t` 秒发送；固件原样写入 RTC、原样读出、原样发布事件。协议层 0x01 键从 32-bit packed 日历字段改为 4 字节大端秒。`app_time_local_t` 和所有时区偏移代码删除，`struct tm` + `gmtime_r` 接管日历展开职责。
+**Architecture:** The phone converts the user's local calendar to `uint32_t` seconds by UTC rules and sends it; the firmware writes it into the RTC unchanged, reads it back unchanged and publishes events unchanged. The protocol 0x01 key changes from 32-bit packed calendar fields to 4 bytes of big-endian seconds. `app_time_local_t` and all timezone-offset code are deleted, and `struct tm` + `gmtime_r` take over calendar expansion.
 
-**Tech Stack:** C11（固件，newlib + Zephyr），Dart/Flutter（手机），host gcc 宿主测试（无 Zephyr，stub posix + event bus），`cmd.exe /c "D:\\Android-dev-tool\\flutter\\bin\\flutter.bat test ..."` 运行 Dart 测试。
+**Tech Stack:** C11 (firmware, newlib + Zephyr), Dart/Flutter (phone), host gcc host tests (no Zephyr, stubbed posix + event bus), `cmd.exe /c "D:\\Android-dev-tool\\flutter\\bin\\flutter.bat test ..."` to run the Dart tests.
 
 **Spec:** `docs/superpowers/specs/2026-08-25-unified-wall-clock-seconds-design.md`
 
 ## Global Constraints
 
-- 断裂式变更：固件与 App **必须**同版本升级，不引入版本门。
-- 固件侧禁止使用 `mktime` / `localtime_r`（依赖 `TZ`）；只允许 `gmtime_r` + 手写 `civil_to_epoch`。
-- 手机侧所有 `DateTime.utc(...)` 调用必须明确传年月日时分秒六个字段，**不得**用 `DateTime(...)` 本地构造后转换。
-- 纪元统一为 1970-01-01 00:00:00，不出现 `946684800`（2000 纪元）常数。
-- Flash 上已有记录（`ts_utc` 字段）与新语义数值相同，**无需迁移**，仅改名。
-- 宿主测试必须在 `TZ=`（unset）、`TZ=America/New_York`、`TZ=Asia/Shanghai` 三种环境下全部通过。
+- Breaking change: firmware and App **must** upgrade together; no version gate is introduced.
+- The firmware must not use `mktime` / `localtime_r` (they depend on `TZ`); only `gmtime_r` + the hand-written `civil_to_epoch` are allowed.
+- Every `DateTime.utc(...)` call on the phone must pass the six fields year/month/day/hour/minute/second explicitly; converting a locally constructed `DateTime(...)` is **not** allowed.
+- The epoch is uniformly 1970-01-01 00:00:00; the `946684800` (2000 epoch) constant must not appear.
+- Records already in Flash (the `ts_utc` field) hold the same numeric value under the new semantics, so **no migration** is needed, only a rename.
+- The host tests must pass under all three of `TZ=` (unset), `TZ=America/New_York` and `TZ=Asia/Shanghai`.
 
 ---
 
 ## File Structure
 
-| 文件 | 操作 | 说明 |
+| File | Action | Description |
 |---|---|---|
-| `app/app_time/app_time.h` | 修改 | 删除 `app_time_local_t`、`app_time_set_local`、`app_time_to_local`；新增 `app_time_set(uint32_t)`、`app_time_to_calendar(uint32_t, struct tm*)` |
-| `app/app_time/app_time.c` | 修改 | 删除 `s_tz_min`、`local_sec_from_utc`、`app_time_to_local`、`app_time_set_local`；新增 `app_time_set`、`app_time_to_calendar`；修改 `rtc_second_cb` 去掉时区平移 |
-| `app/app_core/app_event_defs.h` | 修改 | `app_evt_time_synced_t` 替换为单个 `uint32_t sec` |
-| `app/app_protocol/hmi_l2_cmd_settings.h` | 修改 | 删除 `hmi_l2_decode_time` 声明，删除 `app_time.h` include |
-| `app/app_protocol/hmi_l2_cmd_settings.c` | 修改 | 删除 `is_leap_year`、`days_in_month`、`hmi_l2_decode_time`；改为读 4 字节大端秒 |
-| `app/app_health/app_health_internal.h` | 修改 | `ts_utc` → `ts`（字段名）；注释更新 |
-| `app/app_health/health_worker.c` | 修改 | `ts_utc` → `ts`；`boundary_utc` → `boundary_sec` |
-| `app/app_health/health_db.c` | 修改 | `ts_utc` → `ts`（10 处）；`health_db_save_synced_ts` 参数名 |
-| `app/app_protocol/hmi_l2_cmd_sport.c` | 修改 | `r->ts_utc` → `r->ts`；`app_time_to_local` → `app_time_to_calendar`；日志格式化改 `tm_year+1900`/`tm_mon+1` |
-| `component/protocol/hmi_l2.h` | 修改 | 删除 `HMI_L2_SET_ALARM`、`HMI_L2_GET_ALARM_REQ`、`HMI_L2_GET_ALARM_RSP` |
-| `component/protocol/BLE_PROTOCOL_SPEC.html` | 修改 | 0x01 表格换为秒；删除 0x02/0x03/0x04 闹钟章节；0x21 纪元改 1970；上行 Timestamp 措辞更新 |
-| `tests/app_time/posix_stub.h` | 新建 | 宿主测试用 posix + event bus stub 头文件 |
-| `tests/app_time/posix_stub.c` | 新建 | stub 实现 |
-| `tests/app_time/test_app_time.c` | 新建 | 7 个宿主单元测试 |
-| `tests/app_time/Makefile` | 新建 | `make run` 在三个 TZ 下跑测试 |
-| `HoneyBox/lib/services/watch_time_protocol.dart` | 修改 | packed 位运算 → 4 字节大端秒；`DateTime.utc(...)` 折算 |
-| `HoneyBox/test/services/watch_time_protocol_test.dart` | 修改 | 更新断言向量 |
-| `HoneyBox/lib/services/watch_health_protocol.dart` | 修改 | `_readTimestamp` 去掉 `.toLocal()` |
-| `HoneyBox/test/services/watch_health_protocol_test.dart` | 修改 | 去掉 `.toLocal()` |
-| `HoneyBox/lib/pages/watch/health/watch_health_data.dart` | 修改 | `_today` 及 6 处比较改为 UTC-flagged |
-| `HoneyBox/test/helpers/watch_health_fixture.dart` | 修改 | timestamps 改为 UTC-flagged `DateTime.utc(...)` |
+| `app/app_time/app_time.h` | modify | Delete `app_time_local_t`, `app_time_set_local`, `app_time_to_local`; add `app_time_set(uint32_t)`, `app_time_to_calendar(uint32_t, struct tm*)` |
+| `app/app_time/app_time.c` | modify | Delete `s_tz_min`, `local_sec_from_utc`, `app_time_to_local`, `app_time_set_local`; add `app_time_set`, `app_time_to_calendar`; change `rtc_second_cb` to drop the timezone shift |
+| `app/app_core/app_event_defs.h` | modify | `app_evt_time_synced_t` replaced by a single `uint32_t sec` |
+| `app/app_protocol/hmi_l2_cmd_settings.h` | modify | Delete the `hmi_l2_decode_time` declaration and the `app_time.h` include |
+| `app/app_protocol/hmi_l2_cmd_settings.c` | modify | Delete `is_leap_year`, `days_in_month`, `hmi_l2_decode_time`; read 4 bytes of big-endian seconds instead |
+| `app/app_health/app_health_internal.h` | modify | `ts_utc` → `ts` (field name); comment updated |
+| `app/app_health/health_worker.c` | modify | `ts_utc` → `ts`; `boundary_utc` → `boundary_sec` |
+| `app/app_health/health_db.c` | modify | `ts_utc` → `ts` (10 places); `health_db_save_synced_ts` parameter name |
+| `app/app_protocol/hmi_l2_cmd_sport.c` | modify | `r->ts_utc` → `r->ts`; `app_time_to_local` → `app_time_to_calendar`; log formatting changed to `tm_year+1900`/`tm_mon+1` |
+| `component/protocol/hmi_l2.h` | modify | Delete `HMI_L2_SET_ALARM`, `HMI_L2_GET_ALARM_REQ`, `HMI_L2_GET_ALARM_RSP` |
+| `component/protocol/BLE_PROTOCOL_SPEC.html` | modify | 0x01 table switched to seconds; 0x02/0x03/0x04 alarm sections deleted; 0x21 epoch changed to 1970; uplink Timestamp wording updated |
+| `tests/app_time/posix_stub.h` | create | posix + event bus stub header for the host tests |
+| `tests/app_time/posix_stub.c` | create | stub implementation |
+| `tests/app_time/test_app_time.c` | create | 7 host unit tests |
+| `tests/app_time/Makefile` | create | `make run` runs the tests under three TZs |
+| `HoneyBox/lib/services/watch_time_protocol.dart` | modify | packed bit operations → 4 bytes of big-endian seconds; `DateTime.utc(...)` conversion |
+| `HoneyBox/test/services/watch_time_protocol_test.dart` | modify | update the assertion vectors |
+| `HoneyBox/lib/services/watch_health_protocol.dart` | modify | `_readTimestamp` drops `.toLocal()` |
+| `HoneyBox/test/services/watch_health_protocol_test.dart` | modify | drop `.toLocal()` |
+| `HoneyBox/lib/pages/watch/health/watch_health_data.dart` | modify | `_today` and 6 comparison sites changed to UTC-flagged |
+| `HoneyBox/test/helpers/watch_health_fixture.dart` | modify | timestamps changed to UTC-flagged `DateTime.utc(...)` |
 
 ---
 
-## Task 1: 建立宿主测试骨架（先写失败测试）
+## Task 1: Set up the host test skeleton (write the failing tests first)
 
 **Files:**
 - Create: `tests/app_time/posix_stub.h`
@@ -58,10 +58,10 @@
 - Create: `tests/app_time/Makefile`
 
 **Interfaces:**
-- Consumes: `app/app_time/app_time.h`（当前版本），`app/app_core/app_event_defs.h`
-- Produces: `stub_set_rtc()`、`stub_tick()`、`stub_events_reset()`、`stub_event_count_of()`、`stub_event_sec_of()` 供 Task 2 测试使用
+- Consumes: `app/app_time/app_time.h` (current version), `app/app_core/app_event_defs.h`
+- Produces: `stub_set_rtc()`, `stub_tick()`, `stub_events_reset()`, `stub_event_count_of()`, `stub_event_sec_of()` for the Task 2 tests
 
-- [ ] **Step 1: 写 posix_stub.h**
+- [ ] **Step 1: Write posix_stub.h**
 
 ```c
 /* tests/app_time/posix_stub.h */
@@ -92,7 +92,7 @@ void     stub_tick(void);
 #endif
 ```
 
-- [ ] **Step 2: 写 posix_stub.c**
+- [ ] **Step 2: Write posix_stub.c**
 
 ```c
 /* tests/app_time/posix_stub.c */
@@ -153,7 +153,7 @@ void stub_tick(void)
     { if (stub_tick_cb) stub_tick_cb((posix_fd_t)1, NULL); }
 ```
 
-- [ ] **Step 3: 写 test_app_time.c（7 个测试，全部引用新 API）**
+- [ ] **Step 3: Write test_app_time.c (7 tests, all using the new API)**
 
 ```c
 /* tests/app_time/test_app_time.c */
@@ -269,7 +269,7 @@ int main(void) {
 }
 ```
 
-- [ ] **Step 4: 写 Makefile**
+- [ ] **Step 4: Write the Makefile**
 
 ```makefile
 # tests/app_time/Makefile
@@ -295,15 +295,15 @@ clean:
 .PHONY: run clean
 ```
 
-- [ ] **Step 5: 运行，确认编译失败（新 API 尚不存在）**
+- [ ] **Step 5: Run it and confirm the build fails (the new API does not exist yet)**
 
 ```bash
 cd tests/app_time && make run
 ```
 
-期望：编译报错 `implicit declaration of function 'app_time_set'` 和 `app_time_to_calendar`。
+Expected: build errors `implicit declaration of function 'app_time_set'` and `app_time_to_calendar`.
 
-- [ ] **Step 6: Commit 测试骨架**
+- [ ] **Step 6: Commit the test skeleton**
 
 ```bash
 git add tests/app_time/
@@ -312,20 +312,20 @@ git commit -m "test(app_time): add host unit test harness (failing – new API n
 
 ---
 
-## Task 2: 修改 app_time.h / app_time.c
+## Task 2: Modify app_time.h / app_time.c
 
 **Files:**
 - Modify: `app/app_time/app_time.h`
 - Modify: `app/app_time/app_time.c`
 
 **Interfaces:**
-- Produces: `app_time_set(uint32_t sec)` → `int`；`app_time_to_calendar(uint32_t sec, struct tm *out)` → `void`
-- Removes: `app_time_local_t`，`app_time_set_local`，`app_time_to_local`，`s_tz_min`，`local_sec_from_utc`
-- Keeps: `app_time_now()`，`civil_to_epoch()`（static，供 `app_time_now` 读 RTC）
+- Produces: `app_time_set(uint32_t sec)` → `int`; `app_time_to_calendar(uint32_t sec, struct tm *out)` → `void`
+- Removes: `app_time_local_t`, `app_time_set_local`, `app_time_to_local`, `s_tz_min`, `local_sec_from_utc`
+- Keeps: `app_time_now()`, `civil_to_epoch()` (static, used by `app_time_now` to read the RTC)
 
-- [ ] **Step 1: 替换 app_time.h**
+- [ ] **Step 1: Replace app_time.h**
 
-完整新内容：
+Full new content:
 
 ```c
 #ifndef __APP_TIME_H__
@@ -379,9 +379,9 @@ void app_time_to_calendar(uint32_t sec, struct tm *out);
 #endif /* __APP_TIME_H__ */
 ```
 
-- [ ] **Step 2: 替换 app_time.c**
+- [ ] **Step 2: Replace app_time.c**
 
-完整新内容（关键变更点注释如下，完整文件见 Spec §5.1）：
+Full new content (the key change points are commented below; the complete file is in Spec §5.1):
 
 ```c
 /*
@@ -578,13 +578,13 @@ static int time_init(void)
 const app_module_t app_time_module = { .name = "time", .init = time_init };
 ```
 
-- [ ] **Step 3: 运行测试，确认全部通过**
+- [ ] **Step 3: Run the tests and confirm everything passes**
 
 ```bash
 cd tests/app_time && make run
 ```
 
-期望（三次）：`all passed`
+Expected (three runs): `all passed`
 
 - [ ] **Step 4: Commit**
 
@@ -595,18 +595,18 @@ git commit -m "feat(app_time): unified wall clock seconds — delete tz offset, 
 
 ---
 
-## Task 3: 修改 app_event_defs.h — app_evt_time_synced_t
+## Task 3: Modify app_event_defs.h — app_evt_time_synced_t
 
 **Files:**
 - Modify: `app/app_core/app_event_defs.h:125-144`
 
 **Interfaces:**
-- Removes: `app_evt_time_synced_t` 的 6 个日历字段
+- Removes: the 6 calendar fields of `app_evt_time_synced_t`
 - Produces: `typedef struct { uint32_t sec; } app_evt_time_synced_t;`
 
-- [ ] **Step 1: 定位并替换结构体定义**
+- [ ] **Step 1: Locate and replace the struct definition**
 
-将 `app_event_defs.h` 第 125-144 行（`app_evt_time_synced_t` 注释 + struct）替换为：
+Replace lines 125-144 of `app_event_defs.h` (the `app_evt_time_synced_t` comment + struct) with:
 
 ```c
 /**
@@ -622,7 +622,7 @@ typedef struct
 } app_evt_time_synced_t;
 ```
 
-同时删除 `app_event_defs.h` 第 36-44 行 Time 区域注释中的 `UTC + timezone offset` 措辞，改为：
+Also remove the `UTC + timezone offset` wording from the Time section comment on lines 36-44 of `app_event_defs.h`, changing it to:
 
 ```c
     /* Time (0x300~)
@@ -633,16 +633,16 @@ typedef struct
      */
 ```
 
-- [ ] **Step 2: 确认 on_evt_time_synced 调用者不崩**
+- [ ] **Step 2: Confirm the on_evt_time_synced callers do not break**
 
 ```bash
 grep -rn "app_evt_time_synced_t\|\.year\b\|\.month\b\|\.day\b\|\.hour\b\|\.min\b\|\.sec\b" \
      app/app_health/app_health.c app/app_time/app_time.c app/app_protocol/hmi_l2_cmd_settings.c
 ```
 
-`app_health.c` 的 `on_evt_time_synced` 已有 `(void)payload`，不访问字段，无需改。
-`app_time.c` 的 `on_evt_time_synced` 同样忽略 payload。
-只有 `hmi_l2_cmd_settings.c` 填充该结构体，在 Task 4 处理。
+The `on_evt_time_synced` in `app_health.c` already has `(void)payload`, accesses no fields and needs no change.
+The `on_evt_time_synced` in `app_time.c` likewise ignores the payload.
+Only `hmi_l2_cmd_settings.c` fills that struct; it is handled in Task 4.
 
 - [ ] **Step 3: Commit**
 
@@ -653,17 +653,17 @@ git commit -m "refactor(event): simplify app_evt_time_synced_t to single uint32_
 
 ---
 
-## Task 4: 修改 hmi_l2_cmd_settings.h / .c
+## Task 4: Modify hmi_l2_cmd_settings.h / .c
 
 **Files:**
 - Modify: `app/app_protocol/hmi_l2_cmd_settings.h`
 - Modify: `app/app_protocol/hmi_l2_cmd_settings.c`
 
 **Interfaces:**
-- Removes: `hmi_l2_decode_time`，`is_leap_year`，`days_in_month`
-- Consumes: `app_time_set(uint32_t)`（Task 2），`app_evt_time_synced_t.sec`（Task 3）
+- Removes: `hmi_l2_decode_time`, `is_leap_year`, `days_in_month`
+- Consumes: `app_time_set(uint32_t)` (Task 2), `app_evt_time_synced_t.sec` (Task 3)
 
-- [ ] **Step 1: 替换 hmi_l2_cmd_settings.h**
+- [ ] **Step 1: Replace hmi_l2_cmd_settings.h**
 
 ```c
 #ifndef _HMI_L2_CMD_SETTINGS_H_
@@ -682,9 +682,9 @@ void hmi_l2_settings_register(void);
 #endif /* _HMI_L2_CMD_SETTINGS_H_ */
 ```
 
-（删除 `app_time.h` include，删除 `hmi_l2_decode_time` 声明）
+(delete the `app_time.h` include and the `hmi_l2_decode_time` declaration)
 
-- [ ] **Step 2: 替换 hmi_l2_cmd_settings.c**
+- [ ] **Step 2: Replace hmi_l2_cmd_settings.c**
 
 ```c
 #include "hmi_l2_cmd_settings.h"
@@ -730,7 +730,7 @@ void hmi_l2_settings_register(void)
 }
 ```
 
-- [ ] **Step 3: west build 确认编译通过**
+- [ ] **Step 3: west build to confirm it compiles**
 
 ```bash
 west build -b rtl87x3g_evb
@@ -745,33 +745,33 @@ git commit -m "feat(settings): decode 0x01 as 4-byte big-endian wall clock secon
 
 ---
 
-## Task 5: 修改 hmi_l2.h — 删除闹钟宏
+## Task 5: Modify hmi_l2.h — delete the alarm macros
 
 **Files:**
 - Modify: `component/protocol/hmi_l2.h:29-32`
 
 **Interfaces:**
-- Removes: `HMI_L2_SET_ALARM 0x02u`，`HMI_L2_GET_ALARM_REQ 0x03u`，`HMI_L2_GET_ALARM_RSP 0x04u`（无引用点，安全删除）
+- Removes: `HMI_L2_SET_ALARM 0x02u`, `HMI_L2_GET_ALARM_REQ 0x03u`, `HMI_L2_GET_ALARM_RSP 0x04u` (no references, safe to delete)
 
-- [ ] **Step 1: 确认无引用**
+- [ ] **Step 1: Confirm there are no references**
 
 ```bash
 grep -rn "HMI_L2_SET_ALARM\|HMI_L2_GET_ALARM" --include=*.c --include=*.h . | grep -v build
 ```
 
-期望：零结果。
+Expected: zero results.
 
-- [ ] **Step 2: 删除三行宏定义**
+- [ ] **Step 2: Delete the three macro definitions**
 
-将 `hmi_l2.h` 中：
+In `hmi_l2.h`:
 ```c
 #define HMI_L2_SET_ALARM        0x02u
 #define HMI_L2_GET_ALARM_REQ    0x03u
 #define HMI_L2_GET_ALARM_RSP    0x04u
 ```
-三行删除（`HMI_L2_SET_TIME 0x01u` 行保留，下面直接接 `HMI_L2_SET_STEP_TARGET 0x05u`）。
+Delete those three lines (keep the `HMI_L2_SET_TIME 0x01u` line, so `HMI_L2_SET_STEP_TARGET 0x05u` follows directly).
 
-- [ ] **Step 3: west build 确认无编译错误**
+- [ ] **Step 3: west build to confirm there are no build errors**
 
 ```bash
 west build -b rtl87x3g_evb
@@ -786,37 +786,37 @@ git commit -m "refactor(protocol): remove unimplemented alarm key macros (0x02/0
 
 ---
 
-## Task 6: 修改 health 层 — ts_utc → ts 改名
+## Task 6: Modify the health layer — rename ts_utc → ts
 
 **Files:**
 - Modify: `app/app_health/app_health_internal.h:63`
-- Modify: `app/app_health/health_worker.c`（`ts_utc`、`boundary_utc`）
-- Modify: `app/app_health/health_db.c`（`ts_utc` 共 10 处，`health_db_save_synced_ts` 参数名）
+- Modify: `app/app_health/health_worker.c` (`ts_utc`, `boundary_utc`)
+- Modify: `app/app_health/health_db.c` (`ts_utc` in 10 places, the `health_db_save_synced_ts` parameter name)
 
 **Interfaces:**
-- `health_pedo_record_t.ts_utc` → `.ts`（类型、偏移、布局不变，Flash 记录不受影响）
+- `health_pedo_record_t.ts_utc` → `.ts` (type, offset and layout unchanged; Flash records are unaffected)
 - `health_worker_on_bucket_boundary(uint32_t boundary_utc)` → `(uint32_t boundary_sec)`
 
-- [ ] **Step 1: 修改 app_health_internal.h**
+- [ ] **Step 1: Modify app_health_internal.h**
 
-将第 63 行：
+Change line 63:
 ```c
     uint32_t ts_utc;        /* UTC epoch seconds captured at flush moment  */
 ```
-改为：
+to:
 ```c
     uint32_t ts;            /* wall clock seconds at flush moment           */
 ```
 
-将第 108 行注释 `using the record's ts_utc as` 改为 `using the record's ts as`。
+Change the comment on line 108 from `using the record's ts_utc as` to `using the record's ts as`.
 
-将第 150-156 行注释和函数签名：
+Change the comment and function signature on lines 150-156:
 ```c
 /* Bucket boundary reached: write the closed bucket to the TSDB. @c boundary_utc
  * ...
 void health_worker_on_bucket_boundary(uint32_t boundary_utc);
 ```
-改为：
+to:
 ```c
 /* Bucket boundary reached: write the closed bucket to the TSDB. @c boundary_sec
  * is the boundary instant in wall clock seconds and becomes the record's
@@ -824,19 +824,19 @@ void health_worker_on_bucket_boundary(uint32_t boundary_utc);
 void health_worker_on_bucket_boundary(uint32_t boundary_sec);
 ```
 
-- [ ] **Step 2: 修改 health_worker.c**
+- [ ] **Step 2: Modify health_worker.c**
 
-全文替换 `ts_utc` → `ts`（影响第 280 行初始化器 `.ts_utc = ts`）。  
-全文替换 `boundary_utc` → `boundary_sec`（影响第 222、236、269、328、330、337 行）。  
-第 222 行注释 `@c boundary_utc` → `@c boundary_sec`。
+Replace `ts_utc` → `ts` throughout (affects the initializer `.ts_utc = ts` on line 280).  
+Replace `boundary_utc` → `boundary_sec` throughout (affects lines 222, 236, 269, 328, 330 and 337).  
+Change the comment on line 222 from `@c boundary_utc` to `@c boundary_sec`.
 
-- [ ] **Step 3: 修改 health_db.c**
+- [ ] **Step 3: Modify health_db.c**
 
-全文替换 `ts_utc` → `ts`，共 10 处：
-- 第 8、13 行注释
-- 第 92、96、99、101、105、159（参数名）、170、224、267、291、378、380 行代码
+Replace `ts_utc` → `ts` throughout, 10 places in total:
+- the comments on lines 8 and 13
+- the code on lines 92, 96, 99, 101, 105, 159 (parameter name), 170, 224, 267, 291, 378 and 380
 
-`health_db_save_synced_ts` 函数参数 `uint32_t ts_utc` → `uint32_t ts`，函数体内 `&ts_utc` → `&ts`。
+In `health_db_save_synced_ts` the parameter `uint32_t ts_utc` → `uint32_t ts`, and in the function body `&ts_utc` → `&ts`.
 
 - [ ] **Step 4: west build**
 
@@ -853,19 +853,19 @@ git commit -m "refactor(health): rename ts_utc->ts and boundary_utc->boundary_se
 
 ---
 
-## Task 7: 修改 hmi_l2_cmd_sport.c — 适配新 API
+## Task 7: Modify hmi_l2_cmd_sport.c — adapt to the new API
 
 **Files:**
 - Modify: `app/app_protocol/hmi_l2_cmd_sport.c:102-105,185-193`
 
 **Interfaces:**
-- `r->ts_utc` → `r->ts`（Task 6 改名后）
-- `app_time_to_local(...)` → `app_time_to_calendar(...)`（Task 2）
-- 日志格式化：`lt.year` → `tm.tm_year+1900`，`lt.month` → `tm.tm_mon+1`
+- `r->ts_utc` → `r->ts` (after the Task 6 rename)
+- `app_time_to_local(...)` → `app_time_to_calendar(...)` (Task 2)
+- Log formatting: `lt.year` → `tm.tm_year+1900`, `lt.month` → `tm.tm_mon+1`
 
-- [ ] **Step 1: 修改 sport_encode_record 字段名**
+- [ ] **Step 1: Change the sport_encode_record field names**
 
-第 102-105 行，将 `r->ts_utc` 改为 `r->ts`（4 处）：
+On lines 102-105, change `r->ts_utc` to `r->ts` (4 occurrences):
 
 ```c
     out[p++] = (uint8_t)(r->ts >> 24);
@@ -874,9 +874,9 @@ git commit -m "refactor(health): rename ts_utc->ts and boundary_utc->boundary_se
     out[p++] = (uint8_t)(r->ts);
 ```
 
-- [ ] **Step 2: 修改日志调用**
+- [ ] **Step 2: Change the logging call**
 
-将第 185-193 行：
+Change lines 185-193:
 ```c
         app_time_local_t lt;
         app_time_to_local(rec.ts_utc, &lt);
@@ -885,7 +885,7 @@ git commit -m "refactor(health): rename ts_utc->ts and boundary_utc->boundary_se
                   (unsigned)lt.day, (unsigned)lt.hour, (unsigned)lt.min,
                   (unsigned)rec.steps);
 ```
-改为：
+to:
 ```c
         struct tm lt;
         app_time_to_calendar(rec.ts, &lt);
@@ -896,7 +896,7 @@ git commit -m "refactor(health): rename ts_utc->ts and boundary_utc->boundary_se
                   (unsigned)lt.tm_min, (unsigned)rec.steps);
 ```
 
-在文件顶部 includes 中加 `#include <time.h>`（如果尚未有）。
+Add `#include <time.h>` to the includes at the top of the file (if not already present).
 
 - [ ] **Step 3: west build**
 
@@ -913,96 +913,96 @@ git commit -m "refactor(sport): adapt to renamed ts field and app_time_to_calend
 
 ---
 
-## Task 8: 修改 BLE_PROTOCOL_SPEC.html
+## Task 8: Modify BLE_PROTOCOL_SPEC.html
 
 **Files:**
 - Modify: `component/protocol/BLE_PROTOCOL_SPEC.html`
 
-注：该文件在 `component/protocol/` 子仓库，需在子仓库单独 commit。
+Note: this file lives in the `component/protocol/` sub-repository and must be committed there separately.
 
-- [ ] **Step 1: 替换 0x01 时间设置表格**
+- [ ] **Step 1: Replace the 0x01 time set table**
 
-定位第 711 行 `<h4 id="0x01-时间设置">`。  
-将其后的整个 `<table>` 块（6 行 Year/Month/Day/Hour/Minute/Second）替换为：
+Locate line 711, the `<h4>` heading for the 0x01 time set section.  
+Replace the whole `<table>` block that follows (6 rows: Year/Month/Day/Hour/Minute/Second) with:
 
 ```html
-<h4 id="0x01-时间设置">0x01 — 时间设置</h4>
-<p><strong>方向</strong>：手机 → 设备（每次绑定成功后需同步）<br />
-<strong>Value（4 bytes，Big-Endian）</strong>：墙上时钟秒（wall clock seconds），自 1970-01-01 00:00:00 起算。</p>
+<h4 id="0x01-time-set">0x01 — Time set</h4>
+<p><strong>Direction</strong>: phone → device (must be synced after every successful bind)<br />
+<strong>Value (4 bytes, Big-Endian)</strong>: wall clock seconds, counted from 1970-01-01 00:00:00.</p>
 <table>
-<thead><tr><th>字节序</th><th>宽度</th><th>说明</th></tr></thead>
+<thead><tr><th>Byte order</th><th>Width</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td>大端</td><td>4 bytes</td><td>其值为设备应当显示的时刻。手机负责把用户本地日历折算为秒；<strong>设备不做任何时区处理</strong>。有效范围 1970-01-01 至 2106-02-07。</td></tr>
+<tr><td>Big-endian</td><td>4 bytes</td><td>Its value is the instant the device should display. The phone converts the user's local calendar to seconds; <strong>the device performs no timezone handling</strong>. Valid range 1970-01-01 to 2106-02-07.</td></tr>
 </tbody>
 </table>
-<p><strong>不兼容变更</strong>（2026-08-25）：原格式为 32-bit packed 日历字段（Year 6 bits + Month 4 bits + Day 5 bits + Hour 5 bits + Minute 6 bits + Second 6 bits），现已废弃。固件与 App 必须同版本升级。</p>
+<p><strong>Breaking change</strong> (2026-08-25): the previous format was 32-bit packed calendar fields (Year 6 bits + Month 4 bits + Day 5 bits + Hour 5 bits + Minute 6 bits + Second 6 bits) and is now obsolete. Firmware and App must be upgraded in the same version.</p>
 ```
 
-- [ ] **Step 2: 删除闹钟 TOC 三行**
+- [ ] **Step 2: Delete the three alarm TOC rows**
 
-在 TOC 表格（约第 660-680 行）中，删除：
+In the TOC table (around lines 660-680), delete:
 ```html
 <tr>
 <td><code>0x02</code></td>
-<td>闹钟设置</td>
+<td>Alarm setting</td>
 </tr>
 <tr>
 <td><code>0x03</code></td>
-<td>获取设备闹钟列表请求</td>
+<td>Get device alarm list request</td>
 </tr>
 <tr>
 <td><code>0x04</code></td>
-<td>获取设备闹钟列表返回</td>
+<td>Get device alarm list response</td>
 </tr>
 ```
 
-- [ ] **Step 3: 删除闹钟章节主体**
+- [ ] **Step 3: Delete the alarm section body**
 
-删除第 754-812 行（从 `<h4 id="0x02-0x04-闹钟设置-获取闹钟列表返回">` 到 `<h4 id="0x03-获取设备闹钟列表请求">` 节末尾 `<p><strong>Value</strong>：空</p>` 为止，共两个小节）。
+Delete lines 754-812 (from the 0x02/0x04 alarm-settings heading through the end of the 0x03 get-device-alarm-list-request section, stopping at its closing `<p><strong>Value</strong>: empty</p>`; two subsections in total).
 
-- [ ] **Step 4: 更新 0x21 Timestamp 纪元**
+- [ ] **Step 4: Update the 0x21 Timestamp epoch**
 
-定位第 1634 行：
+Locate line 1634:
 ```html
-<td>从 2000 年起的秒数</td>
+<td>Seconds since 2000</td>
 ```
-改为：
+to:
 ```html
-<td>墙上时钟秒（自 1970-01-01 起算，与 §0x01 定义一致）</td>
-```
-
-- [ ] **Step 5: 更新上行 Timestamp 措辞**
-
-定位第 1178-1181 行（sport 桶说明段落）：
-```html
-<p>手机不得把 Timestamp 当作桶开始时间，也不得再对 Timestamp 做时区、
-Date/Offset 或 15 分钟前移转换。</p>
-```
-改为：
-```html
-<p>Timestamp 即设备显示的墙上时钟时刻（wall clock seconds，1970 纪元），
-手机直接渲染即可，无需任何时区转换。</p>
+<td>Wall clock seconds (counted from 1970-01-01, consistent with the §0x01 definition)</td>
 ```
 
-定位第 1224 行：
+- [ ] **Step 5: Update the uplink Timestamp wording**
+
+Locate lines 1178-1181 (the sport bucket description paragraph):
 ```html
-<td>Unix 时间戳（秒），与 FlashDB 记录时间一致</td>
+<p>The phone must not treat Timestamp as the bucket start time, and must not apply any timezone,
+Date/Offset or 15-minute shift conversion to Timestamp either.</p>
 ```
-改为：
+to:
 ```html
-<td>墙上时钟秒（自 1970-01-01 起算，与设备显示一致），与 FlashDB 记录时间一致</td>
+<p>Timestamp is the wall clock instant displayed by the device (wall clock seconds, 1970 epoch),
+so the phone can render it directly without any timezone conversion.</p>
 ```
 
-定位第 1357 行（sleep record）：
+Locate line 1224:
 ```html
-<td>状态实际生效的 Unix 时间戳（秒），与 FlashDB 记录时间一致</td>
+<td>Unix timestamp (seconds), consistent with the FlashDB record time</td>
 ```
-改为：
+to:
 ```html
-<td>状态实际生效的墙上时钟秒（自 1970-01-01 起算），与 FlashDB 记录时间一致</td>
+<td>Wall clock seconds (counted from 1970-01-01, consistent with the device display), consistent with the FlashDB record time</td>
 ```
 
-- [ ] **Step 6: Commit（在 component/protocol 子仓库）**
+Locate line 1357 (sleep record):
+```html
+<td>Unix timestamp (seconds) at which the state actually took effect, consistent with the FlashDB record time</td>
+```
+to:
+```html
+<td>Wall clock seconds (counted from 1970-01-01) at which the state actually took effect, consistent with the FlashDB record time</td>
+```
+
+- [ ] **Step 6: Commit (in the component/protocol sub-repository)**
 
 ```bash
 cd component/protocol
@@ -1013,15 +1013,15 @@ cd ../..
 
 ---
 
-## Task 9: 修改手机 watch_time_protocol.dart
+## Task 9: Modify the phone watch_time_protocol.dart
 
 **Files:**
 - Modify: `C:\Users\howie_wang.RSDOMAIN\workspace\HoneyBox\lib\services\watch_time_protocol.dart`
 - Modify: `C:\Users\howie_wang.RSDOMAIN\workspace\HoneyBox\test\services\watch_time_protocol_test.dart`
 
-WSL 路径：`/mnt/c/Users/howie_wang.RSDOMAIN/workspace/HoneyBox/...`
+WSL path: `/mnt/c/Users/howie_wang.RSDOMAIN/workspace/HoneyBox/...`
 
-- [ ] **Step 1: 替换 watch_time_protocol.dart**
+- [ ] **Step 1: Replace watch_time_protocol.dart**
 
 ```dart
 import 'dart:typed_data';
@@ -1077,9 +1077,9 @@ class WatchTimeProtocol {
 }
 ```
 
-- [ ] **Step 2: 替换 watch_time_protocol_test.dart**
+- [ ] **Step 2: Replace watch_time_protocol_test.dart**
 
-测试向量（由 Python `calendar.timegm` 计算，TZ 无关）：
+Test vectors (computed with Python `calendar.timegm`, timezone independent):
 - `DateTime(2024, 7, 27, 15, 42, 36)` → `1722094956` → `[0x66, 0xA5, 0x15, 0x6C]`
 - `DateTime(2000, 1, 1)` → `946684800` → `[0x38, 0x6D, 0x43, 0x80]`
 - `DateTime(2063, 12, 31, 23, 59, 59)` → `2966371199` → `[0xB0, 0xCF, 0x3B, 0x7F]`
@@ -1127,16 +1127,16 @@ void main() {
 }
 ```
 
-- [ ] **Step 3: 运行手机测试**
+- [ ] **Step 3: Run the phone tests**
 
 ```bash
 cd "/mnt/c/Users/howie_wang.RSDOMAIN/workspace/HoneyBox"
 cmd.exe /c "D:\\Android-dev-tool\\flutter\\bin\\flutter.bat test test\\services\\watch_time_protocol_test.dart"
 ```
 
-期望：`All tests passed!`
+Expected: `All tests passed!`
 
-- [ ] **Step 4: Commit（在 HoneyBox 仓库）**
+- [ ] **Step 4: Commit (in the HoneyBox repo)**
 
 ```bash
 cd "/mnt/c/Users/howie_wang.RSDOMAIN/workspace/HoneyBox"
@@ -1146,15 +1146,15 @@ git commit -m "feat(time): send 4-byte big-endian wall clock seconds instead of 
 
 ---
 
-## Task 10: 修改手机 watch_health_protocol.dart 与测试
+## Task 10: Modify the phone watch_health_protocol.dart and its test
 
 **Files:**
 - Modify: `HoneyBox/lib/services/watch_health_protocol.dart:300-307`
 - Modify: `HoneyBox/test/services/watch_health_protocol_test.dart:49-52`
 
-- [ ] **Step 1: 修改 _readTimestamp — 去掉 .toLocal()**
+- [ ] **Step 1: Change _readTimestamp — drop .toLocal()**
 
-将第 300-307 行：
+Change lines 300-307:
 ```dart
   /// Unix epoch seconds, big-endian. Records are UTC on the wire.
   static DateTime _readTimestamp(Uint8List bytes, int offset) {
@@ -1166,7 +1166,7 @@ git commit -m "feat(time): send 4-byte big-endian wall clock seconds instead of 
         .toLocal();
   }
 ```
-改为：
+to:
 ```dart
   /// Wall clock seconds, big-endian (1970 epoch, value = what the watch shows).
   static DateTime _readTimestamp(Uint8List bytes, int offset) {
@@ -1178,9 +1178,9 @@ git commit -m "feat(time): send 4-byte big-endian wall clock seconds instead of 
   }
 ```
 
-- [ ] **Step 2: 修改 watch_health_protocol_test.dart**
+- [ ] **Step 2: Modify watch_health_protocol_test.dart**
 
-将第 49-52 行断言：
+Change the assertion on lines 49-52:
 ```dart
     expect(
       item.timestamp,
@@ -1188,7 +1188,7 @@ git commit -m "feat(time): send 4-byte big-endian wall clock seconds instead of 
           .toLocal(),
     );
 ```
-改为：
+to:
 ```dart
     expect(
       item.timestamp,
@@ -1196,14 +1196,14 @@ git commit -m "feat(time): send 4-byte big-endian wall clock seconds instead of 
     );
 ```
 
-- [ ] **Step 3: 运行手机测试**
+- [ ] **Step 3: Run the phone tests**
 
 ```bash
 cd "/mnt/c/Users/howie_wang.RSDOMAIN/workspace/HoneyBox"
 cmd.exe /c "D:\\Android-dev-tool\\flutter\\bin\\flutter.bat test test\\services\\watch_health_protocol_test.dart"
 ```
 
-期望：`All tests passed!`
+Expected: `All tests passed!`
 
 - [ ] **Step 4: Commit**
 
@@ -1214,58 +1214,58 @@ git commit -m "fix(health): remove .toLocal() from timestamp decode — wall clo
 
 ---
 
-## Task 11: 修改 watch_health_data.dart 与 fixture
+## Task 11: Modify watch_health_data.dart and the fixture
 
 **Files:**
 - Modify: `HoneyBox/lib/pages/watch/health/watch_health_data.dart`
 - Modify: `HoneyBox/test/helpers/watch_health_fixture.dart`
 
-背景：`_readTimestamp` 现在返回 UTC-flagged `DateTime`（`isUtc: true`）。Dart 的 `.year`/`.month`/`.day`/`.hour` 对 UTC-flagged 对象返回 UTC 字段，对本地对象返回本地字段。`_today` 和 `syncedAt` 来自 `DateTime.now()`（本地），所以需要统一。
+Background: `_readTimestamp` now returns a UTC-flagged `DateTime` (`isUtc: true`). Dart's `.year`/`.month`/`.day`/`.hour` return UTC fields for UTC-flagged objects and local fields for local objects. `_today` and `syncedAt` come from `DateTime.now()` (local), so they must be brought into line.
 
-- [ ] **Step 1: 修改 _today getter（第 103 行）**
+- [ ] **Step 1: Change the _today getter (line 103)**
 
-将：
+Change:
 ```dart
   DateTime get _today => DateTime(syncedAt.year, syncedAt.month, syncedAt.day);
 ```
-改为：
+to:
 ```dart
   DateTime get _today => DateTime.utc(syncedAt.year, syncedAt.month, syncedAt.day);
 ```
 
-- [ ] **Step 2: 修改 _dailyTrend 中 firstDay（第 230 行）**
+- [ ] **Step 2: Change firstDay in _dailyTrend (line 230)**
 
-`firstDay` 和 `date` 通过 `_today.subtract(...)` / `firstDay.add(...)` 生成，`_today` 改为 UTC-flagged 后这两行自动正确，无需改动（Dart 的 `subtract`/`add` 保留 `isUtc` 标志）。
+`firstDay` and `date` are produced through `_today.subtract(...)` / `firstDay.add(...)`; once `_today` is UTC-flagged those two lines are automatically correct and need no change (Dart's `subtract`/`add` preserve the `isUtc` flag).
 
-确认一遍：
+Confirm once more:
 ```dart
     final firstDay = _today.subtract(Duration(days: days - 1));
     ...
     final date = firstDay.add(Duration(days: i));
 ```
-`_today` 是 UTC-flagged → `firstDay`/`date` 也是 UTC-flagged → `.month`/`.day` 返回 UTC 字段 → 与 UTC-flagged 的 `record.timestamp` 一致。✓
+`_today` is UTC-flagged → `firstDay`/`date` are UTC-flagged too → `.month`/`.day` return UTC fields → consistent with the UTC-flagged `record.timestamp`. ✓
 
-- [ ] **Step 3: 确认 _sameDate 无需改动**
+- [ ] **Step 3: Confirm _sameDate needs no change**
 
 ```dart
   static bool _sameDate(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 ```
-两侧统一为 UTC-flagged 后，该函数正确工作，无需改动。
+Once both sides are UTC-flagged the function works correctly and needs no change.
 
-- [ ] **Step 4: 确认 _dayTrend 中 .hour 比较正确**
+- [ ] **Step 4: Confirm the .hour comparison in _dayTrend is correct**
 
 ```dart
           record.timestamp.hour >= startHour &&
           record.timestamp.hour < endHour
 ```
-`record.timestamp` 是 UTC-flagged → `.hour` 返回 UTC 小时 → 与墙上时钟小时一致（因为 wall clock seconds 本身就是"表盘时间"）。✓ 无需改动。
+`record.timestamp` is UTC-flagged → `.hour` returns the UTC hour → equal to the wall clock hour (because wall clock seconds are by definition "watch face time"). ✓ No change needed.
 
-- [ ] **Step 5: 修改 watch_health_fixture.dart**
+- [ ] **Step 5: Modify watch_health_fixture.dart**
 
-fixture 现在应使用 UTC-flagged `DateTime.utc(...)` 以匹配线上数据的实际类型：
+The fixture should now use UTC-flagged `DateTime.utc(...)` to match the actual type of the wire data:
 
-将所有 `DateTime(2026, 7, ...)` / `DateTime(2026, 7, ...)` 改为 `DateTime.utc(2026, 7, ...)`：
+Change every `DateTime(2026, 7, ...)` to `DateTime.utc(2026, 7, ...)`:
 
 ```dart
 /// Timestamps use DateTime.utc() to match the wire format:
@@ -1319,37 +1319,37 @@ git commit -m "fix(health-data): align _today to UTC-flagged DateTime to match w
 
 ---
 
-## Task 12: 最终验收
+## Task 12: Final acceptance
 
-- [ ] **Step 1: 固件宿主测试三遍通过**
+- [ ] **Step 1: Firmware host tests pass three times**
 
 ```bash
 cd tests/app_time && make run
 ```
 
-期望：`TZ=`、`TZ=America/New_York`、`TZ=Asia/Shanghai` 下各输出 `all passed`。
+Expected: `all passed` under each of `TZ=`, `TZ=America/New_York` and `TZ=Asia/Shanghai`.
 
-- [ ] **Step 2: west build 通过**
+- [ ] **Step 2: west build passes**
 
 ```bash
 west build -b rtl87x3g_evb
 ```
 
-- [ ] **Step 3: 手机全量测试通过**
+- [ ] **Step 3: The full phone test suite passes**
 
 ```bash
 cd "/mnt/c/Users/howie_wang.RSDOMAIN/workspace/HoneyBox"
 cmd.exe /c "D:\\Android-dev-tool\\flutter\\bin\\flutter.bat test"
 ```
 
-- [ ] **Step 4: 硬件端到端验证（手工）**
+- [ ] **Step 4: Hardware end-to-end verification (manual)**
 
-1. 刷新固件（`west flash`）
-2. App 绑定设备，确认时间同步成功
-3. 观察 SPORT 同步日志时间与表盘一致（不偏 8 小时）
-4. 次日 00:00 确认步数归零，而非 16:00
+1. Flash the firmware (`west flash`)
+2. Bind the device from the App and confirm time sync succeeds
+3. Check that the SPORT sync log time matches the watch face (no 8-hour shift)
+4. At 00:00 the next day confirm the step count resets, rather than at 16:00
 
-- [ ] **Step 5: Commit 验收记录**
+- [ ] **Step 5: Commit the acceptance record**
 
 ```bash
 cd /home/howie_wang/hmi/rtl8773g-simple-test/applications

@@ -1,99 +1,99 @@
-# App 层骨架设计（蓝牙智能手表）
+# App layer skeleton design (Bluetooth smartwatch)
 
-- **日期**：2026-07-22
-- **分支**：`RTL8773G-eBadge-WH`（复用 eBadge 硬件环境，不做 eBadge 业务）
-- **产物范围**：`applications/app/` 目录下的骨架代码（header + 空 `.c`）
-- **产品定位**：全功能蓝牙智能手表（多媒体 + 通话 + 健康 + 通知 + 自研配套手机 App）
-- **本 spec 只覆盖骨架**——每个模块的业务逻辑（BLE 私有协议、健康算法、通话状态机等）**不在本 spec 范围内**，将来每个模块各自 brainstorm。
+- **Date**: 2026-07-22
+- **Branch**: `RTL8773G-eBadge-WH` (reuses the eBadge hardware environment; no eBadge business is implemented)
+- **Deliverable scope**: skeleton code under `applications/app/` (headers + empty `.c`)
+- **Product positioning**: full-featured Bluetooth smartwatch (multimedia + calls + health + notifications + in-house companion phone App)
+- **This spec covers the skeleton only** —— each module's business logic (BLE private protocol, health algorithms, call state machine, etc.) is **out of scope here**; every module will get its own brainstorm later.
 
 ---
 
-## 1. 背景与目标
+## 1. Background and goals
 
-### 1.1 现有底层能力
+### 1.1 Existing low-level capabilities
 
-调研 `applications/` 已确认可用：
+A survey of `applications/` confirmed the following are available:
 
-| 层 | 现状 |
+| Layer | Status |
 |---|---|
-| OS | Zephyr（当前平台，但 app 层不假设 Zephyr——见 §1.2） |
-| BLE | Realtek BLE MGR + BR/EDR，A2DP / AVRCP / HFP / PAN 已开 |
-| GUI | Realtek HoneyGUI，事件驱动，`gui_server_init()` 已在 `main.c` 起用 |
-| 传感器算法 | `component/gsensor-algorithm/` 有计步 FSM + `pedo_logger` + 共享 worker slot |
-| 存储 | FlashDB 三种模式（KV / TS / Blob）已就绪，含 registry |
-| RTC | 开 |
-| 输入 | 按键；触摸暂停用 |
-| OS 抽象 | Realtek OSIF（`os_task.h` / `os_msg.h` / `os_timer.h` / `os_sync.h` 等）——跨 Realtek SDK 通用 |
+| OS | Zephyr (the current platform, but the app layer does not assume Zephyr —— see §1.2) |
+| BLE | Realtek BLE MGR + BR/EDR, A2DP / AVRCP / HFP / PAN already enabled |
+| GUI | Realtek HoneyGUI, event driven, `gui_server_init()` already started in `main.c` |
+| Sensor algorithms | `component/gsensor-algorithm/` has a step-counting FSM + `pedo_logger` + a shared worker slot |
+| Storage | FlashDB in all three modes (KV / TS / Blob) ready, including the registry |
+| RTC | enabled |
+| Input | keys; touch is paused |
+| OS abstraction | Realtek OSIF (`os_task.h` / `os_msg.h` / `os_timer.h` / `os_sync.h` etc.) —— portable across the Realtek SDK |
 
-### 1.2 平台无关性约束
+### 1.2 Platform-independence constraints
 
-用户明确：**「有可能不是在 Zephyr 平台」**。因此本骨架：
+The user stated explicitly: **"it may not be on the Zephyr platform"**. This skeleton therefore:
 
-- **不使用** Zephyr API（`k_thread` / `k_msgq` / `SYS_INIT` / `LOG_MODULE_REGISTER` 等）
-- **不使用** Zephyr 特有的 linker section 注册机制
-- **使用** Realtek OSIF 作为 OS 依赖，它跨 Realtek SDK 通用（8762D / 8762C / 8762E / 8773G / RTL87x3ep 均有）
+- does **not use** Zephyr APIs (`k_thread` / `k_msgq` / `SYS_INIT` / `LOG_MODULE_REGISTER` etc.)
+- does **not use** Zephyr's linker-section registration mechanism
+- **uses** Realtek OSIF as its OS dependency; it is portable across the Realtek SDK (present on 8762D / 8762C / 8762E / 8773G / RTL87x3ep)
 
-### 1.3 目标
+### 1.3 Goals
 
-在 `applications/app/` 下建立一套可扩展的 app 层地基：
+Establish an extensible app-layer foundation under `applications/app/`:
 
-1. 统一的模块生命周期契约
-2. 统一的模块间通信机制（事件总线）
-3. 9 个业务子模块的 header 接缝（对外 API 定型，实现留空）
-4. 沿用现有 CMake 构建体系，`main.c` 挂载点最小改动
+1. a unified module lifecycle contract
+2. a unified inter-module communication mechanism (event bus)
+3. header seams for 9 business submodules (public API fixed, implementation left empty)
+4. reuse of the existing CMake build system, with minimal changes to the `main.c` mount point
 
-**骨架完工后**：编译能过、上电能跑，每个模块的 init/start 被调用（打印 log 可观察），事件总线 API 编译期可用（内部实现留 TODO）。
+**When the skeleton is done**: it builds, it runs after power-on, each module's init/start is called (observable in the logs), and the event bus API is usable at compile time (the internals stay TODO).
 
-### 1.4 非目标
+### 1.4 Non-goals
 
-以下**明确不在本 spec 范围**：
+The following are **explicitly out of scope for this spec**:
 
-- 任何模块的业务实现（BLE 私有协议、GATT service、通话状态机、健康算法调用、通知拉取、时间同步协议、OTA 通道、UI 交互）
-- UI 层设计——用户已确认自己处理 UI 框架
-- Kconfig 选项——所有模块无条件编入
-- Shell 命令封装（`app_shell`）——已否决，业务模块直接用 Zephyr `SHELL_CMD_REGISTER`
-- Log 封装（`app_log`）——已否决，业务模块直接用 Zephyr LOG 或 `DBG_DIRECT`
-- OTA（`app_ota`）——已从本轮骨架移除，将来单独 brainstorm；事件 id 段 `0x900` 保留占位
-- OSAL 抽象层——已否决，直接用 Realtek OSIF
-- eBadge 功能——已明确忽略
-- 单元测试——骨架期无实现可测
+- any module's business implementation (BLE private protocol, GATT services, call state machine, health algorithm calls, notification fetching, time sync protocol, OTA channel, UI interaction)
+- UI layer design —— the user confirmed they will handle the UI framework themselves
+- Kconfig options —— every module is compiled in unconditionally
+- shell command wrapper (`app_shell`) —— rejected; business modules use Zephyr `SHELL_CMD_REGISTER` directly
+- log wrapper (`app_log`) —— rejected; business modules use Zephyr LOG or `DBG_DIRECT` directly
+- OTA (`app_ota`) —— removed from this skeleton round and brainstormed separately later; the `0x900` event id range stays reserved
+- OSAL abstraction layer —— rejected; Realtek OSIF is used directly
+- eBadge features —— explicitly ignored
+- unit tests —— nothing to test while the skeleton has no implementation
 
 ---
 
-## 2. 顶层设计决策（Q&A 汇总）
+## 2. Top-level design decisions (Q&A summary)
 
-| 决策点 | 选择 | 备选 | 理由 |
+| Decision | Choice | Alternatives | Rationale |
 |---|---|---|---|
-| 模块间通信 | **事件总线**（发布/订阅） | 直接函数调用 / OS msgq | 至少 5 个子系统存在一对多监听（BLE 状态、电量、时间…）；避免环形 include |
-| 生命周期契约 | **注册表 + 显式 init 列表** | linker section 自动注册 / `SYS_INIT` | 模块规模小（9 个），显式列表调试友好；平台无关 |
-| OS 抽象 | **直接用 Realtek OSIF** | 自建 OSAL / CMSIS-RTOS2 / POSIX | 用户已指定；OSIF 跨 Realtek SDK 通用 |
-| 事件回调线程模型 | **所有回调在单一 dispatcher 线程串行** | 每模块一 msgq，dispatcher 分发 | 骨架简单；模块想异步再自己转发 |
-| `init` 失败策略 | **跳过该模块的 start，整体继续** | 任一失败即停机 | 手表类产品应"降级可用" |
-| 事件 payload 上限 | **32 字节** | 64 / 128 / 不定长 | 状态类事件够用；大数据走 getter 或直接调用 |
-| 订阅表容量 | **32** | 16 / 64 | 8 业务模块 × 平均 3~4 订阅 ≈ 24~32，留富余 |
-| ISR 发布支持 | **保留** `app_event_publish_isr` | 砍掉 | 用户显式要求 |
-| `EVT_SETTING_CHANGED` payload | **key 枚举** | key 字符串指针 | 生命周期稳定，无字符串所有权问题 |
-| 通知条目尺寸 | body 64 字节 | 128 字节 | 每条 ~136B × 20 = ~2.7KB，内存友好 |
-| `main.c` 挂载位置 | **`gui_server_init()` 之后** | 之前 | UI 先就绪，避免早期事件错过（次要考虑，事件队列本身有缓冲） |
-| include 路径 | **平铺**（`#include "app_health.h"`） | 带前缀（`app_health/app_health.h`） | 沿用项目现有风格 |
-| 骨架期同步 API | **空实现返回 0 / -1** | 只声明不实现 | 骨架期即可编过 |
+| Inter-module communication | **event bus** (publish/subscribe) | direct function calls / OS msgq | at least 5 subsystems have one-to-many listeners (BLE state, battery, time…); avoids circular includes |
+| Lifecycle contract | **registry + explicit init list** | linker-section auto registration / `SYS_INIT` | the module count is small (9) and an explicit list is easy to debug; platform independent |
+| OS abstraction | **Realtek OSIF directly** | own OSAL / CMSIS-RTOS2 / POSIX | specified by the user; OSIF is portable across the Realtek SDK |
+| Event callback threading model | **all callbacks serialised on a single dispatcher thread** | one msgq per module, dispatcher delivers | simple skeleton; modules that want async can forward themselves |
+| `init` failure policy | **skip that module's start and continue overall** | abort on any failure | a watch product should degrade gracefully |
+| Event payload limit | **32 bytes** | 64 / 128 / variable length | enough for state-type events; bulk data goes through getters or direct calls |
+| Subscription table capacity | **32** | 16 / 64 | 8 business modules × 3~4 subscriptions on average ≈ 24~32, with headroom |
+| ISR publish support | **keep** `app_event_publish_isr` | drop it | explicitly requested by the user |
+| `EVT_SETTING_CHANGED` payload | **key enum** | key string pointer | stable lifetime, no string ownership issues |
+| Notification item size | body 64 bytes | 128 bytes | each ~136B × 20 = ~2.7KB, memory friendly |
+| `main.c` mount point | **after `gui_server_init()`** | before | the UI is ready first, so early events are not missed (minor concern; the event queue buffers anyway) |
+| include paths | **flat** (`#include "app_health.h"`) | prefixed (`app_health/app_health.h`) | follows the existing project style |
+| sync APIs during the skeleton phase | **empty implementations returning 0 / -1** | declare only, no implementation | builds right away |
 
 ---
 
-## 3. 目录结构
+## 3. Directory layout
 
 ```
 applications/app/
-├── CMakeLists.txt              # 沿用 port/CMakeLists.txt 模板；递归 add_subdirectory
+├── CMakeLists.txt              # follows the port/CMakeLists.txt template; recursive add_subdirectory
 ├── app_core/
 │   ├── CMakeLists.txt
-│   ├── app_core.h              # 对外：app_core_init() / app_core_start()
-│   ├── app_core.c              # 遍历 modules[] 跑 init 再跑 start
-│   ├── app_module.h            # app_module_t 契约定义
-│   ├── app_modules.c           # 9 个模块的 modules[] 集中列表
-│   ├── app_event.h             # 事件总线 API
-│   ├── app_event.c             # dispatcher task + 订阅表实现
-│   └── app_event_defs.h        # 事件 id 枚举 + payload struct 定义
+│   ├── app_core.h              # public: app_core_init() / app_core_start()
+│   ├── app_core.c              # iterate modules[], run init then start
+│   ├── app_module.h            # app_module_t contract definition
+│   ├── app_modules.c           # central modules[] list of the 9 modules
+│   ├── app_event.h             # event bus API
+│   ├── app_event.c             # dispatcher task + subscription table implementation
+│   └── app_event_defs.h        # event id enum + payload struct definitions
 ├── app_ble/         { CMakeLists.txt, app_ble.h,     app_ble.c }
 ├── app_health/      { CMakeLists.txt, app_health.h,  app_health.c }
 ├── app_media/       { CMakeLists.txt, app_media.h,   app_media.c }
@@ -104,19 +104,19 @@ applications/app/
 └── app_setting/     { CMakeLists.txt, app_setting.h, app_setting.c }
 ```
 
-**目录设计要点**：
+**Directory design notes**:
 
-- 每个模块**独立子目录**，即使骨架期只有一份 `.c/.h`——将来模块内部拆分（如 `app_health/hr.c`、`app_ble/gatt_watch.c`）不用搬家
-- `app_core/` 独立成模块目录，让 `app/` 下所有子目录形态一致
-- `app_modules.c` **是唯一 include 全部子模块 header 的地方**，加/减模块只改这一处
-- `app_event.h`（机制）与 `app_event_defs.h`（契约）分家——后者会随业务频繁增长，改它不会触发全项目重编译
-- **不使用** `app/include/` 汇总头——避免"改一个模块 header 全项目重编译"
+- every module gets its **own subdirectory**, even when the skeleton phase has just one `.c/.h` —— future internal splits (e.g. `app_health/hr.c`, `app_ble/gatt_watch.c`) need no move
+- `app_core/` is a module directory too, so all subdirectories under `app/` have the same shape
+- `app_modules.c` **is the only place that includes every submodule header**; adding or removing a module touches only this file
+- `app_event.h` (mechanism) and `app_event_defs.h` (contract) are kept apart —— the latter grows frequently with the business, and changing it does not trigger a whole-project rebuild
+- **no** `app/include/` aggregate header —— avoids "change one module header, rebuild the whole project"
 
 ---
 
-## 4. `app_core` 详细设计
+## 4. `app_core` detailed design
 
-### 4.1 模块契约（`app_module.h`）
+### 4.1 Module contract (`app_module.h`)
 
 ```c
 #ifndef __APP_MODULE_H__
@@ -127,10 +127,10 @@ extern "C" {
 #endif
 
 typedef struct app_module {
-    const char *name;              /* 用于 log / 调试，如 "health" */
-    int  (*init)(void);            /* 阶段1：订阅事件、分配资源，禁止发布事件、禁止起线程 */
-    int  (*start)(void);           /* 阶段2：起线程、开始工作。此时所有模块 init 完毕，可发布事件 */
-    void (*stop)(void);            /* 可选，NULL 表示不支持关闭。留给低功耗/降级用 */
+    const char *name;              /* for logs / debugging, e.g. "health" */
+    int  (*init)(void);            /* phase 1: subscribe to events, allocate resources; no event publishing, no threads */
+    int  (*start)(void);           /* phase 2: start threads, begin work. All modules are init'ed, events may be published */
+    void (*stop)(void);            /* optional, NULL means shutdown is unsupported. Reserved for low power / degraded mode */
 } app_module_t;
 
 #ifdef __cplusplus
@@ -140,15 +140,15 @@ typedef struct app_module {
 #endif /* __APP_MODULE_H__ */
 ```
 
-**契约约束（写入 header 注释作为规范，不做运行时强制检查）**：
+**Contract rules (written into the header comments as the specification; no runtime enforcement)**:
 
-- `init` 中**禁止发布事件**——彼时可能仍有模块未订阅
-- `init` 中**禁止起线程 / I/O**——只做订阅和资源预分配
-- `init` 返回 0 为成功，非 0 为失败；`app_core` 遇非 0 会**跳过该模块的 start**，但继续处理其他模块
-- `start` 中一切自由
-- `stop` 允许为 NULL；骨架期所有模块 stop 都留 NULL 或空实现
+- `init` **must not publish events** —— some modules may not have subscribed yet at that point
+- `init` **must not start threads or do I/O** —— only subscribe and pre-allocate resources
+- `init` returns 0 on success and non-zero on failure; on non-zero `app_core` **skips that module's start** but keeps processing the others
+- anything goes in `start`
+- `stop` may be NULL; during the skeleton phase every module's stop is NULL or an empty implementation
 
-### 4.2 模块列表（`app_modules.c`）
+### 4.2 Module list (`app_modules.c`)
 
 ```c
 #include "app_module.h"
@@ -163,30 +163,30 @@ typedef struct app_module {
 
 #include <stddef.h>
 
-/* 顺序 = 启动依赖顺序：基础设施 → 业务功能 */
+/* order = startup dependency order: infrastructure → business features */
 const app_module_t *const app_module_list[] = {
-    &app_time_module,      /* 时间语义化，其他模块打时间戳依赖它 */
-    &app_power_module,     /* 电量监控，越早越好 */
-    &app_setting_module,   /* 设置读写，供其他模块 init 时读默认配置 */
-    &app_ble_module,       /* 蓝牙栈，后续业务通信基础 */
-    &app_health_module,    /* 依赖 time + setting */
-    &app_media_module,     /* 依赖 ble */
-    &app_phone_module,     /* 依赖 ble */
-    &app_notify_module,    /* 依赖 ble */
+    &app_time_module,      /* time semantics; other modules depend on it for timestamps */
+    &app_power_module,     /* battery monitoring, the earlier the better */
+    &app_setting_module,   /* settings read/write; other modules read their defaults during init */
+    &app_ble_module,       /* Bluetooth stack, the basis for later business communication */
+    &app_health_module,    /* depends on time + setting */
+    &app_media_module,     /* depends on ble */
+    &app_phone_module,     /* depends on ble */
+    &app_notify_module,    /* depends on ble */
 };
 
 const size_t app_module_count =
     sizeof(app_module_list) / sizeof(app_module_list[0]);
 ```
 
-**约束**：
+**Constraints**:
 
-- **加/减模块只改本文件 + 对应模块的 CMakeLists（自动 glob，实际上只需新建子目录 + `CMakeLists.txt`）**
-- 列表顺序即启动顺序，改顺序即改依赖关系——顺序本身就是文档
+- **adding/removing a module only touches this file plus that module's CMakeLists (auto-globbed; in practice just create the subdirectory + `CMakeLists.txt`)**
+- the list order is the startup order, so changing the order changes the dependencies —— the order itself is the documentation
 
-### 4.3 事件总线（`app_event.h` + `app_event.c`）
+### 4.3 Event bus (`app_event.h` + `app_event.c`)
 
-**对外 API（`app_event.h`）**：
+**Public API (`app_event.h`)**:
 
 ```c
 #ifndef __APP_EVENT_H__
@@ -199,24 +199,24 @@ const size_t app_module_count =
 extern "C" {
 #endif
 
-typedef uint16_t app_event_id_t;   /* 具体 id 在 app_event_defs.h 定义 */
+typedef uint16_t app_event_id_t;   /* concrete ids are defined in app_event_defs.h */
 
-/* 事件回调；在 dispatcher 线程上下文调用 */
+/* event callback; invoked in the dispatcher thread context */
 typedef void (*app_event_cb_t)(app_event_id_t id,
                                 const void *payload, size_t len,
                                 void *user);
 
-/* 订阅——只允许在 module.init() 阶段调用 */
+/* subscribe —— only allowed during module.init() */
 int app_event_subscribe  (app_event_id_t id, app_event_cb_t cb, void *user);
 int app_event_unsubscribe(app_event_id_t id, app_event_cb_t cb);
 
-/* 发布——payload 会被拷贝进队列；调用方不需保留 payload */
+/* publish —— the payload is copied into the queue; the caller need not keep it alive */
 int app_event_publish    (app_event_id_t id, const void *payload, size_t len);
 
-/* ISR 上下文发布——底层用 os_msg_send 的 ISR 变体 */
+/* publish from ISR context —— uses the ISR variant of os_msg_send underneath */
 int app_event_publish_isr(app_event_id_t id, const void *payload, size_t len);
 
-/* 由 app_core 在 app_core_init() 里调用一次；业务模块无需调用 */
+/* called once by app_core inside app_core_init(); business modules need not call it */
 int app_event_bus_init(void);
 
 #ifdef __cplusplus
@@ -226,24 +226,24 @@ int app_event_bus_init(void);
 #endif /* __APP_EVENT_H__ */
 ```
 
-**内部实现约束（写入 `.c` 顶部注释）**：
+**Internal implementation constraints (written into the top-of-file comment of the `.c`)**:
 
-- **一个 dispatcher task**（用 `os_task_create` 创建，栈 2048B，优先级中等——具体数值实现期定）
-- **一个 `os_msg_queue`** 收所有事件，队列深度 32
-- **payload 上限 32 字节**（`APP_EVENT_MAX_PAYLOAD`）——事件结构体为 `{id, len, u8 payload[32]}`
-- **订阅表：静态数组，容量 32**（`APP_EVENT_MAX_SUBS`）——超出返 `-ENOSPC` 并 log
-- **回调在 dispatcher 线程串行执行**——所有订阅方共享同一执行上下文；回调内禁止长任务，长任务应转派到自己模块的 task
-- **发布异步**——`publish` 只入队即返回，不等回调执行完
-- **超长 payload / 大数据传输**：**不通过事件总线**，走 getter 或模块间直接函数调用（示例：AVRCP 元数据字符串、通知详情、OTA 数据流）
+- **one dispatcher task** (created with `os_task_create`, 2048B stack, medium priority —— exact values decided during implementation)
+- **one `os_msg_queue`** receiving all events, queue depth 32
+- **payload limit 32 bytes** (`APP_EVENT_MAX_PAYLOAD`) —— the event struct is `{id, len, u8 payload[32]}`
+- **subscription table: static array, capacity 32** (`APP_EVENT_MAX_SUBS`) —— overflow returns `-ENOSPC` and logs
+- **callbacks run serially on the dispatcher thread** —— all subscribers share one execution context; long jobs are forbidden inside callbacks and should be forwarded to the module's own task
+- **publishing is asynchronous** —— `publish` only enqueues and returns; it does not wait for the callbacks to finish
+- **oversized payloads / bulk data transfers**: **do not go through the event bus**; use getters or direct inter-module function calls (examples: AVRCP metadata strings, notification details, OTA data streams)
 
-**刻意不做的**：
+**Deliberately omitted**:
 
-- 优先级事件
-- 通配符订阅
-- 事件历史/回放
-- 同步派发（想同步就直接函数调用）
+- priority events
+- wildcard subscriptions
+- event history/replay
+- synchronous dispatch (if you want synchronous, call the function)
 
-### 4.4 事件契约（`app_event_defs.h`）
+### 4.4 Event contract (`app_event_defs.h`)
 
 ```c
 #ifndef __APP_EVENT_DEFS_H__
@@ -256,10 +256,10 @@ int app_event_bus_init(void);
 extern "C" {
 #endif
 
-/* 事件 id 按模块分段（每段 0x100 范围），一眼看到 id 知道来源 */
+/* event ids are segmented per module (0x100 per segment) so an id reveals its origin at a glance */
 enum {
-    /* 系统级 */
-    EVT_SYS_READY          = 0x0001,   /* 所有 module.start() 完成后广播 */
+    /* system level */
+    EVT_SYS_READY          = 0x0001,   /* broadcast after all module.start() have completed */
 
     /* BLE (0x100~) */
     EVT_BLE_CONNECTED      = 0x0100,
@@ -267,12 +267,12 @@ enum {
 
     /* Power (0x200~) */
     EVT_POWER_LEVEL        = 0x0200,   /* payload: app_evt_power_level_t */
-    EVT_POWER_LOW          = 0x0201,   /* payload: 无 */
+    EVT_POWER_LOW          = 0x0201,   /* payload: none */
     EVT_POWER_CHARGING     = 0x0202,   /* payload: app_evt_power_charging_t */
 
     /* Time (0x300~) */
-    EVT_TIME_SYNCED        = 0x0300,   /* payload: 无 */
-    EVT_TIME_TICK_MIN      = 0x0301,   /* payload: 无 */
+    EVT_TIME_SYNCED        = 0x0300,   /* payload: none */
+    EVT_TIME_TICK_MIN      = 0x0301,   /* payload: none */
 
     /* Setting (0x400~) */
     EVT_SETTING_CHANGED    = 0x0400,   /* payload: app_evt_setting_changed_t */
@@ -284,31 +284,31 @@ enum {
 
     /* Media (0x600~) */
     EVT_MEDIA_STATE_CHANGED  = 0x0600, /* payload: app_media_state_t */
-    EVT_MEDIA_METADATA       = 0x0601, /* payload: 无，getter 取详情 */
+    EVT_MEDIA_METADATA       = 0x0601, /* payload: none, use the getter for details */
     EVT_MEDIA_VOLUME_CHANGED = 0x0602, /* payload: uint8_t percent */
 
     /* Phone (0x700~) */
     EVT_PHONE_STATE_CHANGED  = 0x0700, /* payload: app_phone_state_t */
-    EVT_PHONE_RING           = 0x0701, /* payload: 无 */
+    EVT_PHONE_RING           = 0x0701, /* payload: none */
 
     /* Notify (0x800~) */
     EVT_NOTIFY_NEW           = 0x0800, /* payload: uint32_t id */
     EVT_NOTIFY_REMOVED       = 0x0801, /* payload: uint32_t id */
-    EVT_NOTIFY_CLEARED       = 0x0802, /* payload: 无 */
+    EVT_NOTIFY_CLEARED       = 0x0802, /* payload: none */
 
-    /* 0x900~ 段保留给未来的 OTA */
+    /* the 0x900~ segment is reserved for a future OTA */
 };
 
-/* Payload 结构 —— 所有跨模块 payload 定义集中于此 */
+/* Payload structs —— all cross-module payload definitions live here */
 
 typedef struct { uint8_t percent; } app_evt_power_level_t;
 typedef struct { bool    charging; } app_evt_power_charging_t;
 
-/* Setting key 枚举 —— EVT_SETTING_CHANGED 的 payload 用它，而非 key 字符串
- * 添加新 key 时同时在此加枚举 + 在 app_setting.c 建立 key 名映射 */
+/* Setting key enum —— used as the EVT_SETTING_CHANGED payload instead of a key string
+ * when adding a key, add its enum here and its name mapping in app_setting.c */
 typedef enum {
     APP_SETTING_KEY_UNKNOWN = 0,
-    /* 骨架期不定义具体 key，等业务模块需要时补 */
+    /* no concrete keys during the skeleton phase; added when a business module needs them */
 } app_setting_key_id_t;
 
 typedef struct { app_setting_key_id_t key; } app_evt_setting_changed_t;
@@ -320,9 +320,9 @@ typedef struct { app_setting_key_id_t key; } app_evt_setting_changed_t;
 #endif /* __APP_EVENT_DEFS_H__ */
 ```
 
-### 4.5 `app_core` 入口（`app_core.h` + `app_core.c`）
+### 4.5 `app_core` entry (`app_core.h` + `app_core.c`)
 
-**`app_core.h`**：
+**`app_core.h`**:
 
 ```c
 #ifndef __APP_CORE_H__
@@ -332,9 +332,9 @@ typedef struct { app_setting_key_id_t key; } app_evt_setting_changed_t;
 extern "C" {
 #endif
 
-/* main.c 只需要看到这两个函数 */
-int app_core_init (void);   /* 起事件总线 + 遍历 modules[] 跑 init */
-int app_core_start(void);   /* 遍历 modules[] 跑 start，最后广播 EVT_SYS_READY */
+/* main.c only needs to see these two functions */
+int app_core_init (void);   /* start the event bus + iterate modules[] running init */
+int app_core_start(void);   /* iterate modules[] running start, then broadcast EVT_SYS_READY */
 
 #ifdef __cplusplus
 }
@@ -343,7 +343,7 @@ int app_core_start(void);   /* 遍历 modules[] 跑 start，最后广播 EVT_SYS
 #endif /* __APP_CORE_H__ */
 ```
 
-**`app_core.c` 骨架伪流程**：
+**`app_core.c` skeleton pseudo-flow**:
 
 ```c
 int app_core_init(void) {
@@ -375,19 +375,19 @@ int app_core_start(void) {
 }
 ```
 
-`mark_skipped` / `is_skipped`：用一个静态 bitmap（9 位足够），骨架实现 4~5 行代码即可。
+`mark_skipped` / `is_skipped`: use a static bitmap (9 bits are enough); the skeleton implementation is 4~5 lines of code.
 
 ---
 
-## 5. 9 个业务模块的 header 接缝
+## 5. Header seams of the 9 business modules
 
-**通用原则**：
+**General principles**:
 
-- 每个模块 header 只暴露 3 类东西：① `extern const app_module_t app_xxx_module;` ② 少量**同步查询/操作 API** ③ 该模块特有的类型定义
-- **异步通知全部走事件总线**，header **不暴露回调注册函数**
-- 骨架期同步 API `.c` 里返回 0 / -1 / NULL 空实现，让骨架期即可编过
+- each module header exposes only 3 kinds of things: ① `extern const app_module_t app_xxx_module;` ② a few **synchronous query/operation APIs** ③ the module-specific type definitions
+- **all asynchronous notification goes through the event bus**; headers **do not expose callback registration functions**
+- during the skeleton phase the synchronous APIs in `.c` return 0 / -1 / NULL, so it builds right away
 
-### 5.1 `app_ble` — 蓝牙栈 + 连接状态
+### 5.1 `app_ble` — Bluetooth stack + connection state
 
 ```c
 extern const app_module_t app_ble_module;
@@ -398,28 +398,28 @@ int  app_ble_advertising_start(void);
 int  app_ble_advertising_stop(void);
 ```
 
-事件：`EVT_BLE_CONNECTED` / `EVT_BLE_DISCONNECTED`。
+Events: `EVT_BLE_CONNECTED` / `EVT_BLE_DISCONNECTED`.
 
-**骨架不涵盖**：GATT service 定义、pairing 状态机、白名单——将来模块内拆分文件时加。
+**Not covered by the skeleton**: GATT service definitions, pairing state machine, whitelist —— added when the module is split into files later.
 
-### 5.2 `app_health` — 健康数据聚合
+### 5.2 `app_health` — health data aggregation
 
 ```c
 extern const app_module_t app_health_module;
 
 uint32_t app_health_steps_today(void);
-uint8_t  app_health_heart_rate_last(void);   /* 0 = 无有效值 */
-uint8_t  app_health_spo2_last(void);         /* 0 = 无有效值 */
+uint8_t  app_health_heart_rate_last(void);   /* 0 = no valid value */
+uint8_t  app_health_spo2_last(void);         /* 0 = no valid value */
 
 int  app_health_measure_hr_start(void);
 int  app_health_measure_hr_stop(void);
 ```
 
-事件：`EVT_HEALTH_STEPS_UPDATED` / `EVT_HEALTH_HR_UPDATED` / `EVT_HEALTH_SPO2_UPDATED`。
+Events: `EVT_HEALTH_STEPS_UPDATED` / `EVT_HEALTH_HR_UPDATED` / `EVT_HEALTH_SPO2_UPDATED`.
 
-**骨架不涵盖**：传感器驱动（port/component 层）、算法调用（component 层）、健康数据 GATT service（app_ble 内）。
+**Not covered by the skeleton**: sensor drivers (port/component layer), algorithm calls (component layer), health data GATT service (inside app_ble).
 
-### 5.3 `app_media` — A2DP 播放 + AVRCP
+### 5.3 `app_media` — A2DP playback + AVRCP
 
 ```c
 extern const app_module_t app_media_module;
@@ -439,14 +439,14 @@ int  app_media_prev(void);
 int  app_media_volume_set(uint8_t percent);
 uint8_t app_media_volume_get(void);
 
-/* 元数据字符串由 app_media 内部持有；指针有效性到下一次 EVT_MEDIA_METADATA */
+/* metadata strings are owned by app_media; the pointers stay valid until the next EVT_MEDIA_METADATA */
 const char *app_media_track_title(void);
 const char *app_media_track_artist(void);
 ```
 
-事件：`EVT_MEDIA_STATE_CHANGED` / `EVT_MEDIA_METADATA` / `EVT_MEDIA_VOLUME_CHANGED`。
+Events: `EVT_MEDIA_STATE_CHANGED` / `EVT_MEDIA_METADATA` / `EVT_MEDIA_VOLUME_CHANGED`.
 
-### 5.4 `app_phone` — HFP 通话
+### 5.4 `app_phone` — HFP calls
 
 ```c
 extern const app_module_t app_phone_module;
@@ -464,46 +464,46 @@ int  app_phone_answer(void);
 int  app_phone_hangup(void);
 int  app_phone_reject(void);
 
-/* 号码/联系人字符串由 app_phone 内部持有；指针到状态变更前有效 */
+/* number/contact strings are owned by app_phone; the pointers stay valid until the state changes */
 const char *app_phone_peer_number(void);
 const char *app_phone_peer_name(void);
 ```
 
-事件：`EVT_PHONE_STATE_CHANGED` / `EVT_PHONE_RING`。
+Events: `EVT_PHONE_STATE_CHANGED` / `EVT_PHONE_RING`.
 
-### 5.5 `app_notify` — 通知转发
+### 5.5 `app_notify` — notification forwarding
 
 ```c
 extern const app_module_t app_notify_module;
 
-#define APP_NOTIFY_MAX 20      /* 环形缓存条数 */
+#define APP_NOTIFY_MAX 20      /* number of ring buffer entries */
 
 typedef struct {
     uint32_t id;
     uint32_t timestamp;        /* unix time */
-    uint8_t  category;         /* 参考 ANCS category */
+    uint8_t  category;         /* see ANCS category */
     char     app[24];
     char     title[48];
     char     body[64];
 } app_notify_item_t;
 
 size_t app_notify_count(void);
-const app_notify_item_t *app_notify_get(size_t index);   /* 0 = 最新 */
+const app_notify_item_t *app_notify_get(size_t index);   /* 0 = newest */
 int    app_notify_dismiss(uint32_t id);
 int    app_notify_clear_all(void);
 ```
 
-事件：`EVT_NOTIFY_NEW` / `EVT_NOTIFY_REMOVED` / `EVT_NOTIFY_CLEARED`——payload 只放 id，详情走 `app_notify_get()`。
+Events: `EVT_NOTIFY_NEW` / `EVT_NOTIFY_REMOVED` / `EVT_NOTIFY_CLEARED` —— the payload carries only the id; details go through `app_notify_get()`.
 
-**内存估算**：单条 4 + 4 + 1 + 24 + 48 + 64 = 145 字节（含对齐 ~152B），×20 ≈ 3KB。
+**Memory estimate**: one item 4 + 4 + 1 + 24 + 48 + 64 = 145 bytes (~152B with alignment), ×20 ≈ 3KB.
 
-### 5.6 `app_time` — 时间语义层
+### 5.6 `app_time` — time semantics layer
 
 ```c
 extern const app_module_t app_time_module;
 
 uint32_t app_time_now(void);                       /* unix seconds */
-int16_t  app_time_tz_offset(void);                 /* 分钟，北京 = +480 */
+int16_t  app_time_tz_offset(void);                 /* minutes, Beijing = +480 */
 int      app_time_tz_set(int16_t minutes);
 
 int      app_time_set_from_phone(uint32_t unix_sec, int16_t tz_min);
@@ -517,11 +517,11 @@ typedef struct {
 void app_time_local_now(app_time_local_t *out);
 ```
 
-事件：`EVT_TIME_SYNCED` / `EVT_TIME_TICK_MIN`。
+Events: `EVT_TIME_SYNCED` / `EVT_TIME_TICK_MIN`.
 
-**骨架不涵盖**：闹钟、日程——将来单独 brainstorm。
+**Not covered by the skeleton**: alarms and schedules —— brainstormed separately later.
 
-### 5.7 `app_power` — 电量与充电
+### 5.7 `app_power` — battery and charging
 
 ```c
 extern const app_module_t app_power_module;
@@ -530,15 +530,15 @@ uint8_t app_power_battery_percent(void);
 bool    app_power_is_charging(void);
 ```
 
-事件：`EVT_POWER_LEVEL` / `EVT_POWER_LOW` / `EVT_POWER_CHARGING`。
+Events: `EVT_POWER_LEVEL` / `EVT_POWER_LOW` / `EVT_POWER_CHARGING`.
 
-### 5.8 `app_setting` — 薄壳 KV（最终调 FlashDB）
+### 5.8 `app_setting` — thin KV shell (ends up in FlashDB)
 
 ```c
 extern const app_module_t app_setting_module;
 
-/* Key 命名规范（写入注释，无运行时校验）：
- *   点分风格，如 "user.age" / "display.brightness" / "vibrate.enable" */
+/* Key naming convention (documented only, no runtime validation):
+ *   dotted style, e.g. "user.age" / "display.brightness" / "vibrate.enable" */
 
 int  app_setting_get_u32 (const char *key, uint32_t *out, uint32_t default_val);
 int  app_setting_set_u32 (const char *key, uint32_t val);
@@ -549,71 +549,71 @@ int  app_setting_set_blob(const char *key, const void *val, size_t size);
 int  app_setting_del     (const char *key);
 ```
 
-事件：`EVT_SETTING_CHANGED`，payload = `app_evt_setting_changed_t { app_setting_key_id_t key; }`。
+Events: `EVT_SETTING_CHANGED`, payload = `app_evt_setting_changed_t { app_setting_key_id_t key; }`.
 
-**要求**：`app_setting.c` 内维护一个 `key 字符串 → key 枚举` 的映射表，`set_*` 写入 FlashDB 成功后按映射表发布 `EVT_SETTING_CHANGED`。骨架期映射表为空，不做实际映射（枚举里只有 `APP_SETTING_KEY_UNKNOWN`）。
+**Requirement**: `app_setting.c` maintains a `key string → key enum` mapping table; after a `set_*` successfully writes to FlashDB it publishes `EVT_SETTING_CHANGED` according to that mapping. During the skeleton phase the mapping table is empty and no real mapping happens (the enum only has `APP_SETTING_KEY_UNKNOWN`).
 
 ---
 
-## 6. CMakeLists 集成
+## 6. CMakeLists integration
 
-### 6.1 沿用现有通用模板
+### 6.1 Reuse the existing generic template
 
-`applications/port/CMakeLists.txt` 已是通用模板：glob `.c/.cpp/.h`、塞给 `${APP_TARGET_NAME}`、把当前目录加进 include path、递归 add_subdirectory。`component/CMakeLists.txt` 用同一模板加 skip list。
+`applications/port/CMakeLists.txt` is already a generic template: glob `.c/.cpp/.h`, feed them to `${APP_TARGET_NAME}`, add the current directory to the include path, recurse with add_subdirectory. `component/CMakeLists.txt` uses the same template plus a skip list.
 
-**本骨架沿用同一模板**：
-- `app/CMakeLists.txt`：完全复用 `port/CMakeLists.txt` 的形态（无 `.c` 时只递归子目录）
-- 每个模块 `app/<模块>/CMakeLists.txt`：同一份模板，走 `SOURCES AND HEADERS` 分支
+**This skeleton uses the same template**:
+- `app/CMakeLists.txt`: exactly the `port/CMakeLists.txt` shape (only recurse into subdirectories when there is no `.c`)
+- each module's `app/<module>/CMakeLists.txt`: the same template, taking the `SOURCES AND HEADERS` branch
 
-**共计新增 10 份 CMakeLists**（`app/` 一份 + 9 个模块各一份），**内容基本一致**。
+**10 new CMakeLists in total** (one for `app/` plus one per module), **with essentially identical content**.
 
-**不加 skip list**——app 层全是自写模块，无 vendored 三方库。
+**No skip list** —— the app layer is all first-party modules, with no vendored third-party libraries.
 
-### 6.2 根 CMakeLists 无改动
+### 6.2 The root CMakeLists needs no change
 
-`applications/CMakeLists.txt` 末尾的 `foreach(subdir ${SUBDIRS})` 已自动 `add_subdirectory` 任何含 `CMakeLists.txt` 的子目录——**只要 `app/` 下有 `CMakeLists.txt`，即自动生效**。
+The `foreach(subdir ${SUBDIRS})` at the end of `applications/CMakeLists.txt` already `add_subdirectory`s any subdirectory containing a `CMakeLists.txt` —— **as long as `app/` has a `CMakeLists.txt`, it takes effect automatically**.
 
-### 6.3 include 路径策略
+### 6.3 Include path strategy
 
-各模块 CMakeLists 会把**自身目录**加进 include path。因此其他模块 include 时**平铺书写**：
+Each module's CMakeLists adds **its own directory** to the include path. Other modules therefore include **flat**:
 
 ```c
-#include "app_health.h"          /* 正确 */
+#include "app_health.h"          /* correct */
 ```
 
-不需要 `#include "app_health/app_health.h"`——沿用项目现有风格（如 `app_lower_init.h`、`flash_map.h`）。
+There is no need for `#include "app_health/app_health.h"` —— this follows the existing project style (e.g. `app_lower_init.h`, `flash_map.h`).
 
-`app_modules.c` 内 include 所有子模块 header 亦平铺。
+The includes of every submodule header inside `app_modules.c` are flat as well.
 
 ---
 
-## 7. `main.c` 挂载点
+## 7. `main.c` mount point
 
-**改动仅 3 行**，位置在 `gui_server_init()` **之后**：
+**The change is only 3 lines**, placed **after** `gui_server_init()`:
 
 ```c
-#include "app_core.h"     /* 新增 */
+#include "app_core.h"     /* new */
 
-/* ...现有代码不变... */
+/* ...existing code unchanged... */
 gui_server_init();
 gui_set_keep_active_time(10000000);
 
-app_core_init();          /* 新增 */
-app_core_start();         /* 新增 */
+app_core_init();          /* new */
+app_core_start();         /* new */
 
 return 0;
 ```
 
-**关于 `main()` 退出**：`main` 返回后 Zephyr 主线程终止，事件由各模块自己的 task 和事件总线的 dispatcher task 继续驱动——已符合当前 `main.c` 的行为，无需额外处理。
+**About `main()` exiting**: after `main` returns the Zephyr main thread terminates, and events keep being driven by each module's own task and the event bus dispatcher task —— this already matches the current behaviour of `main.c`, so no extra handling is needed.
 
 ---
 
-## 8. 骨架完工验证
+## 8. Skeleton completion verification
 
-骨架实现完毕后，应能观察到：
+Once the skeleton is implemented the following should be observable:
 
-1. **编译通过**——无未定义符号、无未链接
-2. **启动 log** 输出如下顺序：
+1. **It builds** —— no undefined symbols, nothing left unlinked
+2. **Startup logs** in this order:
    ```
    [app_core] init begin
    [app_core] init time
@@ -626,59 +626,59 @@ return 0;
    [app_core] init notify
    [app_core] start begin
    [app_core] start time
-   ...（依次 8 个模块 start，跳过失败者）
+   ... (the 8 modules start in turn, skipping failures)
    [app_core] EVT_SYS_READY published
    ```
-3. **系统持续运行**——`main` 退出，dispatcher task 存活等事件
-4. **事件总线 API 可调用但不实际派发**——`app_event_publish` 目前返回 0 而不触发回调（因为 dispatcher 内部实现仍是 TODO），这是骨架期的**允许状态**；真正实现留给后续 plan
+3. **The system keeps running** —— `main` exits and the dispatcher task stays alive waiting for events
+4. **The event bus API is callable but does not actually dispatch** —— `app_event_publish` currently returns 0 without triggering callbacks (the dispatcher internals are still TODO); this is an **acceptable state** during the skeleton phase, and the real implementation is left to a later plan
 
 ---
 
-## 9. 明确排除项一览
+## 9. Explicit exclusions at a glance
 
-| 项 | 状态 | 原因 |
+| Item | Status | Reason |
 |---|---|---|
-| `app_ota/` | 移除 | 用户明确"OTA 先不实现"；事件 id 段 `0x900` 保留占位 |
-| `app_shell/` | 移除 | 用户否决；直接用 Zephyr `SHELL_CMD_REGISTER` |
-| `app_log/` | 移除 | 用户否决；直接用 Zephyr LOG / `DBG_DIRECT` |
-| OSAL 层 | 不建 | 用户指定用 Realtek OSIF |
-| Kconfig 开关 | 不加 | YAGNI，模块无条件编入 |
-| UI 层 | 不涉及 | 用户自处理 |
-| eBadge 功能 | 不涉及 | 仅复用硬件 |
-| 业务实现 | 不涉及 | 骨架 spec 范围外，各模块单独 brainstorm |
-| 单元测试 | 不加 | 骨架期无实现可测 |
+| `app_ota/` | removed | the user explicitly said "no OTA for now"; the `0x900` event id range stays reserved |
+| `app_shell/` | removed | rejected by the user; Zephyr `SHELL_CMD_REGISTER` is used directly |
+| `app_log/` | removed | rejected by the user; Zephyr LOG / `DBG_DIRECT` is used directly |
+| OSAL layer | not built | the user specified Realtek OSIF |
+| Kconfig switches | not added | YAGNI; modules are compiled in unconditionally |
+| UI layer | not involved | handled by the user |
+| eBadge features | not involved | only the hardware is reused |
+| Business implementations | not involved | outside the skeleton spec; each module gets its own brainstorm |
+| Unit tests | not added | nothing to test while the skeleton has no implementation |
 
 ---
 
-## 10. 后续路线（非本 spec 承诺）
+## 10. Follow-up roadmap (not promised by this spec)
 
-每个业务模块将来会单独走一轮 brainstorm → spec → plan → implement，建议顺序：
+Each business module will later go through its own brainstorm → spec → plan → implement round; suggested order:
 
-1. `app_core` 事件总线**实际实现**（骨架期是 TODO）
-2. `app_ble` 私有 GATT 服务 + 手机 App 数据同步协议
-3. `app_time` 时间同步（依赖 2）
-4. `app_setting` 与 FlashDB 打通
-5. `app_health` 聚合层 + 计步接入
-6. `app_notify` ANCS + 自研通道
-7. `app_phone` HFP 状态机
+1. `app_core` event bus **actual implementation** (a TODO during the skeleton phase)
+2. `app_ble` private GATT service + phone App data sync protocol
+3. `app_time` time sync (depends on 2)
+4. `app_setting` wired up to FlashDB
+5. `app_health` aggregation layer + step-counting integration
+6. `app_notify` ANCS + in-house channel
+7. `app_phone` HFP state machine
 8. `app_media` A2DP/AVRCP
-9. `app_power` 电量算法与低电策略
-10. `app_ota` 单独 brainstorm 回来加入
+9. `app_power` battery algorithm and low-battery policy
+10. `app_ota` comes back in via its own brainstorm
 
 ---
 
-## 附录 A：骨架文件清单
+## Appendix A: Skeleton file inventory
 
-新增文件总数：**10 份 CMakeLists + 8 份 `app_core/` 文件 + 8×2=16 份业务模块 `.h/.c`** = **34 份**。
+New files in total: **10 CMakeLists + 8 `app_core/` files + 8×2=16 business module `.h/.c` files** = **34**.
 
-修改文件：**`applications/main.c`** 仅 +3 行。
+Modified files: **`applications/main.c`**, +3 lines only.
 
-无删除。
+No deletions.
 
-## 附录 B：与项目现有代码风格的一致性
+## Appendix B: Consistency with the existing code style
 
-- Header guard 使用 `#ifndef __XXX_H__`（对齐 `app_lower_init.h`）
-- 含 `extern "C"` 包裹（对齐现有 C++ 混编需求）
-- 头部无独立版权声明块（对齐 `app_lower_init.h`）
-- CMakeLists 通用模板（对齐 `port/CMakeLists.txt` / `component/CMakeLists.txt`）
-- 平铺 include 路径（对齐 `flash_map.h` / `app_lower_init.h`）
+- header guards use `#ifndef __XXX_H__` (aligned with `app_lower_init.h`)
+- `extern "C"` wrapping included (aligned with the existing mixed C/C++ need)
+- no separate copyright block at the top (aligned with `app_lower_init.h`)
+- generic CMakeLists template (aligned with `port/CMakeLists.txt` / `component/CMakeLists.txt`)
+- flat include paths (aligned with `flash_map.h` / `app_lower_init.h`)

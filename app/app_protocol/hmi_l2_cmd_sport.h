@@ -22,7 +22,7 @@ extern "C" {
 
 /* SPORT L2 Header byte 1: Version=1 in [7:4], Reserve=0 in [3:0].
  * Unlike every other command (which is still version 0), SPORT version 1
- * packets MUST carry 0x10 here -- see spec 3.6 "版本与通用约束". */
+ * packets MUST carry 0x10 here -- see spec 3.6 "Version and general constraints". */
 #define HMI_L2_SPORT_VER        0x10u
 
 /* Data type carried by SPORT_REQ / SPORT_MORE / SYNC_START / SYNC_END */

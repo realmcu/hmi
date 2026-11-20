@@ -12,7 +12,7 @@
  * API. Per spec, a request for an unsupported Data type must NOT create a
  * session, so SPORT_REQ with 0x02 is dropped without any reply.
  *
- * Session model (spec 3.6 "版本与通用约束")
+ * Session model (spec 3.6 "Version and general constraints")
  * ----------------------------------------
  * At most one sync session per BLE link at a time. The first SPORT_REQ opens
  * a session at the oldest record; each subsequent SPORT_REQ must repeat the
@@ -89,7 +89,7 @@ static bool sport_send_dtype(uint8_t key, uint8_t dtype)
  * health_pedo_record_t is a packed little-endian struct; the wire format is
  * big-endian. Copying the struct bytes wholesale would silently byte-swap
  * every multi-byte field -- the spec calls this out explicitly
- * ("禁止直接复制 MCU 内存中的结构体字节").
+ * ("do not copy struct bytes directly out of MCU memory").
  *
  * The flag bits line up 1:1 by value: HEALTH_RECORD_FLAG_HAS_HR == bit0 ==
  * Flags.HAS_HR, HEALTH_RECORD_FLAG_PARTIAL_BUCKET == bit1 ==

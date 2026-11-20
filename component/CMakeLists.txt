@@ -35,10 +35,10 @@ if(1) #set to 1 to enable or variable to for depnedency
     # Process subdirectories regardless
     file(GLOB SUBDIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
 
-    # 跳过列表: 这些 vendored 库自带官方 CMakeLists.txt(用于它们独立 build),
-    # 我们不用官方 CMake 目标, 而是在对应的 port/<name>/ 里用 target_sources
-    # 精确挑源码编进 app. 若这里 add_subdirectory 上去, 会额外产生一个孤儿
-    # static library (例如 libcmsis-nn.a), 浪费编译时间且可能带来符号/flag 冲突.
+    # Skip list: these vendored libraries ship their own official CMakeLists.txt (for their
+    # standalone build), so we do not use the official CMake targets; instead the matching
+    # port/<name>/ picks the exact sources with target_sources and builds them into app. Doing
+    # add_subdirectory here would create an orphan static library (e.g. libcmsis-nn.a), wasting build time and possibly causing symbol/flag conflicts.
     set(COMPONENT_SUBDIR_SKIP_LIST
         cmsis-nn
     )

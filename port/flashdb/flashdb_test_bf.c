@@ -4,15 +4,15 @@
  *
  * FlashDB Big-File (BF) test — create + append + commit + XIP read.
  *
- * BF 与 KV/TS 最大的不同：
- *   1) 数据分区独立（bf_data 分区，我们工程里 28 KB），BF 只在 env KVDB
- *      里存一条 "bf/<key>" 的目录项（24B dirent），指向数据区偏移。
- *   2) 提交后可用 fdb_bf_get_addr 拿到"XIP 绝对地址"—— 因为 NOR flash
- *      映射到 CPU 地址空间，你可以 (const uint8_t*)xip_addr 直接读，
- *      不用 memcpy 到 RAM，非常适合 LVGL 图片/字体/OTA 分片这种大 blob。
+ * How BF differs most from KV/TS:
+ *   1) The data partition is separate (the bf_data partition, 28 KB in our project); BF only
+ *      stores one "bf/<key>" directory entry (24B dirent) in the env KVDB, pointing at the data offset.
+ *   2) After commit, fdb_bf_get_addr gives you the "absolute XIP address" —— since NOR flash is
+ *      mapped into the CPU address space, you can read it directly as (const uint8_t*)xip_addr,
+ *      with no memcpy into RAM, ideal for large blobs such as LVGL images/fonts/OTA fragments.
  *
- * 本测试演示的最小闭环：
- *   create  → append 三片 → commit(带 CRC 可选) → get_addr → 校验字节 →
+ * Minimal closed loop demonstrated by this test:
+ *   create  → append three chunks → commit (CRC optional) → get_addr → verify bytes →
  *   stat    → exists → delete → verify miss.
  */
 
@@ -31,21 +31,21 @@
 #define BF_CHUNK2     "chunk 2 - "
 #define BF_CHUNK3     "END"
 
-/* 期望的完整内容（三段拼接）。用它做读回校验。 */
+/* The expected full content (the three chunks concatenated). Used for read-back verification. */
 static const char k_expect[] = BF_CHUNK1 BF_CHUNK2 BF_CHUNK3;
 
 /* ------------------------------------------------------------------ */
-/* Subtest 1: 完整写入闭环                                              */
+/* Subtest 1: full write closed loop                                   */
 /* ------------------------------------------------------------------ */
 static int run_write(fdb_bf_t bf)
 {
     LOGI("--- create + append*3 + commit ---");
 
-    /* 先删掉可能残留的同名文件，测试才可重入。 */
+    /* Delete any leftover file with the same name first so the test is re-entrant. */
     (void)fdb_bf_delete(bf, BF_TEST_KEY);
 
-    /* create 需要给 max_size 提示，用于分配一段连续容量。此处以完整长度
-     * +8 字节做冗余，实际分配会向上对齐到 flash sector（4KB）。 */
+    /* create needs a max_size hint to reserve one contiguous capacity. Here the full length
+     * +8 bytes is used as headroom; the actual allocation rounds up to the flash sector (4KB). */
     fdb_bf_file_t h = NULL;
     fdb_err_t ret = fdb_bf_create(bf, BF_TEST_KEY, sizeof(k_expect) + 8, &h);
     if (ret != FDB_NO_ERR || h == NULL)
@@ -55,7 +55,7 @@ static int run_write(fdb_bf_t bf)
     }
     LOGI("  create: cap=%u", (unsigned)h->capacity);
 
-    /* append 三段字节。可以是任意长度、任意次数。 */
+    /* Append three chunks. Any length, any number of times. */
     ret = fdb_bf_append(h, BF_CHUNK1, strlen(BF_CHUNK1));
     LOGI("  append #1 (%u B)  %s", (unsigned)strlen(BF_CHUNK1),
          ret == FDB_NO_ERR ? "[OK]" : "[FAIL]");
@@ -66,25 +66,25 @@ static int run_write(fdb_bf_t bf)
          ret == FDB_NO_ERR ? "[OK]" : "[FAIL]");
     if (ret != FDB_NO_ERR) { fdb_bf_abort(h); return -3; }
 
-    /* 最后一段带上 NUL 结尾——这样 XIP 读回来直接就是 C 字符串。 */
+    /* The last chunk carries the trailing NUL —— so the XIP read-back is a ready C string. */
     ret = fdb_bf_append(h, BF_CHUNK3, strlen(BF_CHUNK3) + 1);
     LOGI("  append #3 (%u B, incl. NUL)  %s",
          (unsigned)(strlen(BF_CHUNK3) + 1),
          ret == FDB_NO_ERR ? "[OK]" : "[FAIL]");
     if (ret != FDB_NO_ERR) { fdb_bf_abort(h); return -4; }
 
-    /* commit 不带 CRC；BF 会把 flags 里 CRC_VALID 位置 0。想要校验就自己
-     * 累加 crc32(buf, len) 再 commit(&crc) —— 这里保持最小演示。 */
+    /* commit without a CRC; BF sets CRC_VALID in flags to 0. To get verification, accumulate
+     * crc32(buf, len) yourself and commit(&crc) —— this keeps the demo minimal. */
     ret = fdb_bf_commit(h, NULL);
     LOGI("  commit  %s", ret == FDB_NO_ERR ? "[OK]" : "[FAIL]");
     return (ret == FDB_NO_ERR) ? 0 : -5;
 }
 
 /* ------------------------------------------------------------------ */
-/* Subtest 2: 通过 XIP 绝对地址读回并校验                                */
+/* Subtest 2: read back via absolute XIP address and verify            */
 /*                                                                    */
-/* fdb_bf_get_addr 返回的 addr 是绝对 flash 内存地址，NOR flash 映射到 */
-/* CPU 地址空间后可以直接强转 (const uint8_t*) 逐字节读——这就是 XIP。 */
+/* The addr returned by fdb_bf_get_addr is an absolute flash address;  */
+/* NOR flash maps into CPU space, so cast to (const uint8_t*) — XIP.   */
 /* ------------------------------------------------------------------ */
 static int run_read_xip(fdb_bf_t bf)
 {
@@ -107,8 +107,8 @@ static int run_read_xip(fdb_bf_t bf)
         return -2;
     }
 
-    /* 直接从 flash 地址空间读。这就是 BF 相对 KV/TS 的核心优势——
-     * KV/TS 的 blob 每次读都要经过 FDB 内部头解析，BF 一步到位。 */
+    /* Read straight from the flash address space. This is the core BF advantage over KV/TS ——
+     * a KV/TS blob goes through FDB header parsing on every read, BF is one step. */
     const char *data = (const char *)(uintptr_t)xip_addr;
     bool match = (memcmp(data, k_expect, sizeof(k_expect)) == 0);
     LOGI("  content = \"%s\"  %s", data, match ? "[OK]" : "[FAIL]");

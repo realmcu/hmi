@@ -4,13 +4,13 @@
  *
  * FlashDB TSDB test — auto timestamp (get_time cb).
  *
- * 时间戳来源：fdb_tsl_append 内部调 db->get_time()，也就是本项目里
- *              fdb_time_rtc.c 提供的 UTC epoch 秒（含 last+1 单调补偿）。
+ * Timestamp source: fdb_tsl_append calls db->get_time() internally, i.e. the UTC epoch
+ *              seconds provided by fdb_time_rtc.c in this project (including the last+1 compensation).
  *
- * 秒级精度导致的现象：连续 append 三条常常撞在同一秒——时间源里做了
- * last+1 补偿，因此你会看到 ts 相邻 +1，是"补偿"的可视化，而非时间源出错。
+ * An effect of second granularity: three back-to-back appends often land in the same second ——
+ * the time source applies last+1, so adjacent ts values are +1 apart. That visualises the "compensation", not a broken time source.
  *
- * 本文件覆盖的最小闭环：append 3 条 → iter 全量 → query_count 对账。
+ * Minimal closed loop covered by this file: append 3 records → iter all → query_count reconciliation.
  */
 
 #include <string.h>
@@ -22,7 +22,7 @@
 #define LOGI(fmt, ...)  FDB_PRINT(LOG_TAG " " fmt "\n", ##__VA_ARGS__)
 #define LOGE(fmt, ...)  FDB_PRINT(LOG_TAG " [ERR] " fmt "\n", ##__VA_ARGS__)
 
-/* 演示用小结构：温湿度一条 sample。 */
+/* Small struct for the demo: one temperature/humidity sample. */
 typedef struct
 {
     int32_t temperature_dc;   /* 0.1°C */
@@ -30,7 +30,7 @@ typedef struct
 } env_sample_t;
 
 /* ------------------------------------------------------------------ */
-/* Subtest 1: append 3 条 sample —— 时间戳来自 db->get_time 回调        */
+/* Subtest 1: append 3 samples — ts from the db->get_time callback     */
 /* ------------------------------------------------------------------ */
 static int run_append_auto(fdb_tsdb_t tsdb)
 {
@@ -52,13 +52,13 @@ static int run_append_auto(fdb_tsdb_t tsdb)
 }
 
 /* ------------------------------------------------------------------ */
-/* Subtest 2: iter 全部记录并读出（回调式 fdb_tsl_iter）                 */
+/* Subtest 2: iterate all records and read them back (callback fdb_tsl_iter) */
 /* ------------------------------------------------------------------ */
 typedef struct
 {
     fdb_tsdb_t tsdb;
     int        n;
-    int        printed;   /* 只打印前 N 条，避免日志刷屏 */
+    int        printed;   /* print only the first N, so the log is not flooded */
 } iter_ctx_t;
 
 #define TS_DUMP_MAX  10
@@ -88,7 +88,7 @@ static bool ts_dump_cb(fdb_tsl_t tsl, void *arg)
         }
         ctx->printed++;
     }
-    return false;   /* 继续遍历 */
+    return false;   /* keep iterating */
 }
 
 static int run_iter_all(fdb_tsdb_t tsdb)
@@ -101,7 +101,7 @@ static int run_iter_all(fdb_tsdb_t tsdb)
 }
 
 /* ------------------------------------------------------------------ */
-/* Subtest 3: query_count 与 iter 结果对账                              */
+/* Subtest 3: reconcile query_count against the iter result            */
 /* ------------------------------------------------------------------ */
 static void run_query_count(fdb_tsdb_t tsdb, int expect)
 {

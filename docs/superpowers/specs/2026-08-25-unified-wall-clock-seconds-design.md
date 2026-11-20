@@ -1,289 +1,300 @@
-# 统一时间口径:墙上时钟秒
+# Unified time semantics: wall clock seconds
 
-日期:2026-08-25
-状态:设计已确认,待实现
-影响面:BLE 协议文档、固件(applications)、手机 App(HoneyBox)
+Date: 2026-08-25
+Status: design confirmed, implementation pending
+Scope: BLE protocol document, firmware (applications), phone App (HoneyBox)
 
-## 1. 背景
+## 1. Background
 
-固件当前对"一个 `uint32_t` 时间值代表什么"存在两种互相矛盾的解释,
-同一个值在不同函数里被当作两种东西使用。
+The firmware currently holds two contradictory interpretations of "what a single `uint32_t`
+time value means"; the same value is used as two different things in different functions.
 
-写入侧按本地时间处理:`app_time_set_local()` 的命名、参数类型
-`app_time_local_t`、以及 `app_time.h` 的注释 "Store a validated local
-calendar value in the hardware RTC",都表明 RTC 存的是本地日历值。
-协议 0x01 下发的 32-bit packed 值不含任何时区字段,按手表业务惯例是
-用户本地时间。
+The write side treats it as local time: the naming of `app_time_set_local()`, the parameter type
+`app_time_local_t`, and the comment in `app_time.h` "Store a validated local
+calendar value in the hardware RTC", all indicate that the RTC stores a local calendar value.
+The 32-bit packed value sent by protocol 0x01 carries no timezone field; by watch industry
+convention it is the user's local time.
 
-读出侧却按 UTC 处理:`app_time_now()` 直接返回
-`civil_to_epoch(RTC)`,声明为 "Wall-clock time in Unix seconds",
-随后 `app_time_to_local()` 和 `local_sec_from_utc()` 又对它施加
-`+ s_tz_min * 60`(默认 +480 分钟)。
+The read side, however, treats it as UTC: `app_time_now()` returns
+`civil_to_epoch(RTC)` directly, declared as "Wall-clock time in Unix seconds",
+and then `app_time_to_local()` and `local_sec_from_utc()` apply
+`+ s_tz_min * 60` to it (default +480 minutes).
 
-### 1.1 已确认的现存缺陷
+### 1.1 Confirmed existing defects
 
-由于 RTC 实际存的是本地时间,那次 `+8h` 是多加的:
+Since the RTC actually stores local time, that `+8h` is added spuriously:
 
-1. **`EVT_TIME_DAY_CHANGED` 在本地 16:00 触发,而非午夜。**
-   `app_time.c:242-243` 对已是本地口径的值再加 28800 秒,
-   `local / 86400` 的翻页点被推后 8 小时。
-   `health_worker_on_day_changed()`(`health_worker.c:125-130`)
-   因此每天下午四点清零 `s_today_acc`,用户当日步数归零。
-   这是用户可见的功能性缺陷。
+1. **`EVT_TIME_DAY_CHANGED` fires at 16:00 local, not at midnight.**
+   `app_time.c:242-243` adds another 28800 seconds to a value that is already local,
+   pushing the `local / 86400` rollover point back by 8 hours.
+   `health_worker_on_day_changed()` (`health_worker.c:125-130`)
+   therefore zeroes `s_today_acc` at 4 p.m. every day, resetting the user's step count for the day.
+   This is a user-visible functional defect.
 
-2. **SPORT 同步日志显示时间偏 +8 小时。**
-   `hmi_l2_cmd_sport.c:189` 对已是本地口径的 `rec.ts_utc`
-   再施加时区偏移。
+2. **SPORT sync log timestamps are shifted by +8 hours.**
+   `hmi_l2_cmd_sport.c:189` applies a timezone offset to `rec.ts_utc`,
+   which is already local.
 
-3. **`EVT_TIME_TICK_15MIN` 不受影响。** 28800 是 900 的整数倍,
-   多平移不改变 `% 900` 的结果。这正是缺陷长期未被发现的原因:
-   15 分钟分桶表现正常,只有跨天和显示出问题。
+3. **`EVT_TIME_TICK_15MIN` is unaffected.** 28800 is an integer multiple of 900, so
+   the extra shift does not change the result of `% 900`. This is exactly why the defect went
+   unnoticed for so long: 15-minute bucketing looks right, only the day rollover and the
+   display are wrong.
 
-4. **`ts_utc` 字段名与内容不符。** 但因协议要求手机不做时区换算,
-   落库与上报的最终行为是自洽正确的 —— 仅命名撒谎。
+4. **The `ts_utc` field name does not match its content.** But since the protocol requires the
+   phone not to do timezone conversion, the resulting storage and reporting behaviour is
+   self-consistently correct —— only the name lies.
 
-### 1.2 协议文档的现状
+### 1.2 Current state of the protocol document
 
-`component/protocol/BLE_PROTOCOL_SPEC.html` 中:
+In `component/protocol/BLE_PROTOCOL_SPEC.html`:
 
-- 0x01 时间设置:Value 32 bits = Year(6) + Month(4) + Day(5) +
-  Hour(5) + Minute(6) + Second(6),无时区字段,全文未出现 "UTC"。
-- 运动/睡眠记录 Timestamp:标注为"Unix 时间戳(秒),与 FlashDB
-  记录时间一致"。
-- 运动桶原定义把 Timestamp 当作结束/落库时间，手机不得将它前移 15 分钟。
+- 0x01 time set: Value 32 bits = Year(6) + Month(4) + Day(5) +
+  Hour(5) + Minute(6) + Second(6), no timezone field, and "UTC" never appears.
+- Sport/sleep record Timestamp: marked as "Unix timestamp (seconds), consistent with the FlashDB
+  record time".
+- The original sport bucket definition treated Timestamp as the end/storage time; the phone must not move it back by 15 minutes.
 
-后两条并读可知,文档意图是手机拿到 Timestamp 直接当墙上时间显示。
-既然手机不换算,而手机下发的又是用户本地日历值,则整条链上实际不存在
-UTC —— 系统事实上运行的是"本地时间冒充 Unix 秒"的口径,只是命名和
-注释没有承认这一点。
+Reading the last two together shows the document intends the phone to take Timestamp and display
+it directly as wall time. Since the phone does not convert, and what the phone sends is the
+user's local calendar value, no UTC actually exists anywhere along the chain —— the system in
+fact runs on "local time masquerading as Unix seconds", and only the names and comments fail to
+admit it.
 
-## 2. 目标与非目标
+## 2. Goals and non-goals
 
-**目标**:让"这个 `uint32_t` 是什么口径"不再是一个需要问的问题。
-协议、存储、固件内部统一为单一标量,时区不进入数据流。
+**Goal**: make "what semantics does this `uint32_t` carry" a question nobody has to ask.
+Protocol, storage and firmware internals are unified on a single scalar, and the timezone does
+not enter the data flow.
 
-**非目标**:
+**Non-goals**:
 
-- 不做时区协商。固件中不存在时区概念(此前考虑过的
-  "协议增加时区协商 key" 已撤销)。
-- 不追求跨时区旅行时历史数据在绝对时间轴上的连续性(见 §7 权衡)。
-- 不设计闹钟。协议中的闹钟定义直接删除(见 §4.3),
-  将来实现 `app_alarm` 时另行设计。
-- 不实现工厂测试的按键上报。0x21 的 Timestamp 纪元一并统一
-  (见 §4.4),但不为该命令补实现。
+- No timezone negotiation. The firmware has no concept of a timezone (the previously considered
+  "add a timezone negotiation key to the protocol" has been dropped).
+- No continuity of historical data on an absolute timeline when travelling across timezones (see the trade-off in §7).
+- No alarm design. The alarm definitions in the protocol are deleted outright (see §4.3);
+  `app_alarm` will be designed separately when it is implemented.
+- No key-press reporting for factory test. The 0x21 Timestamp epoch is unified as well
+  (see §4.4), but no implementation is added for that command.
 
-## 3. 核心模型
+## 3. Core model
 
-### 3.1 唯一标量
+### 3.1 The single scalar
 
-> **墙上时钟秒(wall clock seconds)**:`uint32_t`,自
-> **1970-01-01 00:00:00** 起算的秒数,其值为"表盘应当显示的时刻"。
-> 锚点由手机单方定义:手机取本地日历字段,按 UTC 折算规则生成秒数。
-> **固件收到后永不做任何加减。** 有效范围 1970–2106。
+> **Wall clock seconds**: a `uint32_t`, the number of seconds since
+> **1970-01-01 00:00:00**, whose value is "the instant the watch face should display".
+> The anchor is defined by the phone alone: the phone takes the local calendar fields and
+> generates the seconds using UTC conversion rules.
+> **The firmware never adds or subtracts anything after receiving it.** Valid range 1970–2106.
 
-纪元固定为 1970-01-01 00:00:00,即标准 Unix 纪元。**不使用 2000 年
-纪元,因此两侧都不需要任何纪元换算代码**(不存在
-`± 946684800` 之类的常数)。理由:
+The epoch is fixed at 1970-01-01 00:00:00, i.e. the standard Unix epoch. **No year-2000 epoch is
+used, so neither side needs any epoch conversion code** (there is no constant such as
+`± 946684800`). Reasons:
 
-1. 两侧库函数原生以 1970 为原点 —— newlib `gmtime_r` 的 `time_t`、
-   Dart `DateTime.fromMillisecondsSinceEpoch` 均是。任何自定义纪元
-   都要求每次转换手工加减常数,一侧漏加即静默偏 30 年,与本设计要
-   消灭的"偏 8 小时"属同类缺陷。
-2. `uint32_t` 以 1970 起算可用至 2106-02-07,手表寿命内充裕。
-   业务与协议层不使用有符号中间量，秒数直存直用；但 FlashDB 默认的
-   `fdb_time_t` 是有符号 32 位，必须单独启用 64 位时间戳配置以绕过
-   2038 边界。`app_time.c:156-168` 原有的溢出饱和逻辑随
-   `local_sec_from_utc()` 一并删除。
-3. FlashDB 的 `fdb_time_t` 约定即 Unix 纪元。`health_db.c:103`
-   把记录时间戳直接作为 TSDB 时间键使用,换用其他纪元会使时间索引
-   与外部认知错开 30 年,并牵连 `fdb_tsl_iter_by_time` 的查询区间。
+1. Library functions on both sides natively use 1970 as the origin —— newlib `gmtime_r`'s `time_t`,
+   and Dart's `DateTime.fromMillisecondsSinceEpoch`. Any custom epoch
+   would require manual add/subtract of a constant on every conversion; missing it on one side
+   silently shifts by 30 years, a defect of the same kind as the "8 hour shift" this design
+   eliminates.
+2. A `uint32_t` counted from 1970 is usable until 2106-02-07, ample for a watch's lifetime.
+   Business and protocol layers use no signed intermediates; seconds are stored and used as-is. FlashDB's default
+   `fdb_time_t`, however, is signed 32-bit, so the 64-bit timestamp configuration must be enabled
+   separately to bypass the 2038 boundary. The overflow saturation logic originally in
+   `app_time.c:156-168` is deleted together with `local_sec_from_utc()`.
+3. FlashDB's `fdb_time_t` convention is the Unix epoch. `health_db.c:103`
+   uses the record timestamp directly as the TSDB time key; switching to another epoch would put
+   the time index 30 years out of step with external expectations and would drag in the query
+   ranges of `fdb_tsl_iter_by_time`.
 
-### 3.2 固件侧的三条推论
+### 3.2 Three corollaries on the firmware side
 
-全部是纯算术,不含任何偏移量:
+All pure arithmetic, containing no offsets:
 
-| 用途 | 表达式 |
+| Use | Expression |
 |---|---|
-| 跨天检测 | `sec / 86400` |
-| 刻钟边界检测 | `sec % 900 == 0` |
-| 渲染为日历字段 | `gmtime_r(&sec, &tm)` |
+| Day rollover detection | `sec / 86400` |
+| Quarter-hour boundary detection | `sec % 900 == 0` |
+| Render as calendar fields | `gmtime_r(&sec, &tm)` |
 
-`gmtime_r` 在此是**正确**选择而非将就:秒数由手机按 UTC 规则折算
-而来,用同一规则折算回去是严格的逆运算。**不得使用 `localtime_r`
-或 `mktime`** —— 二者会读取 `TZ` 环境变量,在嵌入式环境下 `TZ` 未设时
-行为依赖 newlib 实现细节,正是本设计要消除的不确定性。
+`gmtime_r` is the **correct** choice here, not a compromise: the seconds were produced by the
+phone using UTC rules, so converting back with the same rules is an exact inverse. **`localtime_r`
+or `mktime` must not be used** —— both read the `TZ` environment variable, and with `TZ` unset in
+an embedded environment their behaviour depends on newlib implementation details, which is
+exactly the uncertainty this design removes.
 
-### 3.3 固件中消失的概念
+### 3.3 Concepts that disappear from the firmware
 
-- `s_tz_min`(`app_time.c:60`)—— 删除,时区概念不再存在。
-- `local_sec_from_utc()`(`app_time.c:162-169`)—— 删除,不再需要平移。
-- `utc` / `local` 这两个词 —— 从所有标识符和注释中移除,
-  统一为 wall clock seconds。
-- `app_time_local_t`(`app_time.h:34-43`)—— **删除**。它是
-  `struct tm` 的重复发明:七个字段逐一对应 `tm_year`/`tm_mon`/
-  `tm_mday`/`tm_hour`/`tm_min`/`tm_sec`/`tm_wday`,只是换了偏移约定
-  (完整年份 vs `-1900`,`1..12` vs `0..11`)。删除它并直接使用
-  `struct tm`,正是"尽量用 C 库"的落实。
+- `s_tz_min` (`app_time.c:60`) —— deleted; the concept of a timezone no longer exists.
+- `local_sec_from_utc()` (`app_time.c:162-169`) —— deleted; no shift is needed any more.
+- the words `utc` / `local` —— removed from all identifiers and comments,
+  unified as wall clock seconds.
+- `app_time_local_t` (`app_time.h:34-43`) —— **deleted**. It is a
+  reinvention of `struct tm`: its seven fields map one-to-one onto `tm_year`/`tm_mon`/
+  `tm_mday`/`tm_hour`/`tm_min`/`tm_sec`/`tm_wday`, only with different offset conventions
+  (full year vs `-1900`, `1..12` vs `0..11`). Deleting it and using
+  `struct tm` directly is precisely "use the C library wherever possible" put into practice.
 
-删除 `app_time_local_t` 的连带影响:
+Knock-on effects of deleting `app_time_local_t`:
 
 - `app_time_to_local(uint32_t, app_time_local_t*)` →
   `app_time_to_calendar(uint32_t sec, struct tm *out)`,
-  实现退化为一次 `gmtime_r` 调用加空指针检查。
-- 唯一调用点 `hmi_l2_cmd_sport.c:189` 改用 `struct tm`,
-  日志格式化处需相应改为 `tm_year + 1900`、`tm_mon + 1`。
-  这个 `+1900` / `+1` 的转换是使用 `struct tm` 的既定代价,
-  换来的是不再维护一个平行类型。
+  whose implementation degenerates to a single `gmtime_r` call plus a null check.
+- the only call site, `hmi_l2_cmd_sport.c:189`, switches to `struct tm`,
+  and the log formatting there must become `tm_year + 1900` / `tm_mon + 1`.
+  That `+1900` / `+1` conversion is the accepted price of using `struct tm`,
+  paid in exchange for no longer maintaining a parallel type.
 - `app_time_set_local(const app_time_local_t*)` →
-  `app_time_set(uint32_t sec)`,参数已是秒,该类型本就不再出现。
+  `app_time_set(uint32_t sec)`; the parameter is already seconds, so that type no longer appears at all.
 
-### 3.4 关于使用 C 库替代手写实现
+### 3.4 On using the C library instead of hand-written implementations
 
-设计意图是尽量交给 libc,但存在一处硬约束:**newlib 未提供
-`timegm`**(已核验工具链 `libc.a` 符号表:仅有 `gmtime_r`、
-`localtime_r`、`mktime`)。而 `mktime` 依赖 `TZ`,不可用于本设计。
+The design intent is to delegate to libc as far as possible, but there is one hard constraint:
+**newlib does not provide `timegm`** (verified against the toolchain `libc.a` symbol table: only
+`gmtime_r`, `localtime_r` and `mktime` exist). And `mktime` depends on `TZ`, so it cannot be used
+in this design.
 
-新模型下写路径不再需要"日历 → 秒":手机直接下发秒数,
-故 `hmi_l2_decode_time()` 的位解包、`days_in_month()` 校验整块删除
-——— 不是替换为 libc 调用,而是**需求消失**。
+Under the new model the write path no longer needs "calendar → seconds": the phone sends the
+seconds directly, so the bit unpacking in `hmi_l2_decode_time()` and the whole of the
+`days_in_month()` validation are deleted —— not replaced by libc calls, but **no longer needed**.
 
-读路径仍需要"日历 → 秒",因为硬件 RTC 寄存器只存日历字段,
-`app_time_now()` 必须把读回的日历值折算成秒。此处**保留现有的
-`civil_to_epoch()`**(`app_time.c:117-141`,Howard Hinnant 算法):
-它已验证、注释完整、不依赖 `TZ`,而 libc 在此没有不带时区的等价物。
-用 `mktime` 替代会重新引入时区依赖,是退步。
+The read path still needs "calendar → seconds", because the hardware RTC registers only hold
+calendar fields, so `app_time_now()` must convert the calendar value read back into seconds. Here
+the **existing `civil_to_epoch()` is kept** (`app_time.c:117-141`, Howard Hinnant's algorithm):
+it is verified, fully commented, does not depend on `TZ`, and libc has no equivalent without a
+timezone. Replacing it with `mktime` would reintroduce the timezone dependency, a step backwards.
 
-`app_time_set()` 写 RTC 时需要"秒 → 日历字段",方向为正,
-使用 `gmtime_r`。副产品是 `tm_wday` 由 libc 免费提供,
-顺带修复 §5.2 记录的 weekday 缺陷。
+`app_time_set()` needs "seconds → calendar fields" when writing the RTC, the forward direction,
+and uses `gmtime_r`. A side benefit is that `tm_wday` comes for free from libc, which
+incidentally fixes the weekday defect recorded in §5.2.
 
-删除 `app_time_local_t`(§3.3)后,固件里表示日历字段的类型只剩两个,
-各有明确归属:`struct tm` 用于应用层渲染,`posix_rtc_time_t` 是驱动
-接口的硬件表示。二者之间的转换只发生在 `app_time.c` 内部一处。
+After deleting `app_time_local_t` (§3.3) only two types in the firmware represent calendar
+fields, each with a clear owner: `struct tm` for application-layer rendering, and
+`posix_rtc_time_t` as the driver interface's hardware representation. Conversion between them
+happens in exactly one place, inside `app_time.c`.
 
-## 4. 协议变更
+## 4. Protocol changes
 
-对 `component/protocol/BLE_PROTOCOL_SPEC.html` 的修改。
-**本次为不兼容(断裂式)变更:固件与 App 必须同版本升级**,
-不引入版本门做兼容(见 §7)。
+Changes to `component/protocol/BLE_PROTOCOL_SPEC.html`.
+**This is an incompatible (breaking) change: firmware and App must upgrade together**;
+no version gate is introduced for compatibility (see §7).
 
-### 4.1 0x01 时间设置 —— 格式变更
+### 4.1 0x01 time set —— format change
 
-Value 由 32-bit packed 日历字段改为 **4 bytes 大端墙上时钟秒**。
-字节宽度不变(仍 4 字节),语义完全不同。
+Value changes from 32-bit packed calendar fields to **4 bytes big-endian wall clock seconds**.
+The byte width is unchanged (still 4 bytes); the semantics are completely different.
 
-文档需明确记载:
+The document must state explicitly:
 
-- 该秒数自 1970-01-01 00:00:00 起算。
-- 其值为"设备应当显示的墙上时钟时刻"。
-- 手机负责把用户本地日历折算为秒数;**设备不做任何时区处理**。
+- The seconds are counted from 1970-01-01 00:00:00.
+- The value is "the wall clock instant the device should display".
+- The phone is responsible for converting the user's local calendar into seconds; **the device does no timezone handling whatsoever**.
 
-原 packed 格式中 Year 字段"从 2000 年起、6 bits(0~63)"是位宽压缩
-的产物,不是纪元选择;改为 4 字节秒后该约束消失。
+The Year field in the original packed format being "from year 2000, 6 bits (0~63)" was a
+by-product of bit-width compression, not an epoch choice; once it becomes 4 bytes of seconds that
+constraint disappears.
 
-### 4.2 上行 Timestamp —— 仅语义变更
+### 4.2 Uplink Timestamp —— semantics only
 
-运动(0x02)与睡眠(0x03)记录的 Timestamp 线格式不变
-(已是 4 字节大端秒)。文档措辞修改:
+The wire format of the Timestamp in sport (0x02) and sleep (0x03) records is unchanged
+(it is already 4 bytes big-endian seconds). The wording in the document changes:
 
-- 删除"Unix 时间戳(秒)"这一容易被误读为 UTC 的表述,
-  改为"墙上时钟秒(自 1970-01-01 起算,与设备显示一致)"。
-- 现有"手机不得再对 Timestamp 做时区转换"一句保留,但改为正面陈述:
-  该 Timestamp 已是应显示的时刻,直接渲染即可。此约束在新模型下
-  是自然结果,不再是需要解释的例外。
-- 运动记录的 Timestamp 定义为自然刻钟逻辑桶起点，统计区间为
-  `[Timestamp, Timestamp + 15 分钟)`。完整桶和 partial bucket 都按
-  `00/15/30/45` 对齐；partial 只表示该逻辑区间未被完整采集，协议不表达
-  实际采集起止时间。手机直接按 Timestamp 聚合日期和时段。
+- Delete "Unix timestamp (seconds)", which is easily misread as UTC, and change it to
+  "wall clock seconds (from 1970-01-01, consistent with the device display)".
+- The existing sentence "the phone must not timezone-convert the Timestamp again" is kept, but
+  restated positively: the Timestamp already is the instant to display, so simply render it. Under the new model this constraint
+  is a natural consequence, no longer an exception that needs explaining.
+- The sport record Timestamp is defined as the start of a natural quarter-hour logical bucket, with the statistical interval
+  `[Timestamp, Timestamp + 15 minutes)`. Full buckets and partial buckets are both aligned to
+  `00/15/30/45`; "partial" only means that the logical interval was not fully captured, and the protocol does not express the
+  actual acquisition start/end times. The phone derives dates and periods directly from the Timestamp.
 
-### 4.3 闹钟 0x02/0x04 —— 删除定义
+### 4.3 Alarms 0x02/0x04 —— definitions deleted
 
-**从协议文档中移除 0x02(闹钟设置)、0x03(获取闹钟列表请求)、
-0x04(获取闹钟列表返回)的定义。**
+**Remove the definitions of 0x02 (set alarm), 0x03 (get alarm list request) and
+0x04 (get alarm list response) from the protocol document.**
 
-依据:两侧均未实现,是纯纸面定义。已核验 —— 手机侧 `lib/services/`
-下无任何闹钟代码;固件侧仅有三处注释提及"未来的 `app_alarm`"
-(`app_time.h:20`、`app_time.c:8`、`app_event_defs.h:130`),
-无实现代码。
+Rationale: neither side implements them; they are a paper-only definition. Verified —— the phone side has no
+alarm code at all under `lib/services/`; the firmware side mentions "the future `app_alarm`" in only three comments
+(`app_time.h:20`, `app_time.c:8`, `app_event_defs.h:130`),
+with no implementation code.
 
-删除而非保留的理由:原 40-bit 格式携带 Day flags(周重复规则),
-是协议中唯一使用日历字段表示时间的位置。保留它就必须在文档中长期
-维护一条"全部用秒,但闹钟例外"的说明,而这条例外服务的是一个尚不存在
-的功能。删除后**协议中再无任何日历字段,"全部用秒"零例外**。
+Why delete rather than keep: the original 40-bit format carried Day flags (weekly repeat rules),
+the only place in the protocol that used calendar fields to express time. Keeping it would mean maintaining a note in the document
+saying "everything uses seconds, except alarms", and that exception would serve a feature that does not yet
+exist. After deletion **there are no calendar fields left anywhere in the protocol, and "everything uses seconds" holds with zero exceptions**.
 
-将来实现 `app_alarm` 时重新设计:重复闹钟的触发条件本质是
-"时分 + 星期掩码",与"某一时刻的秒数"是不同的东西,届时按实际需求
-定义,不受本设计约束。
+`app_alarm` will be designed afresh when it is implemented: a repeating alarm's trigger condition
+is essentially "time of day + weekday mask", a different thing from "seconds at a given instant";
+it will be defined per actual requirements at that time, unconstrained by this design.
 
-键位 0x02/0x03/0x04 视为保留不再分配,避免与历史实现混淆。
-固件侧 `hmi_l2.h` 中 `HMI_L2_SET_ALARM`、`HMI_L2_GET_ALARM_REQ`、
-`HMI_L2_GET_ALARM_RSP` 三个宏一并删除(无引用点)。
+Keys 0x02/0x03/0x04 are treated as reserved and no longer assigned, to avoid confusion with historical implementations.
+On the firmware side the `HMI_L2_SET_ALARM`, `HMI_L2_GET_ALARM_REQ` and
+`HMI_L2_GET_ALARM_RSP` macros in `hmi_l2.h` are deleted as well (there are no references).
 
-### 4.4 0x21 按键测试 Timestamp —— 改为 1970 纪元
+### 4.4 0x21 key test Timestamp —— switched to the 1970 epoch
 
-Timestamp 由"从 2000 年起的秒数"改为**墙上时钟秒(1970 纪元)**,
-与 §3.1 定义一致。字节宽度不变(仍 4 字节大端)。
+The Timestamp changes from "seconds since year 2000" to **wall clock seconds (1970 epoch)**,
+consistent with the definition in §3.1. The byte width is unchanged (still 4 bytes big-endian).
 
-依据:两侧均未实现。已核验 —— 固件 `hmi_l2_cmd_factory.c` 的处理器
-仅有一行 `PROTO_LOG` 打印键值,不解析任何 payload;手机侧无 factory
-命令代码。改的是纯纸面定义,**实现代价为零**。
+Rationale: neither side implements it. Verified —— the handler in firmware `hmi_l2_cmd_factory.c`
+has just one line of `PROTO_LOG` printing the key value and parses no payload; the phone side has no factory
+command code. What changes is a paper-only definition, so the **implementation cost is zero**.
 
-必须改而非保留的理由:留着它就要在文档中长期维护一句
-"全协议唯一的非 1970 纪元例外"的警告,而该例外服务于一个不存在的
-功能 —— 与 §4.3 删除闹钟的逻辑完全一致。且它比闹钟更危险:一个
-4 字节时间戳字段,纪元与协议其余部分相差 30 年,将来实现工厂测试的人
-照其它命令的写法实现就会出错,而 30 年偏差在工厂环境中未必立即暴露。
+Why it must change rather than stay: keeping it would mean maintaining a long-term warning in the document about
+"the only non-1970-epoch exception in the whole protocol", and that exception would serve a feature that does not
+exist —— exactly the same logic as deleting the alarms in §4.3. And it is more dangerous than the alarms: a
+4-byte timestamp field whose epoch differs from the rest of the protocol by 30 years; whoever implements factory test later
+following the pattern of the other commands will get it wrong, and a 30-year error may not be immediately obvious in a factory environment.
 
-至此**协议中所有时间字段统一为 1970 纪元墙上时钟秒,零例外**。
+With this, **every time field in the protocol is unified as 1970-epoch wall clock seconds, with zero exceptions**.
 
-## 5. 固件改动
+## 5. Firmware changes
 
-### 5.1 改动清单
+### 5.1 Change list
 
-| 文件 | 改动 |
+| File | Change |
 |---|---|
-| `app/app_time/app_time.h` | 删除 `app_time_local_t`(改用 `struct tm`);`app_time_set_local(const app_time_local_t*)` → `app_time_set(uint32_t sec)`;`app_time_to_local()` → `app_time_to_calendar(uint32_t, struct tm*)`;`app_time_now()` 注释改为墙上时钟秒;加 `#include <time.h>`;删除文件头 "Alarms / calendar do not live here" 中的闹钟指涉或改为中性表述 |
-| `app/app_time/app_time.c` | 删除 `s_tz_min`、`local_sec_from_utc()`;保留 `civil_to_epoch()` 供 `app_time_now()` 读 RTC 使用;`app_time_set()` 用 `gmtime_r` 把秒展开为 `posix_rtc_time_t`(`wday` 取 `tm_wday`);`app_time_to_calendar()` 退化为一次 `gmtime_r`;`rtc_second_cb()` 中的天索引与刻钟判断直接用秒值,去掉平移;更新文件头注释,删除 "Local means UTC + s_tz_min" 段落 |
-| `app/app_core/app_event_defs.h` | `app_evt_time_synced_t` 由六个日历字段改为单个 `uint32_t sec`;更新注释 |
-| `app/app_protocol/hmi_l2_cmd_settings.c` | 删除 `hmi_l2_decode_time()` 的位解包与 `days_in_month()`;改为读 4 字节大端秒;调用 `app_time_set()`;发布 `EVT_TIME_SYNCED` 载荷改为秒 |
-| `app/app_health/app_health_internal.h` | `health_pedo_record_t.ts_utc` → `ts`;注释统一为墙上时钟秒，运动记录进一步明确为自然刻钟桶起点 |
-| `app/app_health/health_worker.c` | `ts_utc` → `ts`;`boundary_utc` → `boundary_sec` |
-| `app/app_health/health_db.c` | `ts_utc` → `ts`(共 10 处);`health_db_save_synced_ts()` 参数改名 |
-| `app/app_protocol/hmi_l2_cmd_sport.c` | `sport_encode_record()` 字段改名;`app_time_to_local` 调用改为 `app_time_to_calendar`,日志格式化改用 `tm_year + 1900` / `tm_mon + 1` |
-| `component/protocol/hmi_l2.h` | 删除 `HMI_L2_SET_ALARM`、`HMI_L2_GET_ALARM_REQ`、`HMI_L2_GET_ALARM_RSP`(§4.3,无引用点) |
+| `app/app_time/app_time.h` | Delete `app_time_local_t` (use `struct tm` instead); `app_time_set_local(const app_time_local_t*)` → `app_time_set(uint32_t sec)`; `app_time_to_local()` → `app_time_to_calendar(uint32_t, struct tm*)`; change the `app_time_now()` comment to wall clock seconds; add `#include <time.h>`; remove the alarm reference from the header line "Alarms / calendar do not live here" or make it neutral |
+| `app/app_time/app_time.c` | Delete `s_tz_min` and `local_sec_from_utc()`; keep `civil_to_epoch()` for `app_time_now()` reading the RTC; `app_time_set()` expands seconds into `posix_rtc_time_t` with `gmtime_r` (`wday` taken from `tm_wday`); `app_time_to_calendar()` degenerates to a single `gmtime_r`; in `rtc_second_cb()` use the second value directly for the day index and quarter-hour checks, dropping the shift; update the file header comment and delete the "Local means UTC + s_tz_min" paragraph |
+| `app/app_core/app_event_defs.h` | `app_evt_time_synced_t` changes from six calendar fields to a single `uint32_t sec`; update the comment |
+| `app/app_protocol/hmi_l2_cmd_settings.c` | Delete the bit unpacking in `hmi_l2_decode_time()` and `days_in_month()`; read 4 bytes of big-endian seconds instead; call `app_time_set()`; the `EVT_TIME_SYNCED` payload becomes seconds |
+| `app/app_health/app_health_internal.h` | `health_pedo_record_t.ts_utc` → `ts`; comments unified as wall clock seconds, and sport records further clarified as natural quarter-hour bucket starts |
+| `app/app_health/health_worker.c` | `ts_utc` → `ts`; `boundary_utc` → `boundary_sec` |
+| `app/app_health/health_db.c` | `ts_utc` → `ts` (10 occurrences in total); rename the `health_db_save_synced_ts()` parameter |
+| `app/app_protocol/hmi_l2_cmd_sport.c` | Rename the `sport_encode_record()` fields; change the `app_time_to_local` call to `app_time_to_calendar` and the log formatting to `tm_year + 1900` / `tm_mon + 1` |
+| `component/protocol/hmi_l2.h` | Delete `HMI_L2_SET_ALARM`, `HMI_L2_GET_ALARM_REQ`, `HMI_L2_GET_ALARM_RSP` (§4.3, no references) |
 
-`ts_utc` → `ts` 是纯改名:字段类型、偏移、结构体布局均不变,
-**Flash 中已有记录不受影响,无需数据迁移**。
+`ts_utc` → `ts` is a pure rename: field type, offset and struct layout are all unchanged,
+so **records already stored in Flash are unaffected and no data migration is needed**.
 
-### 5.2 顺带修复:weekday 撒谎
+### 5.2 Incidental fix: the weekday lie
 
-`hmi_l2_cmd_settings.c:54` 当前把 `weekday` 填 0 后写入 RTC,
-而 `posix_ioctl_rtc.h` 的约定是"驱动填不了时置 `0xFF`",
-0 表示星期日 —— 即当前实现向 RTC 谎报周日。若 Realtek port 将 wday
-写入硬件寄存器,或将来有消费者读取 RTC 的 wday 字段,会取到错值。
+`hmi_l2_cmd_settings.c:54` currently fills `weekday` with 0 and writes it to the RTC,
+while the convention in `posix_ioctl_rtc.h` is "the driver sets `0xFF` when it cannot fill it", and
+0 means Sunday —— i.e. the current implementation tells the RTC it is Sunday. If the Realtek port writes wday
+into a hardware register, or if a consumer reads the RTC's wday field in future, it will get a wrong value.
 
-新实现中 `app_time_set()` 用 `gmtime_r` 展开秒数,`tm_wday` 由 libc
-计算,直接填入 `posix_rtc_time_t.wday`,缺陷自然消失 —— 这也是
-删除 `app_time_local_t`、改用 `struct tm` 的附带收益:
-原类型要求调用方自行填 `weekday`,而 libc 的 `struct tm` 是算好的。
+In the new implementation `app_time_set()` expands the seconds with `gmtime_r`, `tm_wday` is computed
+by libc and filled straight into `posix_rtc_time_t.wday`, and the defect disappears naturally —— another incidental benefit of
+deleting `app_time_local_t` and switching to `struct tm`:
+the old type required the caller to fill in `weekday` itself, whereas libc's `struct tm` comes pre-computed.
 
-### 5.3 不变的部分
+### 5.3 What does not change
 
-- `EVT_TIME_TICK_15MIN` / `EVT_TIME_DAY_CHANGED` 的事件 ID 与
-  `uint32_t` 载荷类型不变,仅语义澄清为墙上时钟秒。
-- RTC 1 Hz 中断驱动边界事件的机制不变。
-- ISR 纪律不变:`rtc_second_cb()` 中仍只做 GET_TIME ioctl 与
-  `app_event_publish_isr()`。
-- `health_pedo_record_t` 的业务记录布局不变；但必须启用
-  `FDB_USING_TIMESTAMP_64BIT`，因此 FlashDB TSDB 的扇区头和日志索引布局
-  会由 32 位时间戳变为 64 位时间戳。升级时需重建 pedo TSDB，不能按新
-  布局直接读取旧索引。
+- The event IDs of `EVT_TIME_TICK_15MIN` / `EVT_TIME_DAY_CHANGED` and the
+  `uint32_t` payload type are unchanged; only the semantics are clarified as wall clock seconds.
+- The mechanism by which the RTC 1 Hz interrupt drives boundary events is unchanged.
+- ISR discipline is unchanged: `rtc_second_cb()` still only performs the GET_TIME ioctl and
+  `app_event_publish_isr()`.
+- The business record layout of `health_pedo_record_t` is unchanged; but
+  `FDB_USING_TIMESTAMP_64BIT` must be enabled, so the FlashDB TSDB sector header and log index layout
+  change from 32-bit to 64-bit timestamps. Upgrading requires rebuilding the pedo TSDB; the old index cannot be read
+  directly under the new layout.
 
-## 6. 手机侧改动(HoneyBox)
+## 6. Phone changes (HoneyBox)
 
 ### 6.1 `lib/services/watch_time_protocol.dart`
 
-`buildSetTime(DateTime localTime)` 改为发送 4 字节大端秒:
+`buildSetTime(DateTime localTime)` changes to send 4 bytes of big-endian seconds:
 
 ```dart
 final seconds = DateTime.utc(
@@ -292,115 +303,114 @@ final seconds = DateTime.utc(
 ).millisecondsSinceEpoch ~/ 1000;
 ```
 
-**关键点:必须用 `DateTime.utc(...)` 而非 `DateTime(...)`。**
-用后者会二次施加设备时区偏移,得到错误的秒数。
-此处取的是 `localTime` 的**日历字段**,以 UTC 规则折算,
-这正是 §3.1 定义的锚点生成方式。
+**Key point: `DateTime.utc(...)` must be used rather than `DateTime(...)`.**
+The latter applies the device timezone offset a second time, producing the wrong seconds.
+What is taken here are the **calendar fields** of `localTime`, converted by UTC rules,
+which is exactly the anchor generation defined in §3.1.
 
-删除 packed 位运算。`minimumYear`/`maximumYear` 校验可保留作为
-合理性检查,但不再是格式约束。
+Delete the packed bit operations. The `minimumYear`/`maximumYear` checks may stay as
+sanity checks, but are no longer a format constraint.
 
-调用点 `lib/providers/watch_bind_provider.dart:141`
-(`WatchTimeProtocol.buildSetTime(_clock())`,`_clock` 默认为
-`DateTime.now`)无需修改。
+The call site `lib/providers/watch_bind_provider.dart:141`
+(`WatchTimeProtocol.buildSetTime(_clock())`, where `_clock` defaults to
+`DateTime.now`) needs no change.
 
 ### 6.2 `lib/services/watch_health_protocol.dart`
 
-`_readTimestamp()`(第 301-307 行)当前实现:
+The current `_readTimestamp()` (lines 301-307):
 
 ```dart
 return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true)
     .toLocal();
 ```
 
-**去掉 `.toLocal()`**,保留 `isUtc: true`。秒数已是应显示的时刻,
-再做 `toLocal()` 会二次施加时区偏移。同时更新第 300 行注释
-"Records are UTC on the wire"。
+**Drop `.toLocal()`** and keep `isUtc: true`. The seconds already are the instant to display,
+and applying `toLocal()` again would apply the timezone offset a second time. Also update the comment on line 300,
+"Records are UTC on the wire".
 
-### 6.3 `lib/pages/watch/health/watch_health_data.dart` —— 必须一并核对
+### 6.3 `lib/pages/watch/health/watch_health_data.dart` —— must be reviewed as well
 
-去掉 `.toLocal()` 后,`record.timestamp` 成为 UTC-flagged 的
-`DateTime`。Dart 的 `.hour`/`.year` 等取值器对 UTC-flagged 对象返回
-UTC 字段,对本地对象返回本地字段 —— 因此 record 侧自动正确,
-但**与本地 `DateTime` 比较的地方会错**。
+After dropping `.toLocal()`, `record.timestamp` becomes a UTC-flagged
+`DateTime`. Dart's `.hour`/`.year` and similar accessors return UTC fields for UTC-flagged
+objects and local fields for local objects —— so the record side is automatically correct,
+but **places that compare against a local `DateTime` will be wrong**.
 
-需核对并修正的位置:
+Places to review and fix:
 
-- 第 103 行 `_today`:由 `syncedAt` 构造,而 `syncedAt` 来自
-  `watch_health_repository.dart:142` 的 `_clock()`(本地 `DateTime.now`)。
-  `_today` 必须改为 UTC-flagged 才能与 record 正确比较。
-- 第 106、235 行 `_sameDate(record.timestamp, ...)`
-- 第 209-210 行 `record.timestamp.hour` 的时段过滤
-- 第 230 行 `_today.subtract(...)`
-- 第 258 行 `_sameDate()` 实现本身
+- line 103 `_today`: constructed from `syncedAt`, and `syncedAt` comes from
+  `watch_health_repository.dart:142`'s `_clock()` (a local `DateTime.now`).
+  `_today` must be made UTC-flagged to compare correctly against records.
+- lines 106 and 235 `_sameDate(record.timestamp, ...)`
+- lines 209-210, the period filtering on `record.timestamp.hour`
+- line 230 `_today.subtract(...)`
+- line 258, the `_sameDate()` implementation itself
 
-修正原则:统一让参与比较的两侧都是 UTC-flagged,
-即 `syncedAt` 侧也按墙上时钟口径构造。
-实现时逐处核对,不做批量替换。
+Fix principle: make both sides of every comparison UTC-flagged, i.e. construct the `syncedAt`
+side with wall clock semantics as well. Check each place individually when implementing; do not do a bulk replace.
 
-### 6.4 显示路径
+### 6.4 Display paths
 
-`watch_health_page.dart:569` `_recordTime()`、第 78/124 行的
-`_date()`/`_time()` 直接格式化 `DateTime` 字段,
-在 UTC-flagged 对象上会输出正确的墙上时间,无需改动 —— 但需实测确认
-未经由 `toLocal()` 中转。
+`watch_health_page.dart:569` `_recordTime()` and lines 78/124
+`_date()`/`_time()` format the `DateTime` fields directly,
+which on a UTC-flagged object outputs the correct wall time and needs no change —— but confirm by testing
+that it does not go through `toLocal()`.
 
-## 7. 权衡与已接受的代价
+## 7. Trade-offs and accepted costs
 
-**跨时区旅行时的不连续。** 手机下发新时区的墙上时钟秒时,秒数会跳变,
-历史记录在跳变点出现重叠或空洞,且不同时区段的记录不能放在同一根
-绝对时间轴上比较。
+**Discontinuity when travelling across timezones.** When the phone sends wall clock seconds for a new timezone the seconds jump,
+historical records overlap or leave gaps at the jump, and records from different timezone segments cannot be compared on the same
+absolute timeline.
 
-接受此代价的理由:每条记录始终等于"当时表盘显示的时间",永远可解释;
-而替代方案(存真 UTC)在协议不携带时区的前提下,必须用固件里硬编码
-的时区猜测去反推 UTC,一旦猜错就把错误永久固化进 Flash,且无法事后
-恢复。本方案从不需要知道时区,因此从不会猜错。
+Why this cost is accepted: every record always equals "the time the watch face showed at that moment" and is therefore always explainable;
+whereas the alternative (storing true UTC), given a protocol that carries no timezone, would have to infer UTC back from a timezone
+hard-coded into the firmware, and a wrong guess bakes the error permanently into Flash with no way to
+recover afterwards. This scheme never needs to know the timezone, so it can never guess wrong.
 
-**断裂式变更。** 新旧固件/手机混搭会静默偏一个时区,无报错。
-已确认接受:当前处于开发阶段,设备可随时刷新固件,两侧同步发布。
-文档中记载该不兼容性。协议不引入版本门(SPORT 命令已有 version=1
-的先例,但本次不使用)。
+**Breaking change.** Mixing old and new firmware/phone silently shifts times by one timezone, with no error.
+This is confirmed as accepted: the project is in development, devices can be reflashed at any time, and both sides are released together.
+The incompatibility is recorded in the document. The protocol introduces no version gate (the SPORT command already has the
+version=1 precedent, but it is not used here).
 
-**"全部用秒"零例外。** 协议中所有时间字段统一为 1970 纪元墙上时钟秒:
-闹钟定义已删除(§4.3),0x21 按键测试改为 1970 纪元(§4.4)。
-文档中不需要保留任何"但某处例外"的说明。
+**"Everything uses seconds" with zero exceptions.** All time fields in the protocol are unified as 1970-epoch wall clock seconds:
+the alarm definitions are deleted (§4.3) and 0x21 key test is switched to the 1970 epoch (§4.4).
+The document needs to keep no "but there is an exception somewhere" note.
 
-## 8. 验证
+## 8. Verification
 
-### 8.1 往返一致性测试(两侧各一)
+### 8.1 Round-trip consistency tests (one per side)
 
-核心不变式:**手机折算出的秒数,经固件 `gmtime_r` 展开后,
-必须还原出手机原始的本地日历字段。**
+Core invariant: **the seconds computed by the phone, expanded by the firmware's `gmtime_r`,
+must reproduce the phone's original local calendar fields.**
 
-- 手机侧:扩充 `test/services/watch_time_protocol_test.dart`,
-  断言给定本地时间生成的 4 字节秒数符合预期常数值。
-- 固件侧:断言该秒数经 `gmtime_r` 得回相同的年月日时分秒。
-- 手机侧:扩充 `test/services/watch_health_protocol_test.dart`,
-  断言 `_readTimestamp()` 对给定秒数返回的 `DateTime` 字段
-  与预期墙上时间一致,且不随运行环境时区变化。
+- Phone side: extend `test/services/watch_time_protocol_test.dart`
+  and assert that the 4 bytes of seconds generated from a given local time match the expected constant values.
+- Firmware side: assert that those seconds go back through `gmtime_r` to the same year, month, day, hour, minute and second.
+- Phone side: extend `test/services/watch_health_protocol_test.dart`
+  and assert that the `DateTime` fields returned by `_readTimestamp()` for given seconds
+  match the expected wall time, and do not vary with the timezone of the runtime environment.
 
-后一条尤其重要:测试必须在任意 `TZ` 下通过,
-这正是"时区不进入数据流"的可执行定义。
+The last one matters especially: the tests must pass under any `TZ`,
+which is the executable definition of "the timezone does not enter the data flow".
 
-### 8.2 缺陷回归确认
+### 8.2 Defect regression confirmation
 
-- **跨天时刻**:验证 `EVT_TIME_DAY_CHANGED` 在墙上时钟 00:00 触发,
-  而非 16:00(§1.1 缺陷 1)。
-- **同步日志**:验证 SPORT 同步日志打印的时间与表盘一致,
-  不再偏 8 小时(§1.1 缺陷 2)—— 这是最廉价的端到端验证点。
-- **刻钟边界**:确认 `EVT_TIME_TICK_15MIN` 行为未退化。
+- **Day rollover instant**: verify that `EVT_TIME_DAY_CHANGED` fires at wall clock 00:00,
+  not at 16:00 (defect 1 in §1.1).
+- **Sync log**: verify that the SPORT sync log prints the same time as the watch face,
+  no longer shifted by 8 hours (defect 2 in §1.1) —— this is the cheapest end-to-end verification point.
+- **Quarter-hour boundary**: confirm that `EVT_TIME_TICK_15MIN` behaviour has not regressed.
 
-### 8.3 现存数据兼容
+### 8.3 Compatibility with existing data
 
-`ts_utc` → `ts` 本身是纯改名；但运动记录 Timestamp 从闭合边界改为逻辑桶
-起点后，旧记录与新记录不能混合解释。另外，默认的 `fdb_time_t` 是有符号
-32 位，2038 年后的值会变为负数。固件需
-启用 `FDB_USING_TIMESTAMP_64BIT`，这会改变 FlashDB 的扇区头和日志索引
-布局，旧 TSDB 分区不能原地兼容。
+`ts_utc` → `ts` is itself a pure rename; but once the sport record Timestamp changes from a closing boundary to a logical bucket
+start, old and new records cannot be interpreted together. In addition, the default `fdb_time_t` is signed
+32-bit, so values after 2038 become negative. The firmware must
+enable `FDB_USING_TIMESTAMP_64BIT`, which changes the FlashDB sector header and log index
+layout, so an old TSDB partition cannot be made compatible in place.
 
-当前开发阶段采用一次性重建策略：KVDB 保存 pedo 布局版本；64 位时间戳
-布局或运动桶 Timestamp 语义变化时提升版本，首次启动新版本固件仅擦除
-`fdb_tsdb1`，将 `health.synced` 水位归零，最后
-写入新布局版本。KVDB 其它配置和 BF 数据不受影响。标记最后写入，因此
-迁移期间掉电会在下次启动时安全重试。量产后若要求保留历史数据，应另行
-实现离线导出/导入，而不能依赖 FlashDB 自动识别旧布局。
+The current development stage adopts a one-shot rebuild strategy: the KVDB stores the pedo layout version; when the 64-bit timestamp
+layout or the sport bucket Timestamp semantics change, the version is bumped, and the first boot of the new firmware merely erases
+`fdb_tsdb1`, zeroes the `health.synced` watermark, and finally
+writes the new layout version. Other KVDB configuration and BF data are unaffected. The marker is written last, so a
+power loss during migration retries safely on the next boot. If history must be preserved after mass production, an offline
+export/import should be implemented separately; it must not rely on FlashDB automatically recognising the old layout.

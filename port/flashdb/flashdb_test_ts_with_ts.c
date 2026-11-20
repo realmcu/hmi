@@ -4,20 +4,20 @@
  *
  * FlashDB TSDB test — explicit timestamp via fdb_tsl_append_with_ts.
  *
- * 典型用途：补历史数据（APP 灌上传的老记录）、从外部设备同步已带 ts 的
- * 记录、数据迁移。语义上"caller 自己负责单调"——传入的 ts 必须严格大于
- * db->last_time，否则 FDB 返回 FDB_WRITE_ERR。
+ * Typical uses: backfilling history (old records pushed up by the APP), syncing records that
+ * already carry a ts from an external device, data migration. Semantically "the caller owns
+ * monotonicity" —— the ts passed in must be strictly greater than db->last_time, else FDB returns FDB_WRITE_ERR.
  *
- * 本文件同时演示两条路径：
- *   Subtest 1: 正常路径 —— 3 条 ts 严格递增，全部写入成功
- *   Subtest 2: 单调违规 —— 传入 last_time 相等的 ts，被 FDB 拒收（预期）
- *   Subtest 3: iter 全量对读回内容
- *   Subtest 4: query_count 对账
+ * This file demonstrates these paths:
+ *   Subtest 1: normal path —— 3 strictly increasing ts values, all written successfully
+ *   Subtest 2: monotonicity violation —— pass a ts equal to last_time, rejected by FDB (expected)
+ *   Subtest 3: iter over everything and read the content back
+ *   Subtest 4: query_count reconciliation
  *
- * 注：本测试选择"base + i+1"作为 ts（base = 当前 last_time），因此写进
- * 去的记录是"追加在时间线末尾"，不是"补录到过去"。要真正演示"补历史"
- * 需要先 fdb_tsl_clean 清空 db，那样会把 auto-ts 那一批也擦掉，所以留
- * 给 shell 手动 `fdb clean` 后自己试。
+ * Note: this test picks "base + i+1" as the ts (base = the current last_time), so the records
+ * written are "appended at the end of the timeline", not "backfilled into the past". To really
+ * demonstrate "backfilling history" you would first have to fdb_tsl_clean the db, which would
+ * also wipe the auto-ts batch, so it is left to a manual `fdb clean` from the shell.
  */
 
 #include <string.h>
@@ -36,7 +36,7 @@ typedef struct
 } env_sample_t;
 
 /* ------------------------------------------------------------------ */
-/* Subtest 1: 3 条 ts 严格递增，写入成功                                 */
+/* Subtest 1: 3 strictly increasing ts values, all writes succeed      */
 /* ------------------------------------------------------------------ */
 static int run_backfill_ok(fdb_tsdb_t tsdb, fdb_time_t *out_last)
 {
@@ -64,13 +64,13 @@ static int run_backfill_ok(fdb_tsdb_t tsdb, fdb_time_t *out_last)
         if (ret == FDB_NO_ERR) { ok++; }
     }
 
-    /* 记录本轮结束时的 last_time，供 subtest 2 用。 */
+    /* Record the last_time at the end of this round, for subtest 2. */
     fdb_tsdb_control(tsdb, FDB_TSDB_CTRL_GET_LAST_TIME, out_last);
     return ok;
 }
 
 /* ------------------------------------------------------------------ */
-/* Subtest 2: 单调违规 —— 应该被 FDB 拒收（cur <= last）                  */
+/* Subtest 2: monotonicity violation — should be rejected by FDB (cur <= last) */
 /* ------------------------------------------------------------------ */
 static void run_monotonic_violation(fdb_tsdb_t tsdb, fdb_time_t last)
 {
@@ -90,7 +90,7 @@ static void run_monotonic_violation(fdb_tsdb_t tsdb, fdb_time_t last)
 }
 
 /* ------------------------------------------------------------------ */
-/* Subtest 3: iter 全部记录并读出                                       */
+/* Subtest 3: iterate all records and read them back                   */
 /* ------------------------------------------------------------------ */
 typedef struct
 {
@@ -139,7 +139,7 @@ static int run_iter_all(fdb_tsdb_t tsdb)
 }
 
 /* ------------------------------------------------------------------ */
-/* Subtest 4: query_count 与 iter 结果对账                              */
+/* Subtest 4: reconcile query_count against the iter result            */
 /* ------------------------------------------------------------------ */
 static void run_query_count(fdb_tsdb_t tsdb, int expect)
 {
