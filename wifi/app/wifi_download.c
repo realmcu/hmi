@@ -59,8 +59,8 @@ static bool z2_handshake(void)
 
     wifi_uart_tx((const uint8_t *)ping_cmd, strlen(ping_cmd));
     recv_len = wifi_uart_mp_recv(rev, sizeof(rev), HANDSHAKE_RECV_MS);
-    rev[sizeof(rev) - 1] = '\0'; /* 防止响应填满 buffer 时 strstr 越界 */
-    /* 用子串匹配：模组回显可能带 CR/LF 或前缀，strcmp 精确比较过于脆弱 */
+    rev[sizeof(rev) - 1] = '\0'; /* prevent strstr from overrunning when the response fills the buffer */
+    /* Use substring match: module echo may include CR/LF or a prefix, so exact strcmp is too fragile */
     if (strstr((char *)rev, "ping") == NULL)
     {
         printf("[dl] ping fail recv=%d rsp=%s\n", recv_len, rev);
@@ -75,7 +75,7 @@ static bool z2_handshake(void)
     os_delay(400);
     wifi_uart_set_baudrate(1000000);
     recv_len = wifi_uart_mp_recv(rev, sizeof(rev), HANDSHAKE_RECV_MS);
-    rev[sizeof(rev) - 1] = '\0'; /* 防止响应填满 buffer 时 strstr 越界 */
+    rev[sizeof(rev) - 1] = '\0'; /* prevent strstr from overrunning when the response fills the buffer */
     if (strstr((char *)rev, "OK") == NULL)
     {
         printf("[dl] 1M baud fail recv=%d rsp=%s\n", recv_len, rev);
@@ -138,7 +138,7 @@ T_XMODEM_STATUS wifi_download_firmware(void)
 
     T_XMODEM_STATUS ret = XMODEM_OK;
     uint32_t remain  = fw_size;
-    uint32_t wr_addr = 0;  /* Bug 6 修复：初始化为 0 */
+    uint32_t wr_addr = 0;  /* Bug 6 fix: initialize to 0 */
 
     while (remain > 0)
     {
@@ -153,7 +153,7 @@ T_XMODEM_STATUS wifi_download_firmware(void)
 
         printf("[dl] chunk flash=0x%x wr=0x%x len=%u\n", flash_addr, wr_addr, chunk);
 
-        /* Bug 4 修复：xmodem_send 不发 EOT，全部 chunk 传完后由 finish 统一发 */
+        /* Bug 4 fix: xmodem_send does not send EOT; finish sends it once all chunks are transferred */
         ret = wifi_xmodem_send(buf, chunk);
         if (ret != XMODEM_OK)
         {
@@ -170,7 +170,7 @@ T_XMODEM_STATUS wifi_download_firmware(void)
 
     if (ret == XMODEM_OK)
     {
-        /* Bug 4 修复：整包传完后唯一发 EOT */
+        /* Bug 4 fix: send EOT only after the whole package is transferred */
         ret = wifi_xmodem_finish();
     }
 

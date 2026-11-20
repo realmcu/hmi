@@ -22,18 +22,18 @@ typedef enum
     XMODEM_ERR_NAK_EXCEEDED,
 } T_XMODEM_STATUS;
 
-/* IO 注入：生产时绑定 wifi_uart_tx / wifi_uart_mp_recv */
+/* IO injection: bind wifi_uart_tx / wifi_uart_mp_recv in production */
 typedef bool (*xmodem_tx_fn)(const uint8_t *data, uint16_t len);
 typedef uint16_t (*xmodem_rx_fn)(uint8_t *buf, uint16_t max_len, uint32_t timeout_ms);
 
-/* 初始化会话，绑定 IO，重置序列号 */
+/* Initialize the session, bind IO, and reset the sequence number */
 void wifi_xmodem_init(xmodem_tx_fn tx, xmodem_rx_fn rx);
 
-/* 发送数据（按 1024 字节分包 + padding + checksum）
- * Bug 4 修复：EOT 不在此处发送 */
+/* Send data (fragmented into 1024-byte chunks + padding + checksum)
+ * Bug 4 fix: EOT is not sent here */
 T_XMODEM_STATUS wifi_xmodem_send(const uint8_t *data, uint32_t len);
 
-/* 发送 EOT，等待 ACK（整包传完后唯一调用一次）*/
+/* Send EOT and wait for ACK (called exactly once after the whole package is transferred) */
 T_XMODEM_STATUS wifi_xmodem_finish(void);
 
 #ifdef __cplusplus

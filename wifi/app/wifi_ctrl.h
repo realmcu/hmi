@@ -15,8 +15,8 @@ extern "C" {
 #include <stdbool.h>
 #include "wifi_atcmd.h"
 
-/* WiFi 控制 API — 每个函数将对应的 AT CMD 入队并触发流控
- * cb 在响应到来时被调用，可为 NULL */
+/* WiFi control API -- each function enqueues the corresponding AT CMD and triggers flow control
+ * cb is invoked when the response arrives and may be NULL */
 
 bool wifi_ctrl_connect(const char *ssid, const char *passwd, T_ATCMD_RSP_CB cb);
 bool wifi_ctrl_disconnect(T_ATCMD_RSP_CB cb);
@@ -25,15 +25,15 @@ bool wifi_ctrl_tcp_open(const char *ip, uint16_t port, bool is_server, T_ATCMD_R
 bool wifi_ctrl_info(T_ATCMD_RSP_CB cb);
 bool wifi_ctrl_sleep(T_ATCMD_RSP_CB cb);
 
-/* Ping 指定 IP（对应 ATWI=ip）*/
+/* Ping the given IP (corresponds to ATWI=ip) */
 bool wifi_ctrl_ping(const char *ip, T_ATCMD_RSP_CB cb);
 
-/* iperf 吞吐测试：args 为透传给 ATWU/ATWT 的参数串，
- * 例 "-s,-i,1"（server）或 "-c,192.168.3.98,-n,10m,-i,1"（client）*/
+/* iperf throughput test: args is the parameter string passed through to ATWU/ATWT,
+ * e.g. "-s,-i,1" (server) or "-c,192.168.3.98,-n,10m,-i,1" (client) */
 bool wifi_ctrl_iperf_udp(const char *args, T_ATCMD_RSP_CB cb);
 bool wifi_ctrl_iperf_tcp(const char *args, T_ATCMD_RSP_CB cb);
 
-/* 初始化控制层（调用 wifi_atcmd_init 和 wifi_uart_init）*/
+/* Initialize the control layer (calls wifi_atcmd_init and wifi_uart_init) */
 void wifi_ctrl_init(void);
 
 #ifdef __cplusplus

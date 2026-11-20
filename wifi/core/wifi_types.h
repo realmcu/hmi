@@ -16,11 +16,11 @@ extern "C" {
 
 typedef enum
 {
-    EVENT_UART_RX            = 0, /* UART ISR: AT CMD 响应数据到达 */
-    EVENT_UART_CMD_FLOW_CTRL = 1, /* AT CMD 状态机: 发下一条命令 */
-    EVENT_SDIO_INT           = 2, /* GPIO ISR: WiFi 模块 RX 或状态变化 */
-    EVENT_SDIO_TX_DRAIN      = 3, /* 驱动写队列非阻塞排空(事件驱动替代 while+delay) */
-    EVENT_USER_APP_DEFINE    = 4, /* 用户自定义回调(测试/调试保留) */
+    EVENT_UART_RX            = 0, /* UART ISR: AT CMD response data arrived */
+    EVENT_UART_CMD_FLOW_CTRL = 1, /* AT CMD state machine: send the next command */
+    EVENT_SDIO_INT           = 2, /* GPIO ISR: WiFi module RX or status change */
+    EVENT_SDIO_TX_DRAIN      = 3, /* non-blocking drain of the driver write queue (event-driven instead of while+delay) */
+    EVENT_USER_APP_DEFINE    = 4, /* user-defined callback (reserved for testing/debugging) */
 } T_WIFI_EVENT;
 
 typedef struct t_wifi_msg T_WIFI_MSG;

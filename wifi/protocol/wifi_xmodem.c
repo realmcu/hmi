@@ -37,7 +37,7 @@ static uint8_t xmodem_checksum(const uint8_t *data, uint16_t len)
 
 static void xmodem_build_packet(const uint8_t *data, uint16_t data_len)
 {
-    /* Bug 5 修复：序列号自增后跳过 0，永远不发 sqn=0 */
+    /* Bug 5 fix: after incrementing, skip 0 so sqn=0 is never sent */
     s_sqn++;
     if (s_sqn == 0)
     {
@@ -88,7 +88,7 @@ send_retry:
             return XMODEM_ERR_NAK_EXCEEDED;
         }
         os_delay(10);
-        /* 回退序列号以便重发时 build_packet 能重建相同 sqn */
+        /* Roll back the sequence number so build_packet rebuilds the same sqn on retransmit */
         s_sqn--;
         if (s_sqn == 0)
         {
@@ -100,7 +100,7 @@ send_retry:
     return XMODEM_ERR_PROGRAM_FAIL;
 }
 
-/* ---- 公开接口 ---- */
+/* ---- Public API ---- */
 
 void wifi_xmodem_init(xmodem_tx_fn tx, xmodem_rx_fn rx)
 {
@@ -131,7 +131,7 @@ T_XMODEM_STATUS wifi_xmodem_send(const uint8_t *data, uint32_t len)
     return XMODEM_OK;
 }
 
-/* Bug 4 修复：EOT 仅在此处发送一次，由 wifi_download_firmware() 在全部数据传完后调用 */
+/* Bug 4 fix: EOT is sent only here, once, after wifi_download_firmware() has transferred all data */
 T_XMODEM_STATUS wifi_xmodem_finish(void)
 {
     uint8_t eot = EOT_XMODEM;
@@ -145,7 +145,7 @@ T_XMODEM_STATUS wifi_xmodem_finish(void)
     uint16_t recv = s_rx(&ack, 1, XMODEM_RECV_TIMEOUT);
     if (recv == 0 || ack != ACK_XMODEM)
     {
-        /* EOT 未被确认说明整包传输未被接收端确认，必须如实上报失败 */
+        /* An unacknowledged EOT means the receiver did not confirm the whole transfer; report the failure honestly */
         printf("[xmodem] finish: no ACK, recv=%d ack=0x%x\n", recv, ack);
         return XMODEM_ERR_TIMEOUT;
     }

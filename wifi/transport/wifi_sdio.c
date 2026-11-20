@@ -16,8 +16,8 @@
 #include "wifi_types.h"
 #include "wifi_task.h"
 
-/* HISR 报了 RX_REQUEST 但 RX0_REQ_LEN 仍为 0 时的最大轮询次数，
- * 防止固件异常导致 wifi task 在此死循环、长时间不喂狗触发看门狗复位 */
+/* Max poll count when HISR reports RX_REQUEST but RX0_REQ_LEN is still 0,
+ * preventing a firmware fault from trapping the wifi task in a loop and triggering a watchdog reset by not feeding it */
 #define SDIO_RX_LEN_POLL_MAX  10
 
 static const struct device *sdhc_dev = DEVICE_DT_GET(DT_ALIAS(sdhc0));
@@ -29,7 +29,7 @@ static struct sd_card       card;
 static uint32_t s_read_buf[4096 / 4];
 static uint16_t s_tx_bd_num = 0;
 
-/* ---- 内部工具 ---- */
+/* ---- Internal helpers ---- */
 
 static uint16_t sdio_tx_bd_read(void)
 {
@@ -42,7 +42,7 @@ static uint16_t sdio_tx_bd_read(void)
     return (uint16_t)((bd[1] << 8) | bd[0]);
 }
 
-/* ---- 公开接口 ---- */
+/* ---- Public API ---- */
 
 int wifi_sdio_init(void)
 {
@@ -187,7 +187,7 @@ bool wifi_sdio_read_frame(uint8_t *buf, uint16_t *size)
         {
             if (rx_len == 0)
             {
-                /* 长度尚未就绪：有限次轮询，超出上限放弃，避免死循环卡死 task */
+                /* Length not ready yet: poll a limited number of times; give up beyond the limit to avoid a loop stalling the task */
                 if (++poll > SDIO_RX_LEN_POLL_MAX)
                 {
                     printf("[sdio] rx_len stays 0, give up\n");
@@ -199,7 +199,7 @@ bool wifi_sdio_read_frame(uint8_t *buf, uint16_t *size)
                 continue;
             }
 
-            /* 重新读出的长度也必须校验，防止越界写 buf */
+            /* The re-read length must also be validated to prevent an out-of-bounds write to buf */
             if (rx_len > *size)
             {
                 printf("[sdio] rx_len=%u > buf=%u, skip\n", (unsigned int)rx_len, (unsigned int)*size);
@@ -238,7 +238,7 @@ int wifi_sdio_write_frame(T_WIFI_SDIO_WRITE_QUEUE *pkt)
         return -EAGAIN;
     }
 
-    /* Bug 1 修复：正确的 512-byte 对齐（括号确保 & 先于 +）*/
+    /* Bug 1 fix: correct 512-byte alignment (parentheses ensure & is applied before +) */
     uint16_t size = (uint16_t)((sizeof(TXDESC) + pkt->tx_desc.txpktsize + 511u) & ~511u);
     uint32_t reg  = (WLAN_TX_FIFO_DEVICE_ID << 13) | ((size >> 2) & WLAN_TX_FIFO_MSK);
     sdio_write_addr(&wifi_sdio_func, reg, (uint8_t *)&pkt->tx_desc, size);
