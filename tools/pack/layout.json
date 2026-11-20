@@ -1,0 +1,80 @@
+{
+  "_comment": [
+    "eBadge 打包布局 —— 唯一的事实来源（single source of truth）。",
+    "改 flash 规划时只改这里，然后运行 `python3 tools/pack/pack.py check` 找出",
+    "flash_map.h / snippets/*.overlay / port/flashdb/fal_cfg.h 里还没同步的地方。",
+    "",
+    "当前值是从现有工程里抄来的（bank0/bank1 分区 + romfs 挂载点）；",
+    "`_todo` 标记的项是已知有问题、等新规划替换的，pack.py 会对它们告警而不是静默接受。",
+    "所有整数用字符串写的十六进制，避免 JSON 不支持 0x 字面量的问题。"
+  ],
+  "flash": {
+    "base": "0x70000000",
+    "size": "0x2000000",
+    "sector_size": "0x1000"
+  },
+  "banks": {
+    "bank0": {
+      "app_addr": "0x7009E000",
+      "app_size": "0x369000",
+      "ota_hdr_addr": "0x70049000",
+      "ota_bank_addr": "0x70049000",
+      "ota_bank_size": "0x455000"
+    },
+    "bank1": {
+      "app_addr": "0x704F3000",
+      "app_size": "0x369000",
+      "ota_hdr_addr": "0x7049E000",
+      "ota_bank_addr": "0x7049E000",
+      "ota_bank_size": "0x455000"
+    }
+  },
+  "romfs": {
+    "_note": "romfs 已改为「合并进 app 镜像 + 运行时 __rom_region_start + ROMFS_OFFSET 挂载」，不再有绝对地址。实际偏移在 app/designer/src/romfs_layout.h。"
+  },
+  "fdb": {
+    "kvdb_addr": "0x70936000",
+    "kvdb_size": "0x40000",
+    "bf_data_addr": "0x70976000",
+    "bf_data_size": "0x168A000",
+    "_note": "USER_DATA1 归零后，自 0x70936000 至 flash 末尾（0x72000000）整块归 FlashDB。"
+  },
+  "reserved_regions": [
+    {
+      "name": "boot/bootloader",
+      "addr": "0x70000000",
+      "size": "0x49000"
+    },
+    {
+      "name": "ota_bank0",
+      "addr": "0x70049000",
+      "size": "0x455000"
+    },
+    {
+      "name": "ota_bank1",
+      "addr": "0x7049E000",
+      "size": "0x455000"
+    },
+    {
+      "name": "ftl",
+      "addr": "0x708F3000",
+      "size": "0x15000"
+    },
+    {
+      "name": "bkp_data2",
+      "addr": "0x70925000",
+      "size": "0x2000"
+    },
+    {
+      "name": "app_defined",
+      "addr": "0x70927000",
+      "size": "0xF000"
+    },
+    {
+      "name": "user_data1",
+      "addr": "0x70936000",
+      "size": "0x0",
+      "_note": "已归零，区域交给 FlashDB"
+    }
+  ]
+}

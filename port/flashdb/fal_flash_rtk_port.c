@@ -21,6 +21,7 @@
 
 #include <fal.h>
 #include "fmc_api.h"
+#include "wdg.h"
 #include <string.h>
 
 /* ──────────────────────────────────────────────────────────────
@@ -62,12 +63,21 @@ static int rtk_nor_read(long offset, uint8_t *buf, size_t size)
 static int rtk_nor_write(long offset, const uint8_t *buf, size_t size)
 {
     uint32_t abs_addr = RTK_NOR_FLASH_XIP_BASE + (uint32_t)offset;
+    /* A large BF write is split into many calls; kick so the default WDG does
+     * not expire between them (erase already kicks every 50 sectors). */
+    if (wdg_kick)
+    {
+        wdg_kick();
+    }
     /* fmc_flash_nor_write: returns 1 on success, 0 on failure */
     int rc = fmc_flash_nor_write(abs_addr, (void *)buf, (uint32_t)size);
+    if (wdg_kick)
+    {
+        wdg_kick();
+    }
     return rc == 1 ? (int)size : -1;
 }
 
-#include "wdg.h"
 static int rtk_nor_erase(long offset, size_t size)
 {
     // os_lock();

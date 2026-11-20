@@ -31,29 +31,26 @@
  * 1.  NOR Flash chip parameters  ← adjust for your board
  * ────────────────────────────────────────────────────────────── */
 
-/* Absolute XIP start address of the NOR flash chip.
- * Read from your linker script or SDK (e.g. FLASH_BASE_ADDR).
- * This value is also used to calculate BF XIP addresses. */
-#define RTK_NOR_FLASH_XIP_BASE      0x70536000UL    /* FIXME: set to actual base */
+/* Absolute XIP base of the NOR chip: the flash base, not a partition address.
+ * FAL's part->offset is relative to this base. */
+#define RTK_NOR_FLASH_XIP_BASE      0x70000000UL
 
-// #define MOUNT_DB_SIZE  (0x0240f400u + 0x00998000u - MOUNT_DB)
 #define RTK_NOR_FLASH_TOTAL_SIZE    (32UL * 1024 * 1024)   /* 32 MB total flash */
 
 /* ──────────────────────────────────────────────────────────────
  * 2.  FlashDB region layout (offsets from RTK_NOR_FLASH_XIP_BASE)
  *
- * Set FDB_REGION_OFFSET so that:
- *   RTK_NOR_FLASH_XIP_BASE + FDB_REGION_OFFSET
- * equals the first byte of the region you reserved for FlashDB.
+ * Layout (32 MB; USER_DATA1 is zero and the rest belongs to FlashDB):
+ *   KVDB  0x70936000 .. 0x70976000   (256 KB: KV + BF directory)
+ *   BF    0x70976000 .. 0x72000000   (22.5 MB: big-file data)
  *
- * Reference (eBadge board):
- *   MOUNT_DB           = 0x2B0F400  (base of the former file_db region)
- *   MOUNT_DB + 256 KB  = 0x2B4F400  (start of BF data area)
+ * XIP base == flash base, so these offsets are also absolute addresses.
  * ────────────────────────────────────────────────────────────── */
-#define FDB_REGION_OFFSET           (0xf00000UL)     /* FIXME: adjust to your layout */  // 0x70536000
+#define FDB_REGION_OFFSET           (0x0936000UL)   /* == 0x70936000 absolute */
 
 #define FDB_KVDB_SIZE               (256UL  * 1024)           /* 256 KB for KV + BF directory */
-#define FDB_BF_DATA_SIZE            ((0xa00000UL ))           /* 10 MB for big-file data   */
+/* BF takes the rest: 0x72000000 - (0x70936000 + 0x40000) = 0x168A000 */
+#define FDB_BF_DATA_SIZE            (0x168A000UL)             /* 22.54 MB for big-file data */
 
 /* Derived: partition offsets from the start of the flash device */
 #define FDB_KVDB_PART_OFFSET        (FDB_REGION_OFFSET)

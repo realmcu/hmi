@@ -1,0 +1,114 @@
+/*
+ * Copyright(c) 2026, Realtek Semiconductor Corporation.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * 32MB flash / bank1 分区表。
+ *
+ * bank1 的 OTA 组整体后移 2MB（相对 16M 版）：
+ *   OTA 头 0x49E000 / Stack 0x49f000 / Sys 0x4d1000 / APP 0x4f3000(+2MB)
+ *   DSP    0x85c000 / 0x8b6000 / 0x8e7000 / APP_CFG 0x8f1000
+ * 尾部共享区与 bank0 版相同（FTL/BKP/APP_DEFINED 位于 0x8F3000 起）。
+ *
+ * ⚠ 地址必须与工程根目录 flash_map.ini / flash_map.h 一致。
+ *   校验：python3 tools/pack/pack.py check
+ *
+ * partition@<addr> 与 reg 里的地址是相对 flash 基址的偏移。
+ */
+/delete-node/ &flash;
+
+/ {
+    chosen {
+        zephyr,code-partition = &bank_app_partition;
+    };
+    aliases {
+        vp-data = &vp_data_resion;
+    };
+    soc{ flash-controller@40022000 {
+    flash: flash@70000000 {
+        compatible = "soc-nv-flash";
+        write-block-size = <1>;
+        erase-block-size = <4096>;
+        reg = <0x70000000 DT_SIZE_K(32768)>;
+        partitions {
+            compatible = "fixed-partitions";
+            #address-cells = <1>;
+            #size-cells = <1>;
+            eq_fitting: partition@0 {
+                label = "eq-fitting";
+                reg = <0x0 DT_SIZE_K(1)>;
+            };
+            reserved: partition@400 {
+                label = "reserved-image";
+                reg = <0x400 DT_SIZE_K(7)>;
+            };
+            config_file: partition@2000 {
+                label = "config-file-image";
+                reg = <0x2000 DT_SIZE_K(5)>;
+            };
+            boot_patch_0: partition@4000 {
+                label = "boot-patch-0-image";
+                reg = <0x4000 DT_SIZE_K(12)>;
+            };
+            boot_patch_1: partition@7000 {
+                label = "boot-patch-1-image";
+                reg = <0x7000 DT_SIZE_K(12)>;
+            };
+            bt_host: partition@a000 {
+                label = "bt_host";
+                reg = <0xA000 DT_SIZE_K(252)>;
+            };
+
+            /* ================= bank1 OTA 组 ================= */
+            bank1_ota_header: partition@49e000 {
+                label = "ota-header-image";
+                reg = <0x49E000 DT_SIZE_K(1)>;
+            };
+            bank1_stack_patch: partition@49f000 {
+                label = "stack-patch-image";
+                reg = <0x49f000 DT_SIZE_K(200)>;
+            };
+            bank1_system_patch: partition@4d1000 {
+                label = "system-patch-image";
+                reg = <0x4d1000 DT_SIZE_K(136)>;
+            };
+            bank_app_partition: partition@4f3000 {
+                label = "app-image";
+                reg = <0x4f3000 DT_SIZE_K(3492)>;   /* 0x369000 */
+            };
+            bank1_dsp_sys: partition@85c000 {
+                label = "bank_dsp_sys-image";
+                reg = <0x85c000 DT_SIZE_K(360)>;
+            };
+            bank1_dsp_app: partition@8b6000 {
+                label = "bank_dsp_app-image";
+                reg = <0x8b6000 DT_SIZE_K(196)>;
+            };
+            bank1_dsp_cfg: partition@8e7000 {
+                label = "bank_dsp_cfg-image";
+                reg = <0x8e7000 DT_SIZE_K(40)>;
+            };
+            bank1_app_cfg: partition@8f1000 {
+                label = "bank_app_cfg-image";
+                reg = <0x8f1000 DT_SIZE_K(8)>;
+            };
+
+            /* ================= bank1 之后的共享尾部（与 bank0 版一致） ================= */
+            ftl_region: partition@8f3000 {
+                label = "realtek-ftl-region";
+                reg = <0x8F3000 DT_SIZE_K(84)>;
+            };
+            vp_data_resion: partition@908000 {
+                label = "vp_data-image";
+                reg = <0x908000 DT_SIZE_K(116)>;
+            };
+            bkp_data2_region: partition@925000 {
+                label = "bkp_data2-image";
+                reg = <0x925000 DT_SIZE_K(8)>;
+            };
+            app_defined_region: partition@927000 {
+                label = "APP-Defined-Region";
+                reg = <0x927000 DT_SIZE_K(60)>;
+            };
+        };
+    };
+};};};

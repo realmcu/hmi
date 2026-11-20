@@ -1,0 +1,125 @@
+/*
+ * Copyright(c) 2026, Realtek Semiconductor Corporation.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * 32MB flash / bank0 分区表。
+ *
+ * 与 flash_16M_bank0 的区别：
+ *   - flash 容量 32MB（16MB 版放不下扩容后的尾部区域）
+ *   - BANK0_APP 0x169000 -> 0x369000（+2MB），其后的 bank0 分区与整个 bank1 顺延 2MB
+ *   - FTL/BKP_DATA2/APP_DEFINED 跟着后移到 0x8F3000/0x925000/0x927000
+ *   - USER_DATA1 归零；自它之后的 22MB 全归 FlashDB（KVDB + BF）
+ *
+ * ⚠ 本文件的地址必须与工程根目录 flash_map.ini / flash_map.h 一致。
+ *   校验：python3 tools/pack/pack.py check
+ *
+ * 注意 partition@<addr> 与 reg 里的地址都是**相对 flash 基址**的偏移
+ * （flash 节点 reg 的第一个 cell 0x70000000 是绝对基址）。
+ *
+ * FlashDB 的 KVDB/BF 分区**不在这里**：它走 FlashDB 自己的 FAL 分区表
+ * （port/flashdb/fal_cfg.h），与本 DT 无关。这里只描述固件/OTA 看得到的区。
+ */
+/delete-node/ &flash;
+
+/ {
+    chosen {
+        zephyr,code-partition = &bank_app_partition;
+    };
+    aliases {
+        /* soc.c 用 DT_ALIAS(vp_data) 注册 VP 分区；flash_map 里 VP_DATA 为 0
+         * （不使用），这里指向 FTL 之后的那段空隙，只为让别名有节点可指。 */
+        vp-data = &vp_data_resion;
+    };
+    soc{ flash-controller@40022000 {
+    flash: flash@70000000 {
+        compatible = "soc-nv-flash";
+        write-block-size = <1>;
+        erase-block-size = <4096>;
+        reg = <0x70000000 DT_SIZE_K(32768)>;
+        partitions {
+            compatible = "fixed-partitions";
+            #address-cells = <1>;
+            #size-cells = <1>;
+            eq_fitting: partition@0 {
+                label = "eq-fitting";
+                reg = <0x0 DT_SIZE_K(1)>;
+            };
+            reserved: partition@400 {
+                label = "reserved-image";
+                reg = <0x400 DT_SIZE_K(7)>;
+            };
+            config_file: partition@2000 {
+                label = "config-file-image";
+                reg = <0x2000 DT_SIZE_K(5)>;
+            };
+            boot_patch_0: partition@4000 {
+                label = "boot-patch-0-image";
+                reg = <0x4000 DT_SIZE_K(12)>;
+            };
+            boot_patch_1: partition@7000 {
+                label = "boot-patch-1-image";
+                reg = <0x7000 DT_SIZE_K(12)>;
+            };
+            bt_host: partition@a000 {
+                label = "bt_host";
+                reg = <0xa000 DT_SIZE_K(252)>;
+            };
+
+            /* ================= bank0 OTA 组 ================= */
+            bank0_ota_header: partition@49000 {
+                label = "ota-header-image";
+                reg = <0x49000 DT_SIZE_K(1)>;
+            };
+            bank0_stack_patch: partition@4a000 {
+                label = "stack-patch-image";
+                reg = <0x4A000 DT_SIZE_K(200)>;
+            };
+            bank0_system_patch: partition@7c000 {
+                label = "system-patch-image";
+                reg = <0x7c000 DT_SIZE_K(136)>;
+            };
+            bank_app_partition: partition@9e000 {
+                label = "app-image";
+                reg = <0x9E000 DT_SIZE_K(3492)>;   /* 0x369000 */
+            };
+            bank0_dsp_sys: partition@407000 {
+                label = "bank_dsp_sys-image";
+                reg = <0x407000 DT_SIZE_K(360)>;
+            };
+            bank0_dsp_app: partition@461000 {
+                label = "bank_dsp_app-image";
+                reg = <0x461000 DT_SIZE_K(196)>;
+            };
+            bank0_dsp_cfg: partition@492000 {
+                label = "bank_dsp_cfg-image";
+                reg = <0x492000 DT_SIZE_K(40)>;
+            };
+            bank0_app_cfg: partition@49c000 {
+                label = "bank_app_cfg-image";
+                reg = <0x49c000 DT_SIZE_K(8)>;
+            };
+
+            /* ================= bank0 之后的共享尾部 ================= */
+            ftl_region: partition@8f3000 {
+                label = "realtek-ftl-region";
+                reg = <0x8F3000 DT_SIZE_K(84)>;
+            };
+            vp_data_resion: partition@908000 {
+                label = "vp_data-image";
+                reg = <0x908000 DT_SIZE_K(116)>;
+            };
+            bkp_data2_region: partition@925000 {
+                label = "bkp_data2-image";
+                reg = <0x925000 DT_SIZE_K(8)>;
+            };
+            app_defined_region: partition@927000 {
+                label = "APP-Defined-Region";
+                reg = <0x927000 DT_SIZE_K(60)>;
+            };
+
+            /* 0x936000 起 22MB（USER_DATA1 原区域）全归 FlashDB：
+             *   KVDB 0x936000 + 256K  ->  BF 0x976000 .. flash 末尾
+             * 具体坐标在 port/flashdb/fal_cfg.h，不在此 DT 中。 */
+        };
+    };
+};};};

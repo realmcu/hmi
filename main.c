@@ -29,8 +29,27 @@
 #include "spi_at_master.h"
 #endif
 
+#include "trace.h"
+#include "patch_header_check.h"
+#include "sha256.h"
+
 
 #define APP_EBADGE_VERSION "0.0.4"
+
+extern bool check_image_sum(uint32_t base_addr);
+bool app_check_sha256(T_IMG_HEADER_FORMAT *addr)
+{
+#define SHA256_SKIP_SIZE 128
+    uint32_t a = sys_timestamp_get();
+    
+    uint8_t sha256sum[SHA256_DIGEST_LENGTH], sha256img[SHA256_DIGEST_LENGTH];
+    uint32_t len = sizeof(T_IMG_HEADER_FORMAT) - SHA256_SKIP_SIZE + addr->ctrl_header.payload_len;
+ 
+    SHA256((uint8_t *)addr + SHA256_SKIP_SIZE, len, sha256sum);
+    fmc_flash_nor_read((uint32_t)&addr->auth.image_hash, sha256img, SHA256_DIGEST_LENGTH);
+    DBG_DIRECT("app_check_sha256 img 0x%x, sum 0x%x, time %d", *(uint32_t *)sha256img, *(uint32_t *)sha256sum, sys_timestamp_get() - a);
+    return (memcmp(sha256img, sha256sum, SHA256_DIGEST_LENGTH) == 0);
+}
 
 int main(void)
 {
@@ -56,6 +75,18 @@ int main(void)
     Pinmux_Config(P3_1, UART1_TX);
     Pad_Config(P3_1, PAD_PINMUX_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_DISABLE, PAD_OUT_LOW);
     DBG_DIRECT("!!!!! remap log pin!!!");
+#endif
+
+#if 1
+    DBG_DIRECT("!!!!! APP BANK0 !!!!!");
+
+    bool a = app_check_sha256((void *)0x704F3000); // BANK1 APP: 0x704F3000
+    DBG_DIRECT("app_check_sha256 end %d\n", a);
+#else
+    DBG_DIRECT("!!!!! APP BANK1 !!!!!");
+
+    bool a = app_check_sha256((void *)0x7009E000); // BANK0 APP: 0x7009E000
+    DBG_DIRECT("app_check_sha256 end %d\n", a);
 #endif
 
     // io init
