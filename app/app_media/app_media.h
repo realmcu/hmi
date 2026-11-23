@@ -46,6 +46,9 @@ uint32_t app_media_record_live_bytes(void);
 uint16_t app_media_record_live_read(uint32_t offset, uint8_t *out, uint16_t len);
 bool app_media_speaker_free(void);
 
+/** Play one voice prompt from the VP partition for on-device verification. */
+bool app_media_voice_prompt_play(uint8_t index, uint8_t language, bool relay);
+
 #ifdef __cplusplus
 }
 #endif

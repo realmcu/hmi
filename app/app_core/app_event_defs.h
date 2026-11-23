@@ -93,6 +93,8 @@ enum
     EVT_HEALTH_MEASURE_REQ   = 0x0B01, /* payload: app_evt_health_measure_req_t */
     EVT_POWER_VOLTAGE_REQ    = 0x0B02, /* payload: none */
     EVT_POWER_VOLTAGE_RSP    = 0x0B03, /* payload: app_evt_power_voltage_rsp_t */
+    EVT_VOICE_PROMPT_REQ     = 0x0B04, /* payload: app_evt_voice_prompt_req_t */
+    EVT_VOICE_PROMPT_RSP     = 0x0B05, /* payload: app_evt_voice_prompt_rsp_t */
 };
 
 /* -------- Payload structs -------- */
@@ -181,6 +183,17 @@ typedef struct
 {
     int16_t millivolts;
 } app_evt_power_voltage_rsp_t;
+
+typedef struct
+{
+    uint8_t index;
+    uint8_t language;
+} app_evt_voice_prompt_req_t;
+
+typedef struct
+{
+    uint8_t success;
+} app_evt_voice_prompt_rsp_t;
 
 #ifdef __cplusplus
 }

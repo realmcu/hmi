@@ -68,6 +68,25 @@ static void on_power_voltage_response(app_event_id_t id, const void *payload,
     }
 }
 
+static void on_voice_prompt_response(app_event_id_t id, const void *payload,
+                                     size_t len, void *user)
+{
+    (void)id;
+    (void)user;
+    uint8_t success = 0u;
+    if (payload != NULL && len == sizeof(app_evt_voice_prompt_rsp_t))
+    {
+        success = ((const app_evt_voice_prompt_rsp_t *)payload)->success != 0u ? 1u : 0u;
+    }
+    uint8_t response[6] = {
+        WATCH_L2_CMD_FACTORY, 0x00u, 0x2Bu, 0x00u, 0x01u, success,
+    };
+    if (!honey_protocol_send_with_ack(response, sizeof(response)))
+    {
+        HONEY_PROTOCOL_LOG("L2 FACTORY VP response post failed");
+    }
+}
+
 static bool send_factory(uint8_t key, const uint8_t *value, uint16_t length)
 {
     if (length > FACTORY_RSP_MAX)
@@ -274,6 +293,25 @@ static void handle_factory_key(const watch_l2_kv_t *kv)
             else
             {
                 request_haptic(APP_HAPTIC_REQ_STOP, 0u, 0u);
+            }
+        }
+        break;
+
+    case 0x2Au:
+        {
+            app_evt_voice_prompt_req_t request = {0};
+            if (kv->val_len >= 1u)
+            {
+                request.index = kv->val[0];
+            }
+            if (kv->val_len >= 2u)
+            {
+                request.language = kv->val[1];
+            }
+            if (app_event_publish(EVT_VOICE_PROMPT_REQ,
+                                  &request, sizeof(request)) != 0)
+            {
+                HONEY_PROTOCOL_LOG("L2 FACTORY VP request failed");
             }
         }
         break;
@@ -485,5 +523,10 @@ void watch_l2_factory_register(void)
                             on_power_voltage_response, NULL) != 0)
     {
         HONEY_PROTOCOL_LOG("L2 FACTORY EVT_POWER_VOLTAGE_RSP subscribe failed");
+    }
+    if (app_event_subscribe(EVT_VOICE_PROMPT_RSP,
+                            on_voice_prompt_response, NULL) != 0)
+    {
+        HONEY_PROTOCOL_LOG("L2 FACTORY EVT_VOICE_PROMPT_RSP subscribe failed");
     }
 }

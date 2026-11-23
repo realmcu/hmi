@@ -1,5 +1,7 @@
 /* Phone A2DP SBC -> Realtek DSP -> watch loudspeaker, plus local MIC capture. */
 #include "app_media.h"
+#include "app_event.h"
+#include "app_event_defs.h"
 
 #if defined(CONFIG_RTK_BR_PROFILE_A2DP)
 #include <stddef.h>
@@ -11,6 +13,7 @@
 #include "audio_route.h"
 #include "audio_track.h"
 #include "audio_volume.h"
+#include "voice_prompt.h"
 #include "bt_a2dp.h"
 #include "hal_gpio.h"
 #include "hmi_bt_a2dp.h"
@@ -49,6 +52,24 @@ static uint32_t record_bytes;
 static bool record_running;
 static bool record_available;
 static bool record_ready;
+
+static void on_voice_prompt_request(app_event_id_t id, const void *payload,
+                                    size_t len, void *user)
+{
+    (void)id;
+    (void)user;
+    app_evt_voice_prompt_req_t request = {0};
+    if (payload != NULL && len == sizeof(request))
+    {
+        request = *(const app_evt_voice_prompt_req_t *)payload;
+    }
+    bool ok = app_media_voice_prompt_play(request.index, request.language, false);
+    app_evt_voice_prompt_rsp_t response = { .success = ok ? 1u : 0u };
+    if (app_event_publish(EVT_VOICE_PROMPT_RSP, &response, sizeof(response)) != 0)
+    {
+        APP_PRINT_WARN0("media: VP response publish failed");
+    }
+}
 
 static void amp_timer(uint8_t event, uint16_t param)
 {
@@ -333,6 +354,18 @@ static void on_audio(T_AUDIO_EVENT event, void *buf, uint16_t len)
         return;
     }
     record_audio_event(event, param, len);
+    if (event == AUDIO_EVENT_VOICE_PROMPT_STARTED &&
+        len >= sizeof(T_AUDIO_EVENT_PARAM_VOICE_PROMPT_STARTED))
+    {
+        APP_PRINT_INFO1("media: VP started index=%u",
+                        (unsigned)param->voice_prompt_started.index);
+    }
+    else if (event == AUDIO_EVENT_VOICE_PROMPT_STOPPED &&
+             len >= sizeof(T_AUDIO_EVENT_PARAM_VOICE_PROMPT_STOPPED))
+    {
+        APP_PRINT_INFO1("media: VP stopped index=%u",
+                        (unsigned)param->voice_prompt_stopped.index);
+    }
     if (event == AUDIO_EVENT_TRACK_STATE_CHANGED &&
         len >= sizeof(T_AUDIO_EVENT_PARAM_TRACK_STATE_CHANGED) &&
         param->track_state_changed.handle == track)
@@ -363,7 +396,9 @@ static const int16_t media_dac_gain_table[16] =
 static bool media_dac_gain_get(T_AUDIO_CATEGORY category, uint32_t level,
                                T_AUDIO_ROUTE_DAC_GAIN *gain)
 {
-    if (category != AUDIO_CATEGORY_AUDIO || gain == NULL)
+    if ((category != AUDIO_CATEGORY_AUDIO &&
+         category != AUDIO_CATEGORY_TONE &&
+         category != AUDIO_CATEGORY_VP) || gain == NULL)
     {
         return false;
     }
@@ -402,6 +437,12 @@ void app_media_audio_ready(void)
         { AUDIO_CATEGORY_VOICE, AUDIO_PLUGIN_OCCASION_ANALOG_DOMAIN_ON, amp_on },
         { AUDIO_CATEGORY_VOICE, AUDIO_PLUGIN_OCCASION_DIGITAL_DOMAIN_ON, amp_digital_on },
         { AUDIO_CATEGORY_VOICE, AUDIO_PLUGIN_OCCASION_DIGITAL_DOMAIN_OFF, amp_off },
+        { AUDIO_CATEGORY_TONE, AUDIO_PLUGIN_OCCASION_ANALOG_DOMAIN_ON, amp_on },
+        { AUDIO_CATEGORY_TONE, AUDIO_PLUGIN_OCCASION_DIGITAL_DOMAIN_ON, amp_digital_on },
+        { AUDIO_CATEGORY_TONE, AUDIO_PLUGIN_OCCASION_DIGITAL_DOMAIN_OFF, amp_off },
+        { AUDIO_CATEGORY_VP, AUDIO_PLUGIN_OCCASION_ANALOG_DOMAIN_ON, amp_on },
+        { AUDIO_CATEGORY_VP, AUDIO_PLUGIN_OCCASION_DIGITAL_DOMAIN_ON, amp_digital_on },
+        { AUDIO_CATEGORY_VP, AUDIO_PLUGIN_OCCASION_DIGITAL_DOMAIN_OFF, amp_off },
     };
 
     if (app_timer_reg_cb(amp_timer, &timer_module) != 0)
@@ -416,6 +457,8 @@ void app_media_audio_ready(void)
         return;
     }
     (void)audio_route_gain_register(AUDIO_CATEGORY_AUDIO, media_dac_gain_get, NULL);
+    (void)audio_route_gain_register(AUDIO_CATEGORY_TONE, media_dac_gain_get, NULL);
+    (void)audio_route_gain_register(AUDIO_CATEGORY_VP, media_dac_gain_get, NULL);
     (void)audio_volume_out_max_set(AUDIO_STREAM_TYPE_PLAYBACK, 15);
     (void)audio_volume_out_min_set(AUDIO_STREAM_TYPE_PLAYBACK, 0);
     (void)audio_volume_out_set(AUDIO_STREAM_TYPE_PLAYBACK, volume);
@@ -611,6 +654,30 @@ bool app_media_speaker_free(void)
     return audio_ready && track == NULL && !app_media_record_active();
 }
 
+bool app_media_voice_prompt_play(uint8_t index, uint8_t language, bool relay)
+{
+    if (!audio_ready)
+    {
+        return false;
+    }
+    if (language >= (uint8_t)VOICE_PROMPT_LANGUAGE_INVALID)
+    {
+        language = VOICE_PROMPT_LANGUAGE_ENGLISH;
+    }
+    T_VOICE_PROMPT_LANGUAGE_ID language_id = (T_VOICE_PROMPT_LANGUAGE_ID)language;
+    (void)voice_prompt_mode_set(VOICE_PROMPT_MODE_AUDIBLE);
+    (void)voice_prompt_language_set(language_id);
+    uint8_t vp_max = voice_prompt_volume_max_get();
+    uint8_t vp_min = voice_prompt_volume_min_get();
+    uint8_t vp_volume = vp_max > vp_min ? (uint8_t)(vp_min + (vp_max - vp_min) / 2u) : vp_max;
+    (void)voice_prompt_volume_set(vp_volume);
+    bool ok = voice_prompt_play(index, language_id, relay);
+    APP_PRINT_INFO5("media: VP request index=%u lang=%u volume=%u/%u result=%d",
+                    (unsigned)index, (unsigned)language, (unsigned)vp_volume,
+                    (unsigned)vp_max, (int)ok);
+    return ok;
+}
+
 app_media_state_t app_media_state(void)
 {
     hmi_media_snapshot_t snapshot;
@@ -682,6 +749,11 @@ const char *app_media_track_artist(void)
 
 static int media_init(void)
 {
+    if (app_event_subscribe(EVT_VOICE_PROMPT_REQ, on_voice_prompt_request, NULL) != 0)
+    {
+        APP_PRINT_ERROR0("media: EVT_VOICE_PROMPT_REQ subscribe failed");
+        return -1;
+    }
     if (hal_gpio_init_pin(SPEAKER_AMP_PIN, GPIO_TYPE_AUTO, GPIO_DIR_OUTPUT,
                           GPIO_PULL_NONE) != GPIO_STATUS_OK ||
         hal_gpio_set_level(SPEAKER_AMP_PIN, GPIO_LEVEL_LOW) != GPIO_STATUS_OK)
@@ -700,7 +772,11 @@ static int media_init(void)
 
 #else
 
-static int media_init(void) { return 0; }
+static int media_init(void)
+{
+    return app_event_subscribe(EVT_VOICE_PROMPT_REQ, on_voice_prompt_request, NULL) == 0
+           ? 0 : -1;
+}
 void app_media_audio_ready(void) {}
 app_media_state_t app_media_state(void) { return APP_MEDIA_STATE_IDLE; }
 bool app_media_connected(void) { return false; }
@@ -730,6 +806,13 @@ uint16_t app_media_record_live_read(uint32_t offset, uint8_t *out, uint16_t len)
     (void)offset; (void)out; (void)len; return 0;
 }
 bool app_media_speaker_free(void) { return false; }
+bool app_media_voice_prompt_play(uint8_t index, uint8_t language, bool relay)
+{
+    (void)index;
+    (void)language;
+    (void)relay;
+    return false;
+}
 
 #endif
 
