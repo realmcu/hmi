@@ -10,5 +10,5 @@ cwd = GetCurrentDir()
 src = Glob('*.c')
 CPPPATH = [cwd]
 
-group = DefineGroup('hmi_protocol', src, depend=[''], CPPPATH=CPPPATH)
+group = DefineGroup('honey_protocol', src, depend=[''], CPPPATH=CPPPATH)
 Return('group')
