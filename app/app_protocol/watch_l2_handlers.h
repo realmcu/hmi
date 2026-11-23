@@ -1,5 +1,5 @@
-#ifndef _HMI_L2_HANDLERS_H_
-#define _HMI_L2_HANDLERS_H_
+#ifndef _WATCH_L2_HANDLERS_H_
+#define _WATCH_L2_HANDLERS_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -14,4 +14,4 @@ extern "C" {
 }
 #endif
 
-#endif /* _HMI_L2_HANDLERS_H_ */
+#endif /* _WATCH_L2_HANDLERS_H_ */

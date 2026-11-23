@@ -21,6 +21,9 @@ bool app_power_get_battery(uint8_t *percent);
 /** Copy the latest charger state as a boolean. False until first report. */
 bool app_power_get_charging(bool *charging);
 
+/** Copy the latest internal VBAT measurement in millivolts. */
+bool app_power_get_voltage_mv(int16_t *millivolts);
+
 #ifdef __cplusplus
 }
 #endif

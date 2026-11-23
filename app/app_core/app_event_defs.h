@@ -87,6 +87,12 @@ enum
      */
     EVT_USER_BOUND           = 0x0A00, /* payload: none */
     EVT_USER_UNBOUND         = 0x0A01, /* payload: none */
+
+    /* Haptic / health on-demand requests (0xB00~) */
+    EVT_HAPTIC_REQUEST       = 0x0B00, /* payload: app_evt_haptic_request_t */
+    EVT_HEALTH_MEASURE_REQ   = 0x0B01, /* payload: app_evt_health_measure_req_t */
+    EVT_POWER_VOLTAGE_REQ    = 0x0B02, /* payload: none */
+    EVT_POWER_VOLTAGE_RSP    = 0x0B03, /* payload: app_evt_power_voltage_rsp_t */
 };
 
 /* -------- Payload structs -------- */
@@ -150,6 +156,31 @@ typedef enum
 } app_setting_key_id_t;
 
 typedef struct { app_setting_key_id_t key; } app_evt_setting_changed_t;
+
+typedef enum
+{
+    APP_HAPTIC_REQ_START = 1,
+    APP_HAPTIC_REQ_STOP,
+    APP_HAPTIC_REQ_PULSE,
+} app_haptic_req_t;
+
+typedef struct
+{
+    uint8_t  action;       /* app_haptic_req_t */
+    uint8_t  strength;     /* percent */
+    uint16_t duration_ms;  /* pulse only */
+} app_evt_haptic_request_t;
+
+typedef enum
+{
+    APP_HEALTH_REQ_HR_START = 1,
+    APP_HEALTH_REQ_HR_STOP,
+} app_health_measure_req_t;
+
+typedef struct
+{
+    int16_t millivolts;
+} app_evt_power_voltage_rsp_t;
 
 #ifdef __cplusplus
 }

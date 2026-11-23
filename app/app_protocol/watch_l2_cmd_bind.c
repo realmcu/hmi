@@ -1,7 +1,7 @@
-#include "hmi_l2_cmd_bind.h"
-#include "hmi_l2.h"
-#include "hmi_proto.h"
-#include "proto_log.h"
+#include "watch_l2_cmd_bind.h"
+#include "watch_l2.h"
+#include "honey_protocol.h"
+#include "honey_protocol_log.h"
 
 #include "app_event.h"
 #include "app_event_defs.h"
@@ -22,13 +22,13 @@ static bool send_bind_status(uint8_t key, uint8_t status)
 {
     const uint8_t rsp[] =
     {
-        HMI_L2_CMD_BIND,
+        WATCH_L2_CMD_BIND,
         0x00u,
         key,
         0x00u, 0x01u,
         status,
     };
-    return proto_send(rsp, sizeof(rsp));
+    return honey_protocol_send_with_ack(rsp, sizeof(rsp));
 }
 
 static bool valid_user_id(const uint8_t *value, uint16_t len)
@@ -93,67 +93,67 @@ static void publish_user_bound(void)
     int rc = app_event_publish(EVT_USER_BOUND, NULL, 0);
     if (rc != 0)
     {
-        PROTO_LOG("L2 BIND failed to publish EVT_USER_BOUND rc=%d", rc);
+        HONEY_PROTOCOL_LOG("L2 BIND failed to publish EVT_USER_BOUND rc=%d", rc);
     }
 }
 
-static void handle_login(const hmi_l2_kv_t *kv)
+static void handle_login(const watch_l2_kv_t *kv)
 {
     uint8_t stored[BIND_USER_ID_LEN];
     bool ok = valid_user_id(kv->val, kv->val_len) &&
               load_user_id(stored) &&
               memcmp(stored, kv->val, BIND_USER_ID_LEN) == 0;
     uint8_t status = ok ? BIND_STATUS_SUCCESS : BIND_STATUS_FAILED;
-    (void)send_bind_status(HMI_L2_LOGIN_RSP, status);
-    PROTO_LOG("L2 BIND login status=0x%02x", status);
+    (void)send_bind_status(WATCH_L2_LOGIN_RSP, status);
+    HONEY_PROTOCOL_LOG("L2 BIND login status=0x%02x", status);
     if (ok)
     {
         publish_user_bound();
     }
 }
 
-static void handle_bind(const hmi_l2_kv_t *kv)
+static void handle_bind(const watch_l2_kv_t *kv)
 {
     uint8_t status = valid_user_id(kv->val, kv->val_len) &&
                      save_user_id(kv->val)
                          ? BIND_STATUS_SUCCESS
                          : BIND_STATUS_FAILED;
-    (void)send_bind_status(HMI_L2_BIND_RSP, status);
-    PROTO_LOG("L2 BIND bind status=0x%02x", status);
+    (void)send_bind_status(WATCH_L2_BIND_RSP, status);
+    HONEY_PROTOCOL_LOG("L2 BIND bind status=0x%02x", status);
     if (status == BIND_STATUS_SUCCESS)
     {
         publish_user_bound();
     }
 }
 
-static void on_cmd_bind(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
+static void on_cmd_bind(uint8_t version, const watch_l2_kv_t *kvs, uint8_t n)
 {
     if (version != 0u)
     {
-        PROTO_LOG("L2 BIND unsupported version=%u", (unsigned)version);
+        HONEY_PROTOCOL_LOG("L2 BIND unsupported version=%u", (unsigned)version);
         return;
     }
 
     for (uint8_t i = 0; i < n; i++)
     {
-        PROTO_LOG("L2 BIND key=0x%02x val_len=%d",
+        HONEY_PROTOCOL_LOG("L2 BIND key=0x%02x val_len=%d",
                   kvs[i].key, kvs[i].val_len);
 
         switch (kvs[i].key)
         {
-        case HMI_L2_LOGIN_REQ:
+        case WATCH_L2_LOGIN_REQ:
             handle_login(&kvs[i]);
             return;
-        case HMI_L2_BIND_REQ:
+        case WATCH_L2_BIND_REQ:
             handle_bind(&kvs[i]);
             return;
-        case HMI_L2_UNBIND:
+        case WATCH_L2_UNBIND:
         {
             delete_user_id();
             int rc = app_event_publish(EVT_USER_UNBOUND, NULL, 0);
             if (rc != 0)
             {
-                PROTO_LOG("L2 BIND failed to publish EVT_USER_UNBOUND rc=%d", rc);
+                HONEY_PROTOCOL_LOG("L2 BIND failed to publish EVT_USER_UNBOUND rc=%d", rc);
             }
             return;
         }
@@ -163,7 +163,7 @@ static void on_cmd_bind(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
     }
 }
 
-void hmi_l2_bind_register(void)
+void watch_l2_bind_register(void)
 {
-    hmi_l2_register(HMI_L2_CMD_BIND, on_cmd_bind);
+    watch_l2_register(WATCH_L2_CMD_BIND, on_cmd_bind);
 }

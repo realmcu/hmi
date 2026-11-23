@@ -191,6 +191,28 @@ static void on_evt_user_unbound(app_event_id_t id, const void *payload,
     health_worker_stop(HEALTH_STOP_DISCARD);
 }
 
+static void on_evt_health_measure_req(app_event_id_t id, const void *payload,
+                                      size_t len, void *user)
+{
+    (void)id;
+    (void)user;
+    if (payload == NULL || len != sizeof(app_health_measure_req_t))
+    {
+        return;
+    }
+    switch (*(const app_health_measure_req_t *)payload)
+    {
+    case APP_HEALTH_REQ_HR_START:
+        app_health_start_heart_rate();
+        break;
+    case APP_HEALTH_REQ_HR_STOP:
+        app_health_stop_heart_rate();
+        break;
+    default:
+        break;
+    }
+}
+
 /* Both time events come from app_time, which owns the wall clock boundaries.
  * Forwarding them rather than re-deriving them keeps a single
  * definition of "which 15-minute bucket are we in" for the whole firmware.
@@ -282,6 +304,13 @@ static int health_init(void)
     {
         APP_LOGE("subscribe EVT_POWER_LOW failed");
         /* Not fatal — recording still works, just no low-battery guard. */
+    }
+
+    if (app_event_subscribe(EVT_HEALTH_MEASURE_REQ,
+                            on_evt_health_measure_req, NULL) != 0)
+    {
+        APP_LOGE("subscribe EVT_HEALTH_MEASURE_REQ failed");
+        return -1;
     }
 
     APP_LOGI("app_health init: awaiting EVT_TIME_SYNCED && EVT_USER_BOUND");

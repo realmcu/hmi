@@ -12,6 +12,8 @@
 #include "app_log.h"
 
 #include "charger_api.h"
+#include "adc_manager.h"
+#include "rtl876x_adc.h"
 #include <os_sched.h>
 #include <os_sync.h>
 
@@ -24,6 +26,13 @@ static bool s_charging_valid;
 static bool s_low;
 static bool s_low_known;
 static bool s_ready;
+static uint8_t s_adc_index;
+static bool s_adc_registered;
+static int16_t s_voltage_mv;
+static bool s_voltage_valid;
+
+static void on_power_voltage_request(app_event_id_t id, const void *payload,
+                                     size_t len, void *user);
 
 APP_LOG_MODULE_REGISTER(app_power);
 
@@ -99,6 +108,23 @@ static void power_state_cb(T_CHARGER_STATE state)
     }
 }
 
+static void power_adc_cb(void *context, uint32_t status)
+{
+    (void)context;
+    (void)status;
+    uint16_t raw = 0;
+    adc_mgr_read_data_req(s_adc_index, &raw, 0x0001);
+    int32_t mv = ADC_GetRes(raw, INTERNAL_VBAT_MODE);
+    if (mv < INT16_MIN || mv > INT16_MAX)
+    {
+        return;
+    }
+    uint32_t key = os_lock();
+    s_voltage_mv = (int16_t)mv;
+    s_voltage_valid = true;
+    os_unlock(key);
+}
+
 bool app_power_get_battery(uint8_t *percent)
 {
     if (percent == NULL) { return false; }
@@ -121,8 +147,63 @@ bool app_power_get_charging(bool *charging)
     return valid;
 }
 
+bool app_power_get_voltage_mv(int16_t *millivolts)
+{
+    if (millivolts == NULL) { return false; }
+
+    uint32_t key = os_lock();
+    bool valid = s_voltage_valid;
+    *millivolts = s_voltage_mv;
+    os_unlock(key);
+    return valid;
+}
+
+static void on_power_voltage_request(app_event_id_t id, const void *payload,
+                                     size_t len, void *user)
+{
+    (void)id;
+    (void)payload;
+    (void)len;
+    (void)user;
+
+    if (s_adc_registered)
+    {
+        adc_mgr_enable_req(s_adc_index);
+    }
+    int16_t millivolts = 0;
+    (void)app_power_get_voltage_mv(&millivolts);
+    app_evt_power_voltage_rsp_t response = { .millivolts = millivolts };
+    if (app_event_publish(EVT_POWER_VOLTAGE_RSP,
+                         &response, sizeof(response)) != 0)
+    {
+        APP_LOGW("EVT_POWER_VOLTAGE_RSP publish failed");
+    }
+}
+
 static int power_init(void)
 {
+    if (app_event_subscribe(EVT_POWER_VOLTAGE_REQ,
+                            on_power_voltage_request, NULL) != 0)
+    {
+        APP_LOGE("EVT_POWER_VOLTAGE_REQ subscribe failed");
+        return -1;
+    }
+
+    ADC_InitTypeDef adc_init;
+    ADC_StructInit(&adc_init);
+    adc_init.adcClock = ADC_CLK_39K;
+    adc_init.bitmap = 0x0001;
+    adc_init.schIndex[0] = INTERNAL_VBAT_MODE;
+    s_adc_registered = adc_mgr_register_req(&adc_init, power_adc_cb, &s_adc_index);
+    if (s_adc_registered)
+    {
+        adc_mgr_enable_req(s_adc_index);
+    }
+    else
+    {
+        APP_LOGW("battery voltage ADC request unavailable");
+    }
+
     if (charger_api_reg_state_of_charge_callback != NULL)
     {
         charger_api_reg_state_of_charge_callback(power_soc_cb);
@@ -162,9 +243,9 @@ static int power_init(void)
     bool charging_valid = s_charging_valid;
     os_unlock(key);
 
-    APP_LOGI("power ready: battery=%u valid=%d charging=%d valid=%d",
+    APP_LOGI("power ready: battery=%u valid=%d charging=%d valid=%d adc=%d",
              (unsigned)battery, (int)battery_valid,
-             (int)charging, (int)charging_valid);
+             (int)charging, (int)charging_valid, (int)s_adc_registered);
     return 0;
 }
 

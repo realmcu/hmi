@@ -1,15 +1,15 @@
 /**
- * @file  hmi_l2_xfer_client.c
+ * @file  watch_l2_xfer_client.c
  * @brief Device-to-device file SEND (central side).  See header for the stack.
  *
- * Self-contained proto(L1) codec + xfer state machine.  Every outgoing proto
+ * Self-contained HoneyProtocol L1 codec + xfer state machine.  Every outgoing proto
  * frame is kept <= one BLE write (chunk sized to MTU-18) so no fragmentation is
- * needed; the peer's proto_handle reassembles from its RX byte stream anyway.
+ * needed; the peer's honey_protocol_handle reassembles from its RX byte stream anyway.
  */
-#include "hmi_l2_xfer_client.h"
-#include "hmi_l2.h"
-#include "hmi_l2_cmd_xfer.h"
-#include "hmi_protocal_task.h"   /* hmi_proto_post_call -> run on protocol dispatch task */
+#include "watch_l2_xfer_client.h"
+#include "watch_l2.h"
+#include "watch_l2_cmd_xfer.h"
+#include "honey_protocol_task.h"   /* honey_protocol_run_on_dispatch */
 
 #include <string.h>
 #include <trace.h>
@@ -19,13 +19,13 @@
 #include <gap_conn_le.h>
 
 /*============================================================================*
- *   proto(L1) framing -- MUST match protocol/hmi_proto.c
+ *   HoneyProtocol L1 framing -- MUST match protocol/honey_protocol.c
  *============================================================================*/
-#define PROTO_MAGIC        0xABu
-#define PROTO_HDR_LEN      8u
-#define PROTO_VERSION      0x00u
-#define PROTO_FLAG_ACK     (1u << 4)
-#define PROTO_FLAG_ERR     (1u << 5)
+#define HONEY_PROTOCOL_MAGIC        0xABu
+#define HONEY_PROTOCOL_HDR_LEN      8u
+#define HONEY_PROTOCOL_VERSION      0x00u
+#define HONEY_PROTOCOL_FLAG_ACK     (1u << 4)
+#define HONEY_PROTOCOL_FLAG_ERR     (1u << 5)
 
 #define HDR_MAGIC   0
 #define HDR_VER     1
@@ -40,8 +40,8 @@
  *   Sizing
  *============================================================================*/
 #define XC_MAX_DATA        229u   /* data bytes/frame fitting one 247-MTU write */
-#define XC_TX_FRAME_MAX    (PROTO_HDR_LEN + 5u + 2u + XC_MAX_DATA)  /* 244 */
-#define XC_RX_MAX          (PROTO_HDR_LEN + 64u)                    /* responses are tiny */
+#define XC_TX_FRAME_MAX    (HONEY_PROTOCOL_HDR_LEN + 5u + 2u + XC_MAX_DATA)  /* 244 */
+#define XC_RX_MAX          (HONEY_PROTOCOL_HDR_LEN + 64u)                    /* responses are tiny */
 /* Wait timeouts, aligned to the Android reference (l2_file_transfer.dart):
  * the handshake gets the most headroom because the peer erases flash
  * (fdb_bf_create) before replying BEGIN_RSP. */
@@ -94,7 +94,7 @@ static void xc_finish(T_XFER_CLIENT_RESULT result);
 static void xc_fail(T_XFER_CLIENT_RESULT result);
 static void xc_timer_cb(void *p_handle);
 static bool xc_send_cmd(uint8_t key, const uint8_t *val, uint16_t vlen);
-static void xc_pump_cb(proto_msg_t *p_msg);
+static void xc_pump_cb(void *arg);
 
 /* Schedule the next DATA/END send on l2_task.  client_attr_write MUST NOT be
  * issued from a GATT stack callback (write-completion or notify) -- doing so is
@@ -102,7 +102,7 @@ static void xc_pump_cb(proto_msg_t *p_msg);
  * always pump from l2_task instead. */
 static void xc_pump(void)
 {
-    if (!hmi_proto_post_call(xc_pump_cb, NULL))
+    if (!honey_protocol_run_on_dispatch(xc_pump_cb, NULL))
     {
         APP_PRINT_ERROR0("[xferC] pump post failed (l2 queue full)");
         xc_fail(XFER_CLIENT_ERR_STATE);
@@ -112,7 +112,7 @@ static void xc_pump(void)
 /*============================================================================*
  *   Helpers
  *============================================================================*/
-/* CRC-16/ARC, identical parameters to hmi_proto.c. */
+/* CRC-16/ARC, identical parameters to honey_protocol.c. */
 static uint16_t xc_crc16(uint16_t crc, const uint8_t *data, uint16_t len)
 {
     while (len--)
@@ -132,7 +132,7 @@ static uint16_t xc_calc_chunk(void)
 {
     uint16_t mtu = 23;
     le_get_conn_param(GAP_PARAM_CONN_MTU_SIZE, &mtu, s_conn_id);
-    int budget = (int)mtu - 3 - (int)PROTO_HDR_LEN - 2 - 3 - 2; /* -att -proto -l2hdr -kvpfx -seq */
+    int budget = (int)mtu - 3 - (int)HONEY_PROTOCOL_HDR_LEN - 2 - 3 - 2; /* -att -proto -l2hdr -kvpfx -seq */
     if (budget < 1) { budget = 1; }
     if (budget > XC_MAX_DATA) { budget = XC_MAX_DATA; }
     return (uint16_t)budget;
@@ -163,11 +163,11 @@ static bool xc_write_frame(uint8_t flags, uint8_t key, const uint8_t *val, uint1
     uint8_t  frame[XC_TX_FRAME_MAX];
     uint16_t payload_len = 0;
 
-    if (!(flags & PROTO_FLAG_ACK))
+    if (!(flags & HONEY_PROTOCOL_FLAG_ACK))
     {
         /* L2 frame: [cmd][ver][key][len_hi][len_lo][value] */
-        uint16_t p = PROTO_HDR_LEN;
-        frame[p++] = HMI_L2_CMD_FILE_XFER;
+        uint16_t p = HONEY_PROTOCOL_HDR_LEN;
+        frame[p++] = WATCH_L2_CMD_FILE_XFER;
         frame[p++] = 0x00u;                       /* L2 version/reserve */
         frame[p++] = key;
         frame[p++] = (uint8_t)((vlen >> 8) & 0xFFu);   /* full high byte (parser reads 16-bit) */
@@ -177,22 +177,22 @@ static bool xc_write_frame(uint8_t flags, uint8_t key, const uint8_t *val, uint1
             memcpy(&frame[p], val, vlen);
             p += vlen;
         }
-        payload_len = p - PROTO_HDR_LEN;
+        payload_len = p - HONEY_PROTOCOL_HDR_LEN;
     }
 
-    frame[HDR_MAGIC]  = PROTO_MAGIC;
-    frame[HDR_VER]    = (PROTO_VERSION & 0x0Fu) | (flags & 0x30u);
+    frame[HDR_MAGIC]  = HONEY_PROTOCOL_MAGIC;
+    frame[HDR_VER]    = (HONEY_PROTOCOL_VERSION & 0x0Fu) | (flags & 0x30u);
     frame[HDR_LEN_HI] = (uint8_t)(payload_len >> 8);
     frame[HDR_LEN_LO] = (uint8_t)(payload_len & 0xFFu);
     frame[HDR_SEQ_HI] = (uint8_t)(s_tx_seq >> 8);
     frame[HDR_SEQ_LO] = (uint8_t)(s_tx_seq & 0xFFu);
-    uint16_t crc = (payload_len == 0) ? 0 : xc_crc16(0, &frame[PROTO_HDR_LEN], payload_len);
+    uint16_t crc = (payload_len == 0) ? 0 : xc_crc16(0, &frame[HONEY_PROTOCOL_HDR_LEN], payload_len);
     frame[HDR_CRC_HI] = (uint8_t)(crc >> 8);
     frame[HDR_CRC_LO] = (uint8_t)(crc & 0xFFu);
     s_tx_seq++;
 
     T_GAP_CAUSE c = client_attr_write(s_conn_id, s_client_id, write_type,
-                                      s_cmd_handle, (uint16_t)(PROTO_HDR_LEN + payload_len), frame);
+                                      s_cmd_handle, (uint16_t)(HONEY_PROTOCOL_HDR_LEN + payload_len), frame);
     if (c != GAP_CAUSE_SUCCESS)
     {
         APP_PRINT_ERROR1("[xferC] client_attr_write failed 0x%x", c);
@@ -212,7 +212,7 @@ static void xc_send_ack(uint16_t peer_seq)
 {
     uint16_t saved = s_tx_seq;
     s_tx_seq = peer_seq;                 /* echo peer seq in the ACK */
-    (void)xc_write_frame(PROTO_FLAG_ACK, 0, NULL, 0, GATT_WRITE_TYPE_CMD);
+    (void)xc_write_frame(HONEY_PROTOCOL_FLAG_ACK, 0, NULL, 0, GATT_WRITE_TYPE_CMD);
     s_tx_seq = saved;                    /* keep our own tx seq monotonic */
 }
 
@@ -223,12 +223,12 @@ static void xc_on_xfer_rsp(uint8_t key, const uint8_t *val, uint16_t vlen)
 {
     switch (key)
     {
-    case HMI_L2_XFER_BEGIN_RSP:
+    case WATCH_L2_XFER_BEGIN_RSP:
         if (s_state != XC_BEGIN_WAIT || vlen < 1)
         {
             return;
         }
-        if (val[0] == HMI_L2_XFER_BEGIN_OK)
+        if (val[0] == WATCH_L2_XFER_BEGIN_OK)
         {
             xc_timer_stop();
             s_state = XC_SENDING;
@@ -245,13 +245,13 @@ static void xc_on_xfer_rsp(uint8_t key, const uint8_t *val, uint16_t vlen)
         }
         break;
 
-    case HMI_L2_XFER_END_RSP:
+    case WATCH_L2_XFER_END_RSP:
         if (s_state != XC_END_WAIT)
         {
             return;
         }
         xc_timer_stop();
-        if (vlen >= 1 && val[0] == HMI_L2_XFER_END_OK)
+        if (vlen >= 1 && val[0] == WATCH_L2_XFER_END_OK)
         {
             APP_PRINT_INFO1("[xferC] END_RSP OK -- %u bytes sent", (unsigned)s_sent);
             xc_finish(XFER_CLIENT_OK);
@@ -263,7 +263,7 @@ static void xc_on_xfer_rsp(uint8_t key, const uint8_t *val, uint16_t vlen)
         }
         break;
 
-    case HMI_L2_XFER_ABORT:
+    case WATCH_L2_XFER_ABORT:
         APP_PRINT_ERROR0("[xferC] peer sent ABORT");
         xc_finish(XFER_CLIENT_ERR_ABORT);
         break;
@@ -281,14 +281,14 @@ static void xc_handle_frame(const uint8_t *frame)
     uint16_t seq         = ((uint16_t)frame[HDR_SEQ_HI] << 8) | frame[HDR_SEQ_LO];
     uint8_t  flags       = frame[HDR_VER] & 0x30u;
 
-    uint16_t calc = (payload_len == 0) ? 0 : xc_crc16(0, &frame[PROTO_HDR_LEN], payload_len);
+    uint16_t calc = (payload_len == 0) ? 0 : xc_crc16(0, &frame[HONEY_PROTOCOL_HDR_LEN], payload_len);
     if (calc != rx_crc)
     {
         APP_PRINT_ERROR2("[xferC] rx crc bad: calc 0x%x rx 0x%x", calc, rx_crc);
         return;
     }
 
-    if (flags & PROTO_FLAG_ACK)
+    if (flags & HONEY_PROTOCOL_FLAG_ACK)
     {
         /* Peer ACK of one of our frames.  NOT used for pacing: the peer's
          * app-level proto ACK can arrive BEFORE our own ATT write-response for
@@ -297,7 +297,7 @@ static void xc_handle_frame(const uint8_t *frame)
         return;
     }
 
-    /* Data frame from the peer -> must ACK (its proto_send blocks on our ACK). */
+    /* Data frame from the peer -> must ACK (its honey_protocol_send blocks on our ACK). */
     xc_send_ack(seq);
 
     /* L2: [cmd][ver][key][len_hi][len_lo][value] */
@@ -305,8 +305,8 @@ static void xc_handle_frame(const uint8_t *frame)
     {
         return;
     }
-    const uint8_t *l2 = &frame[PROTO_HDR_LEN];
-    if (l2[0] != HMI_L2_CMD_FILE_XFER)
+    const uint8_t *l2 = &frame[HONEY_PROTOCOL_HDR_LEN];
+    if (l2[0] != WATCH_L2_CMD_FILE_XFER)
     {
         return;
     }
@@ -330,7 +330,7 @@ static void xc_send_next_data(void)
         uint8_t crc32[4] = { 0, 0, 0, 0 };
         s_state = XC_END_WAIT;
         xc_timer_start(XC_END_MS);
-        if (!xc_send_cmd(HMI_L2_XFER_END_REQ, crc32, sizeof(crc32)))
+        if (!xc_send_cmd(WATCH_L2_XFER_END_REQ, crc32, sizeof(crc32)))
         {
             xc_finish(XFER_CLIENT_ERR_LINK);
         }
@@ -350,16 +350,16 @@ static void xc_send_next_data(void)
 
     /* Per-DATA watchdog: fires if the ATT write-response never arrives. */
     xc_timer_start(XC_DATA_MS);
-    if (!xc_send_cmd(HMI_L2_XFER_DATA, buf, (uint16_t)(2 + n)))
+    if (!xc_send_cmd(WATCH_L2_XFER_DATA, buf, (uint16_t)(2 + n)))
     {
         xc_fail(XFER_CLIENT_ERR_LINK);
     }
     /* advance on the ATT write-response (on_write_done -> xc_pump) */
 }
 
-static void xc_pump_cb(proto_msg_t *p_msg)
+static void xc_pump_cb(void *arg)
 {
-    (void)p_msg;
+    (void)arg;
     xc_send_next_data();
 }
 
@@ -384,8 +384,8 @@ static void xc_finish(T_XFER_CLIENT_RESULT result)
  * already down (the write just fails).  Not used for OK / peer-ABORT / link-loss. */
 static void xc_fail(T_XFER_CLIENT_RESULT result)
 {
-    uint8_t reason = HMI_L2_XFER_ABORT_ERROR;
-    (void)xc_send_cmd(HMI_L2_XFER_ABORT, &reason, 1);
+    uint8_t reason = WATCH_L2_XFER_ABORT_ERROR;
+    (void)xc_send_cmd(WATCH_L2_XFER_ABORT, &reason, 1);
     xc_finish(result);
 }
 
@@ -414,7 +414,7 @@ static void xc_timer_cb(void *p_handle)
 /*============================================================================*
  *   Public API
  *============================================================================*/
-bool hmi_l2_xfer_client_start(uint8_t conn_id, T_CLIENT_ID client_id, uint16_t cmd_handle,
+bool watch_l2_xfer_client_start(uint8_t conn_id, T_CLIENT_ID client_id, uint16_t cmd_handle,
                               uint8_t type, const uint8_t *src, uint32_t total,
                               const char *fname, xfer_client_done_cb_t done_cb)
 {
@@ -470,7 +470,7 @@ bool hmi_l2_xfer_client_start(uint8_t conn_id, T_CLIENT_ID client_id, uint16_t c
     s_state = XC_BEGIN_WAIT;
     xc_timer_start(XC_BEGIN_MS);   /* 30s: peer runs fdb_bf_create (flash erase) */
 
-    if (!xc_send_cmd(HMI_L2_XFER_BEGIN_REQ, v, p))
+    if (!xc_send_cmd(WATCH_L2_XFER_BEGIN_REQ, v, p))
     {
         xc_finish(XFER_CLIENT_ERR_LINK);
         return false;
@@ -479,23 +479,23 @@ bool hmi_l2_xfer_client_start(uint8_t conn_id, T_CLIENT_ID client_id, uint16_t c
     return true;
 }
 
-void hmi_l2_xfer_client_abort(void)
+void watch_l2_xfer_client_abort(void)
 {
     if (s_state == XC_IDLE)
     {
         return;
     }
-    uint8_t reason = HMI_L2_XFER_ABORT_USER;
-    (void)xc_send_cmd(HMI_L2_XFER_ABORT, &reason, 1);
+    uint8_t reason = WATCH_L2_XFER_ABORT_USER;
+    (void)xc_send_cmd(WATCH_L2_XFER_ABORT, &reason, 1);
     xc_finish(XFER_CLIENT_ERR_ABORT);
 }
 
-bool hmi_l2_xfer_client_busy(void)
+bool watch_l2_xfer_client_busy(void)
 {
     return s_state != XC_IDLE;
 }
 
-void hmi_l2_xfer_client_on_notify(const uint8_t *data, uint16_t len)
+void watch_l2_xfer_client_on_notify(const uint8_t *data, uint16_t len)
 {
     if (s_state == XC_IDLE || data == NULL)
     {
@@ -507,7 +507,7 @@ void hmi_l2_xfer_client_on_notify(const uint8_t *data, uint16_t len)
     {
         if (!s_rx_active)
         {
-            if (data[pos] != PROTO_MAGIC)
+            if (data[pos] != HONEY_PROTOCOL_MAGIC)
             {
                 pos++;
                 continue;
@@ -517,7 +517,7 @@ void hmi_l2_xfer_client_on_notify(const uint8_t *data, uint16_t len)
             s_rx_active   = true;
         }
 
-        uint16_t need = (s_rx_off < PROTO_HDR_LEN) ? (uint16_t)(PROTO_HDR_LEN - s_rx_off)
+        uint16_t need = (s_rx_off < HONEY_PROTOCOL_HDR_LEN) ? (uint16_t)(HONEY_PROTOCOL_HDR_LEN - s_rx_off)
                         : (uint16_t)(s_rx_expected - s_rx_off);
         uint16_t avail = (uint16_t)(len - pos);
         uint16_t copy  = (avail < need) ? avail : need;
@@ -534,20 +534,20 @@ void hmi_l2_xfer_client_on_notify(const uint8_t *data, uint16_t len)
         s_rx_off = (uint16_t)(s_rx_off + copy);
         pos      = (uint16_t)(pos + copy);
 
-        if (s_rx_off == PROTO_HDR_LEN && s_rx_expected == 0)
+        if (s_rx_off == HONEY_PROTOCOL_HDR_LEN && s_rx_expected == 0)
         {
-            if (s_rx[HDR_MAGIC] != PROTO_MAGIC)
+            if (s_rx[HDR_MAGIC] != HONEY_PROTOCOL_MAGIC)
             {
                 s_rx_active = false;
                 continue;
             }
             uint16_t pl = ((uint16_t)s_rx[HDR_LEN_HI] << 8) | s_rx[HDR_LEN_LO];
-            if (PROTO_HDR_LEN + pl > XC_RX_MAX)
+            if (HONEY_PROTOCOL_HDR_LEN + pl > XC_RX_MAX)
             {
                 s_rx_active = false;
                 continue;
             }
-            s_rx_expected = (uint16_t)(PROTO_HDR_LEN + pl);
+            s_rx_expected = (uint16_t)(HONEY_PROTOCOL_HDR_LEN + pl);
             if (s_rx_off < s_rx_expected)
             {
                 continue;
@@ -562,7 +562,7 @@ void hmi_l2_xfer_client_on_notify(const uint8_t *data, uint16_t len)
     }
 }
 
-void hmi_l2_xfer_client_on_write_done(uint8_t write_type, uint16_t handle, uint16_t cause)
+void watch_l2_xfer_client_on_write_done(uint8_t write_type, uint16_t handle, uint16_t cause)
 {
     /* Pace strictly on the DATA WRITE_REQ completion.  Ignore ACK writes
      * (WRITE_CMD) and anything outside the DATA phase -- otherwise an ACK's
@@ -583,7 +583,7 @@ void hmi_l2_xfer_client_on_write_done(uint8_t write_type, uint16_t handle, uint1
 
     /* DATA WRITE_REQ complete -> advance and pump the next chunk from l2_task.
      * Issuing client_attr_write from THIS completion callback is rejected with
-     * cause 0x3, so we defer via hmi_proto_post_call. */
+     * cause 0x3, so we defer via honey_protocol_run_on_dispatch. */
     uint16_t n = s_chunk;
     if ((uint32_t)n > s_total - s_sent)
     {
@@ -594,7 +594,7 @@ void hmi_l2_xfer_client_on_write_done(uint8_t write_type, uint16_t handle, uint1
     xc_pump();
 }
 
-void hmi_l2_xfer_client_on_disconnect(void)
+void watch_l2_xfer_client_on_disconnect(void)
 {
     if (s_state != XC_IDLE)
     {

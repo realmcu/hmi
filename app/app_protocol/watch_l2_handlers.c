@@ -1,14 +1,14 @@
-#include "hmi_l2_handlers.h"
-#include "hmi_l2_cmd_ota.h"
-#include "hmi_l2_cmd_settings.h"
-#include "hmi_l2_cmd_bind.h"
-#include "hmi_l2_cmd_notify.h"
-#include "hmi_l2_cmd_sport.h"
-#include "hmi_l2_cmd_factory.h"
-#include "hmi_l2_cmd_control.h"
-#include "hmi_l2_cmd_log.h"
-#include "hmi_l2_cmd_xfer.h"
-#include "hmi_l2_cmd_conn_param.h"
+#include "watch_l2_handlers.h"
+#include "watch_l2_cmd_ota.h"
+#include "watch_l2_cmd_settings.h"
+#include "watch_l2_cmd_bind.h"
+#include "watch_l2_cmd_notify.h"
+#include "watch_l2_cmd_sport.h"
+#include "watch_l2_cmd_factory.h"
+#include "watch_l2_cmd_control.h"
+#include "watch_l2_cmd_log.h"
+#include "watch_l2_cmd_xfer.h"
+#include "watch_l2_cmd_conn_param.h"
 
 /**
  * @brief  Register every L2 command handler in one place.
@@ -19,7 +19,7 @@
  *
  * Ordering caveats
  * ----------------
- *  - hmi_l2_register() writes into a plain array indexed by cmd id, so
+ *  - watch_l2_register() writes into a plain array indexed by cmd id, so
  *    the ORDER of these calls has no functional effect on L2 dispatch.
  *  - app_event_subscribe() appends to a table walked in registration
  *    order at publish time. The event bus does NOT guarantee delivery
@@ -30,25 +30,25 @@
  *    encode that dependency INSIDE the subscriber (e.g. via state it
  *    reads back), NOT via the order of these calls.
  */
-static int hmi_l2_handlers_register(void)
+static int watch_l2_handlers_register(void)
 {
-    hmi_l2_ota_register();
-    hmi_l2_settings_register();
-    hmi_l2_bind_register();
-    hmi_l2_notify_register();
-    hmi_l2_sport_register();
-    hmi_l2_factory_register();
-    hmi_l2_control_register();
-    hmi_l2_log_register();
-    hmi_l2_xfer_register();
-    hmi_l2_conn_param_register();
+    watch_l2_ota_register();
+    watch_l2_settings_register();
+    watch_l2_bind_register();
+    watch_l2_notify_register();
+    watch_l2_sport_register();
+    watch_l2_factory_register();
+    watch_l2_control_register();
+    watch_l2_log_register();
+    watch_l2_xfer_register();
+    watch_l2_conn_param_register();
     return 0;
 }
 
 #include "app_module.h"
 
-const app_module_t app_l2_handlers_module =
+const app_module_t app_watch_l2_module =
 {
-    .name  = "l2_handlers",
-    .init  = hmi_l2_handlers_register,
+    .name  = "watch_l2",
+    .init  = watch_l2_handlers_register,
 };

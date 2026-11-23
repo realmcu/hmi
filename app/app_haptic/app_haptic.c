@@ -7,6 +7,8 @@
  */
 
 #include "app_haptic.h"
+#include "app_event.h"
+#include "app_event_defs.h"
 #include "app_log.h"
 
 #include <errno.h>
@@ -43,6 +45,9 @@ static posix_fd_t s_fd = POSIX_FD_NULL;
 static uint32_t s_last_ui_ms[ARRAY_SIZE(s_ui_profiles)];
 static bool s_ready;
 
+static void on_haptic_request(app_event_id_t id, const void *payload,
+                              size_t len, void *user);
+
 static int haptic_ensure_open(void)
 {
     if (s_fd != POSIX_FD_NULL)
@@ -61,10 +66,41 @@ static int haptic_ensure_open(void)
 
 static int haptic_init(void)
 {
+    if (app_event_subscribe(EVT_HAPTIC_REQUEST, on_haptic_request, NULL) != 0)
+    {
+        APP_LOGE("EVT_HAPTIC_REQUEST subscribe failed");
+        return -1;
+    }
     int rc = haptic_ensure_open();
     s_ready = rc == 0;
     APP_LOGI("ready=%d", (int)s_ready);
     return rc;
+}
+
+static void on_haptic_request(app_event_id_t id, const void *payload,
+                              size_t len, void *user)
+{
+    (void)id;
+    (void)user;
+    if (payload == NULL || len != sizeof(app_evt_haptic_request_t))
+    {
+        return;
+    }
+    const app_evt_haptic_request_t *req = payload;
+    switch (req->action)
+    {
+    case APP_HAPTIC_REQ_START:
+        (void)app_haptic_start(req->strength);
+        break;
+    case APP_HAPTIC_REQ_STOP:
+        (void)app_haptic_stop();
+        break;
+    case APP_HAPTIC_REQ_PULSE:
+        (void)app_haptic_pulse(req->duration_ms, req->strength);
+        break;
+    default:
+        break;
+    }
 }
 
 bool app_haptic_ready(void)

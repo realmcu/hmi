@@ -138,7 +138,7 @@ static void gap_hmi_msg(T_IO_MSG *p_gap_msg)
                 /* Broadcast to any interested subscriber (xfer receive session
                  * reset, UI, power module, ...). Delivery is asynchronous on
                  * app_task; the xfer reset used to be posted to l2_task via
-                 * hmi_proto_post_call — now it's just one of the subscribers. */
+                 * honey_protocol_run_on_dispatch — now it is just one subscriber. */
                 {
                     app_evt_ble_disconnected_t ev =
                     {

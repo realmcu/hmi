@@ -23,7 +23,7 @@
 #include <stddef.h>
 
 extern const app_module_t app_bluetooth_module;
-extern const app_module_t app_l2_handlers_module;
+extern const app_module_t app_watch_l2_module;
 extern const app_module_t app_ui_sysval_module;
 
 const app_module_t *const app_module_list[] =
@@ -35,7 +35,7 @@ const app_module_t *const app_module_list[] =
     &app_media_module,      /* register A2DP/AVRCP hooks before BT task starts */
     &app_phone_module,      /* phone state/event bridge, before BT task starts */
     &app_bluetooth_module,        /* stack ready before higher profiles */
-    &app_l2_handlers_module,      /* depends on ble */
+    &app_watch_l2_module,         /* depends on ble */
     &app_health_module,     /* depends on time + setting */
     &app_ui_sysval_module,  /* bridge app events to HoneyGUI sysval */
     &app_notify_module,     /* depends on ble */

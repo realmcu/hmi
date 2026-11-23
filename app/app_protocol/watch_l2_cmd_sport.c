@@ -13,10 +13,10 @@
  * not the deprecated single-type dialect.
  */
 
-#include "hmi_l2_cmd_sport.h"
-#include "hmi_l2.h"
-#include "hmi_proto.h"
-#include "proto_log.h"
+#include "watch_l2_cmd_sport.h"
+#include "watch_l2.h"
+#include "honey_protocol.h"
+#include "honey_protocol_log.h"
 
 #include "app_event.h"
 #include "app_event_defs.h"
@@ -33,11 +33,11 @@ static bool s_history_commit_ready;
 static bool sport_send(uint8_t key, const uint8_t *val, uint16_t val_len)
 {
     uint8_t buf[2u + 3u + 3u +
-                HMI_L2_SPORT_RECS_MAX * HMI_L2_SPORT_REC_SIZE];
+                WATCH_L2_SPORT_RECS_MAX * WATCH_L2_SPORT_REC_SIZE];
     uint16_t pos = 0;
 
-    buf[pos++] = HMI_L2_CMD_SPORT;
-    buf[pos++] = HMI_L2_SPORT_VER;
+    buf[pos++] = WATCH_L2_CMD_SPORT;
+    buf[pos++] = WATCH_L2_SPORT_VER;
     buf[pos++] = key;
     buf[pos++] = (uint8_t)(val_len >> 8);
     buf[pos++] = (uint8_t)(val_len & 0xFFu);
@@ -46,7 +46,7 @@ static bool sport_send(uint8_t key, const uint8_t *val, uint16_t val_len)
     {
         buf[pos++] = val[i];
     }
-    return proto_send(buf, pos);
+    return honey_protocol_send_with_ack(buf, pos);
 }
 
 static void put_u16(uint8_t *out, uint16_t value)
@@ -91,14 +91,14 @@ static bool send_sync_end(uint8_t result, uint32_t actual_count)
     uint8_t value[5];
     value[0] = result;
     put_u32(&value[1], actual_count);
-    return sport_send(HMI_L2_SPORT_KEY_SYNC_END, value, sizeof(value));
+    return sport_send(WATCH_L2_SPORT_KEY_SYNC_END, value, sizeof(value));
 }
 
 static void send_history_sync(void)
 {
     if (s_history_sync_active)
     {
-        PROTO_LOG("L2 HEALTH sync already active, discard request");
+        HONEY_PROTOCOL_LOG("L2 HEALTH sync already active, discard request");
         return;
     }
     s_history_sync_active = true;
@@ -108,25 +108,25 @@ static void send_history_sync(void)
     uint32_t pending = 0u;
     if (app_health_history_pending_count(&pending) != 0)
     {
-        PROTO_LOG("L2 HEALTH pending count failed");
+        HONEY_PROTOCOL_LOG("L2 HEALTH pending count failed");
         (void)send_sync_end(0x03u, 0u);
         s_history_sync_active = false;
         return;
     }
 
     uint8_t start[3];
-    start[0] = HMI_L2_SPORT_KEY_ACTIVITY_REQ;
+    start[0] = WATCH_L2_SPORT_KEY_ACTIVITY_REQ;
     put_u16(&start[1], (uint16_t)((pending > UINT16_MAX) ? UINT16_MAX : pending));
-    if (!sport_send(HMI_L2_SPORT_KEY_SYNC_START,
+    if (!sport_send(WATCH_L2_SPORT_KEY_SYNC_START,
                     pending == 0u ? NULL : start,
                     pending == 0u ? 0u : sizeof(start)))
     {
-        PROTO_LOG("L2 HEALTH sync-start send failed");
+        HONEY_PROTOCOL_LOG("L2 HEALTH sync-start send failed");
         s_history_sync_active = false;
         return;
     }
 
-    uint8_t page[3u + HMI_L2_SPORT_RECS_MAX * HMI_L2_SPORT_REC_SIZE];
+    uint8_t page[3u + WATCH_L2_SPORT_RECS_MAX * WATCH_L2_SPORT_REC_SIZE];
     uint32_t sent = 0u;
     bool failed = false;
 
@@ -134,13 +134,13 @@ static void send_history_sync(void)
     {
         uint16_t pos = 3u;
         uint8_t count = 0u;
-        while (count < HMI_L2_SPORT_RECS_MAX && sent + count < pending)
+        while (count < WATCH_L2_SPORT_RECS_MAX && sent + count < pending)
         {
             health_pedo_record_t record;
             int rc = app_health_history_read(&record);
             if (rc < 0)
             {
-                PROTO_LOG("L2 HEALTH history read failed rc=%d", rc);
+                HONEY_PROTOCOL_LOG("L2 HEALTH history read failed rc=%d", rc);
                 failed = true;
                 break;
             }
@@ -155,11 +155,11 @@ static void send_history_sync(void)
         if (failed) break;
         if (count == 0u) break;
 
-        page[0] = HMI_L2_SPORT_REC_SIZE;
+        page[0] = WATCH_L2_SPORT_REC_SIZE;
         put_u16(&page[1], count);
-        if (!sport_send(HMI_L2_SPORT_KEY_ACTIVITY, page, pos))
+        if (!sport_send(WATCH_L2_SPORT_KEY_ACTIVITY, page, pos))
         {
-            PROTO_LOG("L2 HEALTH activity page send failed");
+            HONEY_PROTOCOL_LOG("L2 HEALTH activity page send failed");
             failed = true;
             break;
         }
@@ -175,7 +175,7 @@ static void send_history_sync(void)
     {
         app_health_history_reset_uncommitted();
     }
-    PROTO_LOG("L2 HEALTH sync complete sent=%u pending=%u failed=%d",
+    HONEY_PROTOCOL_LOG("L2 HEALTH sync complete sent=%u pending=%u failed=%d",
               (unsigned)sent, (unsigned)pending, (int)failed);
     s_history_sync_active = false;
 }
@@ -194,44 +194,44 @@ static void send_today_data(void)
     value[18] = 0xFFu;
     put_u32(&value[19], UINT32_MAX);
 
-    if (!sport_send(HMI_L2_SPORT_KEY_TODAY_DATA, value, sizeof(value)))
+    if (!sport_send(WATCH_L2_SPORT_KEY_TODAY_DATA, value, sizeof(value)))
     {
-        PROTO_LOG("L2 HEALTH today-data send failed");
+        HONEY_PROTOCOL_LOG("L2 HEALTH today-data send failed");
     }
 }
 
-static void on_cmd_health(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
+static void on_cmd_health(uint8_t version, const watch_l2_kv_t *kvs, uint8_t n)
 {
     if (version != 0x01u)
     {
-        PROTO_LOG("L2 HEALTH unsupported version=%u", (unsigned)version);
+        HONEY_PROTOCOL_LOG("L2 HEALTH unsupported version=%u", (unsigned)version);
         return;
     }
 
     for (uint8_t i = 0; i < n; i++)
     {
-        const hmi_l2_kv_t *kv = &kvs[i];
-        PROTO_LOG("L2 HEALTH key=0x%02x val_len=%u",
+        const watch_l2_kv_t *kv = &kvs[i];
+        HONEY_PROTOCOL_LOG("L2 HEALTH key=0x%02x val_len=%u",
                   kv->key, (unsigned)kv->val_len);
 
         switch (kv->key)
         {
-        case HMI_L2_SPORT_KEY_REQUEST_ALL:
-        case HMI_L2_SPORT_KEY_ACTIVITY_REQ:
+        case WATCH_L2_SPORT_KEY_REQUEST_ALL:
+        case WATCH_L2_SPORT_KEY_ACTIVITY_REQ:
             if (kv->val_len == 0u)
             {
                 send_history_sync();
             }
             break;
-        case HMI_L2_SPORT_KEY_SYNC_ACK:
+        case WATCH_L2_SPORT_KEY_SYNC_ACK:
             if (s_history_commit_ready)
             {
                 int rc = app_health_history_commit();
-                PROTO_LOG("L2 HEALTH phone acknowledged history sync rc=%d", rc);
+                HONEY_PROTOCOL_LOG("L2 HEALTH phone acknowledged history sync rc=%d", rc);
                 s_history_commit_ready = false;
             }
             break;
-        case HMI_L2_SPORT_KEY_TODAY_REQ:
+        case WATCH_L2_SPORT_KEY_TODAY_REQ:
             if (kv->val_len == 0u) send_today_data();
             break;
         default:
@@ -252,8 +252,8 @@ static void on_ble_disconnected(app_event_id_t id, const void *payload,
     app_health_history_reset_uncommitted();
 }
 
-void hmi_l2_sport_register(void)
+void watch_l2_sport_register(void)
 {
-    hmi_l2_register(HMI_L2_CMD_SPORT, on_cmd_health);
+    watch_l2_register(WATCH_L2_CMD_SPORT, on_cmd_health);
     (void)app_event_subscribe(EVT_BLE_DISCONNECTED, on_ble_disconnected, NULL);
 }

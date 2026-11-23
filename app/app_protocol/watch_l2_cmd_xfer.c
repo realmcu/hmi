@@ -1,8 +1,8 @@
-#include "hmi_l2_cmd_xfer.h"
-#include "hmi_l2.h"
-#include "hmi_proto.h"
-#include "hmi_protocal_task.h"    /* hmi_proto_post_call + proto_msg_t */
-#include "proto_log.h"
+#include "watch_l2_cmd_xfer.h"
+#include "watch_l2.h"
+#include "honey_protocol.h"
+#include "honey_protocol_task.h"    /* honey_protocol_run_on_dispatch */
+#include "honey_protocol_log.h"
 #include "app_event.h"
 #include "app_event_defs.h"
 #include <stdbool.h>
@@ -36,7 +36,7 @@ static void xfer_send(uint8_t key, const uint8_t *val, uint16_t val_len)
     uint8_t buf[2 + 3 + 8];
     uint16_t pos = 0;
 
-    buf[pos++] = HMI_L2_CMD_FILE_XFER;
+    buf[pos++] = WATCH_L2_CMD_FILE_XFER;
     buf[pos++] = 0x00u;
     buf[pos++] = key;
     buf[pos++] = (uint8_t)((val_len >> 8) & 0x01u);
@@ -45,7 +45,7 @@ static void xfer_send(uint8_t key, const uint8_t *val, uint16_t val_len)
     {
         buf[pos++] = val[i];
     }
-    proto_send(buf, pos);
+    honey_protocol_send_with_ack(buf, pos);
 }
 
 static void xfer_reset(void)
@@ -57,7 +57,7 @@ static void xfer_reset(void)
     s_xfer_next_seq = 0;
 }
 
-static void on_cmd_xfer(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
+static void on_cmd_xfer(uint8_t version, const watch_l2_kv_t *kvs, uint8_t n)
 {
     (void)version;
     static uint32_t id = 0;
@@ -75,32 +75,32 @@ static void on_cmd_xfer(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
 
         switch (key)
         {
-        case HMI_L2_XFER_BEGIN_REQ:
+        case WATCH_L2_XFER_BEGIN_REQ:
             {
                 if (vl < 8)
                 {
-                    PROTO_LOG("L2 XFER BEGIN_REQ too short (%d)", vl);
+                    HONEY_PROTOCOL_LOG("L2 XFER BEGIN_REQ too short (%d)", vl);
                     break;
                 }
                 if (s_xfer_active)
                 {
-                    uint8_t rsp[3] = { HMI_L2_XFER_BEGIN_BUSY, 0x00u, 0x00u };
-                    xfer_send(HMI_L2_XFER_BEGIN_RSP, rsp, sizeof(rsp));
+                    uint8_t rsp[3] = { WATCH_L2_XFER_BEGIN_BUSY, 0x00u, 0x00u };
+                    xfer_send(WATCH_L2_XFER_BEGIN_RSP, rsp, sizeof(rsp));
                     break;
                 }
                 s_xfer_type  = val[0];
                 s_xfer_total = ((uint32_t)val[1] << 24) | ((uint32_t)val[2] << 16)
                                | ((uint32_t)val[3] <<  8) | (uint32_t)val[4];
                 s_xfer_chunk = ((uint16_t)val[5] << 8) | val[6];
-                if (s_xfer_chunk == 0 || s_xfer_chunk > HMI_L2_XFER_CHUNK_MAX)
+                if (s_xfer_chunk == 0 || s_xfer_chunk > WATCH_L2_XFER_CHUNK_MAX)
                 {
-                    s_xfer_chunk = HMI_L2_XFER_CHUNK_MAX;
+                    s_xfer_chunk = WATCH_L2_XFER_CHUNK_MAX;
                 }
                 s_xfer_next_seq = 0;
                 s_xfer_active   = true;
 
                 uint8_t fname_len = val[7];
-                PROTO_LOG("L2 XFER BEGIN type=%d total=%lu chunk=%d fname_len=%d",
+                HONEY_PROTOCOL_LOG("L2 XFER BEGIN type=%d total=%lu chunk=%d fname_len=%d",
                           s_xfer_type, (unsigned long)s_xfer_total,
                           s_xfer_chunk, fname_len);
 
@@ -109,11 +109,11 @@ static void on_cmd_xfer(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
                     memset((void *)name, 0, sizeof(name));
                     sprintf(name, "bf_%u", id);
                     id++;
-                    PROTO_LOG("fdb_bf_exists %s?", name);
+                    HONEY_PROTOCOL_LOG("fdb_bf_exists %s?", name);
                 }
                 while (0 /* fdb_bf_exists(app_get_bf(), name) — TODO restore */);
 
-                PROTO_LOG("fdb_bf_create (stubbed — app_get_bf() unavailable)");
+                HONEY_PROTOCOL_LOG("fdb_bf_create (stubbed — app_get_bf() unavailable)");
                 /* rc = fdb_bf_create(app_get_bf(), name, s_xfer_total, &file); */
                 rc = FDB_NO_ERR;
                 file = NULL;
@@ -123,10 +123,10 @@ static void on_cmd_xfer(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
                 bool accepted = (rc == FDB_NO_ERR && file != NULL);
 
                 uint8_t rsp[3];
-                rsp[0] = accepted ? HMI_L2_XFER_BEGIN_OK : HMI_L2_XFER_BEGIN_NO_SPACE;
+                rsp[0] = accepted ? WATCH_L2_XFER_BEGIN_OK : WATCH_L2_XFER_BEGIN_NO_SPACE;
                 rsp[1] = (uint8_t)(s_xfer_chunk >> 8);
                 rsp[2] = (uint8_t)(s_xfer_chunk & 0xFFu);
-                xfer_send(HMI_L2_XFER_BEGIN_RSP, rsp, sizeof(rsp));
+                xfer_send(WATCH_L2_XFER_BEGIN_RSP, rsp, sizeof(rsp));
                 if (!accepted)
                 {
                     xfer_reset();
@@ -134,28 +134,28 @@ static void on_cmd_xfer(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
                 break;
             }
 
-        case HMI_L2_XFER_DATA:
+        case WATCH_L2_XFER_DATA:
             {
-                PROTO_LOG("L2 XFER DATA active=%d vl=%d val[0..3]=%02x %02x %02x %02x next_seq=%d",
+                HONEY_PROTOCOL_LOG("L2 XFER DATA active=%d vl=%d val[0..3]=%02x %02x %02x %02x next_seq=%d",
                           s_xfer_active, vl,
                           vl > 0 ? val[0] : 0xFF, vl > 1 ? val[1] : 0xFF,
                           vl > 2 ? val[2] : 0xFF, vl > 3 ? val[3] : 0xFF,
                           s_xfer_next_seq);
                 if (!s_xfer_active || vl < 2)
                 {
-                    PROTO_LOG("L2 XFER DATA discard: active=%d vl=%d", s_xfer_active, vl);
+                    HONEY_PROTOCOL_LOG("L2 XFER DATA discard: active=%d vl=%d", s_xfer_active, vl);
                     break;
                 }
                 uint16_t seq = ((uint16_t)val[0] << 8) | val[1];
                 if (seq != s_xfer_next_seq)
                 {
-                    PROTO_LOG("L2 XFER DATA seq=%d expected=%d, aborting", seq, s_xfer_next_seq);
-                    uint8_t reason = HMI_L2_XFER_ABORT_ERROR;
-                    xfer_send(HMI_L2_XFER_ABORT, &reason, 1);
+                    HONEY_PROTOCOL_LOG("L2 XFER DATA seq=%d expected=%d, aborting", seq, s_xfer_next_seq);
+                    uint8_t reason = WATCH_L2_XFER_ABORT_ERROR;
+                    xfer_send(WATCH_L2_XFER_ABORT, &reason, 1);
                     xfer_reset();
                     break;
                 }
-                PROTO_LOG("L2 XFER DATA seq=%d data_len=%d", seq, vl - 2);
+                HONEY_PROTOCOL_LOG("L2 XFER DATA seq=%d data_len=%d", seq, vl - 2);
                 /* TODO: write (val + 2, vl - 2) to storage */
                 s_xfer_next_seq++;
 
@@ -171,7 +171,7 @@ static void on_cmd_xfer(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
                 break;
             }
 
-        case HMI_L2_XFER_END_REQ:
+        case WATCH_L2_XFER_END_REQ:
             {
                 if (!s_xfer_active || vl < 4)
                 {
@@ -179,7 +179,7 @@ static void on_cmd_xfer(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
                 }
                 uint32_t crc32 = ((uint32_t)val[0] << 24) | ((uint32_t)val[1] << 16)
                                  | ((uint32_t)val[2] <<  8) | (uint32_t)val[3];
-                PROTO_LOG("L2 XFER END crc32=0x%08lx total_chunks=%d",
+                HONEY_PROTOCOL_LOG("L2 XFER END crc32=0x%08lx total_chunks=%d",
                           (unsigned long)crc32, s_xfer_next_seq);
                 /* TODO: verify crc32 against received data */
 
@@ -196,22 +196,22 @@ static void on_cmd_xfer(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
                          *       once app_get_bf() / ui_add_resource() are restored. */
                         res_info[0] = 0;
                         res_info[1] = 0;
-                        PROTO_LOG("[bf] commit ok, addr lookup stubbed (name=%s)", name);
+                        HONEY_PROTOCOL_LOG("[bf] commit ok, addr lookup stubbed (name=%s)", name);
                         (void)res_info;
                     }
                 }
 
                 // l2 rsp send
                 xfer_reset();
-                uint8_t rsp[2] = { HMI_L2_XFER_END_OK, HMI_L2_XFER_ERR_NONE };
-                xfer_send(HMI_L2_XFER_END_RSP, rsp, sizeof(rsp));
+                uint8_t rsp[2] = { WATCH_L2_XFER_END_OK, WATCH_L2_XFER_ERR_NONE };
+                xfer_send(WATCH_L2_XFER_END_RSP, rsp, sizeof(rsp));
                 break;
             }
 
-        case HMI_L2_XFER_ABORT:
+        case WATCH_L2_XFER_ABORT:
             {
                 uint8_t reason = (vl > 0) ? val[0] : 0;
-                PROTO_LOG("L2 XFER ABORT reason=%d", reason);
+                HONEY_PROTOCOL_LOG("L2 XFER ABORT reason=%d", reason);
                 xfer_reset();
 
                 if (rc == 0 && file != NULL)
@@ -223,13 +223,13 @@ static void on_cmd_xfer(uint8_t version, const hmi_l2_kv_t *kvs, uint8_t n)
             }
 
         default:
-            PROTO_LOG("L2 XFER unknown key=0x%02x", key);
+            HONEY_PROTOCOL_LOG("L2 XFER unknown key=0x%02x", key);
             break;
         }
     }
 }
 
-static void hmi_l2_xfer_reset(void)
+static void watch_l2_xfer_reset(void)
 {
     /* Called on link disconnect: abort a half-written file and clear session
      * state so the next transfer isn't rejected with BEGIN_BUSY.  Only abort
@@ -237,7 +237,7 @@ static void hmi_l2_xfer_reset(void)
      * is already false and `file` may be a stale committed handle). */
     if (s_xfer_active && file != NULL)
     {
-        PROTO_LOG("L2 XFER reset: link lost mid-transfer, aborting file");
+        HONEY_PROTOCOL_LOG("L2 XFER reset: link lost mid-transfer, aborting file");
         fdb_bf_abort(file);
     }
     file = NULL;
@@ -248,10 +248,10 @@ static void hmi_l2_xfer_reset(void)
 /* Runs on l2_task (posted by the disconnect subscriber). Executing on l2_task
  * is essential: it serialises fdb_bf_abort against any DATA-frame fdb_bf_append
  * still queued ahead of us. Reset on app_task would race the flash writer. */
-static void xfer_reset_on_l2_task(proto_msg_t *p_msg)
+static void xfer_reset_on_l2_task(void *arg)
 {
-    (void)p_msg;
-    hmi_l2_xfer_reset();
+    (void)arg;
+    watch_l2_xfer_reset();
 }
 
 /* Runs on app_task (event-bus dispatcher). Bounces the actual reset onto
@@ -260,11 +260,11 @@ static void on_ble_disconnected(app_event_id_t id, const void *payload,
                                 size_t len, void *user)
 {
     (void)id; (void)payload; (void)len; (void)user;
-    (void)hmi_proto_post_call(xfer_reset_on_l2_task, NULL);
+    (void)honey_protocol_run_on_dispatch(xfer_reset_on_l2_task, NULL);
 }
 
-void hmi_l2_xfer_register(void)
+void watch_l2_xfer_register(void)
 {
-    hmi_l2_register(HMI_L2_CMD_FILE_XFER, on_cmd_xfer);
+    watch_l2_register(WATCH_L2_CMD_FILE_XFER, on_cmd_xfer);
     (void)app_event_subscribe(EVT_BLE_DISCONNECTED, on_ble_disconnected, NULL);
 }

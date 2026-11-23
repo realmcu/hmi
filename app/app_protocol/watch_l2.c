@@ -1,5 +1,5 @@
-#include "hmi_l2.h"
-#include "proto_log.h"
+#include "watch_l2.h"
+#include "honey_protocol_log.h"
 
 #include <stdbool.h>
 
@@ -18,7 +18,7 @@
  *  The Key Header used to be [15:9] Reserve + [8:0] v-length (max 511).
  *  It was widened to a full 16-bit v-length so upper layers can carry large
  *  values. A v-length of 0 still occupies the full 2 bytes. Frame capacity is
- *  bounded by PROTO_MAX_PAYLOAD_LEN, not by this field.
+ *  bounded by HONEY_PROTOCOL_MAX_PAYLOAD_LEN, not by this field.
  *============================================================================*/
 
 #define L2_HDR_LEN      2u
@@ -30,9 +30,9 @@
  *                              Handler table
  *============================================================================*/
 
-static hmi_l2_cmd_handler_t s_handlers[L2_MAX_CMD];
+static watch_l2_cmd_handler_t s_handlers[L2_MAX_CMD];
 
-void hmi_l2_register(uint8_t cmd_id, hmi_l2_cmd_handler_t handler)
+void watch_l2_register(uint8_t cmd_id, watch_l2_cmd_handler_t handler)
 {
     if (cmd_id < L2_MAX_CMD)
     {
@@ -45,7 +45,7 @@ void hmi_l2_register(uint8_t cmd_id, hmi_l2_cmd_handler_t handler)
  *============================================================================*/
 
 static bool parse_kvs(const uint8_t *payload, uint16_t len,
-                      hmi_l2_kv_t *kvs, uint8_t max_kvs, uint8_t *out_n)
+                      watch_l2_kv_t *kvs, uint8_t max_kvs, uint8_t *out_n)
 {
     uint16_t pos = 0;
     uint8_t  n   = 0;
@@ -68,7 +68,7 @@ static bool parse_kvs(const uint8_t *payload, uint16_t len,
 
         if (khdr > (uint16_t)(len - pos))
         {
-            PROTO_LOG("hmi_l2: key=0x%02x value overflows payload", key);
+            HONEY_PROTOCOL_LOG("watch_l2: key=0x%02x value overflows payload", key);
             return false;
         }
 
@@ -87,28 +87,28 @@ static bool parse_kvs(const uint8_t *payload, uint16_t len,
  *                              Public API
  *============================================================================*/
 
-void hmi_l2_handle(const uint8_t *data, uint16_t len)
+void watch_l2_handle(const uint8_t *data, uint16_t len)
 {
     if (!data || len < L2_HDR_LEN)
     {
-        PROTO_LOG("hmi_l2_handle: too short (%d)", len);
+        HONEY_PROTOCOL_LOG("watch_l2_handle: too short (%d)", len);
         return;
     }
 
     uint8_t cmd_id  = data[0];
     uint8_t version = (uint8_t)(data[1] >> 4);
 
-    hmi_l2_kv_t kvs[L2_MAX_KVS];
+    watch_l2_kv_t kvs[L2_MAX_KVS];
     uint8_t     n = 0;
 
     if (!parse_kvs(data + L2_HDR_LEN, len - L2_HDR_LEN,
                    kvs, L2_MAX_KVS, &n))
     {
-        PROTO_LOG("hmi_l2_handle: malformed packet cmd=0x%02x", cmd_id);
+        HONEY_PROTOCOL_LOG("watch_l2_handle: malformed packet cmd=0x%02x", cmd_id);
         return;
     }
 
-    PROTO_LOG("hmi_l2_handle: cmd=0x%02x ver=%u kv_count=%u",
+    HONEY_PROTOCOL_LOG("watch_l2_handle: cmd=0x%02x ver=%u kv_count=%u",
               cmd_id, (unsigned)version, (unsigned)n);
 
     if (cmd_id < L2_MAX_CMD && s_handlers[cmd_id])
@@ -117,6 +117,6 @@ void hmi_l2_handle(const uint8_t *data, uint16_t len)
     }
     else
     {
-        PROTO_LOG("hmi_l2_handle: no handler for cmd=0x%02x", cmd_id);
+        HONEY_PROTOCOL_LOG("watch_l2_handle: no handler for cmd=0x%02x", cmd_id);
     }
 }
