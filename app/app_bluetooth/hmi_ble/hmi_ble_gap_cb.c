@@ -22,6 +22,7 @@
 #include <gap_adv.h>
 #include <app_msg.h>
 #include "hmi_ble_gap_cb.h"
+#include "hmi_ble_gap_init.h"
 #include "trace.h"
 
 /**
@@ -82,6 +83,12 @@ T_APP_RESULT hmi_ble_gap_callback(uint8_t cb_type, void *p_cb_data)
     case GAP_MSG_LE_ADV_UPDATE_PARAM:
         APP_PRINT_INFO1("GAP_MSG_LE_ADV_UPDATE_PARAM: cause 0x%x",
                         p_data->p_le_adv_update_param_rsp->cause);
+        break;
+
+    case GAP_MSG_LE_SET_RAND_ADDR:
+        APP_PRINT_INFO1("GAP_MSG_LE_SET_RAND_ADDR: cause 0x%x",
+                        p_data->p_le_set_rand_addr_rsp->cause);
+        hmi_ble_gap_on_random_addr_result(p_data->p_le_set_rand_addr_rsp->cause);
         break;
 
     case GAP_MSG_LE_SCAN_INFO:

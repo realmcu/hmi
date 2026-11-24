@@ -23,6 +23,7 @@
 #include <gap_adv.h>
 #include <app_msg.h>
 #include "hmi_ble_gap_cb.h"
+#include "hmi_ble_gap_msg.h"
 #include "trace.h"
 #include "gatt.h"
 #include "app_ota_mode.h"
@@ -82,6 +83,12 @@ static uint8_t ota_scan_rsp_data[] =
     GAP_ADTYPE_LOCAL_NAME_COMPLETE,
     'B', 'e', 'T', 'g', 't',
 };
+
+/* Keep the public identity in manufacturer data stable while the OTA-only
+ * image advertises with an isolated static random address. */
+static uint8_t public_bd_addr[GAP_BD_ADDR_LEN];
+static bool public_bd_addr_valid;
+static bool random_addr_request_pending;
 
 // GAP - Advertisement data (max size = 31 bytes, though this is
 // best kept short to conserve power while advertisting)
@@ -191,26 +198,29 @@ void hmi_ble_gap_init(void)
     le_adv_set_param(GAP_PARAM_ADV_FILTER_POLICY, sizeof(adv_filter_policy), &adv_filter_policy);
     le_adv_set_param(GAP_PARAM_ADV_INTERVAL_MIN, sizeof(adv_int_min), &adv_int_min);
     le_adv_set_param(GAP_PARAM_ADV_INTERVAL_MAX, sizeof(adv_int_max), &adv_int_max);
-    /* fill MAC address into manufacturer specific data at runtime */
-    uint8_t bt_bd_addr[6];
-    gap_get_param(GAP_PARAM_BD_ADDR, bt_bd_addr);
+    gap_get_param(GAP_PARAM_BD_ADDR, public_bd_addr);
+    for (uint8_t i = 0; i < sizeof(public_bd_addr); i++)
+    {
+        public_bd_addr_valid |= public_bd_addr[i] != 0;
+    }
+    /* Fill the stable device identity into manufacturer data at runtime. */
     if (ota_mode)
     {
         for (uint8_t i = 0; i < 6; i++)
         {
-            ota_adv_data[25 + i] = bt_bd_addr[5 - i];
+            ota_adv_data[25 + i] = public_bd_addr[5 - i];
         }
         le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(ota_adv_data), ota_adv_data);
         le_adv_set_param(GAP_PARAM_SCAN_RSP_DATA, sizeof(ota_scan_rsp_data), ota_scan_rsp_data);
     }
     else
     {
-        adv_data[18] = bt_bd_addr[5];
-        adv_data[19] = bt_bd_addr[4];
-        adv_data[20] = bt_bd_addr[3];
-        adv_data[21] = bt_bd_addr[2];
-        adv_data[22] = bt_bd_addr[1];
-        adv_data[23] = bt_bd_addr[0];
+        adv_data[18] = public_bd_addr[5];
+        adv_data[19] = public_bd_addr[4];
+        adv_data[20] = public_bd_addr[3];
+        adv_data[21] = public_bd_addr[2];
+        adv_data[22] = public_bd_addr[1];
+        adv_data[23] = public_bd_addr[0];
 
         le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(adv_data), adv_data);
         le_adv_set_param(GAP_PARAM_SCAN_RSP_DATA, sizeof(scan_rsp_data), (void *)scan_rsp_data);
@@ -235,14 +245,20 @@ void hmi_ble_gap_init(void)
 
 void hmi_ble_gap_update_adv_identity(void)
 {
-    uint8_t bt_bd_addr[6] = {0};
-    gap_get_param(GAP_PARAM_BD_ADDR, bt_bd_addr);
+    if (!public_bd_addr_valid)
+    {
+        gap_get_param(GAP_PARAM_BD_ADDR, public_bd_addr);
+        for (uint8_t i = 0; i < sizeof(public_bd_addr); i++)
+        {
+            public_bd_addr_valid |= public_bd_addr[i] != 0;
+        }
+    }
 
     if (app_ota_mode_is_active())
     {
         for (uint8_t i = 0; i < 6; i++)
         {
-            ota_adv_data[25 + i] = bt_bd_addr[5 - i];
+            ota_adv_data[25 + i] = public_bd_addr[5 - i];
         }
         le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(ota_adv_data), ota_adv_data);
     }
@@ -250,10 +266,53 @@ void hmi_ble_gap_update_adv_identity(void)
     {
         for (uint8_t i = 0; i < 6; i++)
         {
-            adv_data[18 + i] = bt_bd_addr[5 - i];
+            adv_data[18 + i] = public_bd_addr[5 - i];
         }
         le_adv_set_param(GAP_PARAM_ADV_DATA, sizeof(adv_data), adv_data);
     }
+}
+
+void hmi_ble_gap_start_adv_after_init(void)
+{
+    hmi_ble_gap_update_adv_identity();
+    if (!app_ota_mode_is_active() || !public_bd_addr_valid)
+    {
+        hmi_ble_gap_start_adv();
+        return;
+    }
+
+    /* The OTA-only GATT table must not reuse Android's normal-mode cache.
+     * le_set_rand_addr() is asynchronous and only valid after Host ready, so
+     * advertising starts from its completion callback. */
+    uint8_t ota_random_addr[GAP_BD_ADDR_LEN];
+    memcpy(ota_random_addr, public_bd_addr, sizeof(ota_random_addr));
+    ota_random_addr[5] = (ota_random_addr[5] & 0x3F) | RANDOM_ADDR_MASK_STATIC;
+    if (le_set_rand_addr(ota_random_addr) != GAP_CAUSE_SUCCESS)
+    {
+        APP_PRINT_ERROR0("hmi_ble_gap_start_adv_after_init: failed to set random address");
+        hmi_ble_gap_start_adv();
+        return;
+    }
+
+    T_GAP_LOCAL_ADDR_TYPE adv_addr_type = GAP_LOCAL_ADDR_LE_RANDOM;
+    le_adv_set_param(GAP_PARAM_ADV_LOCAL_ADDR_TYPE, sizeof(adv_addr_type), &adv_addr_type);
+    random_addr_request_pending = true;
+}
+
+void hmi_ble_gap_on_random_addr_result(uint16_t cause)
+{
+    if (!random_addr_request_pending)
+    {
+        return;
+    }
+    random_addr_request_pending = false;
+    if (cause != GAP_CAUSE_SUCCESS)
+    {
+        APP_PRINT_ERROR1("hmi_ble_gap_on_random_addr_result: cause 0x%x", cause);
+        T_GAP_LOCAL_ADDR_TYPE adv_addr_type = GAP_LOCAL_ADDR_LE_PUBLIC;
+        le_adv_set_param(GAP_PARAM_ADV_LOCAL_ADDR_TYPE, sizeof(adv_addr_type), &adv_addr_type);
+    }
+    hmi_ble_gap_start_adv();
 }
 
 /** @} */ /* End of group PERIPH_APP_TASK */

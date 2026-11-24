@@ -22,6 +22,8 @@ extern "C" {
 
 void hmi_ble_gap_init(void);
 void hmi_ble_gap_update_adv_identity(void);
+void hmi_ble_gap_start_adv_after_init(void);
+void hmi_ble_gap_on_random_addr_result(uint16_t cause);
 
 /** End of PERIPH_APP
 * @}
