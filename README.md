@@ -102,6 +102,35 @@ FW=/path/to/app.bin ADDR=0x7009E000 scripts/flash-linux2win-app.sh COM8
 CHIP=RTL8783G scripts/flash-linux2win-runtime.sh COM8
 ```
 
+### 2.4 备用方式：通过 HoneyBox 内置固件 OTA
+
+如果 `COM4`/`mpcli` 无法建立下载连接，但手表仍能正常启动并支持 BLE OTA，可以临时把
+App 固件打包进 HoneyBox APK，通过手机给手表做 OTA 升级，绕开串口下载。
+
+1. 生成 RTL8773G 可接受的 MP OTA 固件包，并替换 HoneyBox 中的内置文件：
+
+   ```text
+   /home/wh/workspace/HoneyBox/assets/ota/watch_rtl8773g_app_mp.bin
+   ```
+
+   Watch OTA 页面固定读取这个文件；不能直接把裸 `applications/bin/app.bin` 当作 MP 包
+   放进去。
+
+2. 重新构建并安装 HoneyBox APK，使新的固件包进入 APK 资源：
+
+   ```bash
+   cd /home/wh/workspace/HoneyBox
+   flutter build apk --debug
+   adb install -r build/app/outputs/flutter-apk/app-debug.apk
+   ```
+
+3. 手机连接 Watch，进入“固件 OTA 升级”，点击“开始升级”并确认风险。升级完成后，
+   App 会检查固件、等待手表重启并自动重连。
+
+这条通道只用于更新 App 镜像，不能替代 runtime、romfs 或完整烧录；如果当前固件无法
+启动、没有 BLE OTA 能力，或者问题位于 boot/runtime/分区层，仍然必须修复
+`COM4`/`mpcli` 后按 2.1 或 2.2 重新烧录。
+
 ## 3. 手机联调（HoneyBox APK）
 
 手表和手机一起联调时，手机侧用 `HoneyBox` 这个 Flutter 调试应用，它是独立仓库：

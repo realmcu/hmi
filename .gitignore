@@ -29,6 +29,9 @@ cscope.*
 # no suitable out-of-tree directory is found.
 .cache
 
+# Local Codex test artifacts and metadata.
+.code*
+
 outdir
 outdir-*
 scripts/basic/fixdep
