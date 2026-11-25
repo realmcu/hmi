@@ -1,0 +1,24 @@
+# RT-Thread building script for GuiEngine demo
+
+from building import *
+
+cwd = GetCurrentDir()
+src = Split("""
+""")
+
+src = []
+
+CPPPATH = [cwd]
+
+
+# gui_dlps.c comes from the reference lvgl app: it calls rtk_touch_wake_up() /
+# rtk_touch_hal_power_on/off(), which the ZT2717 driver does not implement.
+# Kept off until DLPS is ported (DLPS_EN is 0 in board.h). Do not gate it on
+# CONFIG_REALTEK_BSP_DLPS - that one also enables drv_dlps.c, which is needed.
+if GetDepend(['CONFIG_REALTEK_GUI_DLPS']):
+    src += ['gui_dlps.c']
+
+
+group = DefineGroup('dlps', src, depend = [], CPPPATH = CPPPATH)
+
+Return('group')

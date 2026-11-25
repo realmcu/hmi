@@ -1,0 +1,16 @@
+#import config
+from building import *
+
+# add the general drivers.
+src = Split("""
+""")
+
+cwd = GetCurrentDir()
+CPPPATH = [cwd]
+src += ['main.c']
+src += ['lvgl_init.c']
+
+
+group = DefineGroup('app', src, depend = [''], CPPPATH = CPPPATH)
+
+Return('group')

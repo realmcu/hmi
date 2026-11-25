@@ -1,0 +1,21 @@
+
+from building import *
+
+cwd = GetCurrentDir()
+src = Split("""
+""")
+CPPDEFINES = ['SUPPORT_NORMAL_OTA=1 ']
+CPPDEFINES += ['ENABLE_AUTO_BANK_SWITCH=1', 'RTK_BLE_OTA_APP']
+src = Glob('*.c')
+CPPPATH = [cwd]
+
+DEPEND = [
+    'CONFIG_REALTEK_OTA_SERVICE', 
+    'CONFIG_REALTEK_BLE_OTA',
+    'CONFIG_REALTEK_DFU_SERVICE',
+    'CONFIG_REALTEK_BLE_OTA_DEMO'
+]
+
+group = DefineGroup('ble_ota_app', src, depend = DEPEND, CPPPATH = CPPPATH, CPPDEFINES = CPPDEFINES)
+
+Return('group')

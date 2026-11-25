@@ -1,0 +1,22 @@
+
+from building import *
+Import('RTK_SDK_ROOT')
+cwd = GetCurrentDir()
+src = Split("""
+""")
+CPPDEFINES = []
+CPPDEFINES += ['TEMP_BUILD_OS_IN_NS_ROM', 'RTK_BLE_PERIPHERAL_APP']
+
+src = Glob('*.c')
+
+CPPPATH = [cwd,
+           RTK_SDK_ROOT + '/bin/rtl87x2g/bt_host_image/bt_host_0_0'
+           ]
+
+DEPEND = [
+    'CONFIG_REALTEK_BLE_PERIPHERAL_DEMO', 
+]
+
+group = DefineGroup('ble_app', src, depend = DEPEND, CPPPATH = CPPPATH, CPPDEFINES = CPPDEFINES)
+
+Return('group')

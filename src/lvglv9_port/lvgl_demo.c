@@ -1,0 +1,108 @@
+#include "lvgl.h"
+
+#include <string.h>
+#include "board.h"
+#include "trace.h"
+#include "os_sync.h"
+#include "os_task.h"
+#include "lv_port_disp.h"
+#include "lv_port_indev.h"
+/* resolved via the ..\..\..\subsys\lvgl include path; pulls in
+ * benchmark/lv_demo_benchmark.h and widgets/lv_demo_widgets.h according to
+ * LV_USE_DEMO_BENCHMARK / LV_USE_DEMO_WIDGETS in lv_conf.h */
+#include "demos/lv_demos.h"
+#include "os_sched.h"
+#include "trace.h"
+#include "lv_timer.h"
+#include "lv_log.h"
+
+#define APP_TASK_PRIORITY               1   /* Task priorities. */
+#define APP_TASK_STACK_SIZE             (512 * 16)
+
+#define PORT_LOG_MAX_LEN            100
+
+static void port_log(lv_log_level_t level, const char *buf)
+{
+    LV_UNUSED(level);   /* level tag is already part of buf ("[Warn]", "[User]", ...) */
+
+    char line[PORT_LOG_MAX_LEN + 1];
+    int len = 0;
+    while (len < PORT_LOG_MAX_LEN && buf[len] != '\0' &&
+        buf[len] != '\n' && buf[len] != '\r')
+    {
+        len++;
+    }
+    memcpy(line, buf, len);
+    line[len] = '\0';
+    DBG_DIRECT("[GUI MODULE]%s", line);
+}
+
+void *lvgl_task_handle;
+
+extern void disp_enable_update(void);
+extern void disp_disable_update(void);
+
+#if LV_USE_DEMO_BENCHMARK
+static void on_benchmark_finished(void)
+{
+    disp_enable_update();
+}
+#endif
+/* the first 1MB of PSRAM is used by the display draw buffers (lv_port_disp.c) */
+#define PSRAM_BUF ((void *)0x08100000u)
+#define PSRAM_BUF_SIZE (1 * 1024 * 1024)     /* 1MB */
+
+/* 1 ms tick from os, better than lv_tick_inc() in a 10 ms soft timer */
+static uint32_t port_tick_get(void)
+{
+    return (uint32_t)os_sys_time_get();
+}
+
+static void lvgl_demo_run(void *p)
+{
+    lv_init();
+    if (lv_mem_add_pool(PSRAM_BUF, PSRAM_BUF_SIZE) == NULL)
+    {
+        DBG_DIRECT("lv_mem_add_pool FAILED");
+    }
+    lv_tick_set_cb(port_tick_get);
+    lv_log_register_print_cb(port_log);
+    lv_port_disp_init();
+    lv_port_indev_init();
+    
+#if LV_USE_DEMO_BENCHMARK
+    LV_LOG("Running LVGL Benchmark... \n");
+    lv_demo_benchmark();
+#elif LV_USE_DEMO_WIDGETS
+    lv_demo_widgets();
+#endif
+    // lv_obj_t *screen = lv_scr_act();
+    // lv_obj_set_style_bg_color(screen, lv_color_hex(0x000000), LV_PART_MAIN);
+
+    // lv_obj_t* rect = lv_obj_create(screen);
+    // lv_obj_set_size(rect, 320, 20);
+    // lv_obj_set_pos(rect, 10, 10);
+    // lv_obj_set_style_radius(rect, 0, 0);
+    // lv_obj_set_style_bg_color(rect, lv_color_hex(0x0000ff), 0);
+    // lv_obj_set_style_bg_opa(rect, LV_OPA_COVER, 0);
+    // lv_obj_set_style_border_width(rect, 0, 0);
+
+    while (1)
+    {
+        /* sleep until the next lv timer is due, so other tasks and dlps can run */
+        uint32_t time_till_next = lv_timer_handler();
+        if (time_till_next == LV_NO_TIMER_READY)
+        {
+            time_till_next = LV_DEF_REFR_PERIOD;
+        }
+        os_delay(LV_CLAMP(1, time_till_next, LV_DEF_REFR_PERIOD));
+    }
+}
+
+void rt_lvgl_demo_init(void)
+{
+    /* littleGL demo gui thread */
+    os_task_create(&lvgl_task_handle, "lvgl", lvgl_demo_run, 0, APP_TASK_STACK_SIZE,
+                   APP_TASK_PRIORITY);
+}
+

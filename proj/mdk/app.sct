@@ -1,0 +1,137 @@
+#!armclang --target=arm-arm-none-eabi -march=armv8-m.main -E -x c
+#include "..\mem_config.h"
+#include "..\flash_map.h"
+
+#if (FEATURE_TRUSTZONE_ENABLE == 1)
+#define VECTOR_SECTION_ADDR            NS_RAM_VECTOR_ADDR
+#define VECTOR_SECTION_SIZE            NS_RAM_VECTOR_SIZE
+
+#define ARM_LIB_STACK_ADR              NS_RAM_MAIN_STACK_START_ADDR
+#define ARM_LIB_STACK_SIZE             NS_RAM_MAIN_STACK_SIZE
+#else
+#define VECTOR_SECTION_ADDR            S_RAM_VECTOR_ADDR
+#define VECTOR_SECTION_SIZE            S_RAM_VECTOR_SIZE
+
+#define ARM_LIB_STACK_ADR              S_RAM_MAIN_STACK_START_ADDR
+#define ARM_LIB_STACK_SIZE             S_RAM_MAIN_STACK_SIZE
+#endif
+
+/* Sizes */
+#if (defined(ARM_LIB_STACK_SIZE))
+#define Stack_Size                   ARM_LIB_STACK_SIZE
+#else
+#define Stack_Size                   0x1000
+#endif
+
+#if (defined(NS_HEAP_SIZE))
+#define Heap_Size                    NS_HEAP_SIZE
+#else
+#define Heap_Size                    0x1000
+#endif
+    
+; APP Flash definitions
+#if (BUILD_BANK == 0)
+#define NS_LOAD_APP_ADDR       BANK0_APP_ADDR
+#define NS_LOAD_APP_SIZE       BANK0_APP_SIZE
+#else
+#define NS_LOAD_APP_ADDR       BANK1_APP_ADDR
+#define NS_LOAD_APP_SIZE       BANK1_APP_SIZE
+#endif
+
+#define NS_RAM_GLOBAL_ADDR             NS_RAM_APP_ADDR
+#define NS_RAM_GLOBAL_SIZE             NS_RAM_APP_SIZE
+
+#define EXT_DATA_RAM_ADDR              EXT_DATA_SRAM_GLOBAL_ADDR
+#define EXT_DATA_RAM_SIZE              EXT_DATA_SRAM_GLOBAL_SIZE
+
+#define PSRAM_ADDR                     0x8200000
+#define PSRAM_SIZE                     0x200000
+
+LOAD_FLASH NS_LOAD_APP_ADDR NS_LOAD_APP_SIZE
+{
+    app_ns.bin +0
+    {
+        * (.app.flash.header)
+    }
+
+    FLASH_HEADER_EXT +0
+    {
+        * (.app.flash.header_ext)
+    }
+
+#if (FEATURE_FLASH_SEC == 1)   
+    FLASH_GAP_REGION +0
+    {
+        * (.app.flash.gap.text)
+    }
+
+    FLASH_TEXT +0 ALIGN 0x1000
+#else 
+    FLASH_TEXT +0
+#endif
+    {
+        * (.image_entry, +First) 
+#if FEATURE_RAM_CODE
+        * (InRoot$$Sections)
+#else
+        * (+RO)
+#endif
+        * (.isr.text)
+        * (.app.flash.text)
+        * (.app.flash.rodata)
+    }
+    
+    RAM_VECTOR_TABLE VECTOR_SECTION_ADDR OVERLAY VECTOR_SECTION_SIZE
+    {
+        * (.vectors_table, +First)
+    }
+    
+    RAM_VECTOR_TABLE_WRAPPER_NS NS_RAM_GLOBAL_ADDR OVERLAY (16+128)*4   ;padding 28bytes
+    {
+        * (.bss.ram_vector_table_wrapper)
+    }
+
+    ;ER_IRAM_NS (NS_RAM_GLOBAL_ADDR + (16+128)*4) OVERLAY (NS_RAM_GLOBAL_SIZE - (16+128)*4) 
+    ER_IRAM_NS +0 OVERLAY ALIGN 0x20
+    {
+#if FEATURE_RAM_CODE
+        * (+RO)
+#endif
+        * (.app.ram.text)
+        * (+RW)
+        * (+ZI)
+        * (.app.ram.data)
+    }
+    ScatterAssert((ImageLength(RAM_VECTOR_TABLE_WRAPPER_NS) + ImageLength(ER_IRAM_NS)) <= (NS_RAM_GLOBAL_SIZE))
+
+    DATA_SRAM_SECTION EXT_DATA_RAM_ADDR OVERLAY EXT_DATA_RAM_SIZE
+    {
+        *(.app.ext.datasram.data)
+    }
+
+    ARM_LIB_STACK ARM_LIB_STACK_ADR + ARM_LIB_STACK_SIZE EMPTY -Stack_Size 
+    {
+        ; Stack region growing down
+    }
+
+    NS_ARM_LIB_HEAP NS_HEAP_ADDR EMPTY Heap_Size 
+    {
+        ; Heap region growing up
+    }
+    PSRAM_SECTION PSRAM_ADDR OVERLAY PSRAM_SIZE
+    {
+        *(.app.psram.data)
+    }
+}
+
+
+#define APP_TRACE_ADR   0x18100000
+#define APP_TRACE_SIZE  0x80000
+LOAD_APP_TRACE APP_TRACE_ADR APP_TRACE_SIZE
+{
+    app_ns.trace APP_TRACE_ADR APP_TRACE_SIZE
+    {
+        * (.TRACE)
+    }
+}
+

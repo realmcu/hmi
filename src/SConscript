@@ -6,18 +6,6 @@ cwd  = GetCurrentDir()
 objs = []
 list = os.listdir(cwd)
 
-# add the general drivers.
-src = Split("""
-""")
-
-src += ['main.c']
-src += ['display_init.c']
-
-
-CPPPATH = [cwd, cwd + '/root_image']
-
-group = DefineGroup('app', src, depend = [''], CPPPATH = CPPPATH)
-
 for d in list:
     path = os.path.join(cwd, d)
     if os.path.isfile(os.path.join(path, 'SConscript')):

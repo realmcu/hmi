@@ -1,0 +1,20 @@
+# RT-Thread building script for GuiEngine demo
+
+import os
+from building import *
+
+cwd = GetCurrentDir()
+src = Split("""
+""")
+
+src = Glob('*.c')
+CPPPATH = [cwd]   # lv_conf.h / display_drv.h
+CPPDEFINES = ['LV_KCONFIG_IGNORE']
+CPPDEFINES += ['LV_CONF_INCLUDE_SIMPLE']
+CPPDEFINES += ['LV_LVGL_H_INCLUDE_SIMPLE']
+
+CPPDEFINES += ['ENABLE_LVGL_GUI']
+
+group = DefineGroup('port_lvglv9', src, depend = ['CONFIG_REALTEK_BUILD_LVGL_V9'], CPPPATH = CPPPATH, CPPDEFINES = CPPDEFINES)
+
+Return('group')

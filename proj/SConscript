@@ -1,0 +1,41 @@
+# for module compiling
+import os
+Import('RTK_SDK_ROOT')
+Import('RTK_IC_TYPE')
+Import('DISPLAY_ROOT')
+Import('LVGL_ROOT')
+from building import *
+
+cwd = GetCurrentDir()
+objs = []
+list = os.listdir(cwd)
+
+# Board level config (proj/): soc defines + include paths every source needs.
+# CONFIG_SOC_SERIES_RTL87X2G selects the rtl87x2g register definitions in the
+# bsp driver headers (e.g. rtl_gpio.h), so it must be global.
+src = ['menu_config.h']
+
+path = [cwd,
+        RTK_SDK_ROOT + '/include/' + RTK_IC_TYPE,
+        RTK_SDK_ROOT + '/include/' + RTK_IC_TYPE + '/nsc',
+        RTK_SDK_ROOT + '/include/' + RTK_IC_TYPE + '/secure',
+        RTK_SDK_ROOT + '/include/' + RTK_IC_TYPE + '/cmsis/Core/Include',
+        RTK_SDK_ROOT + '/include/' + RTK_IC_TYPE + '/config',
+        RTK_SDK_ROOT + '/subsys/osif/inc',
+        DISPLAY_ROOT + '/bindings',
+        DISPLAY_ROOT + '/hardware/lcdc/inc',
+        DISPLAY_ROOT + '/hardware/lcdc/src/device/' + RTK_IC_TYPE,
+        DISPLAY_ROOT + '/device/general/lcd',
+        DISPLAY_ROOT + '/device/general/touch',
+        LVGL_ROOT]
+
+CPPDEFINES = ['RTL87x2G', 'CONFIG_SOC_SERIES_RTL87X2G']
+
+objs += DefineGroup('board', src, depend = [''], CPPPATH = path, CPPDEFINES = CPPDEFINES)
+
+for d in list:
+    path = os.path.join(cwd, d)
+    if os.path.isfile(os.path.join(path, 'SConscript')):
+        objs = objs + SConscript(os.path.join(d, 'SConscript'))
+
+Return('objs')

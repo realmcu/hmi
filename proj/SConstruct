@@ -1,0 +1,121 @@
+import os
+import sys
+import menu_config
+import subprocess
+import platform
+import uuid
+
+if os.getenv('TOOL_ROOT'):
+    TOOL_ROOT = os.getenv('TOOL_ROOT')
+else:
+    TOOL_ROOT = os.path.abspath('./../../../tools/scons')
+
+sys.path = sys.path + [os.path.join(TOOL_ROOT, 'tools')]
+try:
+    from building import *
+except:
+    print('Cannot found Scons tool root directory, please check TOOL_ROOT')
+    print(TOOL_ROOT)
+    exit(-1)
+
+TARGET = 'lvgl.' + menu_config.TARGET_EXT
+
+env = Environment(tools = ['mingw'],
+    AS = menu_config.AS, ASFLAGS = menu_config.AFLAGS,
+    CC = menu_config.CC, CCFLAGS = menu_config.CFLAGS,
+    AR = menu_config.AR, ARFLAGS = '-rc',
+    CXX = menu_config.CXX, CXXFLAGS = menu_config.CXXFLAGS,
+    LINK = menu_config.LINK, LINKFLAGS = menu_config.LFLAGS)
+env.PrependENVPath('PATH', menu_config.EXEC_PATH)
+
+RTK_IC_TYPE = 'rtl87x2g'
+REALTEK_IC_TYPE = RTK_IC_TYPE
+RTK_SDK_ROOT = os.path.abspath('./../../../')
+REALTEK_SDK_ROOT = RTK_SDK_ROOT
+SDK_ROOT = RTK_SDK_ROOT
+APP_SRC_ROOT = os.path.abspath('./../src')
+BOARD_ROOT = os.path.abspath('.')
+DISPLAY_ROOT = os.path.abspath('./../../../subsys/display')
+LVGL_ROOT = os.path.abspath('./../../../subsys/lvgl')
+PLATFORM = menu_config.PLATFORM
+
+Export('PLATFORM')
+Export('RTK_IC_TYPE')
+Export('REALTEK_IC_TYPE')
+Export('TOOL_ROOT')
+Export('RTK_SDK_ROOT')
+Export('REALTEK_SDK_ROOT')
+Export('SDK_ROOT')
+Export('APP_SRC_ROOT')
+Export('BOARD_ROOT')
+Export('DISPLAY_ROOT')
+Export('LVGL_ROOT')
+Export('menu_config')
+
+print('RTK SDK ROOT = ' + RTK_SDK_ROOT)
+print('TOOL ROOT = ' + TOOL_ROOT)
+print('TARGET =' + TARGET)
+
+# gcc/app.ld includes mem_config.h / flash_map.h: preprocess it so the linker
+# script always follows the same memory layout as the MDK scatter file.
+# (skipped for `scons --target=mdk5`: that only generates the Keil project)
+if menu_config.PLATFORM == 'gcc' and not any(a.startswith('--target') for a in sys.argv):
+    gen_ld = '"' + os.path.join(menu_config.EXEC_PATH, menu_config.CC) + '"' + \
+             ' -E -P -x c -I . ./gcc/app.ld -o ./gcc/app.ld.gen'
+    print(gen_ld)
+    if os.system(gen_ld) != 0:
+        print('failed to generate gcc/app.ld.gen')
+        exit(-1)
+
+# prepare building environment (only reads ./SConscript, i.e. proj/)
+objs = PrepareBuilding(env, TOOL_ROOT, has_libcpu=False)
+
+# set spawn: save & load long param as temp file
+def ourspawn(sh, escape, cmd, args, e):
+    filename = str(uuid.uuid4())
+    newargs = ' '.join(args[1:])
+    cmdline = cmd + " " + newargs
+    if (len(cmdline) > 16 * 1024):
+        f = open(filename, 'w')
+        f.write(' '.join(args[1:]).replace('\\', '/'))
+        f.close()
+        # exec
+        cmdline = cmd + " @" + filename
+    proc = subprocess.Popen(cmdline, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, shell = False, env = e)
+    data, err = proc.communicate()
+    rv = proc.wait()
+    def res_output(_output, _s):
+        if len(_s):
+            if isinstance(_s, str):
+                _output(_s)
+            elif isinstance(_s, bytes):
+                _output(str(_s, 'UTF-8'))
+            else:
+                _output(str(_s))
+    res_output(sys.stderr.write, err)
+    res_output(sys.stdout.write, data)
+    if os.path.isfile(filename):
+        os.remove(filename)
+    return rv
+if platform.system() == 'Windows':
+    env['SPAWN'] = ourspawn
+
+
+# include sdk modules
+objs.extend(SConscript(os.path.join(APP_SRC_ROOT, 'SConscript')))
+objs.extend(SConscript(os.path.join(RTK_SDK_ROOT, 'include', 'SConscript')))
+objs.extend(SConscript(os.path.join(RTK_SDK_ROOT, 'bin', 'SConscript')))
+objs.extend(SConscript(os.path.join(RTK_SDK_ROOT, 'bsp', 'SConscript')))
+objs.extend(SConscript(os.path.join(RTK_SDK_ROOT, 'subsys', 'osif', 'SConscript')))
+objs.extend(SConscript(os.path.join(RTK_SDK_ROOT, 'subsys', 'bluetooth', 'SConscript')))
+objs.extend(SConscript(os.path.join(DISPLAY_ROOT, 'SConscript')))
+objs.extend(SConscript(os.path.join(LVGL_ROOT, 'SConscript')))
+
+# hal drivers (drv_lcd / drv_dlps ...) and libc syscalls are still in subsys/wearable
+objs.extend(SConscript(os.path.join(RTK_SDK_ROOT, 'subsys', 'wearable', 'driver', 'SConscript')))
+objs.extend(SConscript(os.path.join(RTK_SDK_ROOT, 'subsys', 'wearable', 'misc', 'SConscript')))
+
+env['_LIBFLAGS'] = '-Wl,--start-group ' + env['_LIBFLAGS'] + ' -Wl,--end-group'
+# make a building
+DoBuilding(TARGET, objs)
