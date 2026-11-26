@@ -8,7 +8,7 @@
 #
 # Default configuration matches the flash parameters of flash-wsl-app.sh:
 #   - Tool: mpcli v4.0.0.7 (scripts/tool/mpcli/mpcli, bundled with the repo)
-#   - Firmware: bin/app.bin (no MP header)
+#   - Firmware: applications/bin/app.bin (no MP header)
 #   - Flash: -p -A 0x7009E000 -b 2000000 -M 5 -r -u -d -T RTL87X3G
 #
 # Usage:
@@ -28,13 +28,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ---- Can be overridden by positional arguments or environment variables ----
 PORT="${1:-${PORT:-/dev/ttyUSB0}}"
 MPCLI="${MPCLI:-$SCRIPT_DIR/tool/mpcli/mpcli}"
-FW="${FW:-$REPO_ROOT/bin/app.bin}"
+FW="${FW:-$REPO_ROOT/applications/bin/app.bin}"
 ADDR="${ADDR:-0x7009E000}"
 BAUD="${BAUD:-2000000}"
 
 # ---- Checks ----
 [ -x "$MPCLI" ] || { echo "[flash] mpcli 不存在或不可执行: $MPCLI" >&2; exit 1; }
-[ -f "$FW" ]    || { echo "[flash] 固件不存在: $FW（先 west build 生成 bin/app.bin）" >&2; exit 1; }
+[ -f "$FW" ]    || { echo "[flash] 固件不存在: $FW（先运行 scripts/build.sh 生成 applications/bin/app.bin）" >&2; exit 1; }
 [ -e "$PORT" ]  || { echo "[flash] 串口不存在: $PORT（检查 USB 连接，或 ls /dev/ttyUSB*）" >&2; exit 1; }
 [ -w "$PORT" ]  || { echo "[flash] 串口不可写: $PORT（把用户加入 dialout 组：sudo usermod -aG dialout \$USER，重新登录后生效）" >&2; exit 1; }
 

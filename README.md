@@ -1,6 +1,6 @@
 # scripts
 
-Common utility scripts in this directory, covering the full **build -> flash -> capture log** chain for RTL87X3G applications. The commands below assume they are run from the `applications/` directory, hence the `scripts/...` form; if you run them from the west workspace root, add the `applications/` prefix. Each script resolves paths relative to its own location and does not depend on the current directory at invocation.
+Common utility scripts in this directory, covering the full **build -> flash -> capture log** chain for RTL87X3G applications. The commands below assume they are run from the west workspace root, hence the `scripts/...` form. Each script resolves paths relative to its own location and does not depend on the current directory at invocation.
 
 - `build.sh` -- `west build` wrapper
 - `flash-linux-app.sh` -- flash the App with the Linux build of `mpcli` on native Linux
@@ -19,7 +19,7 @@ Common utility scripts in this directory, covering the full **build -> flash -> 
 
 ## 1. Build
 
-Use `scripts/build.sh` to invoke `west build`; parameters match `.vscode/tasks.json`.
+Use `scripts/build.sh` to invoke `west build`; parameters match `applications/.vscode/tasks.json`.
 
 ### Common commands
 
@@ -34,8 +34,8 @@ DRY=1 scripts/build.sh                  # only print the command to run, do not 
 
 - Default board: `rtl87x3g_evb`, override with the `BOARD=` environment variable.
 - Argument parsing only accepts `-p` / `--pristine`; any other unknown argument errors out immediately (to prevent slips).
-- The script `cd`s to the repo root itself, so the current directory does not matter.
-- Build output: `build/`; the firmware to flash is `bin/app.bin` (used by the App flashing scripts).
+- The script `cd`s to `applications/` itself, so the current directory does not matter.
+- Build output: `applications/build/`; the firmware to flash is `applications/bin/app.bin` (used by the App flashing scripts).
 
 ### Common issues
 
@@ -83,7 +83,7 @@ DRY=1 scripts/flash-linux-app.sh                    # only print the command to 
 | Item | Value | Override |
 |---|---|---|
 | `mpcli` path | `scripts/tool/mpcli/mpcli` (repo-bundled v4.0.0.7) | `MPCLI=` |
-| Firmware | `<repo>/bin/app.bin` (**no MP header**) | `FW=` |
+| Firmware | `applications/bin/app.bin` (**no MP header**) | `FW=` |
 | Download port | `/dev/ttyUSB0` | positional argument or `PORT=` |
 | Baud rate | `2000000` | `BAUD=` |
 | Flash address | `0x7009E000` | `ADDR=` |
@@ -92,7 +92,7 @@ DRY=1 scripts/flash-linux-app.sh                    # only print the command to 
 ### How it works and notes
 
 - Feed the Linux path directly to `-F`; no `wslpath` conversion needed.
-- The script first checks that `mpcli`, `bin/app.bin` and the serial port exist and are writable; if any is missing it errors out.
+- The script first checks that `mpcli`, `applications/bin/app.bin` and the serial port exist and are writable; if any is missing it errors out.
 - Accessing `/dev/ttyUSB*` requires the current user to be in the `dialout` group:
   ```bash
   sudo usermod -aG dialout "$USER"   # re-login (or newgrp dialout) is required after adding the group
@@ -101,7 +101,7 @@ DRY=1 scripts/flash-linux-app.sh                    # only print the command to 
 
 ### Common issues
 
-- **`firmware not found: .../bin/app.bin`**: run `scripts/build.sh` once first.
+- **`firmware not found: .../applications/bin/app.bin`**: run `scripts/build.sh` once first.
 - **`mpcli not found or not executable`**: change `MPCLI=` to point to your actual install location.
 - **`serial port not found` / `serial port not writable`**: check the USB connection (`ls /dev/ttyUSB*`), or add the user to the `dialout` group and re-login.
 - **Port busy / cannot open**: most likely another serial tool (e.g. a manually started `cat /dev/ttyUSB*` or `picocom`) still holds the port; close it before flashing.
@@ -154,7 +154,7 @@ DRY=1 scripts/flash-macos-app.sh               # only print the command to run, 
 scripts/flash-macos-app.sh --help              # print the script header usage
 ```
 
-Priority: **command-line arguments > environment variables > defaults** (defaults `bin/app.bin` / `0x7009E000` / `2000000`).
+Priority: **command-line arguments > environment variables > defaults** (defaults `applications/bin/app.bin` / `0x7009E000` / `2000000`).
 
 Flash parameters are identical to the other platforms (`-p -A 0x7009E000 -b 2000000 -M 5 -r -u -d -T RTL87X3G`); only the execution environment differs. The three scripts `flash-macos-app.sh` / `flash-macos-runtime.sh` / `flash-macos-romfs.sh` correspond one-to-one to the Linux, WSL and win32 versions.
 
@@ -213,13 +213,13 @@ MPCLI_LOG_DIR=$HOME/.cache/mpcli scripts/flash-macos-app.sh
 - **`Resource temporarily unavailable` / port busy**: another serial tool (CoolTerm, minicom, `screen`, the Arduino IDE serial monitor) still holds the port; quit it first. After using `screen /dev/cu.usbserial-1420 2000000`, exit properly with `Ctrl+A K`; closing the terminal window directly leaves the port claimed.
 - **`No such file or directory` but the device is present**: confirm the name with `ls /dev/cu.*`; CH340/CP2102/FTDI are named differently (`cu.wchusbserial*` / `cu.SLAB_USBtoUART*` / `cu.usbserial-*`). If you cannot find it, install the corresponding driver first (CH34x needs the vendor's latest driver on macOS 13+).
 - **`PermissionError: ... log`**: mpcli is in a read-only directory, see "The log directory must be writable" above.
-- **`firmware not found: .../bin/app.bin`**: run `scripts/build.sh` once first (building on macOS requires the appropriate toolchain; this repo's default flow still assumes Linux).
+- **`firmware not found: .../applications/bin/app.bin`**: run `scripts/build.sh` once first (building on macOS requires the appropriate toolchain; this repo's default flow still assumes Linux).
 
 ---
 
 ## 2.5 Flashing the runtime
 
-Each App flashing script flashes only a **single App image** (`-p -A 0x7009E000 -F bin/app.bin`). When changing boards, refreshing the BT stack / DSP, or when the board is blank, you must first flash a **runtime**. This is handled by `flash-runtime-*` and `flash-linux2win-runtime.sh`, which internally call mpcli's `--flash-runtime` to generate `flash_image.json` and then flash everything.
+Each App flashing script flashes only a **single App image** (`-p -A 0x7009E000 -F applications/bin/app.bin`). When changing boards, refreshing the BT stack / DSP, or when the board is blank, you must first flash a **runtime**. This is handled by `flash-runtime-*` and `flash-linux2win-runtime.sh`, which internally call mpcli's `--flash-runtime` to generate `flash_image.json` and then flash everything.
 
 ### Common commands
 
@@ -272,7 +272,7 @@ This script shares the Windows cache with `flash-linux2win-app.sh` and `flash-li
 - **The runtime does not contain the APP**. The 11 image addresses are `0x70002000`(SYSTEM_Config) / `4000`+`7000`(boot patch0/1) / `a000`(upperstack) / `49000`(OTA header) / `4a000`(stack patch) / `7c000`(sys patch) / `21e000`+`2bc000`+`2fc000`(DSP sys/app/cfg) / `306000`(APP_Config), **with no APP at `0x7009E000`**. A full flash takes two steps:
   ```bash
   scripts/flash-runtime-linux.sh          # 1. flash the runtime first
-  scripts/flash-linux-app.sh              # 2. then flash bin/app.bin
+  scripts/flash-linux-app.sh              # 2. then flash applications/bin/app.bin
   ```
 - **`-u -d` are added explicitly by the script; do not remove them**. mpcli's `--flash-runtime` only injects `-M 5 -r -b 3000000`, and `SYSTEM_Config` lands in the protected `0x70002000` (OEM_CFG region), which cannot be written without `-u`.
 - `--flash-runtime` **does not support** `--gen-output-dir`; the generated `flash_image.json` / `flash_image_report.txt` inevitably go to `fw/runtime_system_bin/<CHIP>/`. They are ignored in `tool/mpcli/.gitignore` and will not pollute the repo.
@@ -304,23 +304,23 @@ The HoneyGUI resource image is a bare image independent of the App; its flash ad
 ### WSL2
 
 ```bash
-scripts/flash-wsl-romfs.sh ../ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM8
+scripts/flash-wsl-romfs.sh ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM8
 ```
 
 ### Linux -> Windows
 
 ```bash
-scripts/flash-linux2win-romfs.sh ../ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM4
+scripts/flash-linux2win-romfs.sh ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM4
 WIN_HOST=my-win-pc DRY=1 scripts/flash-linux2win-romfs.sh
 ```
 
 ### macOS
 
 ```bash
-scripts/flash-macos-romfs.sh ../ui/build/app_romfs_0x70536000.bin              # address derived from the file name
-scripts/flash-macos-romfs.sh ../ui/build/app_romfs_0x70536000.bin 0x70536000 /dev/cu.usbserial-1420
-scripts/flash-macos-romfs.sh --fw ../ui/build/app_romfs_0x70536000.bin --port /dev/cu.usbserial-1420
-DRY=1 scripts/flash-macos-romfs.sh ../ui/build/app_romfs_0x70536000.bin
+scripts/flash-macos-romfs.sh ui/build/app_romfs_0x70536000.bin              # address derived from the file name
+scripts/flash-macos-romfs.sh ui/build/app_romfs_0x70536000.bin 0x70536000 /dev/cu.usbserial-1420
+scripts/flash-macos-romfs.sh --fw ui/build/app_romfs_0x70536000.bin --port /dev/cu.usbserial-1420
+DRY=1 scripts/flash-macos-romfs.sh ui/build/app_romfs_0x70536000.bin
 ```
 
 > The partition address must follow this App's `flash_map.h`: `USER_DATA1_ADDR = 0x70536000` (partition tables differ between App directories; the `0x704D1000` above is an old value from another project -- **run `grep USER_DATA1_ADDR flash_map.h` to confirm before flashing**).
@@ -335,7 +335,28 @@ Capture and decode the watch log with `tool/log-tool`. Both the Windows and Linu
 
 ### Windows: board connected to the Windows workstation
 
-The current Windows mapping exposes this workspace as `X:\workspace\watch-360360`. Start `DebugAnalyzer.exe` there and use `COM3` at `2000000` baud; the canonical command is in the top-level `applications/README.md` section 4.1.
+The current Windows mapping exposes this workspace as `X:\workspace\watch-360360`. Use the deployment
+helper so Windows runs the executable from its local profile instead of the mapped drive:
+
+```bash
+ssh -t main-win-pc
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File X:\workspace\watch-360360\scripts\tool\log-tool\capture-log.ps1
+```
+
+It captures `COM3 @ 2000000`, then copies `COM3_<time>.log/.bin` back to
+`scripts/tool/log-tool/ConsoleDebugAnalyzer/output/` when stopped with `Ctrl+C`. Pass
+`-Port COM5` (and optionally `-Baud <rate>`) to capture another port.
+
+After capture starts, trigger a reset from a second Windows terminal so the board emits a new boot log:
+
+```bat
+%USERPROFILE%\.rtl87-flash\tool\mpcli\mpcli.exe -c COM4 -T RTL87X3G -M 5 -b 2000000 -r
+```
+
+The command succeeds with `Reboot OK!`. When an App flash follows immediately, its final Reboot replaces this standalone reset.
 
 ### Linux: board attached natively
 

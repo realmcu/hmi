@@ -10,7 +10,8 @@ rem   scripts\build.bat --pristine
 rem   set BOARD=rtl87x3g_evb && scripts\build.bat
 rem   set DRY=1 && scripts\build.bat
 
-for %%I in ("%~dp0..") do set "REPO_ROOT=%%~fI"
+for %%I in ("%~dp0..") do set "WORKSPACE_ROOT=%%~fI"
+set "APP_ROOT=%WORKSPACE_ROOT%\applications"
 
 if not defined BOARD set "BOARD=rtl87x3g_evb"
 set "PRISTINE="
@@ -38,8 +39,8 @@ if defined PRISTINE (
   echo [build] board = %BOARD%
 )
 
-pushd "%REPO_ROOT%" >nul || (
-  echo [build] Cannot enter repository root: %REPO_ROOT% 1>&2
+pushd "%APP_ROOT%" >nul || (
+  echo [build] Cannot enter application directory: %APP_ROOT% 1>&2
   exit /b 1
 )
 

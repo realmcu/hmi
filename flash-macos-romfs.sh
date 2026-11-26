@@ -2,7 +2,7 @@
 #
 # flash-macos-romfs.sh -- flash the HoneyGUI romfs resource image to the USER_DATA area with mpcli on macOS.
 #
-# Difference from flash-macos-app.sh: that one flashes the App (bin/app.bin -> 0x7009E000, hard-coded),
+# Difference from flash-macos-app.sh: that one flashes the App (applications/bin/app.bin -> 0x7009E000, hard-coded),
 # this one flashes a resource image whose image and address are provided by the caller (the address can be derived from the file name).
 #
 # The address comes from the flash_map.h partition address (USER_DATA1_ADDR = 0x70536000 for this App; for another App directory
@@ -16,9 +16,9 @@
 # Usage:
 #   scripts/flash-macos-romfs.sh <bin> [addr] [port]
 #
-#   scripts/flash-macos-romfs.sh ../ui/build/app_romfs_0x70536000.bin
-#   scripts/flash-macos-romfs.sh ../ui/build/app_romfs_0x70536000.bin 0x70536000
-#   scripts/flash-macos-romfs.sh ../ui/build/app_romfs_0x70536000.bin 0x70536000 /dev/cu.usbserial-1420
+#   scripts/flash-macos-romfs.sh ui/build/app_romfs_0x70536000.bin
+#   scripts/flash-macos-romfs.sh ui/build/app_romfs_0x70536000.bin 0x70536000
+#   scripts/flash-macos-romfs.sh ui/build/app_romfs_0x70536000.bin 0x70536000 /dev/cu.usbserial-1420
 #   scripts/flash-macos-romfs.sh --fw <bin> --addr 0x70536000 --port /dev/cu.usbserial-1420
 #   PORT=/dev/cu.wchusbserial1420 BAUD=3000000 scripts/flash-macos-romfs.sh <bin>
 #   DRY=1 scripts/flash-macos-romfs.sh <bin>            # only print the command, do not flash
@@ -81,7 +81,7 @@ MPCLI="${MPCLI:-$TOOL_DIR/mpcli-macos}"
 if [ -z "$FW" ]; then
   me="$(basename "${BASH_SOURCE[0]}")"
   echo "[flash-romfs] 用法: $me <bin> [addr] [port]" >&2
-  echo "[flash-romfs]   例: $me ../ui/build/app_romfs_0x70536000.bin" >&2
+  echo "[flash-romfs]   例: $me ui/build/app_romfs_0x70536000.bin" >&2
   exit 1
 fi
 [ -f "$FW" ] || die "镜像不存在: $FW"

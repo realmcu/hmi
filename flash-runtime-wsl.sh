@@ -3,14 +3,14 @@
 # flash-runtime-wsl.sh -- drive the Windows mpcli.exe from WSL2 to flash the bundled runtime firmware.
 #
 # Differences from flash-wsl-app.sh:
-#   - flash-wsl-app.sh flashes a single App image (-p -A 0x7009E000 -F bin/app.bin).
+#   - flash-wsl-app.sh flashes a single App image (-p -A 0x7009E000 -F applications/bin/app.bin).
 #   - This script flashes the whole runtime (boot patch / upperstack / OTA header /
 #     stack & sys patch / DSP sys+app+cfg / SYSTEM & APP Config, 11 images in total),
 #     using mpcli's --flash-runtime to generate flash_image.json in one command, then -a flash all.
 #
 # The runtime does **not include the APP** (0x7009E000 is not in the address table); full flashing order:
 #   1. scripts/flash-runtime-wsl.sh COM13   # flash the runtime first
-#   2. scripts/flash-wsl-app.sh COM13        # then flash bin/app.bin
+#   2. scripts/flash-wsl-app.sh COM13        # then flash applications/bin/app.bin
 #
 # Usage:
 #   scripts/flash-runtime-wsl.sh                  # default COM13

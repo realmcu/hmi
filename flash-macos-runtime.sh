@@ -3,14 +3,14 @@
 # flash-macos-runtime.sh -- flash the complete bundled runtime firmware with mpcli on macOS.
 #
 # Differences from flash-macos-app.sh:
-#   - flash-macos-app.sh flashes a single App image (-p -A 0x7009E000 -F bin/app.bin).
+#   - flash-macos-app.sh flashes a single App image (-p -A 0x7009E000 -F applications/bin/app.bin).
 #   - This script flashes the whole runtime (boot patch / upperstack / OTA header /
 #     stack & sys patch / DSP sys+app+cfg / SYSTEM & APP Config, 11 images in total),
 #     using mpcli's --flash-runtime to generate flash_image.json in one command, then -a flash all.
 #
 # The runtime does **not include the APP** (0x7009E000 is not in the address table); full flashing order:
 #   1. scripts/flash-macos-runtime.sh      # flash the runtime first
-#   2. scripts/flash-macos-app.sh          # then flash bin/app.bin
+#   2. scripts/flash-macos-app.sh          # then flash applications/bin/app.bin
 #
 # Usage:
 #   scripts/flash-macos-runtime.sh                      # auto-detect the download port

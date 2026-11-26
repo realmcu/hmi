@@ -3,7 +3,7 @@
 # flash-wsl-romfs.sh -- drive the Windows mpcli.exe from WSL2 to flash the HoneyGUI romfs
 # resource image to the USER_DATA area.
 #
-# Difference from flash-wsl-app.sh: that one flashes the App (bin/app.bin -> 0x7009E000, hard-coded),
+# Difference from flash-wsl-app.sh: that one flashes the App (applications/bin/app.bin -> 0x7009E000, hard-coded),
 # this one flashes a resource image whose image and address are provided by the caller.
 #
 # The address comes from the flash_map.h partition address (USER_DATA1_ADDR = 0x704D1000), and must match the
@@ -17,8 +17,8 @@
 # Usage:
 #   scripts/flash-wsl-romfs.sh <bin> <addr> [port]
 #
-#   scripts/flash-wsl-romfs.sh ../ui/build/app_romfs_0x704D1000.bin 0x704D1000
-#   scripts/flash-wsl-romfs.sh ../ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM4
+#   scripts/flash-wsl-romfs.sh ui/build/app_romfs_0x704D1000.bin 0x704D1000
+#   scripts/flash-wsl-romfs.sh ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM4
 #   PORT=COM8 BAUD=3000000 scripts/flash-wsl-romfs.sh <bin> 0x704D1000
 #   DRY=1 scripts/flash-wsl-romfs.sh <bin> 0x704D1000   # only print the command, do not flash
 #
@@ -38,7 +38,7 @@ BAUD="${BAUD:-2000000}"
 if [ -z "$FW" ] || [ -z "$ADDR" ]; then
   me="$(basename "${BASH_SOURCE[0]}")"
   echo "[flash-romfs] 用法: $me <bin> <addr> [port]" >&2
-  echo "[flash-romfs]   例: $me ../ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM4" >&2
+  echo "[flash-romfs]   例: $me ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM4" >&2
   exit 1
 fi
 

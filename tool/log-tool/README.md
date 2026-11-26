@@ -11,38 +11,37 @@ tool/log-tool/
 ## Windows
 
 先关闭 PuTTY、串口助手等占用 `COM3` 的程序。当前 Windows 工作区映射为
-`X:\workspace\watch-360360`，在 PowerShell 中运行：
+`X:\workspace\watch-360360`。映射盘上的 EXE 可能被执行策略拒绝，因此使用
+`capture-log.ps1` 先把工具和 trace 同步到 Windows 本地目录再运行：
 
 ```powershell
-$root  = "X:\workspace\watch-360360"
-$trace = "$root\zephyrproject\realtek-app\bin\rtl8773g\trace"
-$out   = "$root\scripts\tool\log-tool\ConsoleDebugAnalyzer\output"
-
-Set-Location "$root\scripts\tool\log-tool\DebugAnalyzer"
-.\DebugAnalyzer.exe -j0 -fs -sp COM3 -br 2000000 `
-  -ar  "$trace\ROM.trace" `
-  -ri  "$trace\LOG1.h" `
-  -apf "$root\applications\bin\app.trace" `
-  -aus "$trace\upperstack.trace" `
-  -aa  "$trace\app_honeygui.trace" `
-  -ap  "$trace\boot_patch0.trace" `
-  -pi  "$trace\patch_log.h" `
-  -spi "$trace\stack_patch_log.h" `
-  -da  "$trace\DSP_APP.trace" `
-  -du  "$trace\DSP_SDK_AUDIO.trace" `
-  -dv  "$trace\DSP_SDK_VOICE.trace" `
-  -fp  "$out"
+powershell -ExecutionPolicy Bypass -File X:\workspace\watch-360360\scripts\tool\log-tool\capture-log.ps1
 ```
 
-`-j0` 表示不显示 UI，解码结果持续输出并写入 `$out`，按 `Ctrl+C` 停止。抓 boot log 时，
-先执行上面的命令，再复位板子：
+脚本默认抓取 `COM3 @ 2000000`，可用 `-Port COMx` / `-Baud n` 覆盖。例如指定 `COM5`：
 
 ```powershell
-C:\Users\howie_wang\.rtl87-flash\tool\mpcli\mpcli.exe `
-  -c COM4 -T RTL87X3G -M 5 -b 2000000 -r
+powershell -ExecutionPolicy Bypass -File X:\workspace\watch-360360\scripts\tool\log-tool\capture-log.ps1 -Port COM5
 ```
 
-成功日志应包含 `[BOOT]`、`ROM MP Loader`、`boot patch` 和 `osif-zephyr init success!`。当前 watch-360360 已实测解码 45 行 `[BOOT]`，0 条解码错误。
+工具和 trace 会复制到
+`%USERPROFILE%\.rtl87-flash\log-tool` 后运行，避免直接执行映射盘上的 EXE。
+
+开始抓取后还需要 reset 一次，板子才会重新输出 boot log。另开一个 Windows 终端执行：
+
+```bat
+%USERPROFILE%\.rtl87-flash\tool\mpcli\mpcli.exe -c COM4 -T RTL87X3G -M 5 -b 2000000 -r
+```
+
+成功时显示 `Reboot OK!`。如果接下来直接烧录，烧录脚本末尾的 Reboot 也可以替代单独的
+reset。
+
+成功日志应包含 `[BOOT]`、`ROM MP Loader`、`boot patch` 和 `osif-zephyr init success!`。当前 watch-360360 实测：单次复位启动为 45 行 `[BOOT]`，完整烧录过程为 659 行，
+0 条解码错误；跨复位点可能出现 `DebugTool info: Maybe there are missing logs!`，这是
+抓取切换提示，不等于解码错误。
+
+按 `Ctrl+C` 停止后，脚本会把 `COM3_<时间>.log` / `.bin` 回拷到
+`ConsoleDebugAnalyzer/output/`。默认会清理 Windows 本地输出；需要保留时使用 `-KeepRemote`。
 
 ## Linux
 

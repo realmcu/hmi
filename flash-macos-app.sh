@@ -13,7 +13,7 @@
 #     see the xattr / Rosetta notes in the "macOS flashing" section of the README.
 #
 # Flash parameters are identical to the other platforms:
-#   - Firmware: bin/app.bin (no MP header)
+#   - Firmware: applications/bin/app.bin (no MP header)
 #   - Flash: -c <port> -T RTL87X3G -M 5 -p -A 0x7009E000 -F <fw> -b 2000000 -r -u -d
 #
 # Usage:
@@ -76,7 +76,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-FW="${FW:-$REPO_ROOT/bin/app.bin}"
+FW="${FW:-$REPO_ROOT/applications/bin/app.bin}"
 ADDR="${ADDR:-0x7009E000}"
 
 # ---- Tool path: like the other platform scripts, defaults to the repo-bundled tool/mpcli/ ----
@@ -132,7 +132,7 @@ $(printf '       %s\n' $_ports)"
 fi
 
 # ---- Checks ----
-[ -f "$FW" ] || die "固件不存在: $FW（先 west build 生成 bin/app.bin）"
+[ -f "$FW" ] || die "固件不存在: $FW（先运行 scripts/build.sh 生成 applications/bin/app.bin）"
 # Convert to an absolute path: the script never changes CWD, but an absolute path avoids ambiguity if the caller cd'd elsewhere.
 FW="$(cd "$(dirname "$FW")" && pwd)/$(basename "$FW")"
 

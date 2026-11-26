@@ -3,7 +3,7 @@
 # through an SSH alias.
 #
 # Companion to flash-linux2win-app.sh: that one flashes the application
-# (bin/app.bin -> 0x7009E000), this one flashes the UI resources, which are a
+# (applications/bin/app.bin -> 0x7009E000), this one flashes the UI resources, which are a
 # separate image at a separate offset. Both share the same provisioned
 # %USERPROFILE%\.rtl87-flash environment, so running one after the other does
 # not re-provision.
@@ -27,8 +27,8 @@
 #     unerased and the verify fails with status 52.
 #
 # Usage:
-#   scripts/flash-linux2win-romfs.sh                      # sole app_romfs_0x*.bin in ../ui/build
-#   scripts/flash-linux2win-romfs.sh ../ui/build/app_romfs_0x704D1000.bin
+#   scripts/flash-linux2win-romfs.sh                      # sole app_romfs_0x*.bin in ui/build
+#   scripts/flash-linux2win-romfs.sh ui/build/app_romfs_0x704D1000.bin
 #   scripts/flash-linux2win-romfs.sh <bin> 0x704D1000 COM4
 #   WIN_HOST=main-win-pc FW=/path/to.bin ADDR=0x704D1000 scripts/flash-linux2win-romfs.sh
 #   DRY=1 scripts/flash-linux2win-romfs.sh
@@ -37,7 +37,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-UI_ROOT="${UI_ROOT:-$REPO_ROOT/../ui}"
+UI_ROOT="${UI_ROOT:-$REPO_ROOT/ui}"
 SECTOR=4096
 
 WIN_HOST="${WIN_HOST:-main-win-pc}"

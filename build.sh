@@ -2,7 +2,7 @@
 #
 # build.sh -- run west build to compile the RTL87X3G application.
 #
-# Matches .vscode/tasks.json:
+# Matches applications/.vscode/tasks.json:
 #   - Normal incremental build: west build -b rtl87x3g_evb
 #   - Forced full rebuild: west build -b rtl87x3g_evb -p
 #
@@ -15,6 +15,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_ROOT="$REPO_ROOT/applications"
 
 BOARD="${BOARD:-rtl87x3g_evb}"
 PRISTINE=""
@@ -29,7 +30,8 @@ done
 
 echo "[build] board = $BOARD${PRISTINE:+   mode = pristine}"
 
-cd "$(realpath "$REPO_ROOT")"
+[ -d "$APP_ROOT" ] || { echo "[build] application directory not found: $APP_ROOT" >&2; exit 1; }
+cd "$(realpath "$APP_ROOT")"
 
 set -- west build -b "$BOARD" $PRISTINE
 

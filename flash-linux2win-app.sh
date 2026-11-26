@@ -17,7 +17,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 WIN_HOST="${WIN_HOST:-main-win-pc}"
 PORT="${1:-${PORT:-COM4}}"
-FW="${FW:-$REPO_ROOT/bin/app.bin}"
+FW="${FW:-$REPO_ROOT/applications/bin/app.bin}"
 ADDR="${ADDR:-0x7009E000}"
 BAUD="${BAUD:-2000000}"
 DRY="${DRY:-0}"
