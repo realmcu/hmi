@@ -8,9 +8,6 @@
 *.swo
 *~
 
-# Separate west project checked out under this repository
-/scripts/
-
 # Emacs
 \#*\#
 

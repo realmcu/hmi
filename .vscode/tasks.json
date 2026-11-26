@@ -29,7 +29,7 @@
     {
       "label": "West Flash (WSL)",
       "type": "shell",
-      "command": "${workspaceFolder}/scripts/flash-wsl-app.sh",
+      "command": "${workspaceFolder}/../scripts/flash-wsl-app.sh",
       "args": ["COM13"],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -39,7 +39,7 @@
     {
       "label": "West Flash (Native Linux)",
       "type": "shell",
-      "command": "${workspaceFolder}/scripts/flash-linux-app.sh",
+      "command": "${workspaceFolder}/../scripts/flash-linux-app.sh",
       "args": ["/dev/ttyUSB0"],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -49,7 +49,7 @@
     {
       "label": "West Flash (Remote)",
       "type": "shell",
-      "command": "${workspaceFolder}/scripts/flash-remote-app.sh",
+      "command": "${workspaceFolder}/../scripts/flash-linux2win-app.sh",
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -58,7 +58,7 @@
     {
       "label": "West Flash (Windows)",
       "type": "shell",
-      "command": "${workspaceFolder}\\scripts\\flash-win32-app.bat",
+      "command": "${workspaceFolder}\\..\\scripts\\flash-win32-app.bat",
       "args": ["COM4"],
       "options": {
         "cwd": "${workspaceFolder}",

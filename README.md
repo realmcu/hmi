@@ -1,9 +1,9 @@
 # watch-360360 applications
 
 RTL87X3G 智能手表应用（Zephyr / west + HoneyGUI，360x360）。本目录是应用工程本体，
-源码入口是 `main.c`，业务模块在 `app/`，构建与烧录脚本在 `scripts/`。
+源码入口是 `main.c`，业务模块在 `app/`；构建与烧录脚本在 workspace 根目录的 `scripts/`。
 
-除手机端外，命令都在 `applications/` 目录下执行。
+除特别说明外，命令都在 workspace 根目录执行。
 
 ## 0. 闭环调试一览
 
@@ -11,25 +11,27 @@ RTL87X3G 智能手表应用（Zephyr / west + HoneyGUI，360x360）。本目录�
 
 | 改动 | 重新生成 | 下载 | 观察 |
 |---|---|---|---|
-| 应用 C 代码 / `prj.conf` / board overlay | `scripts/build.sh` | `flash-linux2win-app.sh` | 手表 `COM3` |
-| UI：HML、图片、字体 | HoneyGUI Designer codegen + export，产出 `ui/build/app_romfs_0x*.bin` | `flash-linux2win-romfs.sh <bin> 0x704D1000 COM4` | 手表 `COM3` |
+| 应用 C 代码 / `prj.conf` / board overlay | `scripts/build.sh` | `scripts/flash-linux2win-app.sh` | 手表 `COM3` |
+| UI：HML、图片、字体 | HoneyGUI Designer codegen + export，产出 `ui/build/app_romfs_0x*.bin` | `scripts/flash-linux2win-romfs.sh <bin> 0x704D1000 COM4` | 手表 `COM3` |
 | runtime / SDK / 分区 / 换板 | 无需编译 | runtime -> romfs -> app（见 2.2） | 手表 `COM3` |
 | 手机 App | `flutter run`（热重载）或 `flutter build apk` | `adb install -r` | `adb logcat` |
 
 典型一次迭代：
 
-1. 先开 log：`ssh -t main-win-pc`，跑 `serial_term.py COM3 -b 2000000`（见 4.1）。
+1. 先开 log：`ssh -t main-win-pc`，按 4.1 启动 `log-tool` 的 `DebugAnalyzer.exe`。
 2. 改代码，`scripts/build.sh`。
 3. `scripts/flash-linux2win-app.sh`，脚本结束会 Reboot。
-4. 看 `COM3` 上的启动/业务 log；手机侧另开一个终端 `adb logcat -s flutter`。
+4. 看 `COM3` 上的启动 log；对应模块开启日志时再检查业务输出。手机侧另开一个终端
+   `adb logcat -s flutter`。
 5. 没抓到现象就复位板子重来，改完回到第 2 步。
 
 每一步的通过判据：
 
-- 编译：`bin/app.bin` 时间戳更新，没有 error。
+- 编译：`applications/bin/app.bin` 时间戳更新，没有 error。
 - 下载：出现 `CMD: program ... ok` / `CMD: flash verify ... ok`，
   最后 `Download : Success` 和 `Reboot OK`。
-- 运行：`COM3` 上有新的 `Booting Zephyr OS` 和业务 log，而不是只有复位前的旧内容。
+- 运行：`COM3` 上出现新的 `[BOOT]`、`ROM MP Loader`、boot patch 和
+  `osif-zephyr init success!`，而不是只有复位前的旧内容。
 - 手机：`adb logcat -s flutter` 里能看到扫描、连接、订阅的打印，App 不崩。
 
 只改 UI 时不必重烧 App：romfs 是独立镜像，按 `USER_DATA1_ADDR` 单独烧即可，前提是
@@ -42,7 +44,7 @@ scripts/build.sh          # 增量编译，默认 board = rtl87x3g_evb
 scripts/build.sh -p       # 全量重新编译（pristine）
 ```
 
-- 产物在 `build/`，烧录用固件是 `bin/app.bin`（无 MP header）。
+- 产物在 `applications/build/`，烧录用固件是 `applications/bin/app.bin`（无 MP header）。
 - 改了 `prj.conf` / `Kconfig` 但不生效时，用 `-p` 全量编译。
 - 报 `west: command not found` 时先激活 Zephyr 虚拟环境。
 
@@ -62,7 +64,7 @@ scripts/flash-linux2win-app.sh COM8         # 指定串口
 DRY=1 scripts/flash-linux2win-app.sh        # 只打印参数，不连接板子
 ```
 
-会把 `bin/app.bin` 烧到 `0x7009E000`，完成后自动 Reboot。
+会把 `applications/bin/app.bin` 烧到 `0x7009E000`，完成后自动 Reboot。
 
 ### 2.2 特殊场景：完整重新烧录
 
@@ -71,7 +73,7 @@ DRY=1 scripts/flash-linux2win-app.sh        # 只打印参数，不连接板子
 
 ```bash
 scripts/flash-linux2win-runtime.sh  COM4
-scripts/flash-linux2win-romfs.sh    ../ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM4
+scripts/flash-linux2win-romfs.sh    ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM4
 scripts/flash-linux2win-app.sh      COM4
 ```
 
@@ -90,7 +92,7 @@ scripts/flash-linux2win-app.sh      COM4
 |---|---|---|
 | `WIN_HOST` | `main-win-pc` | 板子所连 Windows 的 SSH 别名 |
 | 第一个位置参数 / `PORT` | `COM4` | 下载串口 |
-| `FW` | `bin/app.bin` | App 固件 |
+| `FW` | `applications/bin/app.bin` | App 固件 |
 | `ADDR` | `0x7009E000` | App 烧录地址 |
 | `BAUD` | `2000000` | 波特率 |
 | `CHIP` | `RTL8773G` | runtime 芯片型号（另支持 `RTL8783G` / `RTL87X3EP`） |
@@ -168,21 +170,40 @@ Release 包是 `build/app/outputs/apk/release/HoneyBox-release.apk`，
 ### 4.1 手表 LOG（COM3，2 Mbaud）
 
 板子的 log 口在 Windows 工作机上，串口是 `COM3`，波特率 `2000000`。登录 Windows
-后用仓库自带的 `serial_term.py` 看（它会保持 RTS/DTR deassert，打开时不会把板子复位）：
+后运行 `capture-log.ps1`：它会先把 `DebugAnalyzer` 和当前固件的 trace 复制到 Windows
+本地目录，再从本地启动，避免映射盘 EXE 被执行策略拒绝。
 
 ```bash
 ssh -t main-win-pc
-python C:\Users\howie_wang\.rtl87-flash\serial_term.py COM3 -b 2000000
 ```
 
-- `ssh -t` 必须有，否则没有 TTY，按键和 Ctrl+] 菜单都用不了。
-- 下载用 `COM4`，看 log 用 `COM3`，两个口互不抢占；确实是同一根线时，先看 log 再
-  下载，需要在 Ctrl+] 菜单里 `c` 关闭串口、烧完再 `o` 打开。
-- 启动即开始记录，日志写到脚本旁边的 `log\<时间>_COM3.log`，即
-  `C:\Users\howie_wang\.rtl87-flash\log\`；Ctrl+] 里的 `l` 可以暂停/继续写。
-- 在 Windows 上另开一个 PowerShell 跟最新日志：
-  `Get-Content (Get-ChildItem $env:USERPROFILE\.rtl87-flash\log\*.log | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName -Wait -Tail 50`
-- 想先抓启动 log，就先起 `serial_term.py`，再复位板子/执行下载。
+远程 shell 是 `cmd.exe`，直接运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File X:\workspace\watch-360360\scripts\tool\log-tool\capture-log.ps1
+```
+
+- `ssh -t` 必须有，否则远程命令没有交互式终端，无法用 `Ctrl+C` 停止抓取。
+- 启动前先关闭 PuTTY、串口助手等占用 `COM3` 的程序。
+- 默认读取 `COM3 @ 2000000`；需要其他串口或波特率时使用 `-Port COMx` / `-Baud n`。
+  例如：`capture-log.ps1 -Port COM5`。
+- 停止时按 `Ctrl+C`。脚本会终止 `DebugAnalyzer`，并把 `.log` / `.bin` 回拷到
+  `scripts/tool/log-tool/ConsoleDebugAnalyzer/output/`；`-KeepRemote` 可保留 Windows 本地副本。
+- trace 必须和板子上的固件来自同一次构建，尤其是重新执行 `scripts/build.sh` 后的
+  `applications/bin/app.trace`。trace 不匹配时会出现模块错误、漏行或乱码。
+- 下载用 `COM4`，看 log 用 `COM3`，两个口通常互不抢占；如果实际是同一根线，先停止
+  `DebugAnalyzer.exe` 释放串口，烧完再重新启动。
+- **抓启动 log 必须触发 reset**。只抓 log 时，先启动上面的抓取命令，再另开一个 Windows
+  终端执行：
+
+  ```bat
+  %USERPROFILE%\.rtl87-flash\tool\mpcli\mpcli.exe -c COM4 -T RTL87X3G -M 5 -b 2000000 -r
+  ```
+
+  成功时会看到 `Reboot OK!`，抓取文件随后出现新的 `[BOOT]`。如果下一步直接执行
+  `scripts/flash-linux2win-app.sh`，烧录结束的 Reboot 可以替代这条单独 reset 命令。
+  完整工具说明见
+  `scripts/tool/log-tool/README.md`。
 
 ### 4.2 手机 LOG（adb）
 
@@ -196,7 +217,8 @@ adb logcat -s flutter         # 只看 Flutter / Dart 的 print、debugPrint
 adb logcat -c                 # 复现前先清掉旧日志
 ```
 
-联调 BLE 时通常两个终端并排：一个盯手表 `COM3`，一个 `adb logcat -s flutter`。
+联调 BLE 时通常两个终端并排：一个运行 `DebugAnalyzer.exe` 看手表 `COM3`，一个
+`adb logcat -s flutter`。
 
 ## 5. 更多
 
