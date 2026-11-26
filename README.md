@@ -10,7 +10,10 @@ Common utility scripts in this directory, covering the full **build -> flash -> 
 - `flash-macos-app.sh` -- flash the App with the macOS build of `mpcli` on **macOS** (serial port auto-detection of `cu.*`), see "macOS native"
 - `flash-runtime-linux.sh` / `flash-runtime-wsl.sh` / `flash-runtime-win32.bat` / `flash-macos-runtime.sh` -- flash the **whole runtime** (boot patch / upperstack / stack & sys patch / DSP / Config, 11 images in total), see "2.5 Flashing the runtime"
 - `flash-linux2win-runtime.sh` -- from a Linux workstation, drive the Windows PC over SSH to flash the runtime
-- `flash-wsl-romfs.sh` / `flash-linux2win-romfs.sh` / `flash-macos-romfs.sh` -- flash the HoneyGUI romfs resource image, see "2.6 Flashing romfs"
+- `flash-linux2win-user-data1.sh` -- detect Image ID `0xFFFE` and flash USER_DATA1 at its mapped address
+- `flash-linux2win-direct-addr.sh` -- low-level file-to-explicit-address flashing without header or ID parsing
+- `flash-wsl-user-data1.sh` / `flash-wsl-direct-addr.sh` -- the same two operations through WSL2
+- `flash-macos-user-data1.sh` / `flash-macos-direct-addr.sh` -- the same two operations with the macOS `mpcli`
 - `tool/mpcli/` -- the repo-bundled mpcli v4.0.0.7; `mpcli` (Linux ELF) and `mpcli.exe` (Windows) sit side by side and share `fw/` and `config/`. All flash scripts take it from here by default and no longer depend on an external install. The macOS build `mpcli-macos` (Mach-O, a build artifact not tracked in the repo) also lives in this directory, and the scripts use it by default with the same behavior as the other platform scripts
 - `tool/log-tool/` -- the bundle for capturing and decoding the watch log. It contains `DebugAnalyzer/DebugAnalyzer.exe` for Windows and `ConsoleDebugAnalyzer/ConsoleDebugAnalyzer.out` for Linux x86_64; see `tool/log-tool/README.md` for the complete command lines and trace mapping
 - `generate_sdk.py` -- generate a trimmed SDK package from the release configuration in `SDK_COMMON.py` / `SDK_HMI.py`; see `python scripts/generate_sdk.py --help` for parameters
@@ -63,7 +66,7 @@ ADDR=0x7009E000 BAUD=2000000 scripts/flash-linux2win-app.sh COM8
 DRY=1 scripts/flash-linux2win-app.sh COM4
 ```
 
-The Windows side needs OpenSSH Server enabled and non-interactive login configured for `ssh main-win-pc`. Runtime and romfs use `flash-linux2win-runtime.sh` and `flash-linux2win-romfs.sh` respectively; all three share the same Windows cache.
+The Windows side needs OpenSSH Server enabled and non-interactive login configured for `ssh main-win-pc`. Runtime and USER_DATA1 use `flash-linux2win-runtime.sh` and `flash-linux2win-user-data1.sh` respectively; all three share the same Windows cache.
 
 ### Local flashing
 
@@ -156,7 +159,7 @@ scripts/flash-macos-app.sh --help              # print the script header usage
 
 Priority: **command-line arguments > environment variables > defaults** (defaults `applications/bin/app.bin` / `0x7009E000` / `2000000`).
 
-Flash parameters are identical to the other platforms (`-p -A 0x7009E000 -b 2000000 -M 5 -r -u -d -T RTL87X3G`); only the execution environment differs. The three scripts `flash-macos-app.sh` / `flash-macos-runtime.sh` / `flash-macos-romfs.sh` correspond one-to-one to the Linux, WSL and win32 versions.
+Flash parameters are identical to the other platforms (`-p -A 0x7009E000 -b 2000000 -M 5 -r -u -d -T RTL87X3G`); only the execution environment differs. `flash-macos-user-data1.sh` and `flash-macos-direct-addr.sh` follow the same Image-ID/address split as the WSL and Linux-to-Windows scripts.
 
 All three macOS scripts accept `--fw` / `--addr` / `--port` / `--baud` (short forms `-f` / `-a` / `-c` / `-b`, and also `--opt=value`); runtime additionally accepts `--chip`. Runtime is a fixed set of 11 images plus a fixed address table, and **deliberately rejects `--fw` / `--addr`**, telling you to use `flash-macos-app.sh` instead.
 
@@ -265,7 +268,7 @@ scripts/flash-linux2win-runtime.sh COM4
 WIN_HOST=my-win-pc CHIP=RTL8783G scripts/flash-linux2win-runtime.sh COM8
 ```
 
-This script shares the Windows cache with `flash-linux2win-app.sh` and `flash-linux2win-romfs.sh`. After flashing the runtime you still need to run `scripts/flash-linux2win-app.sh COM4` to flash the App.
+This script shares the Windows cache with `flash-linux2win-app.sh` and `flash-linux2win-user-data1.sh`. After flashing the runtime you still need to run `scripts/flash-linux2win-app.sh COM4` to flash the App.
 
 ### Notes
 
@@ -297,35 +300,53 @@ This script shares the Windows cache with `flash-linux2win-app.sh` and `flash-li
 
 ---
 
-## 2.6 Flashing romfs
+## 2.6 Flashing USER_DATA1 / ROMFS
 
-The HoneyGUI resource image is a bare image independent of the App; its flash address must agree with `romfsBaseAddr` in `ui/project.json`, the `gui_vfs_mount_romfs()` call and the partition table address. The address must be 4 KB aligned.
+Each platform now has two entry points:
 
-### WSL2
+- `*-user-data1.sh`: accepts MP-wrapped or bare USER_DATA1 images, requires Image ID `0xFFFE`, strips the MP header, and resolves the address from `flash_map.h`.
+- `*-direct-addr.sh`: accepts `<file> <address> [port]`; it performs no MP/IMG/Image-ID validation and writes the bytes unchanged.
 
-```bash
-scripts/flash-wsl-romfs.sh ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM8
-```
+The raw `app_romfs_0x*.bin` file is not directly flashable under the current USER_DATA1 layout. It must first be wrapped as IMG header + ROMFS.
 
 ### Linux -> Windows
 
 ```bash
-scripts/flash-linux2win-romfs.sh ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM4
-WIN_HOST=my-win-pc DRY=1 scripts/flash-linux2win-romfs.sh
+scripts/flash-linux2win-user-data1.sh ui/build/app_romfs_0x704D1400_MP.bin COM4
+scripts/flash-linux2win-user-data1.sh ui/build/app_romfs_0x704D1400_USER_DATA1.bin COM4
+DRY=1 scripts/flash-linux2win-user-data1.sh ui/build/app_romfs_0x704D1400_MP.bin
+```
+
+This script accepts both the MP-wrapped OTA package and the bare IMG-header image.
+It recognizes Image ID `0xFFFE`, strips the MP header when present, resolves
+`USER_DATA1_ADDR` from `applications/flash_map.h`, and fails if the ID is absent,
+unsupported, or inconsistent between the MP and IMG headers.
+
+### WSL2
+
+```bash
+scripts/flash-wsl-user-data1.sh ui/build/app_romfs_0x704D1400_MP.bin COM8
+scripts/flash-wsl-user-data1.sh ui/build/app_romfs_0x704D1400_USER_DATA1.bin COM8
 ```
 
 ### macOS
 
 ```bash
-scripts/flash-macos-romfs.sh ui/build/app_romfs_0x70536000.bin              # address derived from the file name
-scripts/flash-macos-romfs.sh ui/build/app_romfs_0x70536000.bin 0x70536000 /dev/cu.usbserial-1420
-scripts/flash-macos-romfs.sh --fw ui/build/app_romfs_0x70536000.bin --port /dev/cu.usbserial-1420
-DRY=1 scripts/flash-macos-romfs.sh ui/build/app_romfs_0x70536000.bin
+scripts/flash-macos-user-data1.sh ui/build/app_romfs_0x704D1400_MP.bin /dev/cu.usbserial-1420
+scripts/flash-macos-user-data1.sh ui/build/app_romfs_0x704D1400_USER_DATA1.bin
 ```
 
-> The partition address must follow this App's `flash_map.h`: `USER_DATA1_ADDR = 0x70536000` (partition tables differ between App directories; the `0x704D1000` above is an old value from another project -- **run `grep USER_DATA1_ADDR flash_map.h` to confirm before flashing**).
+The macOS port is optional; when omitted, the script auto-detects a unique USB serial port. The address is always selected from Image ID.
 
-The script checks address alignment, the base address baked into the image and the romfs root dirent. The resource image uses a different flash offset from the App and runtime.
+### Direct address
+
+```bash
+scripts/flash-linux2win-direct-addr.sh <file> <address> [port]
+scripts/flash-wsl-direct-addr.sh <file> <address> [port]
+scripts/flash-macos-direct-addr.sh <file> <address> [port]
+```
+
+File and address are mandatory positional arguments in every direct-address script. The address must be 4 KiB aligned.
 
 ---
 
