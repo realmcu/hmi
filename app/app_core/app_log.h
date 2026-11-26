@@ -8,7 +8,9 @@
  * Business code keeps using APP_LOGI/W/E/D without depending directly on
  * Zephyr logging. This adapter forwards each call to trace.h's APP_PRINT_*
  * macros so application logs follow the same trace path as the Bluetooth and
- * platform layers.
+ * platform layers. String arguments must be wrapped with TRACE_STRING(), e.g.
+ * APP_LOGI("device %s", TRACE_STRING(name)); the trace decoder uses that tag
+ * to distinguish a string parameter from an ordinary integer.
  */
 
 #include "trace.h"

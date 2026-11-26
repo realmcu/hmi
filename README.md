@@ -189,8 +189,13 @@ powershell -ExecutionPolicy Bypass -File X:\workspace\watch-360360\scripts\tool\
   例如：`capture-log.ps1 -Port COM5`。
 - 停止时按 `Ctrl+C`。日志跟随实际运行的 Windows 工具保留在
   `%USERPROFILE%\.rtl87-flash\log-tool\output\`，不会回拷到 Linux workspace。
-- trace 必须和板子上的固件来自同一次构建，尤其是重新执行 `scripts/build.sh` 后的
-  `applications/bin/app.trace`。trace 不匹配时会出现模块错误、漏行或乱码。
+- trace 必须和板子上的固件来自同一次构建。应用侧统一使用重新执行 `scripts/build.sh`
+  后生成的 `applications/bin/app.trace`，不能使用 SDK 预置的 `app_honeygui.trace`
+  或 `app_lvgl.trace`；它们与当前 App 的 trace 地址范围重叠，混用会把 OTA 等日志
+  解码成其他模块的文本，并产生参数类型告警。
+- runtime trace 固定在 `scripts/tool/log-tool/runtime-traces/RTL8773G/v1.14.3.2/`，
+  与 `watch_rtl8773g_app_mp` 使用的 runtime 发布批次一致，并由 `manifest.json` 校验
+  SHA256。更换 runtime 时必须同时切换 trace profile，不能继续使用旧目录。
 - 下载用 `COM4`，看 log 用 `COM3`，两个口通常互不抢占；如果实际是同一根线，先停止
   `DebugAnalyzer.exe` 释放串口，烧完再重新启动。
 - **抓启动 log 必须触发 reset**。只抓 log 时，先启动上面的抓取命令，再另开一个 Windows

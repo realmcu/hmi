@@ -375,7 +375,7 @@ static void hrm_task(void *param)
         if (s_fd == POSIX_FD_NULL)
         {
             state_set_error(-ENODEV);
-            APP_LOGW("cannot open %s, retrying", HRM_DEVICE_PATH);
+            APP_LOGW("cannot open %s, retrying", TRACE_STRING(HRM_DEVICE_PATH));
             os_delay(5000u);
         }
     }
@@ -444,7 +444,7 @@ void health_hrm_set_suspended(bool suspended)
         s_stop_hr = true;
         s_stop_spo2 = true;
     }
-    APP_LOGI("sensor %s", suspended ? "suspended" : "resumed");
+    APP_LOGI("sensor %s", TRACE_STRING(suspended ? "suspended" : "resumed"));
 }
 
 void health_hrm_start_heart_rate(void)

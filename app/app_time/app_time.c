@@ -73,7 +73,7 @@ int app_time_set(uint32_t sec)
     posix_fd_t rtc = rtc_fd_get();
     if (rtc == POSIX_FD_NULL)
     {
-        APP_LOGE("open %s failed", APP_TIME_RTC_PATH);
+        APP_LOGE("open %s failed", TRACE_STRING(APP_TIME_RTC_PATH));
         return -1;
     }
 
@@ -195,7 +195,7 @@ static int tick_start(void)
 {
     if (rtc_fd_get() == POSIX_FD_NULL)
     {
-        APP_LOGE("open %s failed; boundary events disabled", APP_TIME_RTC_PATH);
+        APP_LOGE("open %s failed; boundary events disabled", TRACE_STRING(APP_TIME_RTC_PATH));
         return -1;
     }
     posix_rtc_update_t u = { .callback = rtc_second_cb, .arg = NULL };

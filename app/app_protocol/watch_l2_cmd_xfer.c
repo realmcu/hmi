@@ -188,7 +188,7 @@ static void on_cmd_xfer(uint8_t version, const watch_l2_kv_t *kvs, uint8_t n)
                     rc = fdb_bf_commit(file, 0);
                     if (rc != FDB_NO_ERR)
                     {
-                        APP_PRINT_ERROR2("[bf] commit '%s' failed (%d)", name, (int)rc);
+                        APP_PRINT_ERROR2("[bf] commit '%s' failed (%d)", TRACE_STRING(name), (int)rc);
                     }
                     else
                     {

@@ -67,13 +67,13 @@ int app_core_init(void)
         {
             continue;
         }
-        APP_LOGI("init %s", m->name);
+        APP_LOGI("init %s", TRACE_STRING(m->name));
         if (m->init != NULL)
         {
             int rc = m->init();
             if (rc != 0)
             {
-                APP_LOGE("init %s failed rc=%d", m->name, rc);
+                APP_LOGE("init %s failed rc=%d", TRACE_STRING(m->name), rc);
             }
         }
     }
@@ -86,11 +86,11 @@ int app_core_init(void)
                              APP_TASK_PRIORITY);
     if (!ok)
     {
-        APP_LOGE("failed to create %s", APP_TASK_NAME);
+        APP_LOGE("failed to create %s", TRACE_STRING(APP_TASK_NAME));
         return -2;
     }
     APP_LOGI("%s created (stack=%u, prio=%u)",
-             APP_TASK_NAME,
+             TRACE_STRING(APP_TASK_NAME),
              (unsigned)APP_TASK_STACK_SIZE,
              (unsigned)APP_TASK_PRIORITY);
     return 0;
