@@ -12,7 +12,7 @@ Common utility scripts in this directory, covering the full **build -> flash -> 
 - `flash-linux2win-runtime.sh` -- from a Linux workstation, drive the Windows PC over SSH to flash the runtime
 - `flash-wsl-romfs.sh` / `flash-linux2win-romfs.sh` / `flash-macos-romfs.sh` -- flash the HoneyGUI romfs resource image, see "2.6 Flashing romfs"
 - `tool/mpcli/` -- the repo-bundled mpcli v4.0.0.7; `mpcli` (Linux ELF) and `mpcli.exe` (Windows) sit side by side and share `fw/` and `config/`. All flash scripts take it from here by default and no longer depend on an external install. The macOS build `mpcli-macos` (Mach-O, a build artifact not tracked in the repo) also lives in this directory, and the scripts use it by default with the same behavior as the other platform scripts
-- `serial_term.py` -- a **Windows-only** serial terminal (depends on `msvcrt`, cannot run on Linux). To view logs on Linux, see the "Viewing LOG" section and use the built-in commands
+- `tool/log-tool/` -- the bundle for capturing and decoding the watch log. It contains `DebugAnalyzer/DebugAnalyzer.exe` for Windows and `ConsoleDebugAnalyzer/ConsoleDebugAnalyzer.out` for Linux x86_64; see `tool/log-tool/README.md` for the complete command lines and trace mapping
 - `generate_sdk.py` -- generate a trimmed SDK package from the release configuration in `SDK_COMMON.py` / `SDK_HMI.py`; see `python scripts/generate_sdk.py --help` for parameters
 
 ---
@@ -331,7 +331,26 @@ The script checks address alignment, the base address baked into the image and t
 
 ## 3. Viewing LOG
 
-On native Linux you **do not** use `serial_term.py` (it depends on Windows' `msvcrt` and cannot run). Just use the built-in commands: configure the serial parameters once with `stty`, watch in real time with `cat`, and save to disk with `tee`.
+Capture and decode the watch log with `tool/log-tool`. Both the Windows and Linux builds use the trace files produced by the same firmware build; keep `applications/bin/app.trace` in sync whenever the App is rebuilt. The complete option and trace-file mapping is in `tool/log-tool/README.md`.
+
+### Windows: board connected to the Windows workstation
+
+The current Windows mapping exposes this workspace as `X:\workspace\watch-360360`. Start `DebugAnalyzer.exe` there and use `COM3` at `2000000` baud; the canonical command is in the top-level `applications/README.md` section 4.1.
+
+### Linux: board attached natively
+
+```bash
+cd tool/log-tool/ConsoleDebugAnalyzer
+chmod +x ConsoleDebugAnalyzer.out
+./ConsoleDebugAnalyzer.out --help
+./ConsoleDebugAnalyzer.out -p /dev/ttyUSB1 -b 2000000 -partNum RTL87X3G -f ./config.json
+```
+
+`config.json` points at this workspace's trace files and writes decoded output to `ConsoleDebugAnalyzer/output/` by default. Start the analyzer before resetting or flashing the board so the boot log is captured; press `Ctrl+C` to stop. Override `-p` and `-b` when the log port or baud rate differs. The download port and log port normally use separate devices, so close whichever process owns the same port before flashing.
+
+### Fallback: raw serial capture
+
+The commands below capture raw bytes without decoding and are only a fallback for diagnosing a serial connection when the log tool cannot start.
 
 > **Viewing the log on macOS**: there is no `stty -F` (BSD uses `stty -f`), and the serial port is `/dev/cu.*`:
 > ```bash
@@ -343,7 +362,7 @@ On native Linux you **do not** use `serial_term.py` (it depends on Windows' `msv
 
 > ⚠️ **RTS/DTR and reset**: RTL87X3G's RTS is an **active-low reset line**. Many serial tools assert RTS/DTR when opening the port, holding the chip in reset. The commands below use `stty` to disable hardware flow control (`-crtscts`) and `hupcl`, avoiding an accidental reset when opening/closing the port. If your USB-to-serial driver still toggles DTR/RTS on open, seeing the chip reset is normal; just reconnect.
 
-### Configure the serial parameters once
+#### Configure the serial parameters once
 
 ```bash
 PORT=/dev/ttyUSB1        # the port for viewing the log (the download port is usually ttyUSB0; the log port is another one)
@@ -353,7 +372,7 @@ BAUD=2000000
 stty -F "$PORT" "$BAUD" cs8 -cstopb -parenb -crtscts -hupcl raw -echo
 ```
 
-### View the log in real time (can also save to disk)
+#### View the log in real time (can also save to disk)
 
 ```bash
 # view only (direct output to the terminal) -- the terminal is line buffered, flushes in real time, and renders ANSI colors
@@ -391,7 +410,7 @@ dd if="$PORT" of="$LOG" bs=1
 > `picocom -b 2000000 --imap lfcrlf /dev/ttyUSB1` or `tio -b 2000000 /dev/ttyUSB1`.
 > Note that `picocom` toggles DTR/RTS by default; add options such as `--lower-rts --lower-dtr` to avoid the reset as needed.
 
-### Sharing one port between viewing the log and flashing
+#### Sharing one port between viewing the log and flashing
 
 `cat` / `picocom` hold the serial port; stop them before flashing:
 
@@ -400,7 +419,7 @@ dd if="$PORT" of="$LOG" bs=1
 3. `scripts/flash-linux-app.sh` to flash the firmware
 4. `cat "$PORT"` again to resume viewing
 
-### Viewing saved logs
+#### Viewing saved logs
 
 A log contains the **raw bytes the chip emitted**, including ANSI escapes (colors, cursor control).
 
@@ -437,7 +456,7 @@ grep -n -C3 "hardfault" "$LOGDIR"/*.log       # with context
 grep -n -C3 "hardfault" "$(ls -t "$LOGDIR"/*.log | head -1)"  # search only the latest one
 ```
 
-### Notes
+#### Notes
 
 - **Port permissions**: reading `/dev/ttyUSB*` also requires the `dialout` group (see the "Flash" section).
 - **"No output" troubleshooting order**:
