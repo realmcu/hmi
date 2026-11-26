@@ -12,7 +12,7 @@ RTL87X3G 智能手表应用（Zephyr / west + HoneyGUI，360x360）。本目录�
 | 改动 | 重新生成 | 下载 | 观察 |
 |---|---|---|---|
 | 应用 C 代码 / `prj.conf` / board overlay | `scripts/build.sh` | `scripts/flash-linux2win-app.sh` | 手表 `COM3` |
-| UI：HML、图片、字体 | HoneyGUI Designer codegen + export，产出 `ui/build/app_romfs_0x*.bin` | `scripts/flash-linux2win-romfs.sh <bin> 0x704D1000 COM4` | 手表 `COM3` |
+| UI：HML、图片、字体 | HoneyGUI Designer codegen + export，产出 USER_DATA1/MP 镜像 | `scripts/flash-linux2win-user-data1.sh <bin> COM4` | 手表 `COM3` |
 | runtime / SDK / 分区 / 换板 | 无需编译 | runtime -> romfs -> app（见 2.2） | 手表 `COM3` |
 | 手机 App | `flutter run`（热重载）或 `flutter build apk` | `adb install -r` | `adb logcat` |
 
@@ -69,21 +69,21 @@ DRY=1 scripts/flash-linux2win-app.sh        # 只打印参数，不连接板子
 ### 2.2 特殊场景：完整重新烧录
 
 换板子、换 runtime / SDK、分区或 romfs 地址有变动时，才需要完整烧录。完整流程是
-**runtime -> romfs -> App** 三步，顺序不能颠倒，runtime 本身不包含 App：
+**runtime -> USER_DATA1 -> App** 三步，顺序不能颠倒，runtime 本身不包含 App：
 
 ```bash
 scripts/flash-linux2win-runtime.sh  COM4
-scripts/flash-linux2win-romfs.sh    ui/build/app_romfs_0x704D1000.bin 0x704D1000 COM4
+scripts/flash-linux2win-user-data1.sh ui/build/app_romfs_0x704D1400_USER_DATA1.bin COM4
 scripts/flash-linux2win-app.sh      COM4
 ```
 
 - runtime 是 11 个镜像的固定集合（boot patch / upperstack / stack patch / sys patch /
   DSP / Config 等），地址表由脚本内置，不接受自定义固件地址。
-- romfs 是 HoneyGUI 资源镜像，地址必须与 `flash_map.h` 中的
-  `USER_DATA1_ADDR`（当前 `0x704D1000`）和 `ui/project.json` 的
-  `romfsBaseAddr` 一致，并且 4 KB 对齐。地址不匹配烧录不会报错，但启动时会
-  `open file fail` 或 assertion。
-- romfs 镜像由 UI 工程构建产生，路径形如 `ui/build/app_romfs_<addr>.bin`。
+- USER_DATA1 镜像的 1 KiB IMG header 位于 `USER_DATA1_ADDR`（当前
+  `0x704D1000`），ROMFS 负载位于 `USER_DATA1_ADDR + 0x400`
+  （当前 `0x704D1400`）。烧录脚本根据 Image ID `0xFFFE` 自动选择地址。
+- 可传入 IMG header + ROMFS 的裸 USER_DATA1 镜像，也可传入 MP header +
+  IMG header + ROMFS 的 OTA 包；后者会由脚本自动剥离 MP header。
 - 三个脚本共用同一个 Windows 缓存，连续执行不会重复部署工具。
 
 ### 2.3 可覆盖的参数

@@ -40,6 +40,18 @@
 #define IMAGE_CTRL_HEADER_OFFSET 196
 #define COMPRESSED_IMAGE_CTRL_HEADER_OFFSET 0
 
+#ifdef USER_DATA1_ADDR
+typedef enum
+{
+    USER_DATA_SUCCESS = 0,
+    USER_DATA_NOT_SUPPORT_OTA,
+    USER_DATA_TYPE_ERROR,
+} T_USER_DATA_ERROR_TYPE;
+
+T_USER_DATA_ERROR_TYPE dfu_get_user_data_info(USER_IMG_ID image_id,
+                                              uint32_t *img_info, bool is_addr);
+#endif
+
 /** @defgroup  APP_OTA_SERVICE APP OTA handle
     * @brief APP OTA Service to implement OTA feature
     * @{
@@ -368,6 +380,22 @@ static uint8_t app_ota_start_dfu_handle(uint8_t *p_data)
                      ota_struct.image_total_length
                     );
 
+#ifdef USER_DATA1_ADDR
+    if ((USER_IMG_ID)ota_struct.image_id >= IMG_USER_DATA_FIRST &&
+        (USER_IMG_ID)ota_struct.image_id < IMG_USER_DATA_MAX)
+    {
+        uint32_t user_data_size = 0;
+        if (dfu_get_user_data_info((USER_IMG_ID)ota_struct.image_id,
+                                   &user_data_size, false) != USER_DATA_SUCCESS ||
+            ota_struct.image_total_length > user_data_size)
+        {
+            APP_PRINT_ERROR0("app_ota_start_dfu: USER_DATA image is oversize");
+            results = DFU_ARV_FAIL_INVALID_PARAMETER;
+            return results;
+        }
+    }
+    else
+#endif
     if (app_ota_check_section_size(ota_struct.image_total_length, ota_struct.image_id) == false)
     {
         APP_PRINT_ERROR0("app_ota_check_section_size: Image is oversize");
@@ -411,6 +439,22 @@ static uint8_t app_ota_start_dfu_handle(uint8_t *p_data)
         results = DFU_ARV_FAIL_OPERATION;
         return results;
     }
+
+#ifdef USER_DATA1_ADDR
+    if ((USER_IMG_ID)ota_struct.image_id >= IMG_USER_DATA_FIRST &&
+        (USER_IMG_ID)ota_struct.image_id < IMG_USER_DATA_MAX)
+    {
+        uint32_t user_data_addr = 0;
+        if (dfu_get_user_data_info((USER_IMG_ID)ota_struct.image_id,
+                                   &user_data_addr, true) != USER_DATA_SUCCESS ||
+            !fmc_flash_nor_unlock_block_protect(user_data_addr))
+        {
+            ota_struct.ota_flag.is_ota_process = false;
+            results = DFU_ARV_FAIL_OPERATION;
+            return results;
+        }
+    }
+#endif
 
     return results;
 }
@@ -652,13 +696,6 @@ static void app_ota_buffer_check_handle(uint8_t *p_data, uint8_t *data)
 }
 
 #ifdef USER_DATA1_ADDR
-typedef enum
-{
-    USER_DATA_SUCCESS = 0,
-    USER_DATA_NOT_SUPPORT_OTA,
-    USER_DATA_TYPE_ERROR,
-} T_USER_DATA_ERROR_TYPE;
-
 T_USER_DATA_ERROR_TYPE dfu_get_user_data_info(USER_IMG_ID image_id,
                                               uint32_t *img_info, bool is_addr)
 {
