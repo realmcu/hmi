@@ -1,7 +1,6 @@
 param(
     [string]$Port = "COM3",
-    [int]$Baud = 2000000,
-    [switch]$KeepRemote
+    [int]$Baud = 2000000
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,14 +8,13 @@ $ErrorActionPreference = "Stop"
 $toolSource = Join-Path $PSScriptRoot "DebugAnalyzer"
 $traceSource = Join-Path $PSScriptRoot "..\..\..\zephyrproject\realtek-app\bin\rtl8773g\trace"
 $appTraceSource = Join-Path $PSScriptRoot "..\..\..\applications\bin\app.trace"
-$copyBackDir = Join-Path $PSScriptRoot "ConsoleDebugAnalyzer\output"
 
 $localRoot = Join-Path $env:USERPROFILE ".rtl87-flash\log-tool"
 $localTool = Join-Path $localRoot "DebugAnalyzer"
 $localTrace = Join-Path $localRoot "trace"
 $localOutput = Join-Path $localRoot "output"
 
-New-Item -ItemType Directory -Force $localTool, $localTrace, $localOutput, $copyBackDir | Out-Null
+New-Item -ItemType Directory -Force $localTool, $localTrace, $localOutput | Out-Null
 
 Copy-Item -Path (Join-Path $toolSource "*") -Destination $localTool -Force
 
@@ -75,15 +73,7 @@ try {
     if (-not $process.HasExited) {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
     }
-
-    Get-ChildItem -Path $localOutput -File -ErrorAction SilentlyContinue |
-        Copy-Item -Destination $copyBackDir -Force
-
-    if (-not $KeepRemote) {
-        Get-ChildItem -Path $localOutput -File -ErrorAction SilentlyContinue |
-            Remove-Item -Force -ErrorAction SilentlyContinue
-    }
 }
 
 Write-Host ("LOGTOOL_EXIT={0}" -f $process.ExitCode)
-Write-Host ("COPIED_TO={0}" -f $copyBackDir)
+Write-Host ("LOGS_DIR={0}" -f $localOutput)

@@ -346,9 +346,9 @@ ssh -t main-win-pc
 powershell -ExecutionPolicy Bypass -File X:\workspace\watch-360360\scripts\tool\log-tool\capture-log.ps1
 ```
 
-It captures `COM3 @ 2000000`, then copies `COM3_<time>.log/.bin` back to
-`scripts/tool/log-tool/ConsoleDebugAnalyzer/output/` when stopped with `Ctrl+C`. Pass
-`-Port COM5` (and optionally `-Baud <rate>`) to capture another port.
+It captures `COM3 @ 2000000` and keeps `COM3_<time>.log/.bin` in the Windows runtime directory
+`%USERPROFILE%\.rtl87-flash\log-tool\output\`. Pass `-Port COM5` (and optionally
+`-Baud <rate>`) to capture another port.
 
 After capture starts, trigger a reset from a second Windows terminal so the board emits a new boot log:
 

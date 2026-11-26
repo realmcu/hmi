@@ -40,8 +40,8 @@ reset。
 0 条解码错误；跨复位点可能出现 `DebugTool info: Maybe there are missing logs!`，这是
 抓取切换提示，不等于解码错误。
 
-按 `Ctrl+C` 停止后，脚本会把 `COM3_<时间>.log` / `.bin` 回拷到
-`ConsoleDebugAnalyzer/output/`。默认会清理 Windows 本地输出；需要保留时使用 `-KeepRemote`。
+按 `Ctrl+C` 停止后，`COM3_<时间>.log` / `.bin` 保留在工具实际运行的 Windows 目录：
+`%USERPROFILE%\.rtl87-flash\log-tool\output\`，不会回拷到 Linux workspace。
 
 ## Linux
 
