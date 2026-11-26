@@ -149,9 +149,12 @@
 		reg = <0x15>;
 		irq-gpios = <&gpiob 25 GPIO_ACTIVE_LOW>;		/* P3_5, falling edge */
 		rst-gpios = <&gpioa 6 GPIO_ACTIVE_HIGH>;	    /* P3_4 */
+#if defined(CONFIG_HIGH_LEVEL_BOARD) /*set 1 for high-level board */
 		pwr-en-gpios = <&gpioa 3 GPIO_ACTIVE_HIGH>;	    /* P0_3/ADC_3, VD33_EN, asserted first */
 		pwr-gpios = <&gpioa 7 GPIO_ACTIVE_LOW>;		    /* P1_0, touch supply enable, active low */
-
+#else
+		pwr-en-gpios = <&gpioa 26 GPIO_ACTIVE_HIGH>;	/* MIC1_N, VD33_EN, asserted first */
+#endif
 	 	gesture-release-timeout-ms = <30>;
 		status = "okay";
 	};

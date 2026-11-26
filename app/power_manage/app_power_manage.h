@@ -32,6 +32,14 @@
 extern "C" {
 #endif
 
+#if defined(CONFIG_HIGH_LEVEL_BOARD)
+#define VD33_WF_EN      ADC_2
+#else
+#define VD33_WF_EN      MIC2_N
+#define CHARGER_CE      MIC2_P
+#define CHAR_SET        ADC_3
+#endif
+
 /**
  * @brief Power-key long press threshold, in milliseconds.
  *

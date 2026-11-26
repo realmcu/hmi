@@ -12,7 +12,7 @@
  *  The pin
  *
  *  Pad_Config in SW mode with the output driver enabled, which is how every other
- *  discrete control in this app drives a pad (see main.c's ADC_2 / VD33_WF_EN).
+ *  discrete control in this app drives a pad (see main.c's VD33_WF_EN / VD33_WF_EN).
  *  Deliberately NOT a Zephyr gpio_dt_spec: the pad is not in any DT node, and
  *  adding one would mean an overlay edit in the wifi snippet for a pin that must
  *  work even when that snippet is absent -- a build without CONFIG_WIFI_8711 still

@@ -80,7 +80,7 @@ resolve_layout_h() {
 # pick by itself easily picks the one not in use, so it always reports stale and rebuilds every round until the rounds run out.
 fw_mount_ok() { # $1=bank_sel $2=offset
     local rc=0
-    python3 "$PYTHON_PACK" fwcheck --bank "bank$1" --offset "$2" \
+    "$VENV_PYTHON" "$PYTHON_PACK" fwcheck --bank "bank$1" --offset "$2" \
         --elf "$APP_DIR/build_bank$1$snip_suffix/zephyr/zephyr.elf" \
         >/dev/null 2>&1 || rc=$?
     [ "$rc" -ne 2 ]
@@ -260,7 +260,7 @@ invoke_app_build() {
             # --mp: append a 512B MP header. mpcli uses it to identify the image type/version;
             #       the flash address still comes from -A or the json (not from the MP header).
             measure_phase "pack bank${bank_sel} (round $round)" \
-                "$PYTHON_PACK" app \
+                "$VENV_PYTHON" "$PYTHON_PACK" app \
                     --bank "bank${bank_sel}" --app "$bin" --romfs "$ROMFS_BIN" \
                     --out "$merged" --sign "${pack_mp_args[@]}" \
                     --romfs-out "$romfs_only" \

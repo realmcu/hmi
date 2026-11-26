@@ -91,8 +91,7 @@ int main(void)
 
     // io init
     // WiFi VD33_WF_EN P0_2
-    Pad_Config(ADC_2, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_ENABLE, PAD_OUT_HIGH);
-
+    Pad_Config(VD33_WF_EN, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE, PAD_OUT_ENABLE, PAD_OUT_HIGH);
     /* Antenna to BLE before anything can transmit.  P2_6 is an RF switch, not an
      * enable: HIGH wires the shared antenna to our BLE radio, LOW to the 8711's
      * Wi-Fi.  It must be parked here, ahead of hmi_bt_task_init() below, because a
@@ -126,7 +125,7 @@ int main(void)
      * but then a transport failure would be reported from inside the protocol
      * stack instead of here where the reason is legible.
      *
-     * ADC_2 (VD33_WF_EN) went high at the top of main(), so the 8711 has had the
+     * VD33_WF_EN went high at the top of main(), so the 8711 has had the
      * whole lower-init sequence to boot.  If it got there first, S2M is already
      * high and its rising edge is gone; spi_at_master_init() detects that and
      * synthesises the go-ahead rather than waiting forever for an edge that has

@@ -62,10 +62,10 @@
 
 static const struct gpio_dt_spec power_key = GPIO_DT_SPEC_GET(POWER_KEY_NODE, gpios);
 
-/* P0_3/ADC_3 (GPIOA3) and P1_0 (GPIOA7) are the touch node's pwr-en/pwr pins,
- * so the Zephyr GPIO driver owns them -- see app_screen_on_off_power_set(). */
 static const struct gpio_dt_spec touch_pwr_en = GPIO_DT_SPEC_GET(TOUCH_DEV_NODE, pwr_en_gpios);
+#if defined(CONFIG_HIGH_LEVEL_BOARD)
 static const struct gpio_dt_spec touch_pwr = GPIO_DT_SPEC_GET(TOUCH_DEV_NODE, pwr_gpios);
+#endif
 static const struct gpio_dt_spec touch_irq = GPIO_DT_SPEC_GET(TOUCH_DEV_NODE, irq_gpios);
 static const struct gpio_dt_spec touch_rst = GPIO_DT_SPEC_GET(TOUCH_DEV_NODE, rst_gpios);
 
@@ -101,8 +101,9 @@ static RAM_TEXT_SECTION void pad_all_power_off(void)
                PAD_OUT_ENABLE, PAD_OUT_LOW); /* WIFI QSPI */
 
     gpio_pin_set_dt(&touch_pwr_en, false);
-
+#if defined(CONFIG_HIGH_LEVEL_BOARD)
     gpio_pin_set_dt(&touch_pwr, true);
+#endif
     gpio_pin_set_dt(&touch_rst, false);
     gpio_pin_configure_dt(&touch_irq, GPIO_OUTPUT_LOW);
     gpio_pin_set_dt(&touch_irq, true);
@@ -431,7 +432,7 @@ void app_screen_on_off_power_set(bool on)
 {
     /* These pins are rail controls and must remain driven, not left floating,
      * while the controlled devices are off. */
-    Pad_Config(ADC_2, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE,
+    Pad_Config(VD33_WF_EN, PAD_SW_MODE, PAD_IS_PWRON, PAD_PULL_NONE,
                PAD_OUT_ENABLE, on ? PAD_OUT_HIGH : PAD_OUT_LOW);
 
     /* Fixed pins used by the selected ST7801N panel. The overlay only exposes
@@ -498,7 +499,9 @@ void app_touch_power_set(bool on)
         gpio_pin_configure_dt(&touch_irq, GPIO_OUTPUT_LOW);
         gpio_pin_set_dt(&touch_irq, true);
         gpio_pin_set_dt(&touch_pwr_en, false);
+#if defined(CONFIG_HIGH_LEVEL_BOARD)
         gpio_pin_set_dt(&touch_pwr, true);
+#endif
         gpio_pin_set_dt(&touch_rst, false);
         return;
     }
@@ -507,8 +510,9 @@ void app_touch_power_set(bool on)
      * rail, then reset. */
     (void)gpio_pin_configure_dt(&touch_pwr_en, GPIO_OUTPUT_ACTIVE);
     k_msleep(TOUCH_PWR_EN_DELAY_MS);
-
+#if defined(CONFIG_HIGH_LEVEL_BOARD)
     (void)gpio_pin_configure_dt(&touch_pwr, GPIO_OUTPUT_ACTIVE);
+#endif
     k_msleep(TOUCH_PWR_ON_DELAY_MS);
 
     touch_reset_pulse();
