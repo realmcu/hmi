@@ -14,7 +14,7 @@
 
 #define HONEY_PROTOCOL_DISPATCH_TASK_STACK_SIZE  4096
 #define HONEY_PROTOCOL_DISPATCH_TASK_PRIORITY    3
-#define HONEY_PROTOCOL_QUEUE_SIZE                8
+#define HONEY_PROTOCOL_QUEUE_SIZE                16
 
 static void *s_honey_protocol_task_handle;
 static void *s_dispatch_task_handle;
