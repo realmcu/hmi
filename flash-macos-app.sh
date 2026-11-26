@@ -76,7 +76,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-FW="${FW:-$REPO_ROOT/applications/bin/app.bin}"
+FW="${FW:-$REPO_ROOT/bin/app.bin}"
 ADDR="${ADDR:-0x7009E000}"
 
 # ---- Tool path: like the other platform scripts, defaults to the repo-bundled tool/mpcli/ ----

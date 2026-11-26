@@ -10,8 +10,9 @@ rem   scripts\build.bat --pristine
 rem   set BOARD=rtl87x3g_evb && scripts\build.bat
 rem   set DRY=1 && scripts\build.bat
 
-for %%I in ("%~dp0..") do set "WORKSPACE_ROOT=%%~fI"
-set "APP_ROOT=%WORKSPACE_ROOT%\applications"
+rem The script branch is mounted at <workspace>\applications\scripts, so ".."
+rem is already the application directory; do not append "applications" again.
+for %%I in ("%~dp0..") do set "APP_ROOT=%%~fI"
 
 if not defined BOARD set "BOARD=rtl87x3g_evb"
 set "PRISTINE="

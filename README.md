@@ -1,6 +1,6 @@
 # scripts
 
-Common utility scripts in this directory, covering the full **build -> flash -> capture log** chain for RTL87X3G applications. The commands below assume they are run from the west workspace root, hence the `scripts/...` form. Each script resolves paths relative to its own location and does not depend on the current directory at invocation.
+Common utility scripts in this directory, covering the full **build -> flash -> capture log** chain for RTL87X3G applications. The commands below assume they are run from the `applications/` directory, hence the `scripts/...` form; if you run them from the west workspace root, add the `applications/` prefix. Each script resolves paths relative to its own location and does not depend on the current directory at invocation.
 
 - `build.sh` -- `west build` wrapper
 - `flash-linux-app.sh` -- flash the App with the Linux build of `mpcli` on native Linux

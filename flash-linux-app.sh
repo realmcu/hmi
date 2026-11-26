@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ---- Can be overridden by positional arguments or environment variables ----
 PORT="${1:-${PORT:-/dev/ttyUSB0}}"
 MPCLI="${MPCLI:-$SCRIPT_DIR/tool/mpcli/mpcli}"
-FW="${FW:-$REPO_ROOT/applications/bin/app.bin}"
+FW="${FW:-$REPO_ROOT/bin/app.bin}"
 ADDR="${ADDR:-0x7009E000}"
 BAUD="${BAUD:-2000000}"
 

@@ -5,13 +5,13 @@ rem Flash the RTL87X3G application from native Windows cmd.exe.
 rem Usage: flash-win32-app.bat COM13
 rem Optional environment variables: BAUD, FW, ADDR, MPCLI_EXE, DRY, NOPAUSE.
 
-for %%I in ("%~dp0..") do set "WORKSPACE_ROOT=%%~fI"
+for %%I in ("%~dp0..") do set "APP_ROOT=%%~fI"
 
 rem A positional COM port takes precedence over the PORT environment variable.
 if not "%~1"=="" set "PORT=%~1"
 
 if not defined MPCLI_EXE set "MPCLI_EXE=%~dp0tool\mpcli\mpcli.exe"
-if not defined FW set "FW=%WORKSPACE_ROOT%\applications\bin\app.bin"
+if not defined FW set "FW=%APP_ROOT%\bin\app.bin"
 if not defined ADDR set "ADDR=0x7009E000"
 if not defined BAUD set "BAUD=2000000"
 

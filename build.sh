@@ -15,7 +15,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_ROOT="$REPO_ROOT/applications"
+# The script branch is mounted at <workspace>/applications/scripts, so ".."
+# is already the application directory; do not append "applications" again.
+APP_ROOT="$REPO_ROOT"
 
 BOARD="${BOARD:-rtl87x3g_evb}"
 PRISTINE=""
