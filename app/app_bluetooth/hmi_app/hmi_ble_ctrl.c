@@ -3,10 +3,13 @@
 #include <os_task.h>
 #include <os_msg.h>
 #include <os_sync.h>
+#include <zephyr/kernel.h>
 #include "hmi_ble_ctrl.h"
 #include "trace.h"
+#include "honey_protocol_log.h"
 #include "hmi_ble_gap_msg.h"
 #include "gap_msg.h"
+#include "gap_le.h"
 #include "gap_conn_le.h"
 #include "hmi_ctrl_service.h"
 #include "app_event.h"
@@ -18,6 +21,7 @@
 #define HMI_CTRL_TASK_PRIORITY      (3)
 #define HMI_CTRL_QUEUE_SIZE         (8)
 #define HMI_CTRL_SEND_TIMEOUT_MS    (3000)
+#define HMI_CTRL_MAX_IN_FLIGHT      (10u)
 
 typedef struct
 {
@@ -38,7 +42,10 @@ static void *s_hmi_send_task_handle;
 static void *s_hmi_send_queue_handle;
 static void *s_hmi_recv_queue_handle;
 static void *s_bt_done_sem;
-static int   s_bt_send_result;
+static volatile uint16_t s_bt_credits;
+static volatile uint8_t s_bt_in_flight;
+static volatile bool s_bt_send_failed;
+static uint8_t s_send_diag_count;
 
 static volatile uint16_t hmi_conn_handle = HMI_CONN_HANDLE_INVALID;
 static bool     hmi_event_cccd_enabled = false;
@@ -60,7 +67,15 @@ static void app_hmi_send_data_cb(T_EXT_SEND_DATA_RESULT result)
         APP_PRINT_ERROR2("app_hmi_send_data_cb: notify sent fail, conn_handle 0x%x, cause 0x%x",
                          result.conn_handle, result.cause);
     }
-    s_bt_send_result = (result.cause == GAP_SUCCESS) ? 0 : -1;
+    s_bt_credits = result.credits;
+    if (result.cause != GAP_SUCCESS)
+    {
+        s_bt_send_failed = true;
+    }
+    if (s_bt_in_flight > 0u)
+    {
+        s_bt_in_flight--;
+    }
     os_sem_give(s_bt_done_sem);
 }
 
@@ -202,42 +217,100 @@ static void hmi_ble_send_task(void *p_param)
         le_get_conn_id_by_handle(msg.conn_handle, &conn_id);
         le_get_conn_param(GAP_PARAM_CONN_MTU_SIZE, &mtu, conn_id);
         uint16_t chunk = mtu - 3;
+        uint16_t chunk_count = (msg.len + chunk - 1u) / chunk;
+        uint32_t send_start = k_uptime_get_32();
 
         int      result = 0;
         uint16_t offset = 0;
+        uint8_t credits = 0;
+        uint32_t credit_wait_start = send_start;
 
-        while (offset < msg.len)
+        s_bt_in_flight = 0u;
+        s_bt_send_failed = false;
+        s_bt_credits = 0u;
+        le_get_gap_param(GAP_PARAM_LE_REMAIN_CREDITS, &credits);
+
+        while (offset < msg.len && result == 0)
         {
-            uint16_t n = msg.len - offset;
-            if (n > chunk)
+            if (credits == 0u || s_bt_in_flight >= HMI_CTRL_MAX_IN_FLIGHT)
             {
-                n = chunk;
+                if (s_bt_in_flight > 0u)
+                {
+                    if (!os_sem_take(s_bt_done_sem, HMI_CTRL_SEND_TIMEOUT_MS))
+                    {
+                        result = -2;
+                        break;
+                    }
+                    credits = s_bt_credits;
+                }
+                else
+                {
+                    if ((uint32_t)(k_uptime_get_32() - credit_wait_start) >=
+                        HMI_CTRL_SEND_TIMEOUT_MS)
+                    {
+                        result = -2;
+                        break;
+                    }
+                    k_msleep(1);
+                    le_get_gap_param(GAP_PARAM_LE_REMAIN_CREDITS, &credits);
+                }
+                if (s_bt_send_failed)
+                {
+                    result = -1;
+                    break;
+                }
+                continue;
             }
 
-            if (!hmi_ctrl_service_notify(msg.conn_handle, (void *)(msg.p_data + offset), n))
+            while (offset < msg.len && credits > 0u &&
+                   s_bt_in_flight < HMI_CTRL_MAX_IN_FLIGHT)
             {
-                APP_PRINT_ERROR0("hmi_ble_ctrl_task: notify failed");
-                result = -1;
-                break;
-            }
+                uint16_t n = msg.len - offset;
+                if (n > chunk)
+                {
+                    n = chunk;
+                }
 
+                s_bt_in_flight++;
+                if (!hmi_ctrl_service_notify(msg.conn_handle,
+                                             (void *)(msg.p_data + offset), n))
+                {
+                    s_bt_in_flight--;
+                    APP_PRINT_ERROR0("hmi_ble_ctrl_task: notify failed");
+                    result = -1;
+                    break;
+                }
+
+                offset += n;
+                credits--;
+            }
+        }
+
+        /* The caller reuses the frame buffer only after every submitted
+         * notification has completed. */
+        while (s_bt_in_flight > 0u)
+        {
             if (!os_sem_take(s_bt_done_sem, HMI_CTRL_SEND_TIMEOUT_MS))
             {
-                APP_PRINT_ERROR0("hmi_ble_ctrl_task: wait send_data_cb timeout");
                 result = -2;
                 break;
             }
-
-            if (s_bt_send_result != 0)
+            if (s_bt_send_failed && result == 0)
             {
-                result = s_bt_send_result;
-                break;
+                result = -1;
             }
-
-            offset += n;
         }
 
         *msg.p_result = result;
+        if (s_send_diag_count < 5u)
+        {
+            s_send_diag_count++;
+            HONEY_PROTOCOL_LOG("HMI TX len=%u mtu=%u chunks=%u elapsed=%ums result=%d",
+                               (unsigned)msg.len, (unsigned)mtu,
+                               (unsigned)chunk_count,
+                               (unsigned)(k_uptime_get_32() - send_start),
+                               result);
+        }
         os_sem_give(msg.p_done_sem);
     }
 }
@@ -286,7 +359,7 @@ int hmi_ble_ctrl_send(const uint8_t *data, uint16_t len)
 
 void hmi_ble_ctrl_init(void)
 {
-    os_sem_create(&s_bt_done_sem, "hmibtdone", 0, 1);
+    os_sem_create(&s_bt_done_sem, "hmibtdone", 0, HMI_CTRL_MAX_IN_FLIGHT);
 
     os_msg_queue_create(&s_hmi_recv_queue_handle, "hmirecvQ",
                         HMI_CTRL_QUEUE_SIZE, sizeof(T_HMI_RECV_MSG));

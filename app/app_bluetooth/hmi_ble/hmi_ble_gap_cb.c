@@ -23,6 +23,7 @@
 #include <app_msg.h>
 #include "hmi_ble_gap_cb.h"
 #include "hmi_ble_gap_init.h"
+#include "honey_protocol_log.h"
 #include "trace.h"
 
 /**
@@ -66,6 +67,10 @@ T_APP_RESULT hmi_ble_gap_callback(uint8_t cb_type, void *p_cb_data)
                         p_data->p_le_phy_update_info->cause,
                         p_data->p_le_phy_update_info->rx_phy,
                         p_data->p_le_phy_update_info->tx_phy);
+        HONEY_PROTOCOL_LOG("BLE PHY update: cause=0x%x rx_phy=%u tx_phy=%u",
+                           (unsigned)p_data->p_le_phy_update_info->cause,
+                           (unsigned)p_data->p_le_phy_update_info->rx_phy,
+                           (unsigned)p_data->p_le_phy_update_info->tx_phy);
         break;
 #endif
     case GAP_MSG_LE_DATA_LEN_CHANGE_INFO:
@@ -73,6 +78,11 @@ T_APP_RESULT hmi_ble_gap_callback(uint8_t cb_type, void *p_cb_data)
                         p_data->p_le_data_len_change_info->conn_id,
                         p_data->p_le_data_len_change_info->max_tx_octets,
                         p_data->p_le_data_len_change_info->max_tx_time);
+        HONEY_PROTOCOL_LOG("BLE DLE update: tx_octets=%u tx_time=%u rx_octets=%u rx_time=%u",
+                           (unsigned)p_data->p_le_data_len_change_info->max_tx_octets,
+                           (unsigned)p_data->p_le_data_len_change_info->max_tx_time,
+                           (unsigned)p_data->p_le_data_len_change_info->max_rx_octets,
+                           (unsigned)p_data->p_le_data_len_change_info->max_rx_time);
         break;
 
     case GAP_MSG_LE_MODIFY_WHITE_LIST:

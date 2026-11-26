@@ -16,6 +16,7 @@
 #include "app_event.h"
 #include "app_event_defs.h"
 #include "app_ota_service.h"
+#include "honey_protocol_log.h"
 
 static T_GAP_DEV_STATE gap_dev_state = {0, 0, 0, 0};                 /**< GAP device state */
 static T_GAP_CONN_STATE gap_conn_state = GAP_CONN_STATE_DISCONNECTED; /**< GAP connection state */
@@ -234,15 +235,22 @@ static void app_handle_conn_state_evt(uint8_t conn_id, T_GAP_CONN_STATE new_stat
             (void)app_event_publish(EVT_BLE_CONN_PARAM, &hmi_conn_info, sizeof hmi_conn_info);
             app_ota_glue_link_connected(conn_id, 0, remote_bd);
 
-            /* update connection interval to 30ms */
-            uint16_t interval_min = 24;   /* 24 * 1.25ms = 30ms */
-            uint16_t interval_max = 24;   /* 24 * 1.25ms = 30ms */
+            /* Compare the accepted interval against the 7.5ms experiment. */
+            uint16_t interval_min = 12;   /* 12 * 1.25ms = 15ms */
+            uint16_t interval_max = 12;   /* 12 * 1.25ms = 15ms */
             uint16_t latency = 0;
             uint16_t supervision_timeout = 500; /* 500 * 10ms = 5000ms */
             uint16_t min_ce_len = 2 * (interval_min - 1);
             uint16_t max_ce_len = 2 * (interval_max - 1);
             le_update_conn_param(conn_id, interval_min, interval_max, latency,
                                  supervision_timeout, min_ce_len, max_ce_len);
+
+            T_GAP_CAUSE dle_cause = le_set_data_len(conn_id, 251, 2120);
+            T_GAP_CAUSE phy_cause = le_set_phy(
+                conn_id, 0, GAP_PHYS_PREFER_2M_BIT, GAP_PHYS_PREFER_2M_BIT,
+                GAP_PHYS_OPTIONS_CODED_PREFER_NO);
+            HONEY_PROTOCOL_LOG("BLE setup request: dle cause=0x%x phy2m cause=0x%x",
+                               (unsigned)dle_cause, (unsigned)phy_cause);
         }
         break;
 
@@ -307,6 +315,8 @@ static void app_handle_authen_state_evt(uint8_t conn_id, uint8_t new_state, uint
 static void app_handle_conn_mtu_info_evt(uint8_t conn_id, uint16_t mtu_size)
 {
     APP_PRINT_INFO2("app_handle_conn_mtu_info_evt: conn_id %d, mtu_size %d", conn_id, mtu_size);
+    HONEY_PROTOCOL_LOG("BLE MTU update: conn_id=%u mtu=%u",
+                       (unsigned)conn_id, (unsigned)mtu_size);
 }
 
 /**
@@ -482,9 +492,5 @@ static void update_conn_info(uint8_t conn_id)
     le_get_conn_param(GAP_PARAM_CONN_TIMEOUT, &hmi_conn_info.conn_supervision_timeout, conn_id);
     le_get_conn_param(GAP_PARAM_CONN_MTU_SIZE, &hmi_conn_info.conn_mtu_size, conn_id);
 }
-
-
-
-
 
 
