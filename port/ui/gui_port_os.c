@@ -12,14 +12,11 @@
 #include "trace.h"
 #include "wdg.h"
 #include "gui_server.h"
-#include <zephyr/logging/log.h>
 #include "address_map.h"
 #include "stdlib.h"
 #include "stdio.h"
 #include "gui_api.h"
 #include "trace.h"
-
-LOG_MODULE_REGISTER(GUI_MODULE, LOG_LEVEL_INF);
 
 #define DSP_RSV_SIZE (512 * 1024)
 

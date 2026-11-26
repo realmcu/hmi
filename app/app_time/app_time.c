@@ -101,10 +101,10 @@ int app_time_set(uint32_t sec)
     if (read_rc == POSIX_OK)
     {
         uint32_t read_sec = civil_to_epoch(&readback);
-        APP_LOGI("RTC set verify: requested=%u readback=%u delta=%d "
-                 "calendar=%04u-%02u-%02u %02u:%02u:%02u",
+        APP_LOGI("RTC set verify: requested=%u readback=%u delta=%d",
                  (unsigned)sec, (unsigned)read_sec,
-                 (int)((int32_t)(read_sec - sec)),
+                 (int)((int32_t)(read_sec - sec)));
+        APP_LOGI("RTC set verify calendar=%04u-%02u-%02u %02u:%02u:%02u",
                  (unsigned)readback.year, (unsigned)readback.month,
                  (unsigned)readback.mday, (unsigned)readback.hour,
                  (unsigned)readback.minute, (unsigned)readback.second);

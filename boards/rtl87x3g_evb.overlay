@@ -8,8 +8,6 @@
 
 / {
 	chosen {
-		zephyr,console = &uart2;
-		zephyr,shell-uart = &uart2;
 		zephyr,display = &display_lcd;
 	};
 
@@ -37,26 +35,7 @@
 	height = <360>;
 };
 
-&uart2 {
-	status = "okay";
-	current-speed = <2000000>;
-};
-
 &pinctrl {
-	/* P2_0 is the default RTK log UART TX. UART2 pinctrl takes it over during
-	 * PRE_KERNEL_1, after the SOC early log-UART initialization. */
-	uart2_default: uart2_default {
-		group1 {
-			/* Console is TX-only on this product. */
-			psels = <RTL87X3G_PSEL(UART2_TX, P2_0, DIR_OUT, DRV_HIGH, PULL_UP)>;
-		};
-	};
-	uart2_sleep: uart2_sleep {
-		group1 {
-			psels = <RTL87X3G_PSEL(SW_MODE, P2_0, DIR_OUT, DRV_HIGH, PULL_UP)>;
-		};
-	};
-
 	sdhc0_default: sdhc0_default {
 		group1 {
 			psels =

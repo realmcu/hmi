@@ -187,8 +187,8 @@ powershell -ExecutionPolicy Bypass -File X:\workspace\watch-360360\scripts\tool\
 - 启动前先关闭 PuTTY、串口助手等占用 `COM3` 的程序。
 - 默认读取 `COM3 @ 2000000`；需要其他串口或波特率时使用 `-Port COMx` / `-Baud n`。
   例如：`capture-log.ps1 -Port COM5`。
-- 停止时按 `Ctrl+C`。脚本会终止 `DebugAnalyzer`，并把 `.log` / `.bin` 回拷到
-  `scripts/tool/log-tool/ConsoleDebugAnalyzer/output/`；`-KeepRemote` 可保留 Windows 本地副本。
+- 停止时按 `Ctrl+C`。日志跟随实际运行的 Windows 工具保留在
+  `%USERPROFILE%\.rtl87-flash\log-tool\output\`，不会回拷到 Linux workspace。
 - trace 必须和板子上的固件来自同一次构建，尤其是重新执行 `scripts/build.sh` 后的
   `applications/bin/app.trace`。trace 不匹配时会出现模块错误、漏行或乱码。
 - 下载用 `COM4`，看 log 用 `COM3`，两个口通常互不抢占；如果实际是同一根线，先停止

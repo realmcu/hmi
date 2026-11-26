@@ -3,61 +3,40 @@
 
 /**
  * @file  app_log.h
- * @brief App-layer logging — the ONLY logging entry point for app code.
+ * @brief App-layer logging backed by the RTL87x3G trace interface.
  *
- * App-layer files must NEVER include a platform log header directly
- * (@c zephyr/logging/log.h etc.) and must NEVER call platform log
- * primitives (@c LOG_INF , @c LOG_MODULE_REGISTER , @c DBG_DIRECT ). All
- * logging goes through the macros below. This way the whole app layer
- * stays platform-agnostic: swapping the host platform touches only this
- * file, and every business module keeps working unchanged.
- *
- * Usage
- * -----
- *   #include "app_log.h"
- *   APP_LOG_MODULE_REGISTER(app_ble);   // once per .c file, near the top
- *
- *   APP_LOGI("subscribed to %s", "EVT_TIME_TICK_MIN");
- *   APP_LOGE("failed rc=%d", rc);
- *
- * The tag passed to @c APP_LOG_MODULE_REGISTER is a bare identifier
- * (unquoted), matching the convention of platform log frameworks. On
- * Zephyr it becomes the module name shown in every log line
- * (e.g. @c "<inf> app_ble: ..." ). On other platforms it can be
- * embedded literally into the printf output.
- *
- * Levels are the usual four: I (info), W (warn), E (error), D (debug).
- * Zero-arg calls are supported:
- *   APP_LOGI("hello");
+ * Business code keeps using APP_LOGI/W/E/D without depending directly on
+ * Zephyr logging. This adapter forwards each call to trace.h's APP_PRINT_*
+ * macros so application logs follow the same trace path as the Bluetooth and
+ * platform layers.
  */
 
-#if defined(__ZEPHYR__)
+#include "trace.h"
 
-#include <zephyr/logging/log.h>
-
-/**
- * @def APP_LOG_MODULE_REGISTER
- * @brief Register a per-file log tag. Call once near the top of each .c.
+/*
+ * Preserve the existing per-file registration syntax. Trace output is tagged
+ * with MODULE_APP by trace.h, so this only records a local, unused tag.
  */
-#define APP_LOG_MODULE_REGISTER(name)   LOG_MODULE_REGISTER(name, LOG_LEVEL_INF)
+#define APP_LOG_MODULE_REGISTER(name) \
+    static const char *const _app_log_tag_##name __attribute__((unused)) = #name
 
-#define APP_LOGI(fmt, ...)              LOG_INF(fmt, ##__VA_ARGS__)
-#define APP_LOGW(fmt, ...)              LOG_WRN(fmt, ##__VA_ARGS__)
-#define APP_LOGE(fmt, ...)              LOG_ERR(fmt, ##__VA_ARGS__)
-#define APP_LOGD(fmt, ...)              LOG_DBG(fmt, ##__VA_ARGS__)
+#define APP_LOG_CAT_(a, b) a##b
+#define APP_LOG_CAT(a, b) APP_LOG_CAT_(a, b)
+#define APP_LOG_ARG_COUNT(...) \
+    APP_LOG_ARG_COUNT_(__VA_ARGS__, 8, 7, 6, 5, 4, 3, 2, 1, 0)
+#define APP_LOG_ARG_COUNT_(_0, _1, _2, _3, _4, _5, _6, _7, _8, n, ...) n
+#define APP_LOG_DISPATCH(prefix, count, ...) \
+    APP_LOG_DISPATCH_(prefix, count, __VA_ARGS__)
+#define APP_LOG_DISPATCH_(prefix, count, ...) \
+    APP_LOG_CAT(prefix, count)(__VA_ARGS__)
 
-#else /* fallback for non-Zephyr platforms — swap for the target log API */
-
-#include <stdio.h>
-
-/* Store the file's tag in a file-static so the level macros can prefix it. */
-#define APP_LOG_MODULE_REGISTER(name)   static const char *_app_log_tag = #name
-
-#define APP_LOGI(fmt, ...)              printf("[I] %s: " fmt "\n", _app_log_tag, ##__VA_ARGS__)
-#define APP_LOGW(fmt, ...)              printf("[W] %s: " fmt "\n", _app_log_tag, ##__VA_ARGS__)
-#define APP_LOGE(fmt, ...)              printf("[E] %s: " fmt "\n", _app_log_tag, ##__VA_ARGS__)
-#define APP_LOGD(fmt, ...)              printf("[D] %s: " fmt "\n", _app_log_tag, ##__VA_ARGS__)
-
-#endif
+#define APP_LOGI(...) \
+    APP_LOG_DISPATCH(APP_PRINT_INFO, APP_LOG_ARG_COUNT(__VA_ARGS__), __VA_ARGS__)
+#define APP_LOGW(...) \
+    APP_LOG_DISPATCH(APP_PRINT_WARN, APP_LOG_ARG_COUNT(__VA_ARGS__), __VA_ARGS__)
+#define APP_LOGE(...) \
+    APP_LOG_DISPATCH(APP_PRINT_ERROR, APP_LOG_ARG_COUNT(__VA_ARGS__), __VA_ARGS__)
+#define APP_LOGD(...) \
+    APP_LOG_DISPATCH(APP_PRINT_TRACE, APP_LOG_ARG_COUNT(__VA_ARGS__), __VA_ARGS__)
 
 #endif /* __APP_LOG_H__ */
