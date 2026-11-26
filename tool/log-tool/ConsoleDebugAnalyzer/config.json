@@ -2,13 +2,13 @@
   "outputDir": "/home/wh/workspace/watch-360360/scripts/tool/log-tool/ConsoleDebugAnalyzer/output",
   "maxBinSize": 10,
   "fmtStrFiles": {
-    "romTraceFile": "/home/wh/workspace/watch-360360/zephyrproject/realtek-app/bin/rtl8773g/trace/ROM.trace",
+    "romTraceFile": "/home/wh/workspace/watch-360360/scripts/tool/log-tool/runtime-traces/RTL8773G/v1.14.3.2/ROM.trace",
     "platformTraceFile": "/home/wh/workspace/watch-360360/applications/bin/app.trace",
-    "upperstackTraceFile": "/home/wh/workspace/watch-360360/zephyrproject/realtek-app/bin/rtl8773g/trace/upperstack.trace",
-    "appTraceFile": "/home/wh/workspace/watch-360360/zephyrproject/realtek-app/bin/rtl8773g/trace/app_honeygui.trace",
-    "patchTraceFile": "/home/wh/workspace/watch-360360/zephyrproject/realtek-app/bin/rtl8773g/trace/boot_patch0.trace",
-    "dspAppTraceFile": "/home/wh/workspace/watch-360360/zephyrproject/realtek-app/bin/rtl8773g/trace/DSP_APP.trace",
-    "dspAudioTraceFile": "/home/wh/workspace/watch-360360/zephyrproject/realtek-app/bin/rtl8773g/trace/DSP_SDK_AUDIO.trace",
-    "dspVoiceTraceFile": "/home/wh/workspace/watch-360360/zephyrproject/realtek-app/bin/rtl8773g/trace/DSP_SDK_VOICE.trace"
+    "upperstackTraceFile": "/home/wh/workspace/watch-360360/scripts/tool/log-tool/runtime-traces/RTL8773G/v1.14.3.2/upperstack.trace",
+    "appTraceFile": "/home/wh/workspace/watch-360360/applications/bin/app.trace",
+    "patchTraceFile": "/home/wh/workspace/watch-360360/scripts/tool/log-tool/runtime-traces/RTL8773G/v1.14.3.2/boot_patch0.trace",
+    "dspAppTraceFile": "/home/wh/workspace/watch-360360/scripts/tool/log-tool/runtime-traces/RTL8773G/v1.14.3.2/DSP_APP.trace",
+    "dspAudioTraceFile": "/home/wh/workspace/watch-360360/scripts/tool/log-tool/runtime-traces/RTL8773G/v1.14.3.2/DSP_SDK_AUDIO.trace",
+    "dspVoiceTraceFile": "/home/wh/workspace/watch-360360/scripts/tool/log-tool/runtime-traces/RTL8773G/v1.14.3.2/DSP_SDK_VOICE.trace"
   }
 }

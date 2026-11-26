@@ -8,6 +8,8 @@ tool/log-tool/
 
 两个版本是独立程序，必须使用同一份固件构建出的 trace。
 
+Windows 工具当前为 Realtek Wiki 发布的 `DebugAnalyzer v4.2.2.3`。
+
 ## Windows
 
 先关闭 PuTTY、串口助手等占用 `COM3` 的程序。当前 Windows 工作区映射为
@@ -59,15 +61,28 @@ ls /dev/ttyUSB* /dev/ttyACM*
 
 | 用途 | 文件 |
 |---|---|
-| ROM（`-ar` / `romTraceFile`） | `zephyrproject/realtek-app/bin/rtl8773g/trace/ROM.trace` |
-| Platform（`-apf` / `platformTraceFile`） | `applications/bin/app.trace` |
-| Upper stack（`-aus` / `upperstackTraceFile`） | `zephyrproject/realtek-app/bin/rtl8773g/trace/upperstack.trace` |
-| App（`-aa` / `appTraceFile`） | `zephyrproject/realtek-app/bin/rtl8773g/trace/app_honeygui.trace` |
-| Patch（`-ap` / `patchTraceFile`） | `zephyrproject/realtek-app/bin/rtl8773g/trace/boot_patch0.trace` |
-| DSP（`-da` / `-du` / `-dv`） | `zephyrproject/realtek-app/bin/rtl8773g/trace/DSP_*.trace` |
+| ROM（`-ar` / `romTraceFile`） | `scripts/tool/log-tool/runtime-traces/RTL8773G/v1.14.3.2/ROM.trace` |
+| Platform / App（`-apf`、`-aa` / `platformTraceFile`、`appTraceFile`） | `applications/bin/app.trace` |
+| Upper stack（`-aus` / `upperstackTraceFile`） | `scripts/tool/log-tool/runtime-traces/RTL8773G/v1.14.3.2/upperstack.trace` |
+| Patch（`-ap`、`-bpt` / `patchTraceFile`） | `scripts/tool/log-tool/runtime-traces/RTL8773G/v1.14.3.2/boot_patch0.trace` |
+| DSP（`-da` / `-du` / `-dv`） | `scripts/tool/log-tool/runtime-traces/RTL8773G/v1.14.3.2/DSP_*.trace` |
+
+`app.trace` 必须取本次 `west build` 生成的 `applications/bin/app.trace`。不能用 SDK
+目录里预置的 `app_honeygui.trace` 或 `app_lvgl.trace` 代替：这些文件与当前 App 使用
+相同的 trace 地址范围，但字符串表不同。同时传入会发生地址覆盖，OTA 等高频日志会被
+错误解码成其他模块的文本。
+
+runtime trace 不使用 `zephyrproject/realtek-app/bin/rtl8773g/trace` 的预置副本。当前
+RTL8773G 板子的 runtime 是 Watch SDK `v1.14.3.2`，对应 sys patch `v1.0.90 / 97ecba95`、
+stack patch `v0.0.113 / f952028a`、upperstack `v0.0.6`、DSP `V3.0.5.85`。工具只从
+`runtime-traces/RTL8773G/v1.14.3.2` 加载这些文件，并按同目录 `manifest.json` 逐文件
+校验 SHA256；校验失败会拒绝启动抓取。停止抓取后还会检查日志中的 Boot ROM 哈希、
+Stack Patch `0.0.113.0 / f952028a`、Boot Patch 和 Upperstack 解码标记，全部匹配才
+输出 `TRACE_EVIDENCE=OK`。
 
 ## 常见问题
 
 - `对端口“COM3”的访问被拒绝`：串口被其他工具占用，先关闭占用程序。
 - 只有版本头和很小的 `.bin`：通常是板子已经启动完才开始监听；先启动 `DebugAnalyzer.exe` 或 `ConsoleDebugAnalyzer.out`，再复位板子。
 - 日志乱码、缺少参数或模块错误：trace 与固件版本不匹配，重新使用同一次构建的 trace。
+- `Mismatched parameter type "Other" and symbol "%s"`：若模块名和格式串本身正确，检查应用日志是否把裸字符串直接传给 trace；字符串参数必须使用 `TRACE_STRING()` 包装。

@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "chip": "RTL8773G",
+  "release": "v1.14.3.2",
+  "release_date": "2026-09-28",
+  "source": {
+    "confluence_page_id": "834058326",
+    "confluence_page_title": "BB2Ultra Watch zephyr SDK",
+    "runtime_package": "RTL87X3G_MCU_SDK_Watch_Zephyr_v1.14.3.2_forQC.zip",
+    "runtime_package_sha256": "b9dc5859e4bebf239e81c364de5f8b6d3ebbe685fb76be43c2b71378f0bb0011",
+    "trace_share_url": "https://wn-bt-nas.realsil.com.cn:5001/sharing/C3ybtE8Pz"
+  },
+  "runtime": {
+    "boot_patch": "v1.0.90",
+    "sys_patch": "v1.0.90",
+    "sys_patch_commit": "97ecba95bc03ea236c2cb605ee044de8b1e2230b",
+    "stack_patch": "v0.0.113",
+    "stack_patch_commit": "f952028a",
+    "upperstack": "v0.0.6",
+    "upperstack_commit": "4d251c71",
+    "dsp": "V3.0.5.85"
+  },
+  "runtime_evidence": {
+    "boot_rom": "0x6785068f1165968e11f08ec47bfc7321",
+    "stack_patch_version": "0.0.113.0",
+    "stack_patch_commit": "f952028a",
+    "boot_patch_decode_token": ">>> Boot Patch 0",
+    "upperstack_init_token": "UPPERSTACK init success!"
+  },
+  "runtime_images": {
+    "boot_patch0": {
+      "file": "boot_patch0_MP-v1.0.90.97ecba95-fcb0e03574bd80c647b4cdc3599a1606.bin",
+      "sha256": "e8338bc9e76e60ee1264a2395891713281bc98123794d7ef6484c1804a3ac22a"
+    },
+    "boot_patch1": {
+      "file": "boot_patch1_MP-v1.0.90.97ecba95-d6238caac3b5a06810ab7d57c95c0e36.bin",
+      "sha256": "a5e5d4c63ddd9d808fc7af494d84bf78c31f70fa5e631aca33fc92776d46ef71"
+    },
+    "upperstack": {
+      "file": "upperstack_MP-v0.0.6.4d251c71-16e984c1d7e5197ac9e4e7ca1590b045.bin",
+      "sha256": "4422c0cc4fd1f332d1f2e5c2c8fc011023bfaff78bf189f5d023e874fc657a85"
+    },
+    "stack_patch": {
+      "file": "stack_patch_bank0_MP-v0.0.113.f952028a-3c9e4cec895b5d94585d734f87a209ee.bin",
+      "sha256": "fabc2778ce703e755f4129b3801c702f83599b4bd30e6930ee77166f16696b67"
+    },
+    "sys_patch": {
+      "file": "sys_patch_bank0_MP-v1.0.90.97ecba95-072b9229671f66a9d75a7a348bb4ef1b.bin",
+      "sha256": "0dbeda1903307eb2b8d8e9c4aed0723b74b4337de6fe8b0bf1a0eabc09228675"
+    },
+    "dsp_app": {
+      "file": "dsp_app_image_8773G_V3.0.5.85_SHARE80K-1_SHARE80K-1_SHA-UNKNOW_MP-4f6dc7605e167f0630cdd348605da48a.bin",
+      "sha256": "14ebdb4c4828e9a2e65100625a82a7f0cadcdda8dee8c3480c7cf1f4bec91561"
+    },
+    "dsp_sys": {
+      "file": "dsp_sys_image_8773G_V3.0.5.85_SHARE80K-1_SHARE80K-1_SHA-UNKNOW_MP-26de8ef36e36f4687ed2895e3ca0ce0f.bin",
+      "sha256": "0133a5d03070351b9e2e8492829a47d843c6aa69ae072d5de371f8b40ec59502"
+    }
+  },
+  "files": {
+    "ROM.trace": "fe816b98fc9b589697db101c15c0e6a08e6056162dbeee5080b0b5ee0f028ca6",
+    "LOG1.h": "2795e4b49352f8ee4ce2bb3a86d833eeb712efb3589fa9bd1e9a3d40e32de79d",
+    "upperstack.trace": "00c47b97ce42c53566a8425060c2e2bbc0b8a71e4fab18fe60fa1ceccf8c3f85",
+    "boot_patch0.trace": "f748eb9123bd8c1f2029923a04b83acbfa5040793a6071eb5aa9a869480df973",
+    "patch_log.h": "b3b91913e73daef59d383f35cc11c5fa9cb2f5d39b9ab8dfbbc39d403c8b53f1",
+    "stack_patch_log.h": "0a1dc983436661e9a6d3dc2afe0b525f74108c4cd8a3eba719590b9e80e2093a",
+    "DSP_APP.trace": "edcb02db6829a4e3c82fb045d5b124c6efc1f651621266398d9722a1cf869ad8",
+    "DSP_SDK_AUDIO.trace": "33662ea46925bb29e37326230385a8f445d8fa47098fc0ed1e024b7d9efe6676",
+    "DSP_SDK_VOICE.trace": "b2a377a5a610ca0b86af62e75a84f8b8e4b2fefce6c5b7eaef1b1888b9f7da7f"
+  }
+}
