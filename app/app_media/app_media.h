@@ -34,16 +34,8 @@ uint8_t app_media_volume_get(void);
 const char *app_media_track_title(void);
 const char *app_media_track_artist(void);
 
-/* Local microphone capture: PCM 16 kHz, mono, signed 16-bit. The captured
- * buffer is allocated on demand from HoneyGUI's large (PSRAM) heap. */
-bool app_media_record_start(void);
-bool app_media_record_start_from_ui(void);
-void app_media_record_stop(void);
-bool app_media_record_active(void);
-bool app_media_record_info(uint32_t *id, uint32_t *bytes);
-uint16_t app_media_record_read(uint32_t id, uint32_t offset, uint8_t *out, uint16_t len);
-uint32_t app_media_record_live_bytes(void);
-uint16_t app_media_record_live_read(uint32_t offset, uint8_t *out, uint16_t len);
+/* True while an A2DP playback audio track owns the output path. */
+bool app_media_track_active(void);
 bool app_media_speaker_free(void);
 
 /** Play one voice prompt from the VP partition for on-device verification. */

@@ -18,5 +18,6 @@
 #define WATCH_L2_CMD_REMOTE       0x0fu   /* remote camera control */
 #define WATCH_L2_CMD_FILE_XFER    0x10u   /* file transfer */
 #define WATCH_L2_CMD_MODEL        0x12u   /* canonical app-model snapshot */
+#define WATCH_L2_CMD_RECORD       0x14u   /* microphone recording upload */
 
 #endif /* _WATCH_L2_CMD_IDS_H_ */

@@ -9,6 +9,7 @@
 #include "watch_l2_cmd_log.h"
 #include "watch_l2_cmd_xfer.h"
 #include "watch_l2_cmd_conn_param.h"
+#include "watch_l2_cmd_record.h"
 
 /**
  * @brief  Register every L2 command handler in one place.
@@ -42,6 +43,7 @@ static int watch_l2_handlers_register(void)
     watch_l2_log_register();
     watch_l2_xfer_register();
     watch_l2_conn_param_register();
+    watch_l2_record_register();
     return 0;
 }
 

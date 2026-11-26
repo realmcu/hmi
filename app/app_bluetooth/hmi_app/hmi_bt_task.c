@@ -25,6 +25,7 @@
 #include <app_timer.h>
 #include "hmi_bt_task.h"
 #include "app_media.h"
+#include "app_record.h"
 #include "trace.h"
 #include "hmi_ble_gap_init.h"
 #include "hmi_ble_gap_msg.h"
@@ -158,6 +159,7 @@ static void framework_init(void)
     else
     {
         app_media_audio_ready();
+        app_record_audio_ready();
     }
 #endif
 
@@ -302,5 +304,3 @@ const app_module_t app_bluetooth_module =
 };
 
 /** @} */ /* End of group PERIPH_APP_TASK */
-
-

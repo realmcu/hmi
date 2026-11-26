@@ -95,6 +95,10 @@ enum
     EVT_POWER_VOLTAGE_RSP    = 0x0B03, /* payload: app_evt_power_voltage_rsp_t */
     EVT_VOICE_PROMPT_REQ     = 0x0B04, /* payload: app_evt_voice_prompt_req_t */
     EVT_VOICE_PROMPT_RSP     = 0x0B05, /* payload: app_evt_voice_prompt_rsp_t */
+
+    /* Record (0xC00~) */
+    EVT_RECORD_START_REQ     = 0x0C00, /* payload: none */
+    EVT_RECORD_STOP_REQ      = 0x0C01, /* payload: app_evt_record_stop_t */
 };
 
 /* -------- Payload structs -------- */
@@ -128,6 +132,11 @@ typedef struct
 } app_evt_ble_conn_param_t;
 
 typedef struct { uint8_t percent;  } app_evt_power_level_t;
+
+typedef struct
+{
+    uint8_t reason;  /* app_record_stop_reason_t */
+} app_evt_record_stop_t;
 typedef struct { bool    charging; } app_evt_power_charging_t;
 
 /**

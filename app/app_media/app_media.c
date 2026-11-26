@@ -1,4 +1,4 @@
-/* Phone A2DP SBC -> Realtek DSP -> watch loudspeaker, plus local MIC capture. */
+/* Phone A2DP SBC -> Realtek DSP -> watch loudspeaker, plus AVRCP controls. */
 #include "app_media.h"
 #include "app_event.h"
 #include "app_event_defs.h"
@@ -21,14 +21,10 @@
 #include "app_event.h"
 #include "app_event_defs.h"
 #include "trace.h"
-#include "gui_api_os.h"
+#include "app_record.h"
 
 #define MEDIA_LATENCY_MS 120
 #define SPEAKER_AMP_PIN P1_1
-
-#define RECORD_FRAME_SAMPLES 240u
-#define RECORD_READ_BYTES    2048u
-#define RECORD_MAX_BYTES     (64u * 1024u)
 
 static T_AUDIO_PLUGIN_HANDLE plugin;
 static uint8_t timer_module;
@@ -40,18 +36,6 @@ static bool started;
 static uint8_t volume = 8;
 static unsigned packets;
 static unsigned dropped;
-
-static T_AUDIO_TRACK_HANDLE record_track;
-static struct k_mutex record_lock;
-static struct k_work record_stop_work;
-static struct k_work record_start_work;
-static uint8_t *record_saved;
-static uint8_t *record_read_buf;
-static uint32_t record_id;
-static uint32_t record_bytes;
-static bool record_running;
-static bool record_available;
-static bool record_ready;
 
 static void on_voice_prompt_request(app_event_id_t id, const void *payload,
                                     size_t len, void *user)
@@ -124,87 +108,6 @@ static void release_track(void)
     {
         audio_track_release(track);
         track = NULL;
-    }
-}
-
-static void record_limit_work(struct k_work *work)
-{
-    (void)work;
-    app_media_record_stop();
-}
-
-static void record_start_work_handler(struct k_work *work)
-{
-    (void)work;
-    if (!app_media_record_start())
-    {
-        APP_PRINT_WARN0("media: MIC deferred start failed");
-    }
-}
-
-static void record_audio_event(T_AUDIO_EVENT event, T_AUDIO_EVENT_PARAM *param,
-                               uint16_t len)
-{
-    if (record_track == NULL || param == NULL)
-    {
-        return;
-    }
-
-    if (event == AUDIO_EVENT_TRACK_STATE_CHANGED &&
-        len >= sizeof(T_AUDIO_EVENT_PARAM_TRACK_STATE_CHANGED) &&
-        param->track_state_changed.handle == record_track)
-    {
-        T_AUDIO_TRACK_STATE state = param->track_state_changed.state;
-        record_running = state == AUDIO_TRACK_STATE_STARTED ||
-                         state == AUDIO_TRACK_STATE_RESTARTED;
-        APP_PRINT_INFO2("media: MIC track state=%d, cause=%d", state,
-                        param->track_state_changed.cause);
-    }
-    else if (event == AUDIO_EVENT_TRACK_DATA_IND &&
-             len >= sizeof(T_AUDIO_EVENT_PARAM_TRACK_DATA_IND) &&
-             param->track_data_ind.handle == record_track && record_running)
-    {
-        uint16_t requested = param->track_data_ind.len;
-        if (record_read_buf == NULL || requested > RECORD_READ_BYTES)
-        {
-            return;
-        }
-
-        uint32_t timestamp = 0;
-        uint16_t seq = 0;
-        uint16_t received = 0;
-        uint8_t frames = 0;
-        T_AUDIO_STREAM_STATUS status;
-        if (!audio_track_read(record_track, &timestamp, &seq, &status, &frames,
-                              record_read_buf, requested, &received) ||
-            received == 0u)
-        {
-            return;
-        }
-
-        if (k_mutex_lock(&record_lock, K_NO_WAIT) == 0)
-        {
-            uint32_t space = RECORD_MAX_BYTES - record_bytes;
-            uint16_t copy = received < space ? received : (uint16_t)space;
-            if (copy != 0u)
-            {
-                memcpy(record_saved + record_bytes, record_read_buf, copy);
-                record_bytes += copy;
-            }
-            if (copy < received || record_bytes == RECORD_MAX_BYTES)
-            {
-                record_running = false;
-                k_work_submit(&record_stop_work);
-            }
-            k_mutex_unlock(&record_lock);
-        }
-    }
-    else if (event == AUDIO_EVENT_TRACK_ERROR_REPORT &&
-             len >= sizeof(T_AUDIO_EVENT_PARAM_TRACK_ERROR_REPORT) &&
-             param->track_error_report.handle == record_track)
-    {
-        record_running = false;
-        APP_PRINT_ERROR0("media: MIC track error");
     }
 }
 
@@ -353,7 +256,7 @@ static void on_audio(T_AUDIO_EVENT event, void *buf, uint16_t len)
     {
         return;
     }
-    record_audio_event(event, param, len);
+    app_record_handle_audio_event((uint32_t)event, param, len);
     if (event == AUDIO_EVENT_VOICE_PROMPT_STARTED &&
         len >= sizeof(T_AUDIO_EVENT_PARAM_VOICE_PROMPT_STARTED))
     {
@@ -463,195 +366,12 @@ void app_media_audio_ready(void)
     (void)audio_volume_out_min_set(AUDIO_STREAM_TYPE_PLAYBACK, 0);
     (void)audio_volume_out_set(AUDIO_STREAM_TYPE_PLAYBACK, volume);
     audio_ready = true;
-    k_mutex_init(&record_lock);
-    k_work_init(&record_stop_work, record_limit_work);
-    k_work_init(&record_start_work, record_start_work_handler);
-    record_ready = true;
     APP_PRINT_INFO1("media: audio ready, volume %d/15", volume);
-}
-
-bool app_media_record_start(void)
-{
-    if (!record_ready)
-    {
-        return false;
-    }
-
-    k_mutex_lock(&record_lock, K_FOREVER);
-    if (record_track != NULL || track != NULL)
-    {
-        k_mutex_unlock(&record_lock);
-        return false;
-    }
-
-    T_AUDIO_FORMAT_INFO format = {0};
-    format.type = AUDIO_FORMAT_TYPE_PCM;
-    format.frame_num = 1;
-    format.attr.pcm.sample_rate = 16000;
-    format.attr.pcm.frame_length = RECORD_FRAME_SAMPLES;
-    format.attr.pcm.chann_num = 1;
-    format.attr.pcm.bit_width = 16;
-    format.attr.pcm.chann_location = AUDIO_CHANNEL_LOCATION_MONO;
-
-    if (record_saved != NULL)
-    {
-        gui_free(record_saved);
-        record_saved = NULL;
-    }
-    record_saved = gui_malloc(RECORD_MAX_BYTES);
-    record_read_buf = gui_malloc(RECORD_READ_BYTES);
-    record_bytes = 0;
-    record_available = false;
-    record_running = false;
-    if (record_saved == NULL || record_read_buf == NULL)
-    {
-        gui_free(record_saved);
-        gui_free(record_read_buf);
-        record_saved = NULL;
-        record_read_buf = NULL;
-        k_mutex_unlock(&record_lock);
-        return false;
-    }
-
-    record_track = audio_track_create(AUDIO_STREAM_TYPE_RECORD, AUDIO_STREAM_MODE_NORMAL,
-                                      AUDIO_STREAM_USAGE_LOCAL, format, 0, 10,
-                                      AUDIO_DEVICE_IN_MIC, NULL, NULL);
-    if (record_track == NULL)
-    {
-        gui_free(record_saved);
-        gui_free(record_read_buf);
-        record_saved = NULL;
-        record_read_buf = NULL;
-        k_mutex_unlock(&record_lock);
-        return false;
-    }
-
-    T_AUDIO_TRACK_HANDLE handle = record_track;
-    k_mutex_unlock(&record_lock);
-    if (!audio_track_start(handle))
-    {
-        k_mutex_lock(&record_lock, K_FOREVER);
-        record_track = NULL;
-        gui_free(record_saved);
-        gui_free(record_read_buf);
-        record_saved = NULL;
-        record_read_buf = NULL;
-        k_mutex_unlock(&record_lock);
-        audio_track_release(handle);
-        return false;
-    }
-
-    APP_PRINT_INFO0("media: MIC capture started (PCM 16 kHz mono 16-bit)");
-    return true;
-}
-
-bool app_media_record_start_from_ui(void)
-{
-    if (!record_ready || app_media_record_active())
-    {
-        return false;
-    }
-    return k_work_submit(&record_start_work) >= 0;
-}
-
-void app_media_record_stop(void)
-{
-    if (!record_ready)
-    {
-        return;
-    }
-
-    (void)k_work_cancel(&record_start_work);
-    k_mutex_lock(&record_lock, K_FOREVER);
-    T_AUDIO_TRACK_HANDLE handle = record_track;
-    record_track = NULL;
-    record_running = false;
-    record_available = handle != NULL && record_bytes != 0u;
-    if (record_available)
-    {
-        record_id++;
-    }
-    gui_free(record_read_buf);
-    record_read_buf = NULL;
-    if (!record_available)
-    {
-        gui_free(record_saved);
-        record_saved = NULL;
-    }
-    k_mutex_unlock(&record_lock);
-
-    if (handle != NULL)
-    {
-        audio_track_release(handle);
-        APP_PRINT_INFO2("media: MIC capture stopped, id=%u bytes=%u",
-                        record_id, record_bytes);
-    }
-}
-
-bool app_media_record_active(void)
-{
-    return record_track != NULL;
-}
-
-bool app_media_record_info(uint32_t *id, uint32_t *bytes)
-{
-    if (!record_ready || id == NULL || bytes == NULL)
-    {
-        return false;
-    }
-    k_mutex_lock(&record_lock, K_FOREVER);
-    bool ok = record_available && record_saved != NULL;
-    *id = ok ? record_id : 0u;
-    *bytes = ok ? record_bytes : 0u;
-    k_mutex_unlock(&record_lock);
-    return ok;
-}
-
-static uint16_t record_copy(uint32_t expected_id, uint32_t offset, uint8_t *out,
-                            uint16_t len, bool live)
-{
-    if (!record_ready || out == NULL || len == 0u)
-    {
-        return 0;
-    }
-    k_mutex_lock(&record_lock, K_FOREVER);
-    uint16_t copied = 0;
-    if (record_saved != NULL && (!live ? expected_id == record_id && record_available : true) &&
-        offset < record_bytes)
-    {
-        uint32_t remain = record_bytes - offset;
-        copied = remain < len ? (uint16_t)remain : len;
-        memcpy(out, record_saved + offset, copied);
-    }
-    k_mutex_unlock(&record_lock);
-    return copied;
-}
-
-uint16_t app_media_record_read(uint32_t id, uint32_t offset, uint8_t *out, uint16_t len)
-{
-    return record_copy(id, offset, out, len, false);
-}
-
-uint32_t app_media_record_live_bytes(void)
-{
-    if (!record_ready)
-    {
-        return 0;
-    }
-    k_mutex_lock(&record_lock, K_FOREVER);
-    uint32_t bytes = record_saved != NULL ? record_bytes : 0u;
-    k_mutex_unlock(&record_lock);
-    return bytes;
-}
-
-uint16_t app_media_record_live_read(uint32_t offset, uint8_t *out, uint16_t len)
-{
-    return record_copy(0u, offset, out, len, true);
 }
 
 bool app_media_speaker_free(void)
 {
-    return audio_ready && track == NULL && !app_media_record_active();
+    return audio_ready && track == NULL && !app_record_is_active();
 }
 
 bool app_media_voice_prompt_play(uint8_t index, uint8_t language, bool relay)
@@ -694,6 +414,11 @@ bool app_media_connected(void)
     hmi_media_snapshot_t snapshot;
     hmi_media_snapshot(&snapshot);
     return snapshot.connected;
+}
+
+bool app_media_track_active(void)
+{
+    return track != NULL;
 }
 
 int app_media_play(void)
@@ -788,23 +513,7 @@ int app_media_volume_set(uint8_t percent) { (void)percent; return -1; }
 uint8_t app_media_volume_get(void) { return 0; }
 const char *app_media_track_title(void) { return ""; }
 const char *app_media_track_artist(void) { return ""; }
-bool app_media_record_start(void) { return false; }
-bool app_media_record_start_from_ui(void) { return false; }
-void app_media_record_stop(void) {}
-bool app_media_record_active(void) { return false; }
-bool app_media_record_info(uint32_t *id, uint32_t *bytes)
-{
-    (void)id; (void)bytes; return false;
-}
-uint16_t app_media_record_read(uint32_t id, uint32_t offset, uint8_t *out, uint16_t len)
-{
-    (void)id; (void)offset; (void)out; (void)len; return 0;
-}
-uint32_t app_media_record_live_bytes(void) { return 0; }
-uint16_t app_media_record_live_read(uint32_t offset, uint8_t *out, uint16_t len)
-{
-    (void)offset; (void)out; (void)len; return 0;
-}
+bool app_media_track_active(void) { return false; }
 bool app_media_speaker_free(void) { return false; }
 bool app_media_voice_prompt_play(uint8_t index, uint8_t language, bool relay)
 {

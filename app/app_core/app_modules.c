@@ -15,6 +15,7 @@
 #include "app_power.h"
 #include "app_setting.h"
 #include "app_haptic.h"
+#include "app_record.h"
 #include "app_health.h"
 #include "app_media.h"
 #include "app_phone.h"
@@ -31,6 +32,7 @@ const app_module_t *const app_module_list[] =
     &app_time_module,       /* clock/timezone, others timestamp against it */
     &app_power_module,      /* battery monitor, come up early */
     &app_setting_module,    /* KV backing, others read defaults during init */
+    &app_record_module,     /* record event subscriptions, before UI fills slots */
     &app_haptic_module,     /* vibration motor, independent of audio stack */
     &app_media_module,      /* register A2DP/AVRCP hooks before BT task starts */
     &app_phone_module,      /* phone state/event bridge, before BT task starts */

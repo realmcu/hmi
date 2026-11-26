@@ -46,7 +46,9 @@ extern "C" {
 #define APP_EVENT_MAX_PAYLOAD   32u
 
 /** Maximum concurrent (event_id, callback) subscriptions across the app. */
-#define APP_EVENT_MAX_SUBS      32u
+/* App bring-up currently consumes all 32 slots before audio-owned modules
+ * subscribe. Keep headroom for late subscribers such as app_record. */
+#define APP_EVENT_MAX_SUBS      40u
 
 /** Event id — concrete ids live in app_event_defs.h. */
 typedef uint16_t app_event_id_t;
