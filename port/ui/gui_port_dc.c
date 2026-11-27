@@ -131,6 +131,11 @@ static void gui_dc_lcd_power_off(void)
 {
     gui_log("port_gui_lcd_power_off");
 }
+static void gui_dc_lcd_init(void)
+{
+    gui_log("port_gui_lcd_init");
+    rtk_lcd_hal_init();
+}
 static struct gui_dispdev dc =
 {
     .type = DC_RAMLESS,
@@ -140,6 +145,7 @@ static struct gui_dispdev dc =
     .lcd_update = port_gui_lcd_update,
     .lcd_power_off = gui_dc_lcd_power_off,
     .lcd_power_on = gui_dc_lcd_power_on,
+    .lcd_init = gui_dc_lcd_init,
 
     .reset_lcd_timer = NULL,
     .get_lcd_us = NULL,
