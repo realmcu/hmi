@@ -5,21 +5,24 @@
  */
 
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <zephyr/kernel.h>
-#include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/devicetree.h>
 #include "trace.h"
 #include "rtl876x_pinmux.h"
 #include "app_lower_init.h"
-#include "gui_server.h"
 #include "app_core.h"
 #include "app_ota_mode.h"
 #include "hmi_bt_task.h"
 
-
-
+/* Boot messages go to both the console and the trace stream. */
+#define BOOT_LOG(fmt, ...)                  \
+    do {                                    \
+        printf(fmt "\n", ##__VA_ARGS__);    \
+        DBG_DIRECT(fmt, ##__VA_ARGS__);     \
+    } while (0)
 
 int main(void)
 {
@@ -28,28 +31,23 @@ int main(void)
 #if CONFIG_DFU_NORMAL_OTA
     if (app_ota_mode_requested())
     {
-        printf("[OTA] enter dedicated normal OTA mode\n");
+        BOOT_LOG("[OTA] enter dedicated normal OTA mode");
         app_ota_mode_clear_request();
         app_ota_mode_set_active(true);
         if (hmi_bt_task_start_ota_mode())
         {
             return 0;
         }
-        printf("[OTA] failed to start OTA task\n");
+        BOOT_LOG("[OTA] failed to start OTA task");
     }
 #endif
 
-    printf("Hello World! %s\n", CONFIG_BOARD_TARGET);
-    printf("[APP] build: %s %s\n", __DATE__, __TIME__);
-    printf("[main] thread id: %p, name: %s, priority: %d\n",
-           k_current_get(),
-           k_thread_name_get(k_current_get()),
-           k_thread_priority_get(k_current_get()));
-    gui_server_init();
-    /* The watch-face clock is refreshed by GUI object timers, which only run
-     * while the GUI frame loop is awake. A finite idle timeout freezes the
-     * displayed time permanently once it expires. */
-    gui_set_keep_active_time(0xFFFFFFFFu);
+    BOOT_LOG("Hello World! %s", CONFIG_BOARD_TARGET);
+    BOOT_LOG("[APP] build: %s %s", __DATE__, __TIME__);
+    BOOT_LOG("[main] thread id: 0x%08x, name: %s, priority: %d",
+             (unsigned)(uintptr_t)k_current_get(),
+             k_thread_name_get(k_current_get()),
+             k_thread_priority_get(k_current_get()));
 
     app_core_init();
 

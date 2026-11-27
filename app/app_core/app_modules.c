@@ -20,6 +20,7 @@
 #include "app_media.h"
 #include "app_phone.h"
 #include "app_notify.h"
+#include "app_display.h"
 
 #include <stddef.h>
 
@@ -39,6 +40,7 @@ const app_module_t *const app_module_list[] =
     &app_bluetooth_module,        /* stack ready before higher profiles */
     &app_watch_l2_module,         /* depends on ble */
     &app_health_module,     /* depends on time + setting */
+    &app_display_module,    /* GUI server bring-up, display hot-plug */
     &app_ui_sysval_module,  /* bridge app events to HoneyGUI sysval */
     &app_notify_module,     /* depends on ble */
 };
